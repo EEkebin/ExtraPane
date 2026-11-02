@@ -1,6 +1,8 @@
 """Exercise extracted WinUI packages on the authorized desktop and Surface Book."""
 import subprocess,time,zipfile,json,winreg,re
 from pathlib import Path
+from release_version import current
+VERSION=current()
 from windows_peer import ROOT,WindowsPeer,quote,local_ps
 peer=WindowsPeer('10.0.20.119','kebinBook')
 b=ROOT/'out/build/windows-release';stage=ROOT/'out/portable-check'
@@ -10,10 +12,10 @@ try:
  with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as k:saved=winreg.QueryValueEx(k,'Layout')
 except FileNotFoundError:saved=None
 try:
- with zipfile.ZipFile(ROOT/'out/dist/SideScreen-0.13.0-win-x64.zip') as z:z.extractall(stage)
+ with zipfile.ZipFile(ROOT/f'out/dist/SideScreen-{VERSION}-win-x64.zip') as z:z.extractall(stage)
  server=stage/'SideScreen/SideScreen.exe'
  subprocess.run([str(server),'--smoke-test'],check=True,timeout=20)
- archive=peer.upload(ROOT/'out/dist/SideScreen-0.13.0-win-x64.zip');drive=peer.upload(b/'dm-input-drive.exe');check=peer.upload(b/'dm-window-check.exe');tray_check=peer.upload(b/'dm-tray-check.exe')
+ archive=peer.upload(ROOT/f'out/dist/SideScreen-{VERSION}-win-x64.zip');drive=peer.upload(b/'dm-input-drive.exe');check=peer.upload(b/'dm-window-check.exe');tray_check=peer.upload(b/'dm-tray-check.exe')
  _,remote,_=peer.run(f"$root=Join-Path $env:LOCALAPPDATA 'DM\\portable-check'; New-Item -ItemType Directory -Path $root -Force | Out-Null; Expand-Archive -LiteralPath {quote(archive)} -DestinationPath $root -Force; Join-Path $root 'SideScreen'")
  client=remote+'\\SideScreen.exe'
  peer.run(f"$p=Start-Process -FilePath {quote(client)} -ArgumentList '--smoke-test' -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(20000) -or $p.ExitCode -ne 0){{throw 'Portable Client render check failed'}}; 'LAPTOP_WINUI_RENDER passed'",interactive=True)
