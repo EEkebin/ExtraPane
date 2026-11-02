@@ -1,4 +1,5 @@
 #include <dm/video.hpp>
+#include <dm/video_layout.hpp>
 #include <dm/video_protocol.hpp>
 #include <algorithm>
 #include <iostream>
@@ -14,6 +15,10 @@ template<class F> void rejects(F action) {
 int main() {
     try {
         using namespace dm::video;
+        const auto portrait=content_rect(1080,1920,3000,2000);
+        require(portrait.width==1125 && portrait.height==2000 && portrait.x==937 && portrait.y==0,"Portrait viewport must preserve aspect and center input area");
+        const auto landscape=content_rect(3000,2000,1000,1000);
+        require(landscape.width==1000 && landscape.height==666 && landscape.y==167,"Landscape viewport must letterbox");
         auto offer = wire::encode_offer({1280,720,10,30});
         require(wire::decode_offer(offer).width == 1280, "Offer width lost");
         rejects([&] { (void)wire::decode_offer(std::span(offer).first(12)); });
@@ -33,6 +38,7 @@ int main() {
         auto old_version=offer; old_version[4]=2;
         rejects([&] { (void)wire::decode_offer(old_version); });
         rejects([] { (void)wire::encode_header({0,wire::max_jpeg+1,0}); });
+        require(wire::decode_header(wire::encode_header({42,0,123})).bytes==0,"Reconfiguration marker lost");
         auto header = wire::encode_header({123,4000,0x123456789abcdef0ull});
         const auto decoded = wire::decode_header(header);
         require(decoded.sequence == 123 && decoded.bytes == 4000 && decoded.micros == 0x123456789abcdef0ull, "Header lost endian-sensitive fields");

@@ -94,7 +94,7 @@ python scripts/test_video_laptop.py --laptop-ip 10.0.20.119 --desktop-ip 10.0.0.
 
 The extended recovery test asserts one DM monitor, unchanged physical topology, and full removal on peer/process loss and normal completion. The laptop test creates a temporary visible counter window when `--show-pattern` is selected and verifies baseline restoration after streaming. Extended reports include frame count and fps in their filenames. SSH/task deadlines account for stream duration. Driver installation stays separate from builds; see EXTENDED-DISPLAY.md and the installation record for removal.
 
-Input version 0.6: see [native input and hardware acceptance](INPUT.md). `scripts/try-display.ps1 -Control` enables the laptop input test; view only remains the default. Both video endpoints now require protocol 4. `dm-input-check` verifies native app delivery/cleanup; `test_input_transport.py` requires Python 3.13+ PSK support and an unlocked interactive host with the installed driver. `test_video_laptop.py --control --exercise-input --extend --show-pattern` exercises generated receiver-to-host input and checks app-level delivery counts; it does not replace physical pen/touch validation.
+Input version 0.6: see [native input and hardware acceptance](INPUT.md). `scripts/try-display.ps1 -Control` enables the laptop input test; view only remains the default. Both current video endpoints require protocol 6. `dm-input-check` verifies native app delivery/cleanup; `test_input_transport.py` requires Python 3.13+ PSK support and an unlocked interactive host with the installed driver. `test_video_laptop.py --control --exercise-input --extend --show-pattern` exercises generated receiver-to-host input and checks app-level delivery counts; it does not replace physical pen/touch validation.
 
 ## Native Surface Book 2 profile
 
@@ -103,3 +103,16 @@ Use `scripts/try-display.ps1 -Control` for a readiness-gated two-minute 3000x200
 ## Desktop apps (0.8)
 
 The build produces `dm-host.exe` and `dm-receiver.exe`. Keep each beside `dm-view.exe`; the host also needs `dm-display.exe` for optional debug patterns. Run the host elevated, the receiver as a normal user. Neither app uses SSH. `docs/DESKTOP-APPS.md` documents normal continuous sessions, pairing and settings. `--smoke-test` runs internal window-state assertions and exits; `--start` invokes the same Start/Connect action after opening the app.
+
+## Live display recovery checks (0.9)
+
+With the existing driver installed and no other DM session running:
+
+```powershell
+python scripts/test_display_reconfigure.py
+out/build/windows-release/dm-input-check.exe --portrait
+py -3.14 scripts/test_input_transport.py
+python scripts/test_laptop_reconfigure.py
+```
+
+The local test checks continuous sessions through left placement, resolution, all orientations, unchanged monitor identity, layout restore after restart and exact physical-topology cleanup. The native input test checks delivery and held-state release after a display move. The laptop test targets the authorized development machines, prompts for SSH, uses the existing dm-lan pairing, temporarily scopes firewall access, and verifies GPU video plus generated mouse/keyboard/touch/pen delivery after portrait recovery. SSH is test infrastructure only. Evidence is stored under ignored `out/`.

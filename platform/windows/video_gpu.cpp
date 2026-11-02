@@ -3,6 +3,7 @@
 #include <d3d10_1.h>
 #include <d3dcompiler.h>
 #include <dm/video_gpu.hpp>
+#include <dm/video_layout.hpp>
 #include <chrono>
 #include <cstring>
 #include <stdexcept>
@@ -95,7 +96,9 @@ float4 ps(VertexOutput input):SV_Target{
         ID3D11ShaderResourceView* inputs[]={y.Get(),uv.Get()};
         ID3D11SamplerState* samplers[]={sampler.Get()}; ID3D11Buffer* buffers[]={constants.Get()};
         ID3D11RenderTargetView* outputs[]={output.Get()};
-        D3D11_VIEWPORT viewport{0,0,static_cast<float>(out.Width),static_cast<float>(out.Height),0,1};
+        const auto rect=content_rect(width,height,out.Width,out.Height);
+        const float black[]{0,0,0,1};context->ClearRenderTargetView(output.Get(),black);
+        D3D11_VIEWPORT viewport{static_cast<float>(rect.x),static_cast<float>(rect.y),static_cast<float>(rect.width),static_cast<float>(rect.height),0,1};
         context->IASetInputLayout(nullptr); context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         context->VSSetShader(vertex.Get(),nullptr,0); context->PSSetShader(pixel.Get(),nullptr,0);
         context->PSSetShaderResources(0,2,inputs); context->PSSetSamplers(0,1,samplers); context->PSSetConstantBuffers(0,1,buffers);

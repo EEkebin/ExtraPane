@@ -1,4 +1,5 @@
 #include <dm/input.hpp>
+#include <dm/video_layout.hpp>
 #include <windowsx.h>
 #include <algorithm>
 #include <atomic>
@@ -14,6 +15,7 @@ unsigned receiver_capabilities() {
 struct ReceiverInput::State {
     bool requested=false,paused=false,focused=false;
     std::atomic<unsigned> caps{0};
+    std::atomic<bool> reset_pending{false};
     unsigned width=0,height=0,buttons=0;
     HWND owner_window=nullptr;
     std::set<unsigned> keys;
@@ -33,8 +35,11 @@ struct ReceiverInput::State {
     void reset() { keys.clear();pointers.clear();buttons=0;if(owner_window && GetCapture()==owner_window)ReleaseCapture();{std::lock_guard lock(mutex);queue.clear();}push(Event{}); }
     bool position(HWND window,POINT p,Event& event,bool clamp) {
         RECT area{};GetClientRect(window,&area);if(area.right<2 || area.bottom<2 || !width || !height)return false;
-        if(!clamp && (p.x<0 || p.y<0 || p.x>=area.right || p.y>=area.bottom))return false;
-        event.x=static_cast<unsigned>(static_cast<std::int64_t>(std::clamp(p.x,0L,area.right-1))*65535/(area.right-1));event.y=static_cast<unsigned>(static_cast<std::int64_t>(std::clamp(p.y,0L,area.bottom-1))*65535/(area.bottom-1));return true;
+        const auto rect=video::content_rect(width,height,static_cast<unsigned>(area.right),static_cast<unsigned>(area.bottom));
+        p.x-=static_cast<LONG>(rect.x);p.y-=static_cast<LONG>(rect.y);
+        const auto w=static_cast<LONG>(rect.width),h=static_cast<LONG>(rect.height);
+        if(w<2 || h<2 || (!clamp && (p.x<0 || p.y<0 || p.x>=w || p.y>=h)))return false;
+        event.x=static_cast<unsigned>(static_cast<std::int64_t>(std::clamp(p.x,0L,w-1))*65535/(w-1));event.y=static_cast<unsigned>(static_cast<std::int64_t>(std::clamp(p.y,0L,h-1))*65535/(h-1));return true;
     }
     void pointer(HWND window,UINT message,UINT32 id) {
         if(message==WM_POINTERCAPTURECHANGED) {
@@ -50,7 +55,7 @@ struct ReceiverInput::State {
             if(message==WM_POINTERENTER) {if(type==PT_TOUCH || (event.flags&2))return;event.action=Action::move;}
             if(message==WM_POINTERLEAVE) { event.flags=0;event.action=(f&POINTER_FLAG_INCONTACT)?Action::cancel:Action::move; }
             POINT point=p.ptPixelLocation;ScreenToClient(window,&point);
-            if(!position(window,point,event,true))return;
+            if(!position(window,point,event,pointers.contains(id)))return;
             if(type==PT_TOUCH && event.action==Action::move && !(event.flags&2))return;
             if(event.action==Action::move && (event.flags&2) && !pointers.contains(id))return;
             if(event.action==Action::down)SetFocus(window);
@@ -65,19 +70,20 @@ struct ReceiverInput::State {
             } else { POINTER_PEN_INFO p{};if(GetPointerPenInfo(id,&p)) { Event e;e.code=p.penFlags;e.mask=p.penMask;e.pressure=p.pressure;e.rotation=p.rotation;e.tilt_x=p.tiltX;e.tilt_y=p.tiltY;sample(p.pointerInfo,e); } }
         } else {
             POINTER_TOUCH_INFO p{};if(!GetPointerTouchInfo(id,&p))return;
-            RECT area{};GetClientRect(window,&area);Event e;e.mask=p.touchMask;e.pressure=p.pressure;e.rotation=p.orientation;
-            e.contact_x=static_cast<unsigned>(std::clamp<std::int64_t>(static_cast<std::int64_t>(p.rcContact.right-p.rcContact.left)*65535/std::max(1L,area.right),0,65535));
-            e.contact_y=static_cast<unsigned>(std::clamp<std::int64_t>(static_cast<std::int64_t>(p.rcContact.bottom-p.rcContact.top)*65535/std::max(1L,area.bottom),0,65535));sample(p.pointerInfo,e);
+            RECT area{};GetClientRect(window,&area);const auto content=video::content_rect(width,height,static_cast<unsigned>(std::max(1L,area.right)),static_cast<unsigned>(std::max(1L,area.bottom)));Event e;e.mask=p.touchMask;e.pressure=p.pressure;e.rotation=p.orientation;
+            e.contact_x=static_cast<unsigned>(std::clamp<std::int64_t>(static_cast<std::int64_t>(p.rcContact.right-p.rcContact.left)*65535/std::max(1u,content.width),0,65535));
+            e.contact_y=static_cast<unsigned>(std::clamp<std::int64_t>(static_cast<std::int64_t>(p.rcContact.bottom-p.rcContact.top)*65535/std::max(1u,content.height),0,65535));sample(p.pointerInfo,e);
         }
     }
 };
 ReceiverInput::ReceiverInput(bool enabled):state_(std::make_unique<State>(enabled)) {}
 ReceiverInput::~ReceiverInput()=default;
-void ReceiverInput::grant(unsigned caps) { state_->caps.store(state_->requested?caps:0); }
+void ReceiverInput::grant(unsigned caps) { state_->caps.store(state_->requested?caps:0);state_->reset_pending.store(true); }
 void ReceiverInput::dimensions(unsigned width,unsigned height) { state_->width=width;state_->height=height;if(state_->owner_window && state_->caps.load())SetPropW(state_->owner_window,L"DM.InputReady",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(state_->caps.load()))); }
-void ReceiverInput::pump() { std::lock_guard lock(state_->mutex);state_->last_pump=State::Clock::now(); }
+void ReceiverInput::pump() { if(state_->reset_pending.exchange(false))state_->reset();std::lock_guard lock(state_->mutex);state_->last_pump=State::Clock::now(); }
 std::vector<Event> ReceiverInput::drain() {
     auto& s=*state_;std::lock_guard lock(s.mutex);
+    if(s.reset_pending.load()){s.queue.clear();return {Event{}};}
     if(State::Clock::now()-s.last_pump>std::chrono::milliseconds(500)) {s.queue.clear();return {Event{}};}
     std::vector<Event> out;out.swap(s.queue);return out;
 }

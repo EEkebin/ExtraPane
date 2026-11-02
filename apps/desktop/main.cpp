@@ -435,7 +435,7 @@ struct App
             save_setting(L"Fps", std::to_wstring(fps));
             const unsigned widths[]{3000, 1920, 1280}, heights[]{2000, 1080, 720};
             const size_t index = res >= 0 && res <= 2 ? static_cast<size_t>(res) : 0;
-            args.insert(args.end(), {L"--allow-screen", L"--extend", L"--width", std::to_wstring(widths[index]),
+            args.insert(args.end(), {L"--allow-screen", L"--extend", L"--keep-layout", L"--width", std::to_wstring(widths[index]),
                                      L"--height", std::to_wstring(heights[index]), L"--fps", std::to_wstring(fps),
                                      L"--frames", std::to_wstring(debug ? 60 * fps : 0), L"--timeout-ms", L"0"});
             if (checked(Input))
@@ -483,6 +483,8 @@ struct App
                     pattern_started = true;
                 }
             }
+            if(line.starts_with("DISPLAY_RECONFIGURING"))status(L"Applying Windows display changes...");
+            if(line.starts_with("DISPLAY_RECONFIGURED"))status(L"Connected. Windows display changes applied.");
             if (line.starts_with("error:"))
                 status(wide(line));
         }

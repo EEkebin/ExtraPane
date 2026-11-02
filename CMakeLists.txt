@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(dm VERSION 0.8.0 LANGUAGES C CXX)
+project(dm VERSION 0.9.0 LANGUAGES C CXX)
 
 # Standalone diagnostic executable: no VC runtime installation on the test laptop.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -34,7 +34,7 @@ add_library(dm_display STATIC platform/windows/display.cpp)
 target_include_directories(dm_display PUBLIC platform/windows/include)
 target_compile_features(dm_display PUBLIC cxx_std_20)
 target_compile_definitions(dm_display PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00 UNICODE _UNICODE)
-target_link_libraries(dm_display PRIVATE swdevice cfgmgr32 user32)
+target_link_libraries(dm_display PRIVATE swdevice cfgmgr32 user32 advapi32)
 add_executable(dm-display apps/display/main.cpp apps/display/pattern.cpp)
 target_link_libraries(dm-display PRIVATE dm_display gdi32)
 

@@ -63,14 +63,44 @@ std::vector<Monitor> active_monitors() {
     }
     return result;
 }
+Mode current_mode(const std::wstring& source) {
+    DEVMODEW value{};value.dmSize=sizeof(value);
+    if(!EnumDisplaySettingsW(source.c_str(),ENUM_CURRENT_SETTINGS,&value) || !value.dmPelsWidth || !value.dmPelsHeight)throw std::runtime_error("Display configuration is changing");
+    return {value.dmPelsWidth,value.dmPelsHeight,value.dmDisplayFrequency,value.dmDisplayOrientation,value.dmPosition.x,value.dmPosition.y};
+}
+void configure_virtual(const std::wstring& source,const Mode& value) {
+    bool owned=false;for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
+    if(!owned || value.width<2 || value.height<2 || value.width>4096 || value.height>4096 || value.rotation>3 || value.hz<1 || value.hz>60)throw std::runtime_error("Invalid DM mode configuration");
+    DEVMODEW mode{};mode.dmSize=sizeof(mode);
+    mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION|DM_POSITION;
+    mode.dmPelsWidth=value.width;mode.dmPelsHeight=value.height;mode.dmDisplayFrequency=value.hz;mode.dmDisplayOrientation=value.rotation;mode.dmPosition={value.x,value.y};
+    if(ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)!=DISP_CHANGE_SUCCESSFUL || ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)throw std::runtime_error("Windows rejected the DM mode");
+}
+void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height) {
+    const auto mode=current_mode(source);
+    const DWORD data[]{1,profile_width,profile_height,mode.width,mode.height,mode.hz,mode.rotation,static_cast<DWORD>(mode.x),static_cast<DWORD>(mode.y)};
+    HKEY key=nullptr;
+    if(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\DM\\Display",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS){
+        RegSetValueExW(key,L"Layout",0,REG_BINARY,reinterpret_cast<const BYTE*>(data),sizeof(data));RegCloseKey(key);
+    }
+}
+bool restore_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height) {
+    DWORD data[9]{};DWORD size=sizeof(data);
+    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",L"Layout",RRF_RT_REG_BINARY,nullptr,data,&size)!=ERROR_SUCCESS || size!=sizeof(data) || data[0]!=1 || data[1]!=profile_width || data[2]!=profile_height)return false;
+    bool owned=false;for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
+    if(!owned || data[3]<2 || data[4]<2 || data[3]>4096 || data[4]>4096 || data[6]>3)return false;
+    DEVMODEW mode{};mode.dmSize=sizeof(mode);mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION|DM_POSITION;
+    mode.dmPelsWidth=data[3];mode.dmPelsHeight=data[4];mode.dmDisplayFrequency=data[5];mode.dmDisplayOrientation=data[6];mode.dmPosition={static_cast<LONG>(data[7]),static_cast<LONG>(data[8])};
+    return ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)==DISP_CHANGE_SUCCESSFUL && ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)==DISP_CHANGE_SUCCESSFUL;
+}
 void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,unsigned fps,const std::vector<Monitor>& baseline) {
     bool owned=false;
     for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
     if(!owned)throw std::runtime_error("Mode changes require an independent DM virtual monitor");
     DEVMODEW mode{};mode.dmSize=sizeof(mode);
     if(!EnumDisplaySettingsW(source.c_str(),ENUM_CURRENT_SETTINGS,&mode))throw std::runtime_error("Cannot read DM display mode");
-    mode.dmPelsWidth=width;mode.dmPelsHeight=height;mode.dmDisplayFrequency=fps;
-    mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY;
+    mode.dmPelsWidth=width;mode.dmPelsHeight=height;mode.dmDisplayFrequency=fps;mode.dmDisplayOrientation=DMDO_DEFAULT;
+    mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION;
     if(!baseline.empty()) {
         LONG right=0;for(const auto& monitor:baseline)if(!monitor.dm_virtual)right=std::max(right,monitor.right);
         mode.dmPosition={right,0};mode.dmFields|=DM_POSITION;

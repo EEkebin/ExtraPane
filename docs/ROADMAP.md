@@ -66,3 +66,7 @@ Automated checks should cover parser limits, negotiation, authentication state, 
 ## 0.8 runnable launchers
 
 Native host/receiver windows, persistent Credential Manager pairing, direct LAN settings, continuous normal sessions, opt-in debug pattern/duration and desktop shortcuts are implemented. Current controls are C++ Win32 around the existing engine; the WinUI product shell, automatic reconnect, installer/distribution, audio and microphone remain future work. See DESKTOP-APPS.md for test evidence and limitations.
+
+## 0.9 live display changes
+
+In-place media recovery and saved layout are implemented for resolution, orientation and arrangement changes. Native input is reset and remapped, including portrait letterboxing and negative desktop origins. WinUI 3 and portable Client/Server distribution are deferred until after this recovery work; driver signing/installation remains a separate requirement for extended desktop.

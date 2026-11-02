@@ -18,7 +18,7 @@ namespace {
 using Clock = std::chrono::steady_clock;
 auto deadline() { return Clock::now() + std::chrono::seconds(5); }
 }
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height) {
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout) {
     if(allow_input && !extend && source.empty())throw std::invalid_argument("Input requires an explicit --display target or --extend");
     if((extend || !source.empty()) && codec!=wire::Codec::h264) throw std::invalid_argument("Selected/extended display requires H264");
     if(extend && !source.empty()) throw std::invalid_argument("Choose --extend or --display, not both");
@@ -43,11 +43,20 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         const auto baseline=display::active_monitors();
         virtual_monitor=std::make_unique<display::VirtualMonitor>();
         selected_source=virtual_monitor->wait_for_source();
-        display::set_virtual_mode(selected_source,width,height,(width==1280 && height==720 && fps<=30)?30:60,baseline);
+        if(!keep_layout || !display::restore_mode(selected_source,width,height))
+            display::set_virtual_mode(selected_source,width,height,(width==1280 && height==720 && fps<=30)?30:60,baseline);
     }
     if(!selected_source.empty()) std::wcout<<L"CAPTURE_SOURCE "<<selected_source<<L" extended="<<extend<<std::endl;
-    DesktopCapture capture(selected_source,width,height);
-    auto frame = codec==wire::Codec::h264 ? capture.next_gpu() : capture.next();
+    const unsigned profile_width=width,profile_height=height,target_fps=fps;
+    std::optional<display::Mode> mode;
+    std::wstring identity;
+    if(!selected_source.empty()) {
+        for(const auto& monitor:display::active_monitors())if(monitor.source==selected_source)identity=monitor.device_path;
+        mode=display::current_mode(selected_source);
+        if(extend){width=mode->width;height=mode->height;}
+    }
+    auto capture=std::make_unique<DesktopCapture>(selected_source,width,height);
+    auto frame = codec==wire::Codec::h264 ? capture->next_gpu() : capture->next();
     std::unique_ptr<H264Encoder> encoder;
     if (codec==wire::Codec::h264) {
         encoder=std::make_unique<H264Encoder>(frame.width,frame.height,fps,frame.gpu->device.Get());
@@ -74,9 +83,55 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     double capture_ms=0,encode_ms=0,send_ms=0;
     std::uint64_t last_generation=0;std::uint64_t fresh_frames=0;
     std::uint64_t input_events=0;std::uint64_t last_input_time=0;
+    auto next_frame=Clock::now();
+    auto reconfigure=[&](std::uint64_t sequence) {
+        broker.reset(); // Release held contacts before the geometry can be reused.
+        const auto micros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-start).count());
+        stream.write(wire::encode_header({static_cast<std::uint32_t>(sequence),0,micros}),deadline());
+        std::cout<<"DISPLAY_RECONFIGURING"<<std::endl;
+        encoder.reset();capture.reset();frame={};
+        const auto until=Clock::now()+std::chrono::seconds(20);
+        std::exception_ptr last;
+        for(;;) {
+            if(Clock::now()>=until)throw std::runtime_error("Display did not stabilize within recovery interval");
+            try {
+                bool found=false;
+                for(const auto& monitor:display::active_monitors())if(monitor.device_path==identity && (!extend || monitor.dm_virtual)){selected_source=monitor.source;found=true;break;}
+                if(!found)throw std::runtime_error("Waiting for selected display to return");
+                auto current=display::current_mode(selected_source);
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                if(current!=display::current_mode(selected_source))continue;
+                fps=std::min(target_fps,std::clamp(current.hz,1u,60u));
+                (void)wire::encode_offer({current.width,current.height,fps,frames,codec});
+                capture=std::make_unique<DesktopCapture>(selected_source,current.width,current.height);
+                frame=capture->next_gpu();
+                encoder=std::make_unique<H264Encoder>(frame.width,frame.height,fps,frame.gpu->device.Get());
+                mode=current;
+                if(control) {
+                    broker=std::make_unique<input::Broker>(selected_source);
+                    if((broker->capabilities()&granted_caps)!=granted_caps)throw std::runtime_error("Input capabilities changed during display recovery");
+                    if(BCryptGenRandom(nullptr,reinterpret_cast<PUCHAR>(&epoch),sizeof(epoch),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0 || !epoch)throw std::runtime_error("Cannot renew input epoch");
+                }
+                break;
+            }catch(...){last=std::current_exception();broker.reset();encoder.reset();capture.reset();if(Clock::now()>=until)std::rethrow_exception(last);std::this_thread::sleep_for(std::chrono::milliseconds(100));}
+            if(Clock::now()>=until)throw std::runtime_error("Display did not stabilize");
+        }
+        stream.write(wire::encode_offer({frame.width,frame.height,fps,frames,codec,static_cast<std::uint8_t>(granted_caps),epoch}),deadline());
+        stream.read(ready,deadline());if(ready!=wire::ready)throw std::runtime_error("Receiver did not acknowledge changed geometry");
+        if(keep_layout && extend)display::remember_mode(selected_source,profile_width,profile_height);
+        last_input_time=0;next_frame=Clock::now();
+        std::cout<<"DISPLAY_RECONFIGURED "<<frame.width<<'x'<<frame.height<<" position="<<mode->x<<','<<mode->y<<" rotation="<<mode->rotation<<std::endl;
+    };
+    if(keep_layout && extend)display::remember_mode(selected_source,profile_width,profile_height);
     for (std::uint64_t i = 0; !frames || i < frames; ++i) {
         const auto begin_capture=Clock::now();
-        frame = encoder ? capture.next_gpu() : capture.next();
+        if(mode) {
+            bool changed=false;
+            try{changed=display::current_mode(selected_source)!=*mode;}catch(...){changed=true;}
+            if(changed)reconfigure(i);
+        }
+        try{frame = encoder ? capture->next_gpu() : capture->next();}
+        catch(...){if(!mode || codec!=wire::Codec::h264)throw;reconfigure(i);}
         if(frame.capture_generation!=last_generation){++fresh_frames;last_generation=frame.capture_generation;}
         const auto sample = Clock::now();
         auto payload = encoder ? encoder->encode(frame,i) : encode_jpeg(frame);
@@ -101,7 +156,8 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         encode_ms+=std::chrono::duration<double,std::milli>(encoded-sample).count();
         send_ms+=std::chrono::duration<double,std::milli>(sent-encoded).count();
         total += payload.size();
-        precise_wait(start + std::chrono::microseconds((static_cast<std::uint64_t>(i) + 1) * 1000000 / fps)-Clock::now());
+        next_frame=std::max(next_frame+std::chrono::microseconds(1000000/fps),Clock::now());
+        precise_wait(next_frame-Clock::now());
     }
     // Release input before waiting for the final acknowledgement or display removal.
     broker.reset();
@@ -122,7 +178,7 @@ void receive_video(const net::Options& options, const std::string& pair, const s
     wire::OfferBytes offer_bytes{};
     // Authenticated host may need to enumerate/start its session-owned driver.
     stream.read(offer_bytes, Clock::now()+std::chrono::seconds(45));
-    const auto offer = wire::decode_offer(offer_bytes);
+    auto offer = wire::decode_offer(offer_bytes);
     if((offer.input_caps!=0)!=static_cast<bool>(input_source))throw std::runtime_error("Unexpected input permission grant");
     if(offer.input_caps&~request[8])throw std::runtime_error("Host granted unrequested input families");
     if(input_grant)input_grant(offer.input_caps);
@@ -137,7 +193,7 @@ void receive_video(const net::Options& options, const std::string& pair, const s
     stream.write(wire::ready,deadline());
     std::uint64_t total = 0, previous_time = 0;
     const auto start = Clock::now();
-    std::uint64_t decoded_frames=0;
+    std::uint64_t decoded_frames=0,retired_gpu_frames=0;
     double decode_ms=0;
     auto deliver=[&](Frame frame) {
         if (++decoded_frames>offer.frames && offer.frames) throw std::runtime_error("Decoded frame count exceeds negotiated limit");
@@ -146,7 +202,26 @@ void receive_video(const net::Options& options, const std::string& pair, const s
     for (std::uint64_t i = 0; !offer.frames || i < offer.frames; ++i) {
         wire::HeaderBytes header_bytes{};
         stream.read(header_bytes, deadline());
-        const auto header = wire::decode_header(header_bytes);
+        auto header = wire::decode_header(header_bytes);
+        while(header.bytes==0) {
+            if(header.sequence!=static_cast<std::uint32_t>(i) || header.micros<previous_time)throw std::runtime_error("Out-of-order reconfiguration");
+            previous_time=header.micros;
+            if(input_grant)input_grant(0);
+            if(decoder)for(auto& frame:decoder->finish())deliver(std::move(frame));
+            if(decoder)retired_gpu_frames+=decoder->gpu_frames();
+            decoder.reset();
+            stream.read(offer_bytes,Clock::now()+std::chrono::seconds(30));
+            const auto replacement=wire::decode_offer(offer_bytes);
+            if(replacement.codec!=offer.codec || replacement.frames!=offer.frames || replacement.input_caps!=offer.input_caps || (offer.input_caps && replacement.input_epoch==offer.input_epoch))throw std::runtime_error("Invalid reconfiguration offer");
+            offer=replacement;
+            if(offer.codec!=wire::Codec::h264)throw std::runtime_error("Reconfiguration requires H264");
+            decoder=std::make_unique<H264Decoder>(offer.width,offer.height,offer.fps,decoder_adapter,true);
+            if(input_source)(void)input_source();
+            if(input_grant)input_grant(offer.input_caps);
+            stream.write(wire::ready,deadline());
+            std::cout<<"DISPLAY_RECONFIGURED "<<offer.width<<'x'<<offer.height<<std::endl;
+            stream.read(header_bytes,deadline());header=wire::decode_header(header_bytes);
+        }
         if (header.sequence != static_cast<std::uint32_t>(i) || header.micros < previous_time) throw std::runtime_error("Out-of-order video frame");
         previous_time = header.micros;
         std::vector<std::uint8_t> payload(header.bytes);
@@ -169,6 +244,6 @@ void receive_video(const net::Options& options, const std::string& pair, const s
     stream.write(std::array<std::uint8_t,4>{'D','O','N','E'}, deadline());
     stream.close(deadline());
     const auto seconds = std::chrono::duration<double>(Clock::now() - start).count();
-    std::cout << "VIDEO_RECEIVED decoded_frames=" << decoded_frames << " codec=" << codec_name << " encoded_bytes=" << total << " seconds=" << seconds << " decode_ms_avg=" << decode_ms/decoded_frames << " gpu_surface_frames=" << (decoder ? decoder->gpu_frames() : 0) << " raw_pixel_readbacks=0 permissions=" << (offer.input_caps?"video+input":"video-only") << std::endl;
+    std::cout << "VIDEO_RECEIVED decoded_frames=" << decoded_frames << " codec=" << codec_name << " encoded_bytes=" << total << " seconds=" << seconds << " decode_ms_avg=" << decode_ms/decoded_frames << " gpu_surface_frames=" << (decoder ? retired_gpu_frames+decoder->gpu_frames() : 0) << " raw_pixel_readbacks=0 permissions=" << (offer.input_caps?"video+input":"video-only") << std::endl;
 }
 }

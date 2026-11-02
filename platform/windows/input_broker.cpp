@@ -64,9 +64,12 @@ struct Injector {
     POINT point(const Event& event) const {
         return {target.left+static_cast<LONG>((static_cast<std::uint64_t>(event.x)*(target.right-target.left-1)+32767)/65535),target.top+static_cast<LONG>((static_cast<std::uint64_t>(event.y)*(target.bottom-target.top-1)+32767)/65535)};
     }
-    void geometry() {
-        for(const auto& monitor:display::active_monitors()) if(monitor.source==target.source && monitor.device_path==target.device_path && monitor.left==target.left && monitor.top==target.top && monitor.right==target.right && monitor.bottom==target.bottom) return;
-        throw std::runtime_error("Input target geometry changed");
+    bool geometry() {
+        for(const auto& monitor:display::active_monitors()) if(monitor.device_path==target.device_path && (!target.dm_virtual || monitor.dm_virtual)) {
+            if(monitor.source==target.source && monitor.left==target.left && monitor.top==target.top && monitor.right==target.right && monitor.bottom==target.bottom)return true;
+            reset();target=monitor;return false;
+        }
+        reset();return false;
     }
     static void send(INPUT value) { value.mi.dwExtraInfo=0x444D494E;need(SendInput(1,&value,sizeof(value))==1,"Windows rejected input injection"); }
     void key(const Event& e) {
@@ -116,7 +119,11 @@ struct Injector {
     POINTER_TYPE_INFO pointer(const Event& e) {
         POINTER_TYPE_INFO info{};info.type=e.kind==Kind::pen?PT_PEN:PT_TOUCH;
         auto& p=e.kind==Kind::pen?info.penInfo.pointerInfo:info.touchInfo.pointerInfo;
-        p.pointerType=info.type;p.pointerId=e.kind==Kind::pen?1:e.id;p.ptPixelLocation=point(e);p.pointerFlags=flags(e);
+        p.pointerType=info.type;p.pointerId=e.kind==Kind::pen?1:e.id;p.ptPixelLocation=point(e);
+        // InjectSyntheticPointerInput uses pixels relative to the virtual desktop
+        // origin, including when a display sits left of or above the primary.
+        p.ptPixelLocation.x-=GetSystemMetrics(SM_XVIRTUALSCREEN);
+        p.ptPixelLocation.y-=GetSystemMetrics(SM_YVIRTUALSCREEN);p.pointerFlags=flags(e);
         if(e.kind==Kind::pen || e.id==touch_primary)p.pointerFlags|=POINTER_FLAG_PRIMARY;
         if(e.kind==Kind::pen) {
             auto& pen_info=info.penInfo;pen_info.penFlags=e.code;
@@ -221,13 +228,13 @@ int broker_main(const std::wstring& source) {
                 need(pending.size()+available<=65536,"Input broker queue exceeds limit");std::vector<std::uint8_t> bytes(available);DWORD read=0;need(ReadFile(pipe,bytes.data(),available,&read,nullptr)!=FALSE,"Input broker read failed");pending.insert(pending.end(),bytes.begin(),bytes.begin()+read);
                 while(pending.size()>=header_size) {
                     const auto header=decode_header(std::span(pending).first(header_size));const auto total=header_size+header.count*event_size;if(pending.size()<total)break;
-                    need(header.epoch==1 && header.sequence==sequence++,"Input broker sequence mismatch");injector.geometry();
-                    for(const auto& event:decode_events(std::span(pending).subspan(header_size,header.count*event_size),header.count))injector.apply(event);
+                    need(header.epoch==1 && header.sequence==sequence++,"Input broker sequence mismatch");const bool geometry_ready=injector.geometry();
+                    if(geometry_ready)for(const auto& event:decode_events(std::span(pending).subspan(header_size,header.count*event_size),header.count))injector.apply(event);
                     pending.erase(pending.begin(),pending.begin()+total);heartbeat=Clock::now();
                 }
             }
             if(Clock::now()-heartbeat>(sequence?std::chrono::milliseconds(1500):std::chrono::milliseconds(10000)))break;
-            if(sequence && Clock::now()-refresh>std::chrono::milliseconds(50)) {injector.refresh();refresh=Clock::now();}
+            if(sequence && Clock::now()-refresh>std::chrono::milliseconds(50)) {if(injector.geometry())injector.refresh();refresh=Clock::now();}
             MsgWaitForMultipleObjects(0,nullptr,FALSE,5,QS_ALLINPUT);
         }return 0;
     }catch(const std::exception& error) {const std::string message=std::string(error.what())+" win32="+std::to_string(GetLastError());DWORD written=0;WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),message.data(),static_cast<DWORD>(message.size()),&written,nullptr);return 1;}

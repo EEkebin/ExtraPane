@@ -25,7 +25,7 @@ Initialized 2026-11-01. Direct-IP, paired TLS, and GPU-resident raw-pixel H264 a
 | First video path | D3D11 Desktop Duplication, bounded WIC JPEG frames, TLS transport, native D3D11 preview | Tested and user-visible; temporary codec and diagnostic Win32 shell |
 | Current codec path | GPU capture and scaling/conversion, D3D11-surface hardware H264, GPU decode and shader presentation | Tested on NVIDIA desktop and both laptop GPUs; no application raw-pixel readbacks/uploads in H264 |
 | Receiver surface lifetime | Copy pooled decoder slice to an owned GPU texture, complete that GPU copy, queue at most one latest frame | Avoids retaining decoder pool surfaces across UI lifetime; GPU copies/fence waits remain |
-| Video protocol | Version 5, JPEG/H264, decoder-ready acknowledgement, bounded optional reverse-input batches, capability grants and session epoch | Both endpoints must be rebuilt; no silent older-version compatibility or software fallback |
+| Video protocol | Version 6, JPEG/H264, decoder-ready acknowledgement, bounded optional reverse-input batches, capability grants and session epoch | Both endpoints must be rebuilt; no silent older-version compatibility or software fallback |
 | Input | Native pointer capture and synthetic touch/pen, scancode/mouse injection through separate watchdog child | Host native app and generated laptop-to-host tests pass; real hardware/drawing-app checks pending; see INPUT.md |
 | Extend | One-monitor IddCx, session-owned software device, WGC monitor targeting | Driver builds/package-checks pass; selected physical-monitor capture tested; local driver installed, independent third monitor and capture/loss cleanup verified; see EXTENDED-DISPLAY.md |
 | Microphone | Reverse audio plus actual Windows recording endpoint | Required capability, endpoint choice pending |
@@ -68,3 +68,7 @@ Live laptop inventory reports 3000x2000 and integer refresh 59 (nominal 60 Hz), 
 ## Desktop launchers and continuous sessions (0.8)
 
 User requested a runnable UI at each endpoint, no SSH UI, Debug off by default, continuous normal sessions and Git tracking. Native C++ Windows-control launchers wrap the existing engine now; the planned C++/WinRT/WinUI 3 shell remains a later migration. Protocol v5 uses zero frames for continuous streaming, with 64-bit media timelines and explicit wire-sequence wrap. Failure/watchdog deadlines remain mandatory. Debug on the host restores the 60-second pattern test. See DESKTOP-APPS.md for pairing, firewall scope, lifecycle and validation.
+
+## Live display configuration (0.9)
+
+Keep the session-owned monitor alive across Windows layout/resolution/orientation changes. Recreate the media pipeline against the selected monitor identity, negotiate new dimensions in protocol v6, reset native input and renew its epoch. Persist the latest layout for the same launcher profile; do not repeatedly apply startup defaults. Portrait presentation uses aspect-fit geometry shared with input mapping. Native synthetic pointer locations are relative to the virtual desktop origin, as documented by [Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-injectsyntheticpointerinput).

@@ -9,8 +9,8 @@ namespace {
 struct Observed {unsigned mouse_down=0,mouse_up=0,key_down=0,key_up=0,touch_down=0,touch_up=0,pen_down=0,pen_up=0,max_touch=0;UINT32 pressure=0,pen_flags=0,rotation=0;INT32 tilt_x=0,tilt_y=0;};
 Observed seen;
 LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wparam,LPARAM lparam) {
-    if(message==WM_LBUTTONDOWN)++seen.mouse_down;
-    if(message==WM_LBUTTONUP)++seen.mouse_up;
+    if(message==WM_LBUTTONDOWN){++seen.mouse_down;SetCapture(window);}
+    if(message==WM_LBUTTONUP){++seen.mouse_up;ReleaseCapture();}
     if(message==WM_KEYDOWN && wparam=='A')++seen.key_down;
     if(message==WM_KEYUP && wparam=='A')++seen.key_up;
     if(message==WM_POINTERDOWN || message==WM_POINTERUPDATE || message==WM_POINTERUP) {
@@ -35,10 +35,10 @@ int main(int argc,char** argv) {
     }
     try {
         SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        dm::display::VirtualMonitor monitor;const auto source=monitor.wait_for_source();dm::display::Monitor target;for(const auto& m:dm::display::active_monitors())if(m.source==source)target=m;
+        dm::display::VirtualMonitor monitor;const auto source=monitor.wait_for_source();if(argc==2 && std::string_view(argv[1])=="--portrait")dm::display::configure_virtual(source,{1080,1920,60,1,-1080,0});dm::display::Monitor target;for(const auto& m:dm::display::active_monitors())if(m.source==source)target=m;
         WNDCLASSW cls{};cls.lpfnWndProc=procedure;cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"DMInputHardwareCheck";RegisterClassW(&cls);
         HWND window=CreateWindowW(cls.lpszClassName,L"DM native input delivery check",WS_OVERLAPPEDWINDOW|WS_VISIBLE,target.left+20,target.top+20,1000,600,nullptr,nullptr,cls.hInstance,nullptr);
-        need(window!=nullptr,"Diagnostic window creation failed");SetForegroundWindow(window);SetFocus(window);pump(100);
+        need(window!=nullptr,"Diagnostic window creation failed");ShowWindow(window,SW_MAXIMIZE);SetForegroundWindow(window);SetFocus(window);pump(100);
         Broker broker(source);need(broker.capabilities()==all_caps,"Native pen/touch devices unavailable");
         auto send=[&](std::initializer_list<Event> events) {broker.send(events);pump(70);};
         Event mouse;mouse.kind=Kind::mouse;mouse.x=25000;mouse.y=25000;mouse.action=Action::down;mouse.code=1;send({mouse});mouse.action=Action::up;send({mouse});
@@ -66,6 +66,22 @@ int main(int argc,char** argv) {
         struct Process {HANDLE handle;~Process(){TerminateProcess(handle,1);CloseHandle(handle);}} cleanup{process.hProcess};
         const auto old_down=seen.key_down;for(unsigned i=0;i<40 && seen.key_down==old_down;++i)pump(50);need(seen.key_down>old_down,"Crash-test input did not arrive");
         const auto old_up=seen.key_up,old_mouse_up=seen.mouse_up;TerminateProcess(process.hProcess,1);WaitForSingleObject(process.hProcess,2000);pump(500);need(seen.key_up>old_up && seen.mouse_up>old_mouse_up,"Parent crash did not release remote keys/buttons");
+        {
+            dm::input::Broker moving(source);
+            key.action=Action::down;mouse.action=Action::down;
+            SetForegroundWindow(window);SetFocus(window);
+            const auto before_move_down_key=seen.key_down,before_move_down_mouse=seen.mouse_down;
+            moving.send(std::array{key,mouse});pump(100);
+            need(seen.key_down>before_move_down_key && seen.mouse_down>before_move_down_mouse,"Geometry test did not establish held input");
+            const auto before_move_key=seen.key_up;
+            auto geometry=dm::display::current_mode(source);geometry.y+=100;
+            dm::display::configure_virtual(source,geometry);
+            need(dm::display::current_mode(source)==geometry,"Windows did not apply the geometry test position");
+            moving.send({});pump(200);
+            need(seen.key_up>before_move_key && !(GetAsyncKeyState(VK_LBUTTON)&0x8000),"Display move did not release held input");
+            moving.send({});pump(50);
+            std::cout<<"GEOMETRY_CHANGE_RELEASED_INPUT passed"<<std::endl;
+        }
         DestroyWindow(window);std::cout<<"NATIVE_INPUT_DELIVERED mouse keyboard two-contact-touch held-touch pen pressure=800 tilt=-35,40 rotation=270 barrel eraser inversion reset watchdog parent-crash\n";return 0;
     }catch(const std::exception& e){std::cerr<<"error: "<<e.what()<<'\n';return 1;}
 }

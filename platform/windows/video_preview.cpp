@@ -63,10 +63,11 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 if (cancel.load()) throw std::runtime_error("Video preview closed by user");
                 std::lock_guard guard(mutex);
                 latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
-            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;});
+            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;});
         } catch (...) { error = std::current_exception(); }
         done.store(true);
     });
+    unsigned surface_width=0,surface_height=0,buffer_width=0,buffer_height=0;
     std::uint64_t presented = 0;
     std::uint64_t gpu_presented=0,cpu_uploads=0;
     try {
@@ -86,9 +87,17 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
             }
             if (frame) {
                 input_capture.dimensions(frame->width,frame->height);
+                RECT client{};GetClientRect(hwnd,&client);
+                if(client.right<2 || client.bottom<2)continue;
+                const auto target_width=frame->gpu?static_cast<unsigned>(client.right):frame->width;
+                const auto target_height=frame->gpu?static_cast<unsigned>(client.bottom):frame->height;
+                if(swap && (buffer_width!=target_width || buffer_height!=target_height || surface_width!=frame->width || surface_height!=frame->height || (frame->gpu && frame->gpu->device.Get()!=device.Get()))) {
+                    backbuffer.Reset();gpu_processor.reset();context->ClearState();context->Flush();swap.Reset();context.Reset();device.Reset();
+                }
                 if (!swap) {
+                    surface_width=frame->width;surface_height=frame->height;buffer_width=target_width;buffer_height=target_height;
                     DXGI_SWAP_CHAIN_DESC desc{};
-                    desc.BufferDesc.Width = frame->width; desc.BufferDesc.Height = frame->height;
+                    desc.BufferDesc.Width = target_width; desc.BufferDesc.Height = target_height;
                     desc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
                     desc.SampleDesc.Count = 1;
                     desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
