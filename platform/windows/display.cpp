@@ -55,6 +55,8 @@ std::vector<Monitor> active_monitors() {
         return TRUE;
     },reinterpret_cast<LPARAM>(&result))) throw std::runtime_error("Monitor enumeration failed");
     for(auto& monitor:result) {
+        DEVMODEW mode{};mode.dmSize=sizeof(mode);
+        if(EnumDisplaySettingsW(monitor.source.c_str(),ENUM_CURRENT_SETTINGS,&mode)){monitor.rotation=mode.dmDisplayOrientation;monitor.hz=mode.dmDisplayFrequency;}
         unsigned matches=0;
         for(const auto& identity:identities) if(identity.source==monitor.source) {
             ++matches;
@@ -65,6 +67,25 @@ std::vector<Monitor> active_monitors() {
         if(matches!=1) monitor.dm_virtual=false;
     }
     return result;
+}
+void restore_monitors(const std::vector<Monitor>& baseline) {
+    if(baseline.empty())return;
+    auto current=active_monitors();const auto original=current;bool changed=false;
+    for(auto& monitor:current)for(const auto& old:baseline)if(monitor.device_path==old.device_path){
+        if(monitor.left!=old.left || monitor.top!=old.top || monitor.right!=old.right || monitor.bottom!=old.bottom || monitor.rotation!=old.rotation || monitor.hz!=old.hz)changed=true;
+        const auto source=monitor.source;monitor=old;monitor.source=source;
+    }
+    if(!changed)return;
+    // Stage every active source, then apply once. Moving monitors individually
+    // can create an invalid intermediate arrangement and reset other modes.
+    const auto apply=[](const std::vector<Monitor>& monitors){for(const auto& monitor:monitors){
+        DEVMODEW mode{};mode.dmSize=sizeof(mode);
+        mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION|DM_POSITION;
+        mode.dmPelsWidth=monitor.right-monitor.left;mode.dmPelsHeight=monitor.bottom-monitor.top;
+        mode.dmDisplayFrequency=monitor.hz;mode.dmDisplayOrientation=monitor.rotation;mode.dmPosition={monitor.left,monitor.top};
+        if(ChangeDisplaySettingsExW(monitor.source.c_str(),&mode,nullptr,CDS_UPDATEREGISTRY|CDS_NORESET,nullptr)!=DISP_CHANGE_SUCCESSFUL)return false;
+    }return ChangeDisplaySettingsExW(nullptr,nullptr,nullptr,0,nullptr)==DISP_CHANGE_SUCCESSFUL;};
+    if(!apply(current)){(void)apply(original);throw std::runtime_error("Cannot apply retained display layout");}
 }
 Mode current_mode(const std::wstring& source) {
     DEVMODEW value{};value.dmSize=sizeof(value);
@@ -151,16 +172,7 @@ void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,
     if(ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)!=DISP_CHANGE_SUCCESSFUL ||
        ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)
         throw std::runtime_error("Requested DM resolution/refresh is unavailable in the installed driver");
-    // Windows can reposition another source while attaching a remembered virtual
-    // layout. Restore the original physical origins without changing their modes.
-    for(const auto& monitor:baseline)if(monitor.source!=source) {
-        DEVMODEW original{};original.dmSize=sizeof(original);
-        if(!EnumDisplaySettingsW(monitor.source.c_str(),ENUM_CURRENT_SETTINGS,&original))throw std::runtime_error("Physical display disappeared during extension");
-        if(original.dmPosition.x!=monitor.left || original.dmPosition.y!=monitor.top) {
-            original.dmFields=DM_POSITION;original.dmPosition={monitor.left,monitor.top};
-            if(ChangeDisplaySettingsExW(monitor.source.c_str(),&original,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)throw std::runtime_error("Cannot retain physical display position");
-        }
-    }
+    restore_monitors(baseline);
     const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);
     unsigned stable=0;
     do {
@@ -175,6 +187,7 @@ void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,
 struct VirtualMonitor::State {
     std::vector<Monitor> baseline;
     unsigned slot=0;
+    std::wstring path;
     HANDLE event=CreateEventW(nullptr,TRUE,FALSE,nullptr);
     HSWDEVICE device=nullptr;
     HRESULT result=E_PENDING;
@@ -202,7 +215,22 @@ VirtualMonitor::VirtualMonitor(unsigned slot):state_(std::make_unique<State>()) 
     if(WaitForSingleObject(s.event,10000)!=WAIT_OBJECT_0) throw std::runtime_error("DM device creation timed out");
     check(s.result,"Enumerate DM virtual display");
 }
-VirtualMonitor::~VirtualMonitor()=default;
+VirtualMonitor::~VirtualMonitor(){
+    if(!state_->slot || state_->path.empty())return;
+    try {
+        auto baseline=active_monitors();
+        std::erase_if(baseline,[&](const auto& monitor){return monitor.device_path==state_->path;});
+        SwDeviceClose(state_->device);state_->device=nullptr;
+        const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        do {
+            const auto current=active_monitors();
+            if(std::none_of(current.begin(),current.end(),[&](const auto& monitor){return monitor.device_path==state_->path;})){
+                restore_monitors(baseline);return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }while(std::chrono::steady_clock::now()<until);
+    }catch(...){/* Device destruction must still finish if topology is changing. */}
+}
 std::wstring VirtualMonitor::wait_for_source() {
     const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(15);
     std::wstring previous;
@@ -212,7 +240,7 @@ std::wstring VirtualMonitor::wait_for_source() {
         for(const auto& monitor:active_monitors()) if(monitor.dm_virtual && (!state_->slot || std::none_of(state_->baseline.begin(),state_->baseline.end(),[&](const auto& old){return old.device_path==monitor.device_path;}))) {
             found=true;
             if(previous==monitor.source)++stable;else {previous=monitor.source;stable=0;}
-            if(stable>=2)return monitor.source;
+            if(stable>=2){state_->path=monitor.device_path;return monitor.source;}
         }
         if(!found){previous.clear();stable=0;}
         std::this_thread::sleep_for(std::chrono::milliseconds(100));

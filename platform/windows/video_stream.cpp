@@ -73,6 +73,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
                 display::configure_virtual(selected_source,rotated);
             } else display::set_virtual_mode(selected_source,width,height,client_mode?client_choice.hz:((width==1280 && height==720 && fps<=30)?30:60),baseline);
         }
+        display::restore_monitors(baseline);
     }
     if(!selected_source.empty()) std::wosyncstream(std::wcout)<<L"CAPTURE_SOURCE "<<selected_source<<L" extended="<<extend<<std::endl;
     const unsigned target_fps=fps;
@@ -255,6 +256,7 @@ void serve_video(const net::Options& requested,const std::string& pair,bool allo
                 std::osyncstream(std::cout)<<"CLIENT_CONNECTED slot="<<slot<<" peer="<<peer<<std::endl;
                 host_video(options,pair,frames,60,wire::Codec::h264,L"",true,allow_input,1280,720,true,true,{},nullptr,&socket,slot);
             } catch(const std::exception& error){std::osyncstream(std::cout)<<"CLIENT_ERROR slot="<<slot<<" "<<error.what()<<std::endl;}
+            catch(...){std::osyncstream(std::cout)<<"CLIENT_ERROR slot="<<slot<<" unexpected session failure"<<std::endl;}
             if(SUCCEEDED(com))CoUninitialize();
             std::osyncstream(std::cout)<<"CLIENT_DISCONNECTED slot="<<slot<<std::endl;
             session->done.store(true);

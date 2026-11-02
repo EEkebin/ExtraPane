@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / 'out/build/windows-release'
 
 def topology():
-    return subprocess.check_output([str(BIN/'dm-display.exe'), 'list'], text=True)
+    return subprocess.check_output([str(BIN/'dm-display.exe'), 'list'], text=True, stderr=subprocess.PIPE)
 
 def read(stream, count):
     result = b''
@@ -23,7 +23,9 @@ def read(stream, count):
 def wait(predicate, seconds=35):
     until = time.monotonic()+seconds
     while time.monotonic() < until:
-        if predicate(): return
+        try:
+            if predicate(): return
+        except subprocess.CalledProcessError:pass # Windows is applying a topology transaction.
         time.sleep(.1)
     raise AssertionError('Timed out waiting for session/topology')
 
@@ -90,10 +92,21 @@ try:
     wait(lambda:replacement.count>10 or replacement.error)
     assert not replacement.error,(replacement.error,logs)
     assert topology().count('dm_virtual=1')==2
-    replacement.close();second.close()
+    third=Client(port,1280,720);clients.append(third)
+    wait(lambda:third.count>10 or third.error)
+    assert not third.error,(third.error,logs)
+    fourth=Client(port,1280,720);clients.append(fourth)
+    wait(lambda:fourth.count>10 or fourth.error)
+    assert not fourth.error,(fourth.error,logs)
+    assert topology().count('dm_virtual=1')==4,topology()
+    wait(lambda:second.size==(1920,1080) and all(c.size==(1280,720) for c in (replacement,third,fourth)))
+    before=[c.count for c in (second,replacement,third,fourth)]
+    time.sleep(2)
+    assert all(c.count>n and not c.error for c,n in zip((second,replacement,third,fourth),before)),logs
+    third.close();fourth.close();replacement.close();second.close()
     wait(lambda:topology()==baseline)
     assert host.poll() is None,'Server exited when clients disconnected'
-    print(json.dumps({'independent_modes':True,'disconnect_isolated':True,'reconnect':True,'server_stays_running':True,'frames':[c.count for c in clients]},indent=2))
+    print(json.dumps({'independent_modes':True,'disconnect_isolated':True,'reconnect':True,'server_stays_running':True,'four_simultaneous_streams':True,'frames':[c.count for c in clients]},indent=2))
 finally:
     for client in clients:client.close()
     if host.poll() is None:host.terminate();host.wait(timeout=10)

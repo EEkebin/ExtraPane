@@ -8,8 +8,10 @@ struct Monitor {
     std::wstring source, friendly_name, device_path;
     long left=0, top=0, right=0, bottom=0;
     bool primary=false, dm_virtual=false;
+    unsigned rotation=0,hz=60;
 };
 std::vector<Monitor> active_monitors();
+void restore_monitors(const std::vector<Monitor>& baseline);
 struct Mode {
     unsigned width=0,height=0,hz=0,rotation=0;long x=0,y=0;
     bool operator==(const Mode&) const = default;
