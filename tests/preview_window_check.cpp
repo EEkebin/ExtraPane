@@ -9,7 +9,14 @@ void need(bool value,const char* message){if(!value)throw std::runtime_error(mes
 void pause(){std::this_thread::sleep_for(std::chrono::milliseconds(400));}
 int main(int argc,char** argv){try{
  SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
- need(argc==2,"Supply receiver PID");Search s{static_cast<DWORD>(std::stoul(argv[1]))};EnumWindows(collect,reinterpret_cast<LPARAM>(&s));need(s.window&&s.bar,"Preview/toolbar missing");
+ need(argc>=2,"Supply receiver PID");Search s{static_cast<DWORD>(std::stoul(argv[1]))};EnumWindows(collect,reinterpret_cast<LPARAM>(&s));need(s.window&&s.bar,"Preview/toolbar missing");
+ if(argc>2&&std::string(argv[2])=="--disconnect"){
+  SetForegroundWindow(s.window);pause();INPUT keys[6]{};const WORD codes[]={VK_CONTROL,VK_SHIFT,'Q','Q',VK_SHIFT,VK_CONTROL};
+  for(int i=0;i<6;++i){keys[i].type=INPUT_KEYBOARD;keys[i].ki.wVk=codes[i];keys[i].ki.dwFlags=i>=3?KEYEVENTF_KEYUP:0;}
+  need(SendInput(6,keys,sizeof(INPUT))==6,"Shortcut injection failed");
+  for(int i=0;i<50&&IsWindow(s.window);++i)std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  need(!IsWindow(s.window),"Ctrl+Shift+Q did not disconnect");std::cout<<"DISCONNECT_SHORTCUT passed Ctrl+Shift+Q\n";return 0;
+ }
  need((GetWindowLongPtrW(s.window,GWL_STYLE)&WS_THICKFRAME)!=0,"Preview must start resizable");
  SetWindowPos(s.window,nullptr,80,80,1100,720,SWP_NOZORDER|SWP_NOACTIVATE);pause();RECT before{};GetWindowRect(s.window,&before);
  SendMessageW(s.window,WM_KEYDOWN,VK_F11,0);SendMessageW(s.window,WM_KEYUP,VK_F11,0);pause();
@@ -18,11 +25,20 @@ int main(int argc,char** argv){try{
  SendMessageW(s.window,WM_APP+42,3,0);pause();RECT restored{};GetWindowRect(s.window,&restored);need(EqualRect(&before,&restored)!=FALSE,"Window placement was not restored");
  SendMessageW(s.window,WM_APP+42,2,0);pause();need(IsZoomed(s.window)!=FALSE,"Maximize failed");SendMessageW(s.window,WM_APP+42,2,0);pause();need(!IsZoomed(s.window),"Restore failed");
  SendMessageW(s.window,WM_APP+42,1,0);pause();need(IsIconic(s.window)!=FALSE,"Minimize failed");ShowWindow(s.window,SW_RESTORE);pause();
- // No global mouse/key injection: only the owned preview receives test messages.
+ // Native pointer checks are restricted to the owned preview.
  SendMessageW(s.window,WM_KEYDOWN,VK_F10,0);SendMessageW(s.window,WM_KEYUP,VK_F10,0);need(IsWindowVisible(s.bar)!=FALSE,"Toolbar keyboard reveal failed");
  POINT cursor{};GetCursorPos(&cursor);RECT bar{};GetWindowRect(s.bar,&bar);
  if(!PtInRect(&bar,cursor)){for(int i=0;i<25&&IsWindowVisible(s.bar);++i)std::this_thread::sleep_for(std::chrono::milliseconds(200));need(!IsWindowVisible(s.bar),"Toolbar did not auto-hide");}
- SendMessageW(s.window,WM_MOUSEMOVE,0,MAKELPARAM(100,1));pause();need(IsWindowVisible(s.bar)!=FALSE,"Top-edge reveal failed");
+ RECT client{};GetClientRect(s.window,&client);
+ SendMessageW(s.window,WM_MOUSEMOVE,0,MAKELPARAM(client.right-10,1));pause();need(!IsWindowVisible(s.bar),"Top-right corner must not reveal toolbar");
+ POINT top{client.right/2,1};ClientToScreen(s.window,&top);SetCursorPos(top.x,top.y);SendMessageW(s.window,WM_MOUSEMOVE,0,MAKELPARAM(client.right/2,1));
+ std::this_thread::sleep_for(std::chrono::milliseconds(1000));need(IsWindowVisible(s.bar)!=FALSE,"Top-center hover reveal failed");SetCursorPos(cursor.x,cursor.y);
+ ShowWindow(s.bar,SW_HIDE);
+ auto touch=CreateSyntheticPointerDevice(PT_TOUCH,1,POINTER_FEEDBACK_NONE);need(touch!=nullptr,"Cannot create touch test device");
+ auto contact=[&](int x,int y,DWORD flags){POINTER_TYPE_INFO p{};p.type=PT_TOUCH;p.touchInfo.pointerInfo.pointerType=PT_TOUCH;p.touchInfo.pointerInfo.pointerId=10;p.touchInfo.pointerInfo.ptPixelLocation={x,y};ClientToScreen(s.window,&p.touchInfo.pointerInfo.ptPixelLocation);p.touchInfo.pointerInfo.pointerFlags=flags;need(InjectSyntheticPointerInput(touch,&p,1)!=FALSE,"Touch injection failed");pause();};
+ const auto down=POINTER_FLAG_DOWN|POINTER_FLAG_INRANGE|POINTER_FLAG_INCONTACT;
+ SetForegroundWindow(s.window);contact(client.right-30,4,down);contact(client.right-30,4,POINTER_FLAG_UP);need(!IsWindowVisible(s.bar),"Corner tap was intercepted by overlay");
+ contact(client.right/2,2,down);need(!IsWindowVisible(s.bar),"Center tap must wait for swipe");contact(client.right/2,80,POINTER_FLAG_UPDATE|POINTER_FLAG_INRANGE|POINTER_FLAG_INCONTACT);contact(client.right/2,80,POINTER_FLAG_UP);need(IsWindowVisible(s.bar)!=FALSE,"Center swipe reveal failed");DestroySyntheticPointerDevice(touch);
  need(IsWindow(s.window)!=FALSE,"Preview closed during window changes");
  std::cout<<"WINDOW_CHECK passed resize fullscreen bounds restore maximize minimize toolbar-hide edge-reveal keyboard-reveal\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

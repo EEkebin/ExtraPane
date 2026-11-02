@@ -41,12 +41,19 @@ try:
  _,tray_result,_=peer.run(f'& {quote(tray_check)} {remote_pid} client --keep-running',interactive=True)
  print(tray_result,flush=True)
  _,input_result,_=peer.run(f'& {quote(drive)}',interactive=True)
+ _,shortcut_result,_=peer.run(f"$engine=Get-CimInstance Win32_Process | Where-Object {{ $_.Name -eq 'dm-view.exe' -and $_.ExecutablePath -eq {quote(remote+'\\dm-view.exe')} }}; & {quote(check)} $engine.ProcessId --disconnect",interactive=True)
+ print(shortcut_result,flush=True)
+ time.sleep(2)
+ assert host.poll() is None
+ assert 'dm_virtual=1' in subprocess.check_output([str(b/'dm-display.exe'),'list'],text=True)
+ assert 'DRIVER_WAITING' in log.read_text()
+
  host.wait(timeout=75)
  observed=pattern.communicate(timeout=10)[0]
  text=log.read_text()
  _,receiver,_=peer.run(f'Get-Content -Raw -LiteralPath {quote(remote+"\\session-check.log")}')
  assert all(t in observed for t in ['mouse=1','chars=1','touch=2','pen=1','pressure_max=897']),observed
- report={'server':text,'client':receiver,'window_check':window_result,'tray_check':tray_result,'input':observed,'portable_ui_render':True}
+ report={'server':text,'client':receiver,'window_check':window_result,'tray_check':tray_result,'disconnect_shortcut':shortcut_result,'input':observed,'portable_ui_render':True}
  (ROOT/'out/portable-laptop-test.json').write_text(json.dumps(report,indent=2))
  print(observed,flush=True);print('PORTABLE_LAPTOP passed',flush=True)
 finally:

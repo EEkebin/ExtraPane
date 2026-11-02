@@ -39,6 +39,7 @@ No Python, SSH, WinUI runtime installation or internet connection is required to
 Run Server on the computer whose desktop you want to extend. Run Client on the
 second PC. Both apps list connected LAN addresses automatically. Pair once,
 choose Start Driver on Server, enter a server IPv4 address on Client, then Connect.
+Start Driver waits for an authenticated client before creating the monitor.
 The server never needs a client address. Windows chooses the client route.
 
 Close either setup window to keep it running in the notification area (tray).
@@ -60,9 +61,9 @@ available. Windows Display Settings can override layout/resolution/orientation;
 that layout is remembered for the same client resolution profile.
 
 The display window is resizable. Use its top toolbar for minimize, maximize,
-fullscreen or close. The toolbar hides automatically; move the mouse to the top
-edge or touch/drag down from the top edge to reveal it. F10 reveals the toolbar,
-F11 toggles fullscreen, F8 pauses input, F9 closes the display. Local window controls
+fullscreen or close. The toolbar hides automatically; hover at the top center for 600 ms or swipe
+down from the small top-center strip to reveal it. Corner taps reach remote apps. F10 reveals the toolbar,
+F11 toggles fullscreen, F8 pauses input, Ctrl+Shift+Q disconnects, F9 also closes the display. Local window controls
 are not forwarded to the server.
 
 Normal sessions have no time limit. Debug is off by default. Audio, microphone,

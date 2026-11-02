@@ -20,8 +20,10 @@ namespace dm::video {
 namespace {
 struct PreviewWindow {
     input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr;bool fullscreen=false,edge_gesture=false;
+    UINT32 gesture_id=0;POINT gesture_start{};ULONGLONG edge_hover=0;
     WINDOWPLACEMENT saved{sizeof(saved)};ULONGLONG last_reveal=0;
     int scale(int n)const{return MulDiv(n,static_cast<int>(GetDpiForWindow(hwnd)),96);}
+    bool reveal_area(POINT p)const{RECT r{};GetClientRect(hwnd,&r);return p.y>=0&&p.y<scale(8)&&abs(p.x-r.right/2)<scale(48);}
     void release_input(){input->message(hwnd,WM_KILLFOCUS,0,0);input->message(hwnd,WM_SETFOCUS,0,0);}
     void position_bar(){if(!bar)return;RECT r{};GetClientRect(hwnd,&r);POINT p{(r.right-scale(360))/2,scale(8)};ClientToScreen(hwnd,&p);SetWindowPos(bar,HWND_TOP,p.x,p.y,scale(360),scale(42),SWP_NOACTIVATE);}
     void reveal(){last_reveal=GetTickCount64();position_bar();ShowWindow(bar,SW_SHOWNOACTIVATE);}
@@ -39,16 +41,24 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
     if(message==WM_NCCREATE){auto* state=static_cast<PreviewWindow*>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams);state->hwnd=hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(state));}
     auto* state=reinterpret_cast<PreviewWindow*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
     if(state){
+        if((message==WM_HOTKEY&&wparam==1)||(message==WM_KEYDOWN&&wparam=='Q'&&(GetKeyState(VK_CONTROL)&0x8000)&&(GetKeyState(VK_SHIFT)&0x8000))){state->release_input();DestroyWindow(hwnd);return 0;}
         if(message==WM_KEYDOWN && (wparam==VK_F9||wparam==VK_F10||wparam==VK_F11)){
             if(!(lparam&(1LL<<30))){if(wparam==VK_F9)DestroyWindow(hwnd);else if(wparam==VK_F11)state->toggle();else state->reveal();}return 0;
         }
         if(message==WM_KEYUP && (wparam==VK_F9||wparam==VK_F10||wparam==VK_F11))return 0;
         if(message==toolbar_command){state->release_input();if(wparam==1)ShowWindow(hwnd,SW_MINIMIZE);if(wparam==2){if(state->fullscreen)state->toggle();ShowWindow(hwnd,IsZoomed(hwnd)?SW_RESTORE:SW_MAXIMIZE);}if(wparam==3)state->toggle();if(wparam==4)DestroyWindow(hwnd);return 0;}
         if(message==WM_MOVE||message==WM_SIZE) {state->position_bar();if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);state->release_input();}}
-        if(message==WM_TIMER){POINT p{};GetCursorPos(&p);RECT r{};GetWindowRect(state->bar,&r);if(IsIconic(hwnd))ShowWindow(state->bar,SW_HIDE);else if(GetTickCount64()-state->last_reveal>2500&&!PtInRect(&r,p))ShowWindow(state->bar,SW_HIDE);return 0;}
-        if(message==WM_MOUSEMOVE&&GET_Y_LPARAM(lparam)<state->scale(12))state->reveal();
-        if(message==WM_POINTERDOWN){POINTER_INFO p{};if(GetPointerInfo(GET_POINTERID_WPARAM(wparam),&p)){ScreenToClient(hwnd,&p.ptPixelLocation);if(p.ptPixelLocation.y<state->scale(24)){state->edge_gesture=true;state->release_input();state->reveal();return 0;}}}
-        if(state->edge_gesture&&(message==WM_POINTERUPDATE||message==WM_POINTERUP||message==WM_POINTERCAPTURECHANGED)){state->reveal();if(message!=WM_POINTERUPDATE)state->edge_gesture=false;return 0;}
+        if(message==WM_TIMER){POINT p{};GetCursorPos(&p);RECT r{};GetWindowRect(state->bar,&r);if(IsIconic(hwnd))ShowWindow(state->bar,SW_HIDE);else if(GetTickCount64()-state->last_reveal>2500&&!PtInRect(&r,p))ShowWindow(state->bar,SW_HIDE);POINT local=p;ScreenToClient(hwnd,&local);if(state->edge_hover&&state->reveal_area(local)&&GetTickCount64()-state->edge_hover>=600){state->reveal();state->edge_hover=0;}return 0;}
+        if(message==WM_MOUSEMOVE){
+            const bool promoted=(GetMessageExtraInfo()&0xFFFFFF00)==0xFF515700;
+            POINT p{GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam)};
+            if(!promoted&&state->reveal_area(p)&&!(wparam&(MK_LBUTTON|MK_RBUTTON|MK_MBUTTON))){if(!state->edge_hover)state->edge_hover=GetTickCount64();}else state->edge_hover=0;
+        }
+        if(message==WM_POINTERDOWN){POINTER_INFO p{};if(GetPointerInfo(GET_POINTERID_WPARAM(wparam),&p)&&p.pointerType==PT_TOUCH&&!state->gesture_id){ScreenToClient(hwnd,&p.ptPixelLocation);if(state->reveal_area(p.ptPixelLocation)){state->gesture_id=p.pointerId;state->gesture_start=p.ptPixelLocation;return 0;}}}
+        if(state->gesture_id==GET_POINTERID_WPARAM(wparam)&&(message==WM_POINTERUPDATE||message==WM_POINTERUP||message==WM_POINTERCAPTURECHANGED)){
+            POINTER_INFO p{};if(message==WM_POINTERUPDATE&&GetPointerInfo(state->gesture_id,&p)){ScreenToClient(hwnd,&p.ptPixelLocation);if(p.ptPixelLocation.y-state->gesture_start.y>=state->scale(24)){if(!state->edge_gesture)state->release_input();state->edge_gesture=true;state->reveal();}}
+            if(message!=WM_POINTERUPDATE){state->gesture_id=0;state->edge_gesture=false;}return 0;
+        }
         if(message==WM_DPICHANGED){auto* r=reinterpret_cast<RECT*>(lparam);if(!state->fullscreen)SetWindowPos(hwnd,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);state->position_bar();return 0;}
         if(state->input&&state->input->message(hwnd,message,wparam,lparam))return 0;
     }
@@ -72,6 +82,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                                      CW_USEDEFAULT, CW_USEDEFAULT, 960, 600, nullptr, nullptr, cls.hInstance, &state);
     if (!hwnd) throw std::runtime_error("Create preview window failed");
     DestroyWindowOnExit window{hwnd};
+    if(!RegisterHotKey(hwnd,1,MOD_CONTROL|MOD_SHIFT|MOD_NOREPEAT,'Q'))std::cout<<"DISCONNECT_SHORTCUT focused-window-only"<<std::endl;
     WNDCLASSW toolbar{};toolbar.lpfnWndProc=bar_proc;toolbar.hInstance=cls.hInstance;toolbar.lpszClassName=L"DMDisplayToolbar";toolbar.hCursor=cls.hCursor;
     RegisterClassW(&toolbar);
     state.bar=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,toolbar.lpszClassName,L"Display controls",WS_POPUP,0,0,state.scale(360),state.scale(42),hwnd,nullptr,cls.hInstance,nullptr);

@@ -24,12 +24,12 @@ try:
  def read():
   for line in host.stdout:lines.append(line.strip());events.put(line.strip())
  threading.Thread(target=read,daemon=True).start()
- wait('DRIVER_STARTED');wait('LISTENING');source=identity();assert host.poll() is None
- print('Driver exists before any client connects',flush=True)
+ wait('DRIVER_STARTED');wait('LISTENING');assert topology()==baseline;assert host.poll() is None
+ print('Server listens without creating a monitor',flush=True)
  receiver=receive(bad);receiver.wait(timeout=12);assert receiver.returncode!=0
- wait('DRIVER_WAITING');wait('LISTENING');assert identity()==source
+ wait('DRIVER_WAITING');wait('LISTENING');assert topology()==baseline
  print('Unpaired client rejected; driver stays ready',flush=True)
- receiver=receive(name);wait('VIDEO_STARTED')
+ receiver=receive(name);wait('VIDEO_STARTED');source=identity()
  subprocess.run([str(B/'dm-display.exe'),'configure','1080','1920','1','-1080','100','60'],check=True,capture_output=True)
  wait('DISPLAY_RECONFIGURED');receiver.terminate();receiver.wait(timeout=5)
  wait('DRIVER_WAITING');wait('LISTENING');assert identity()==source

@@ -18,7 +18,7 @@ int main(int argc,char** argv){try{
  SendMessageW(s.tray,WM_COMMAND,1,0);pause();need(IsWindowVisible(s.window)!=FALSE,"Tray Open did not restore window");
  std::cout<<"TRAY_CHECK close-to-tray and reopen passed\n";
  if(argc>3&&std::string(argv[3])=="--keep-running")return 0;
- if(s.server){if(running){SendMessageW(s.tray,WM_COMMAND,2,0);wait_monitor(false);}SendMessageW(s.tray,WM_COMMAND,2,0);wait_monitor(true);need(GetPropW(s.tray,L"SideScreen.Running")!=nullptr,"Tray Start Driver failed");std::cout<<"TRAY_DRIVER start/stop passed\n";}
+ if(s.server){if(running){SendMessageW(s.tray,WM_COMMAND,2,0);wait_monitor(false);}SendMessageW(s.tray,WM_COMMAND,2,0);pause();wait_monitor(false);need(GetPropW(s.tray,L"SideScreen.Running")!=nullptr,"Tray Start Driver failed");std::cout<<"TRAY_DRIVER start/stop passed\n";}
  HANDLE process=OpenProcess(SYNCHRONIZE,FALSE,s.pid);need(process!=nullptr,"Cannot wait for app exit");
  SendMessageW(s.tray,WM_COMMAND,3,0);need(WaitForSingleObject(process,12000)==WAIT_OBJECT_0,"Tray Exit did not terminate app");CloseHandle(process);if(s.server)wait_monitor(false);
  std::cout<<"TRAY_EXIT cleanup passed\n";return 0;

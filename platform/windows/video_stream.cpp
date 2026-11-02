@@ -18,7 +18,7 @@ namespace {
 using Clock = std::chrono::steady_clock;
 auto deadline() { return Clock::now() + std::chrono::seconds(5); }
 }
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::wstring& managed_source,bool* listener_ready) {
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::function<std::wstring(bool&)>& acquire_monitor,bool* listener_ready) {
     if(allow_input && !extend && source.empty())throw std::invalid_argument("Input requires an explicit --display target or --extend");
     if((extend || !source.empty()) && codec!=wire::Codec::h264) throw std::invalid_argument("Selected/extended display requires H264");
     if(extend && !source.empty()) throw std::invalid_argument("Choose --extend or --display, not both");
@@ -46,10 +46,11 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     display::Mode client_choice{};
     if(extend) {
         const auto baseline=display::active_monitors();
-        if(managed_source.empty()) {
+        bool existing_monitor=false;
+        if(!acquire_monitor) {
             virtual_monitor=std::make_unique<display::VirtualMonitor>();
             selected_source=virtual_monitor->wait_for_source();
-        } else selected_source=managed_source;
+        } else selected_source=acquire_monitor(existing_monitor);
         if(client_mode) {
             const auto chosen=display::closest_mode(selected_source,preference.width,preference.height,preference.hz);
             client_choice=chosen;
@@ -58,7 +59,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
                      <<" selected="<<width<<'x'<<height<<'@'<<fps
                      <<" fallback="<<(width!=preference.width || height!=preference.height || fps!=preference.hz)<<std::endl;
         }
-        if(!keep_layout || !display::restore_mode(selected_source,profile_width,profile_height,!managed_source.empty())) {
+        if(!keep_layout || !display::restore_mode(selected_source,profile_width,profile_height,existing_monitor)) {
             if(client_mode && client_choice.rotation) {
                 display::set_virtual_mode(selected_source,height,width,client_choice.hz,baseline);
                 auto rotated=display::current_mode(selected_source);rotated.width=width;rotated.height=height;rotated.rotation=client_choice.rotation;
@@ -197,14 +198,21 @@ void serve_video(const net::Options& requested,const std::string& pair,bool allo
     if(FAILED(com_result))throw std::runtime_error("Cannot initialize driver service COM apartment");
     struct Apartment {~Apartment(){CoUninitialize();}} apartment;
     auto key=security::load_pairing(pair);SecureZeroMemory(key.data(),key.size());
-    const auto baseline=display::active_monitors();
-    display::VirtualMonitor monitor;const auto source=monitor.wait_for_source();
-    if(!display::restore_last_mode(source))display::set_virtual_mode(source,1280,720,60,baseline);
-    std::wcout<<L"DRIVER_STARTED "<<source<<std::endl;
+    std::unique_ptr<display::VirtualMonitor> monitor;std::wstring source;
+    auto acquire=[&](bool& existing) {
+        existing=static_cast<bool>(monitor);
+        if(!monitor){
+            auto created=std::make_unique<display::VirtualMonitor>();
+            source=created->wait_for_source();monitor=std::move(created);
+            std::wcout<<L"DISPLAY_CREATED "<<source<<std::endl;
+        }
+        return source;
+    };
+    std::cout<<"DRIVER_STARTED waiting-for-client"<<std::endl;
     auto options=requested;options.timeout=std::chrono::milliseconds(0);
     for(;;) {
         bool listening=false;
-        try{host_video(options,pair,frames,60,wire::Codec::h264,L"",true,allow_input,1280,720,true,true,source,&listening);}
+        try{host_video(options,pair,frames,60,wire::Codec::h264,L"",true,allow_input,1280,720,true,true,acquire,&listening);}
         catch(const std::exception& error){if(!listening)throw;std::cout<<"CLIENT_DISCONNECTED "<<error.what()<<std::endl;}
         // Keep the same software-device handle and layout until Stop Driver.
         std::cout<<"DRIVER_WAITING"<<std::endl;
