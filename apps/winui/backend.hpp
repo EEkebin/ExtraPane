@@ -9,17 +9,14 @@
 #include <dm/pairing.hpp>
 #include <filesystem>
 #include <netfw.h>
+#include <sddl.h>
+#include <shellapi.h>
 #include <stdexcept>
 #include <string>
 #include <vector>
 #include <wrl/client.h>
 
 using Microsoft::WRL::ComPtr;
-#ifdef DM_HOST_APP
-constexpr bool host = true;
-#else
-constexpr bool host = false;
-#endif
 namespace
 {
 #pragma comment(                                                                                                       \
@@ -40,7 +37,7 @@ std::string ascii(const std::wstring &s)
     }
     return result;
 }
-std::wstring quoted(const std::wstring &s)
+std::wstring command_quote(const std::wstring &s)
 { // Windows CreateProcess quoting, never a shell.
     std::wstring out = L"\"";
     unsigned slashes = 0;
@@ -69,22 +66,22 @@ std::filesystem::path directory()
         throw std::runtime_error("Cannot locate app files");
     return std::filesystem::path(p.data()).parent_path();
 }
-const wchar_t *settings()
+const wchar_t *settings(bool host=false)
 {
     return host ? L"Software\\DM\\Host" : L"Software\\DM\\Receiver";
 }
-std::wstring setting(const wchar_t *name, const std::wstring &fallback)
+std::wstring setting(const wchar_t *name, const std::wstring &fallback,bool host=false)
 {
     wchar_t v[256]{};
     DWORD size = sizeof(v);
-    return RegGetValueW(HKEY_CURRENT_USER, settings(), name, RRF_RT_REG_SZ, nullptr, v, &size) == ERROR_SUCCESS
+    return RegGetValueW(HKEY_CURRENT_USER, settings(host), name, RRF_RT_REG_SZ, nullptr, v, &size) == ERROR_SUCCESS
                ? v
                : fallback;
 }
-void save_setting(const wchar_t *name, const std::wstring &value)
+void save_setting(const wchar_t *name, const std::wstring &value,bool host=false)
 {
     HKEY key = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, settings(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) !=
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, settings(host), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) !=
         ERROR_SUCCESS)
         throw std::runtime_error("Cannot save settings");
     const auto result = RegSetValueExW(key, name, 0, REG_SZ, reinterpret_cast<const BYTE *>(value.c_str()),
@@ -127,8 +124,6 @@ struct Bstr
 // Routed private LANs are supported without preconfiguring a particular client.
 void firewall(bool add)
 {
-    if (!host)
-        return;
     ComPtr<INetFwPolicy2> policy;
     check(CoCreateInstance(__uuidof(NetFwPolicy2), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&policy)));
     ComPtr<INetFwRules> rules;
@@ -170,6 +165,7 @@ void firewall(bool add)
 struct Child
 {
     HANDLE process = nullptr, read = nullptr;
+    bool service=false;
     Child() = default;
     Child(const Child &) = delete;
     Child &operator=(const Child &) = delete;
@@ -183,7 +179,8 @@ struct Child
         {
             if (WaitForSingleObject(process, 0) == WAIT_TIMEOUT)
             {
-                TerminateProcess(process, 0);
+                if(service && read){DWORD written=0;const char stop='Q';WriteFile(read,&stop,1,&written,nullptr);WaitForSingleObject(process,10000);}
+                if(WaitForSingleObject(process,0)==WAIT_TIMEOUT)TerminateProcess(process, 0);
                 WaitForSingleObject(process, 3000);
             }
             CloseHandle(process);
@@ -194,6 +191,7 @@ struct Child
             CloseHandle(read);
             read = nullptr;
         }
+        service=false;
     }
     void start(const std::wstring &exe, const std::vector<std::wstring> &args)
     {
@@ -211,9 +209,9 @@ struct Child
         startup.hStdOutput = write;
         startup.hStdError = write;
         startup.hStdInput = input;
-        std::wstring command = quoted(exe);
+        std::wstring command = command_quote(exe);
         for (const auto &arg : args)
-            command += L" " + quoted(arg);
+            command += L" " + command_quote(arg);
         PROCESS_INFORMATION pi{};
         const auto ok = CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
                                        directory().c_str(), &startup, &pi);
@@ -229,6 +227,32 @@ struct Child
         }
         process = pi.hProcess;
         CloseHandle(pi.hThread);
+    }
+    void start_driver(bool input,bool debug) {
+        stop();
+        std::array<unsigned char,16> random{};
+        if(BCryptGenRandom(nullptr,random.data(),static_cast<ULONG>(random.size()),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0)throw std::runtime_error("Cannot create driver channel");
+        std::wstring pipe=L"\\\\.\\pipe\\SideScreen-";for(auto b:random){pipe+=L"0123456789abcdef"[b>>4];pipe+=L"0123456789abcdef"[b&15];}
+        HANDLE token=nullptr;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token))throw std::runtime_error("Cannot identify user");
+        DWORD bytes=0;GetTokenInformation(token,TokenUser,nullptr,0,&bytes);std::vector<unsigned char> user(bytes);
+        const bool token_ok=GetTokenInformation(token,TokenUser,user.data(),bytes,&bytes)!=FALSE;CloseHandle(token);
+        if(!token_ok)throw std::runtime_error("Cannot identify user");
+        LPWSTR sid=nullptr;if(!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(user.data())->User.Sid,&sid))throw std::runtime_error("Cannot identify user SID");
+        const std::wstring acl=L"D:P(A;;GA;;;SY)(A;;GA;;;"+std::wstring(sid)+L")";LocalFree(sid);
+        PSECURITY_DESCRIPTOR descriptor=nullptr;if(!ConvertStringSecurityDescriptorToSecurityDescriptorW(acl.c_str(),SDDL_REVISION_1,&descriptor,nullptr))throw std::runtime_error("Cannot secure driver channel");
+        SECURITY_ATTRIBUTES security{sizeof(security),descriptor,FALSE};
+        read=CreateNamedPipeW(pipe.c_str(),PIPE_ACCESS_DUPLEX|FILE_FLAG_FIRST_PIPE_INSTANCE,PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_NOWAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,4096,0,&security);LocalFree(descriptor);
+        if(read==INVALID_HANDLE_VALUE){read=nullptr;throw std::runtime_error("Cannot create driver channel");}
+        const auto exe=(directory()/L"SideScreen.Service.exe").wstring();
+        std::wstring args=L"--pipe "+command_quote(pipe)+L" --parent-pid "+std::to_wstring(GetCurrentProcessId());if(input)args+=L" --input";if(debug)args+=L" --debug";
+        SHELLEXECUTEINFOW launch{sizeof(launch)};launch.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;launch.lpVerb=L"runas";launch.lpFile=exe.c_str();launch.lpParameters=args.c_str();launch.nShow=SW_HIDE;
+        if(!ShellExecuteExW(&launch)){const auto error=GetLastError();stop();throw std::runtime_error(error==ERROR_CANCELLED?"Driver start cancelled.":"Cannot elevate driver helper (Windows error "+std::to_string(error)+").");}
+        process=launch.hProcess;
+        bool connected=false;const auto until=GetTickCount64()+10000;
+        while(GetTickCount64()<until && WaitForSingleObject(process,0)==WAIT_TIMEOUT){if(ConnectNamedPipe(read,nullptr)||GetLastError()==ERROR_PIPE_CONNECTED){connected=true;break;}Sleep(25);}
+        ULONG client=0;
+        if(!connected||!GetNamedPipeClientProcessId(read,&client)||client!=GetProcessId(process)){stop();throw std::runtime_error("Driver helper could not connect securely");}
+        DWORD mode=PIPE_READMODE_BYTE|PIPE_WAIT;SetNamedPipeHandleState(read,&mode,nullptr,nullptr);service=true;
     }
     std::string drain()
     {

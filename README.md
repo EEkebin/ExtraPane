@@ -22,12 +22,11 @@ SideScreen extends your Windows desktop onto a second PC over Wi-Fi or Ethernet,
 
 **[Open the newest prerelease →](https://github.com/EEkebin/SideScreen/releases)**
 
-Choose a role, then choose how you want to run it. Every prerelease includes all four downloads and `SHA256SUMS.txt`.
+One download works on either PC. Choose how you want to run it; every prerelease includes both formats and `SHA256SUMS.txt`.
 
-| Where it runs | Portable | Installer |
+| Platform | Portable | Installer |
 |:---|:---|:---|
-| **Client** · the laptop or second screen | `SideScreen-<version>-Client-win-x64.zip` | `SideScreen-<version>-Client-Setup-win-x64.exe` |
-| **Server** · the PC whose desktop you extend | `SideScreen-<version>-Server-win-x64.zip` | `SideScreen-<version>-Server-Setup-win-x64.exe` |
+| **Windows 11 x64** ? Server + Client + About | `SideScreen-<version>-win-x64.zip` | `SideScreen-<version>-Setup-win-x64.exe` |
 
 > **Server driver required.** The Server needs the separately installed SideScreen/DM virtual-display driver. The current driver is a development test-signed component. Neither the portable apps nor the installers install it or change Windows signing policy. The Client does not need a display driver. See [driver setup and status](docs/EXTENDED-DISPLAY.md).
 >
@@ -47,21 +46,21 @@ The apps include their WinUI runtime. Running them does not require Python, SSH,
 
 ### Choose your format
 
-**Installer:** run the Setup executable for the appropriate role. It installs for your Windows user, adds a Start menu shortcut, and offers a desktop shortcut. Client and Server can be installed independently. Uninstalling an app preserves pairing and display preferences.
+**Installer:** run the SideScreen Setup executable. It installs for your Windows user, adds a Start menu shortcut, and offers a desktop shortcut. The same installation includes Server and Client pages. Uninstalling an app preserves pairing and display preferences.
 
-**Portable:** extract the entire ZIP and run `Client.exe` or `Server.exe`. Keep the DLLs, resources and icon beside the executable.
+**Portable:** extract the entire ZIP and run `SideScreen.exe`. Keep the DLLs, resources and icon beside the executable.
 
 ### Connect your screens
 
-1. Open **SideScreen Server** on the desktop PC.
+1. Open **SideScreen** on the desktop PC and select **Server** in the left sidebar.
 2. Pair the computers once: expand **Pair computers**, generate a code, copy it to the other PC, and save the same code on both. Copy it before saving; saving clears the field.
-3. Click **Start Driver**. The Server waits for a connection; it does not create an empty extra screen yet.
-4. Open **SideScreen Client** on the second PC. Enter the Server's IPv4 address from its address list and click **Connect**.
+3. Click **Start Driver** and approve the separate helper's administrator prompt. The Server waits for a connection; it does not create an empty extra screen yet.
+4. Open the same **SideScreen** app on the second PC and select **Client**. Enter the Server's IPv4 address from its address list and click **Connect**.
 5. Move an application onto the new display. Arrange it in **Windows Settings → System → Display**, just like a physical monitor.
 
 The Client supplies its display resolution and refresh preference. SideScreen selects a supported mode, targeting up to 60 fps. Later Windows resolution, orientation and arrangement changes take precedence and are remembered for the same client resolution profile.
 
-Both apps show addresses from connected physical adapters. The Server never needs the Client's address. No automatic discovery is required.
+Both pages show addresses from connected physical adapters. The Server never needs the Client's address. No automatic discovery is required.
 
 ## **Features**
 
@@ -73,8 +72,10 @@ Both apps show addresses from connected physical adapters. The Server never need
 | **Mouse and keyboard** | Click, drag, scroll and type; pause remote input without closing the display. |
 | **Windowed or fullscreen** | Resize freely, maximize, or use the small disappearing local toolbar. |
 | **Direct LAN** | Wi-Fi, Ethernet and reachable static-IP connections, with paired TLS encryption. |
-| **Tray controls** | Close a setup window to hide it. Reopen it from the tray; use tray **Exit** to quit. |
+| **Tray controls** | Close the window to hide the app. Reopen it from the tray; use tray **Exit** to quit. |
 | **Persistent server** | Disconnect the Client and reconnect later. The Server keeps listening and retains the monitor until **Stop Driver** or **Exit**. |
+
+The left sidebar keeps **Server** and **Client** separate, with **About** at the bottom. Switching pages does not disconnect either role. The main app and receiving client run without administrator rights; only the server helper is elevated.
 
 ## **Controls**
 
@@ -104,7 +105,7 @@ SideScreen is actively developed and tested on a Windows desktop and Surface Boo
 - **Driver startup fails after connecting:** verify the development virtual-display driver is installed. App installation alone does not install the driver.
 - **A blank desktop:** move a window onto the new monitor; SideScreen extends the desktop rather than mirroring the primary screen.
 - **A window seems gone after closing setup:** open the notification-area icon. Closing setup hides it; tray **Exit** quits.
-- **Updating:** disconnect, then choose **Exit** from both apps' tray menus before replacing portable files or running an installer. Update both endpoints together.
+- **Updating:** disconnect, then choose **Exit** from SideScreen's tray menu on each PC before replacing portable files or running an installer. Update both endpoints together.
 
 ## **Building**
 
@@ -121,9 +122,9 @@ Outputs go to `out/dist`. NuGet dependencies are locked; the native engine uses 
 
 ## **Prereleases**
 
-Pull requests build and test both roles. After a PR merges into `main`, GitHub Actions builds the merge commit and publishes a new prerelease with both portable ZIPs, both installers and SHA-256 checksums. A direct push to `main` builds but does not publish; maintainers can also run the workflow manually on `main`.
+Pull requests build and test the unified app. After a PR merges into `main`, GitHub Actions builds the merge commit and publishes a new prerelease with one portable ZIP, one installer and SHA-256 checksums. A direct push to `main` builds but does not publish; maintainers can also run the workflow manually on `main`.
 
-Each build has a unique version such as `0.12.0-pre.12.1`. A failed build never publishes a partial release. See [release maintenance](docs/RELEASING.md).
+Each build has a unique version such as `0.13.0-pre.12.1`. A failed build never publishes a partial release. See [release maintenance](docs/RELEASING.md).
 
 ## **Development**
 

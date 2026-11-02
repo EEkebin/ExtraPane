@@ -10,23 +10,23 @@ try:
  with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as k:saved=winreg.QueryValueEx(k,'Layout')
 except FileNotFoundError:saved=None
 try:
- with zipfile.ZipFile(ROOT/'out/dist/SideScreen-0.12.0-Server-win-x64.zip') as z:z.extractall(stage)
- server=stage/'Server/Server.exe'
+ with zipfile.ZipFile(ROOT/'out/dist/SideScreen-0.13.0-win-x64.zip') as z:z.extractall(stage)
+ server=stage/'SideScreen/SideScreen.exe'
  subprocess.run([str(server),'--smoke-test'],check=True,timeout=20)
- archive=peer.upload(ROOT/'out/dist/SideScreen-0.12.0-Client-win-x64.zip');drive=peer.upload(b/'dm-input-drive.exe');check=peer.upload(b/'dm-window-check.exe');tray_check=peer.upload(b/'dm-tray-check.exe')
- _,remote,_=peer.run(f"$root=Join-Path $env:LOCALAPPDATA 'DM\\portable-check'; New-Item -ItemType Directory -Path $root -Force | Out-Null; Expand-Archive -LiteralPath {quote(archive)} -DestinationPath $root -Force; Join-Path $root 'Client'")
- client=remote+'\\Client.exe'
+ archive=peer.upload(ROOT/'out/dist/SideScreen-0.13.0-win-x64.zip');drive=peer.upload(b/'dm-input-drive.exe');check=peer.upload(b/'dm-window-check.exe');tray_check=peer.upload(b/'dm-tray-check.exe')
+ _,remote,_=peer.run(f"$root=Join-Path $env:LOCALAPPDATA 'DM\\portable-check'; New-Item -ItemType Directory -Path $root -Force | Out-Null; Expand-Archive -LiteralPath {quote(archive)} -DestinationPath $root -Force; Join-Path $root 'SideScreen'")
+ client=remote+'\\SideScreen.exe'
  peer.run(f"$p=Start-Process -FilePath {quote(client)} -ArgumentList '--smoke-test' -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(20000) -or $p.ExitCode -ne 0){{throw 'Portable Client render check failed'}}; 'LAPTOP_WINUI_RENDER passed'",interactive=True)
  print('Extracted Server and laptop Client UI checks passed',flush=True)
  with winreg.CreateKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as k:
   try:winreg.DeleteValue(k,'Layout')
   except FileNotFoundError:pass
- host=subprocess.Popen([str(server),'--start','--test-report','--test-duration','65'])
+ host=subprocess.Popen([str(server),'--server','--start','--test-report','--test-duration','65'])
  time.sleep(2)
  subprocess.run([str(b/'dm-tray-check.exe'),str(host.pid),'server','--keep-running'],check=True)
- _,pid,_=peer.run(f"$p=Start-Process -FilePath {quote(client)} -ArgumentList '--start --test-report --test-duration 55' -WindowStyle Hidden -PassThru; $p.Id",interactive=True)
+ _,pid,_=peer.run(f"$p=Start-Process -FilePath {quote(client)} -ArgumentList '--client --start --test-report --test-duration 55' -WindowStyle Hidden -PassThru; $p.Id",interactive=True)
  remote_pid=int(pid.strip())
- log=server.parent/'session-check.log';until=time.monotonic()+35
+ log=server.parent/'server-session-check.log';until=time.monotonic()+35
  while time.monotonic()<until:
   text=log.read_text() if log.exists() else ''
   if 'VIDEO_STARTED' in text:break
@@ -51,7 +51,7 @@ try:
  host.wait(timeout=75)
  observed=pattern.communicate(timeout=10)[0]
  text=log.read_text()
- _,receiver,_=peer.run(f'Get-Content -Raw -LiteralPath {quote(remote+"\\session-check.log")}')
+ _,receiver,_=peer.run(f'Get-Content -Raw -LiteralPath {quote(remote+"\\client-session-check.log")}')
  assert all(t in observed for t in ['mouse=1','chars=1','touch=2','pen=1','pressure_max=897']),observed
  report={'server':text,'client':receiver,'window_check':window_result,'tray_check':tray_result,'disconnect_shortcut':shortcut_result,'input':observed,'portable_ui_render':True}
  (ROOT/'out/portable-laptop-test.json').write_text(json.dumps(report,indent=2))
@@ -62,7 +62,7 @@ finally:
  if remote_pid:peer.run(f'Stop-Process -Id {remote_pid} -ErrorAction SilentlyContinue',required=False)
  peer.close()
  # A failed test may terminate the GUI before its normal scoped-rule cleanup.
- local_ps(f"$rule=Get-NetFirewallRule -DisplayName 'DM Host LAN display' -ErrorAction SilentlyContinue; if($rule){{$app=$rule | Get-NetFirewallApplicationFilter;if($app.Program -eq {quote(stage/'Server/dm-view.exe')}){{$rule | Remove-NetFirewallRule -ErrorAction Stop}}}}; exit 0")
+ local_ps(f"$rule=Get-NetFirewallRule -DisplayName 'DM Host LAN display' -ErrorAction SilentlyContinue; if($rule){{$app=$rule | Get-NetFirewallApplicationFilter;if($app.Program -eq {quote(stage/'SideScreen/dm-view.exe')}){{$rule | Remove-NetFirewallRule -ErrorAction Stop}}}}; exit 0")
  with winreg.CreateKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as k:
   if saved:winreg.SetValueEx(k,'Layout',0,saved[1],saved[0])
   else:

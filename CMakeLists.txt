@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(dm VERSION 0.12.0 LANGUAGES C CXX)
+project(dm VERSION 0.13.0 LANGUAGES C CXX)
 
 # Standalone diagnostic executable: no VC runtime installation on the test laptop.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -91,3 +91,8 @@ foreach(app dm-view dm-display dm-host dm-receiver)
   target_sources(${app} PRIVATE apps/winui/app.rc)
   target_include_directories(${app} PRIVATE assets/branding)
 endforeach()
+
+add_executable(SideScreen.Service WIN32 apps/service/main.cpp apps/winui/app.rc)
+target_include_directories(SideScreen.Service PRIVATE assets/branding)
+target_link_libraries(SideScreen.Service PRIVATE dm_security dm_display ole32 oleaut32 shell32)
+target_link_options(SideScreen.Service PRIVATE "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'")
