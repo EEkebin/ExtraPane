@@ -226,7 +226,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 SetWindowTextW(state.stats,text.str().c_str());stats_time=now;interval_presented=0;render_total=0;
                 std::cout<<"QUALITY_STATS received_fps="<<stats.received_fps<<" mbps="<<stats.mbps<<" decode_ms="<<stats.decode_ms<<" skipped="<<skipped<<" stream="<<stats.width<<'x'<<stats.height<<std::endl;
             }
-            if(state.show_statistics&&!IsIconic(hwnd)){RECT r{};GetClientRect(hwnd,&r);POINT p{state.scale(12),std::max(state.scale(8),static_cast<int>(r.bottom)-state.scale(150))};ClientToScreen(hwnd,&p);SetWindowPos(state.stats,HWND_TOP,p.x,p.y,state.scale(440),state.scale(140),SWP_NOACTIVATE|SWP_SHOWWINDOW);}else ShowWindow(state.stats,SW_HIDE);
+            if(state.show_statistics&&!IsIconic(hwnd)){RECT r{};GetClientRect(hwnd,&r);POINT p{state.scale(12),std::max(state.scale(8),static_cast<int>(r.bottom)-state.scale(150))};ClientToScreen(hwnd,&p);SetWindowPos(state.stats,nullptr,p.x,p.y,state.scale(440),state.scale(140),SWP_NOZORDER|SWP_NOACTIVATE|SWP_SHOWWINDOW);}else ShowWindow(state.stats,SW_HIDE);
             if (done.load()) break;
             MsgWaitForMultipleObjects(0, nullptr, FALSE, frame ? 0 : 1, QS_ALLINPUT);
         }
