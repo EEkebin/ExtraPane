@@ -46,7 +46,7 @@ The apps include their WinUI runtime. Running them does not require Python, SSH,
 
 ### Choose your format
 
-**Installer:** run the SideScreen Setup executable. It installs for your Windows user, adds a Start menu shortcut, and offers a desktop shortcut. The same installation includes Server and Client pages. Uninstalling an app preserves pairing and display preferences.
+**Installer:** run the SideScreen Setup executable. It installs for your Windows user, adds a Start menu shortcut, and offers a desktop shortcut. The same installation includes Server and Client pages. It appears in Windows **Settings > Apps > Installed apps**. During uninstall, check **Remove saved pairings and settings on this PC** for a fresh start, or leave it unchecked to keep your setup. The separately installed display driver stays installed.
 
 **Portable:** extract the entire ZIP and run `SideScreen.exe`. Keep the DLLs, resources and icon beside the executable.
 

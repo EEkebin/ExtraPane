@@ -44,3 +44,6 @@ for line in (dist/'SHA256SUMS.txt').read_text().splitlines():
  checksum,name=line.split('  ',1)
  assert hashlib.sha256((dist/name).read_bytes()).hexdigest()==checksum,name
 print('Release artifacts passed: manifests, icons, two downloads and SHA256 checksums')
+
+from test_uninstall_data import verify
+verify(installer)
