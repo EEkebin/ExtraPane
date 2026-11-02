@@ -21,9 +21,20 @@ void validate(const Offer& offer) {
     if(offer.input_caps>15 || (offer.input_caps!=0)!=(offer.input_epoch!=0))throw std::runtime_error("Invalid input grant");
 }
 }
+void set_client_display(std::span<std::uint8_t> bytes, ClientDisplay display) {
+    if(bytes.size()!=request.size() || ((display.width||display.height||display.hz) &&
+       (!display.width || !display.height || !display.hz || display.width>16384 || display.height>16384 || display.hz>1000)))
+        throw std::runtime_error("Invalid client display preference");
+    put32(bytes,16,display.width);put32(bytes,20,display.height);put32(bytes,24,display.hz);
+}
+ClientDisplay take_client_display(std::span<std::uint8_t> bytes) {
+    if(bytes.size()!=request.size())throw std::runtime_error("Invalid request size");
+    ClientDisplay result{get32(bytes,16),get32(bytes,20),get32(bytes,24)};
+    set_client_display(bytes,result);std::fill(bytes.begin()+16,bytes.begin()+28,std::uint8_t{0});return result;
+}
 OfferBytes encode_offer(const Offer& offer) {
     validate(offer);
-    OfferBytes out{'D','M','V','O',6,1,static_cast<std::uint8_t>(offer.codec),offer.input_caps};
+    OfferBytes out{'D','M','V','O',7,1,static_cast<std::uint8_t>(offer.codec),offer.input_caps};
     put32(out, 8, offer.width); put32(out, 12, offer.height);
     put32(out, 16, offer.fps); put32(out, 20, offer.frames);
     put32(out,24,static_cast<std::uint32_t>(offer.input_epoch>>32));put32(out,28,static_cast<std::uint32_t>(offer.input_epoch));
@@ -31,7 +42,7 @@ OfferBytes encode_offer(const Offer& offer) {
 }
 Offer decode_offer(std::span<const std::uint8_t> bytes) {
     if (bytes.size() != 32 || bytes[0] != 'D' || bytes[1] != 'M' || bytes[2] != 'V' || bytes[3] != 'O' ||
-        bytes[4] != 6 || bytes[5] != 1) throw std::runtime_error("Invalid or unsupported video offer");
+        bytes[4] != 7 || bytes[5] != 1) throw std::runtime_error("Invalid or unsupported video offer");
     Offer result{get32(bytes, 8), get32(bytes, 12), get32(bytes, 16), get32(bytes, 20),static_cast<Codec>(bytes[6]),bytes[7],(static_cast<std::uint64_t>(get32(bytes,24))<<32)|get32(bytes,28)};
     validate(result);
     return result;

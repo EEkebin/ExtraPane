@@ -48,14 +48,14 @@ def main():
                 context.set_psk_client_callback(lambda hint:(name,key))
                 with context.wrap_socket(socket.create_connection(('127.0.0.1',port),timeout=5)) as stream:
                     stream.settimeout(20)
-                    stream.sendall(b'DMVR'+bytes([6,1,3,1,15])+bytes(7))
+                    stream.sendall(b'DMVR'+bytes([7,1,3,1,15])+bytes(23))
                     if case=='denied':
                         try: read(stream,32)
                         except (EOFError,ssl.SSLError): pass
                     else:
                         offer=read(stream,32);epoch=struct.unpack_from('>Q',offer,24)[0]
                         if not epoch or offer[7]!=15: raise RuntimeError('Expected full native input grant')
-                        stream.sendall(b'RDY6')
+                        stream.sendall(b'RDY7')
                         for sequence in range(3):
                             header=read(stream,24);length=struct.unpack_from('>I',header,8)[0];read(stream,length)
                             sent_epoch=epoch^(1 if case=='wrong-epoch' else 0)
@@ -82,7 +82,9 @@ def main():
                 if host.poll() is None:host.kill();host.communicate(timeout=5)
             until=time.monotonic()+8
             while time.monotonic()<until:
-                if subprocess.check_output([str(BIN/'dm-display.exe'),'list'],text=True)==baseline:break
+                try:
+                    if subprocess.check_output([str(BIN/'dm-display.exe'),'list'],text=True,stderr=subprocess.DEVNULL)==baseline:break
+                except subprocess.CalledProcessError:pass
                 time.sleep(.1)
             else:raise RuntimeError('Monitor topology not restored after '+case)
     finally:

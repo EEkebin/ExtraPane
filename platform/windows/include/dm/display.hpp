@@ -15,6 +15,7 @@ struct Mode {
     bool operator==(const Mode&) const = default;
 };
 Mode current_mode(const std::wstring& source);
+Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsigned hz);
 void configure_virtual(const std::wstring& source,const Mode& mode);
 void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height);
 bool restore_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height);

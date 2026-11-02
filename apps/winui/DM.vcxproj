@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<PropertyGroup Label="Globals">
+<ProjectGuid>{823D4A25-19DD-436E-A72C-1ED241EE7ADC}</ProjectGuid><RootNamespace>DM</RootNamespace>
+<DMRole Condition="'$(DMRole)'==''">Client</DMRole><TargetName>$(DMRole)</TargetName>
+<TargetPlatformVersion>10.0.26100.0</TargetPlatformVersion><TargetPlatformIdentifier>Windows</TargetPlatformIdentifier><WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion><WindowsTargetPlatformMinVersion>10.0.22000.0</WindowsTargetPlatformMinVersion>
+<AppContainerApplication>false</AppContainerApplication>
+<UseWinUI>true</UseWinUI><WindowsPackageType>None</WindowsPackageType><AppxPackage>false</AppxPackage><WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+<CppWinRTOptimized>true</CppWinRTOptimized><CppWinRTRootNamespaceAutoMerge>true</CppWinRTRootNamespaceAutoMerge><MinimalCoreWin>true</MinimalCoreWin>
+<RestoreProjectStyle>PackageReference</RestoreProjectStyle><RestorePackagesWithLockFile>true</RestorePackagesWithLockFile><NuGetLockFilePath>$(MSBuildThisFileDirectory)packages.lock.json</NuGetLockFilePath><NuGetTargetMoniker>native,Version=v0.0</NuGetTargetMoniker><NuGetTargetPlatformIdentifier>Windows</NuGetTargetPlatformIdentifier><NuGetTargetPlatformVersion>10.0.26100.0</NuGetTargetPlatformVersion>
+<MSBuildProjectExtensionsPath>$(MSBuildThisFileDirectory)..\..\out\winui-obj\$(DMRole)\</MSBuildProjectExtensionsPath>
+</PropertyGroup>
+<ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props"/>
+<PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v145</PlatformToolset><CharacterSet>Unicode</CharacterSet><UseDebugLibraries>false</UseDebugLibraries><DesktopCompatible>true</DesktopCompatible></PropertyGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.props"/>
+<PropertyGroup><OutDir>$(MSBuildThisFileDirectory)..\..\out\winui\$(DMRole)\</OutDir><IntDir>$(MSBuildThisFileDirectory)..\..\out\winui-obj\$(DMRole)\</IntDir><AppxPriInitialPath></AppxPriInitialPath></PropertyGroup>
+<ItemGroup><PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001"/><PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.250303.1"/></ItemGroup>
+<ItemDefinitionGroup>
+<ClCompile><LanguageStandard>stdcpp20</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader><RuntimeLibrary>MultiThreaded</RuntimeLibrary><WarningLevel>Level4</WarningLevel><AdditionalOptions>/bigobj /utf-8 %(AdditionalOptions)</AdditionalOptions><PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalIncludeDirectories>..\..\platform\windows\include;..\..\core\protocol\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
+<Link><SubSystem>Windows</SubSystem><IgnoreSpecificDefaultLibraries>libucrt.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries><AdditionalOptions>/defaultlib:ucrt.lib %(AdditionalOptions)</AdditionalOptions><AdditionalLibraryDirectories>..\..\out\build\windows-release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><AdditionalDependencies>dm_security.lib;dm_network.lib;dm_probe_protocol.lib;ws2_32.lib;iphlpapi.lib;bcrypt.lib;advapi32.lib;ole32.lib;oleaut32.lib;user32.lib;gdi32.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+</ItemDefinitionGroup>
+<ItemDefinitionGroup Condition="'$(DMRole)'=='Server'"><ClCompile><PreprocessorDefinitions>DM_HOST_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><UACExecutionLevel>RequireAdministrator</UACExecutionLevel></Link></ItemDefinitionGroup>
+<ItemGroup><ClCompile Include="App.xaml.cpp"/><ClInclude Include="App.xaml.h"/><ClInclude Include="pch.h"/><ClInclude Include="backend.hpp"/></ItemGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
+</Project>

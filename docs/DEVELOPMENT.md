@@ -94,7 +94,7 @@ python scripts/test_video_laptop.py --laptop-ip 10.0.20.119 --desktop-ip 10.0.0.
 
 The extended recovery test asserts one DM monitor, unchanged physical topology, and full removal on peer/process loss and normal completion. The laptop test creates a temporary visible counter window when `--show-pattern` is selected and verifies baseline restoration after streaming. Extended reports include frame count and fps in their filenames. SSH/task deadlines account for stream duration. Driver installation stays separate from builds; see EXTENDED-DISPLAY.md and the installation record for removal.
 
-Input version 0.6: see [native input and hardware acceptance](INPUT.md). `scripts/try-display.ps1 -Control` enables the laptop input test; view only remains the default. Both current video endpoints require protocol 6. `dm-input-check` verifies native app delivery/cleanup; `test_input_transport.py` requires Python 3.13+ PSK support and an unlocked interactive host with the installed driver. `test_video_laptop.py --control --exercise-input --extend --show-pattern` exercises generated receiver-to-host input and checks app-level delivery counts; it does not replace physical pen/touch validation.
+Input version 0.6: see [native input and hardware acceptance](INPUT.md). `scripts/try-display.ps1 -Control` enables the laptop input test; view only remains the default. Both current video endpoints require protocol 7. `dm-input-check` verifies native app delivery/cleanup; `test_input_transport.py` requires Python 3.13+ PSK support and an unlocked interactive host with the installed driver. `test_video_laptop.py --control --exercise-input --extend --show-pattern` exercises generated receiver-to-host input and checks app-level delivery counts; it does not replace physical pen/touch validation.
 
 ## Native Surface Book 2 profile
 
@@ -116,3 +116,11 @@ python scripts/test_laptop_reconfigure.py
 ```
 
 The local test checks continuous sessions through left placement, resolution, all orientations, unchanged monitor identity, layout restore after restart and exact physical-topology cleanup. The native input test checks delivery and held-state release after a display move. The laptop test targets the authorized development machines, prompts for SSH, uses the existing dm-lan pairing, temporarily scopes firewall access, and verifies GPU video plus generated mouse/keyboard/touch/pen delivery after portrait recovery. SSH is test infrastructure only. Evidence is stored under ignored `out/`.
+
+## WinUI and portable builds (0.10)
+
+Run `./scripts/build-apps.ps1` then `python scripts/package_apps.py`. This uses Visual Studio 2026 v145, Windows SDK 10.0.26100.0, locked NuGet packages and the Release CMake engine. Output is under `out/winui/{Client,Server}` and `out/dist`. The ZIPs need no NuGet/SDK/Python/SSH on the destination. Driver setup is separate.
+
+`Client.exe --smoke-test` / `Server.exe --smoke-test` check initial control states and render the actual WinUI content to ui-check.bmp before exiting. `--start` uses the same action as the Connect/Start button. Developer-only `--test-report --test-duration N` records bounded engine status and closes the app after N seconds (1?300); ordinary launches have neither diagnostics nor a time limit. Packaging excludes these generated files.
+
+`python scripts/test_preview_window.py` verifies client-driven fallback and window controls during streaming. `python scripts/test_portable_laptop.py` tests the extracted ZIPs, WinUI rendering, native Surface Book negotiation and generated native input after fullscreen/window changes. It prompts for development SSH, retains pairing, restores saved layout and baseline topology. Run interactive display tests sequentially. The five CTest suites run in both Release and Debug.

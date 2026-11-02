@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(dm VERSION 0.9.0 LANGUAGES C CXX)
+project(dm VERSION 0.10.0 LANGUAGES C CXX)
 
 # Standalone diagnostic executable: no VC runtime installation on the test laptop.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -47,6 +47,9 @@ if(BUILD_TESTING)
   add_executable(dm-input-check tests/input_hardware_check.cpp)
   target_link_libraries(dm-input-check PRIVATE dm_video)
   target_compile_options(dm-input-check PRIVATE /W4 /WX /permissive- /EHsc /utf-8)
+  add_executable(dm-window-check tests/preview_window_check.cpp)
+  target_compile_features(dm-window-check PRIVATE cxx_std_20)
+  target_link_libraries(dm-window-check PRIVATE user32)
   add_executable(dm-input-drive tests/input_drive.cpp)
   target_link_libraries(dm-input-drive PRIVATE dm_display)
   target_compile_options(dm-input-drive PRIVATE /W4 /WX /permissive- /EHsc /utf-8)

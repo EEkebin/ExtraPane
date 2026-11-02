@@ -65,8 +65,12 @@ Automated checks should cover parser limits, negotiation, authentication state, 
 
 ## 0.8 runnable launchers
 
-Native host/receiver windows, persistent Credential Manager pairing, direct LAN settings, continuous normal sessions, opt-in debug pattern/duration and desktop shortcuts are implemented. Current controls are C++ Win32 around the existing engine; the WinUI product shell, automatic reconnect, installer/distribution, audio and microphone remain future work. See DESKTOP-APPS.md for test evidence and limitations.
+Native host/receiver windows, persistent Credential Manager pairing, direct LAN settings, continuous normal sessions, opt-in debug pattern/duration and desktop shortcuts are implemented. Current controls are C++ Win32 around the existing engine; the WinUI shell and portable app folders followed in 0.10; automatic reconnect, production installer/signing, audio and microphone remain future work. See DESKTOP-APPS.md for test evidence and limitations.
 
 ## 0.9 live display changes
 
-In-place media recovery and saved layout are implemented for resolution, orientation and arrangement changes. Native input is reset and remapped, including portrait letterboxing and negative desktop origins. WinUI 3 and portable Client/Server distribution are deferred until after this recovery work; driver signing/installation remains a separate requirement for extended desktop.
+In-place media recovery and saved layout are implemented for resolution, orientation and arrangement changes. Native input is reset and remapped, including portrait letterboxing and negative desktop origins. WinUI 3 and portable Client/Server distribution followed in 0.10; driver signing/installation remains a separate requirement for extended desktop.
+
+## 0.10 WinUI and portable apps
+
+Implemented WinUI 3 Client/Server launchers, self-contained x64 app ZIPs, client screen preference negotiation, and a resizable/fullscreen preview with local auto-hiding controls. Remaining release work: production application/driver signing, clean-machine driver setup, update/installer path and ARM64. Remaining runtime work includes audio/mic, automatic reconnect and physical-monitor change renegotiation on the client.

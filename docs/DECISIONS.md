@@ -25,7 +25,7 @@ Initialized 2026-11-01. Direct-IP, paired TLS, and GPU-resident raw-pixel H264 a
 | First video path | D3D11 Desktop Duplication, bounded WIC JPEG frames, TLS transport, native D3D11 preview | Tested and user-visible; temporary codec and diagnostic Win32 shell |
 | Current codec path | GPU capture and scaling/conversion, D3D11-surface hardware H264, GPU decode and shader presentation | Tested on NVIDIA desktop and both laptop GPUs; no application raw-pixel readbacks/uploads in H264 |
 | Receiver surface lifetime | Copy pooled decoder slice to an owned GPU texture, complete that GPU copy, queue at most one latest frame | Avoids retaining decoder pool surfaces across UI lifetime; GPU copies/fence waits remain |
-| Video protocol | Version 6, JPEG/H264, decoder-ready acknowledgement, bounded optional reverse-input batches, capability grants and session epoch | Both endpoints must be rebuilt; no silent older-version compatibility or software fallback |
+| Video protocol | Version 7, client display preferences, JPEG/H264, decoder-ready acknowledgement, bounded optional reverse-input batches, capability grants and session epoch | Both endpoints must be rebuilt; no silent older-version compatibility or software fallback |
 | Input | Native pointer capture and synthetic touch/pen, scancode/mouse injection through separate watchdog child | Host native app and generated laptop-to-host tests pass; real hardware/drawing-app checks pending; see INPUT.md |
 | Extend | One-monitor IddCx, session-owned software device, WGC monitor targeting | Driver builds/package-checks pass; selected physical-monitor capture tested; local driver installed, independent third monitor and capture/loss cleanup verified; see EXTENDED-DISPLAY.md |
 | Microphone | Reverse audio plus actual Windows recording endpoint | Required capability, endpoint choice pending |
@@ -72,3 +72,9 @@ User requested a runnable UI at each endpoint, no SSH UI, Debug off by default, 
 ## Live display configuration (0.9)
 
 Keep the session-owned monitor alive across Windows layout/resolution/orientation changes. Recreate the media pipeline against the selected monitor identity, negotiate new dimensions in protocol v6, reset native input and renew its epoch. Persist the latest layout for the same launcher profile; do not repeatedly apply startup defaults. Portrait presentation uses aspect-fit geometry shared with input mapping. Native synthetic pointer locations are relative to the virtual desktop origin, as documented by [Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-injectsyntheticpointerinput).
+
+## WinUI and portable runners (0.10)
+
+Client and Server are now C++/WinRT WinUI 3 setup apps. Keep D3D11 video/native input in the existing engine and its resizable preview, with local auto-hiding controls. Deliver self-contained ZIP folders rather than requiring a global WinUI runtime installation. Pin NuGet dependencies and include runtime licenses and file hashes. The development display driver stays separately installed; portable applications do not imply portable kernel/UMDF installation or production signing.
+
+The authenticated client supplies its screen size and refresh at connection time. Use that as the initial extended-display preference; preserve later Windows layout changes for the same client size. Bound and select supported driver/codec modes with a visible fallback rather than claim arbitrary native resolutions/refresh. Window resizing scales video and never resets the host layout.

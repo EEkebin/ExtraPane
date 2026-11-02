@@ -65,10 +65,12 @@ struct Injector {
         return {target.left+static_cast<LONG>((static_cast<std::uint64_t>(event.x)*(target.right-target.left-1)+32767)/65535),target.top+static_cast<LONG>((static_cast<std::uint64_t>(event.y)*(target.bottom-target.top-1)+32767)/65535)};
     }
     bool geometry() {
+        try {
         for(const auto& monitor:display::active_monitors()) if(monitor.device_path==target.device_path && (!target.dm_virtual || monitor.dm_virtual)) {
             if(monitor.source==target.source && monitor.left==target.left && monitor.top==target.top && monitor.right==target.right && monitor.bottom==target.bottom)return true;
             reset();target=monitor;return false;
         }
+        }catch(...){ /* Windows can expose an incomplete topology during Apply. */ }
         reset();return false;
     }
     static void send(INPUT value) { value.mi.dwExtraInfo=0x444D494E;need(SendInput(1,&value,sizeof(value))==1,"Windows rejected input injection"); }

@@ -19,6 +19,13 @@ int main() {
         require(portrait.width==1125 && portrait.height==2000 && portrait.x==937 && portrait.y==0,"Portrait viewport must preserve aspect and center input area");
         const auto landscape=content_rect(3000,2000,1000,1000);
         require(landscape.width==1000 && landscape.height==666 && landscape.y==167,"Landscape viewport must letterbox");
+        auto request=wire::request;
+        wire::set_client_display(request,{3000,2000,60});
+        auto preference=wire::take_client_display(request);
+        require(preference.width==3000 && preference.height==2000 && preference.hz==60 && request==wire::request,"Client display roundtrip failed");
+        rejects([&]{wire::set_client_display(request,{0,2000,60});});
+        rejects([&]{wire::set_client_display(request,{16385,2000,60});});
+        rejects([&]{wire::set_client_display(request,{3000,2000,1001});});
         auto offer = wire::encode_offer({1280,720,10,30});
         require(wire::decode_offer(offer).width == 1280, "Offer width lost");
         rejects([&] { (void)wire::decode_offer(std::span(offer).first(12)); });

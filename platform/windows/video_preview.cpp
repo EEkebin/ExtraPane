@@ -1,4 +1,8 @@
 #include <windows.h>
+#include <windowsx.h>
+#include <dm/display.hpp>
+#include <dwmapi.h>
+#pragma comment(lib,"dwmapi.lib")
 #include <d3d11.h>
 #include <dxgi.h>
 #include <wrl/client.h>
@@ -14,11 +18,40 @@
 
 namespace dm::video {
 namespace {
+struct PreviewWindow {
+    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr;bool fullscreen=false,edge_gesture=false;
+    WINDOWPLACEMENT saved{sizeof(saved)};ULONGLONG last_reveal=0;
+    int scale(int n)const{return MulDiv(n,static_cast<int>(GetDpiForWindow(hwnd)),96);}
+    void release_input(){input->message(hwnd,WM_KILLFOCUS,0,0);input->message(hwnd,WM_SETFOCUS,0,0);}
+    void position_bar(){if(!bar)return;RECT r{};GetClientRect(hwnd,&r);POINT p{(r.right-scale(360))/2,scale(8)};ClientToScreen(hwnd,&p);SetWindowPos(bar,HWND_TOP,p.x,p.y,scale(360),scale(42),SWP_NOACTIVATE);}
+    void reveal(){last_reveal=GetTickCount64();position_bar();ShowWindow(bar,SW_SHOWNOACTIVATE);}
+    void toggle(){release_input();if(!fullscreen){GetWindowPlacement(hwnd,&saved);MONITORINFO m{sizeof(m)};GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&m);SetWindowLongPtrW(hwnd,GWL_STYLE,WS_POPUP|WS_VISIBLE);SetWindowPos(hwnd,nullptr,m.rcMonitor.left,m.rcMonitor.top,m.rcMonitor.right-m.rcMonitor.left,m.rcMonitor.bottom-m.rcMonitor.top,SWP_FRAMECHANGED|SWP_NOZORDER);fullscreen=true;}else{SetWindowLongPtrW(hwnd,GWL_STYLE,WS_OVERLAPPEDWINDOW|WS_VISIBLE);SetWindowPlacement(hwnd,&saved);SetWindowPos(hwnd,nullptr,0,0,0,0,SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER);fullscreen=false;}SetWindowTextW(GetDlgItem(bar,3),fullscreen?L"Windowed":L"Fullscreen");reveal();}
+};
+constexpr UINT toolbar_command=WM_APP+42;
+LRESULT CALLBACK bar_proc(HWND hwnd,UINT message,WPARAM wparam,LPARAM lparam){
+    if(message==WM_COMMAND){SendMessageW(GetWindow(hwnd,GW_OWNER),toolbar_command,LOWORD(wparam),0);return 0;}
+    if(message==WM_MOUSEACTIVATE)return MA_NOACTIVATE;
+    if(message==WM_DRAWITEM){auto* item=reinterpret_cast<DRAWITEMSTRUCT*>(lparam);const auto brush=CreateSolidBrush(item->itemState&ODS_SELECTED?RGB(65,65,70):RGB(32,32,36));FillRect(item->hDC,&item->rcItem,brush);DeleteObject(brush);SetBkMode(item->hDC,TRANSPARENT);SetTextColor(item->hDC,RGB(245,245,245));wchar_t label[32]{};GetWindowTextW(item->hwndItem,label,32);auto font=reinterpret_cast<HFONT>(SendMessageW(item->hwndItem,WM_GETFONT,0,0));auto old=SelectObject(item->hDC,font);DrawTextW(item->hDC,label,-1,&item->rcItem,DT_CENTER|DT_VCENTER|DT_SINGLELINE);SelectObject(item->hDC,old);return TRUE;}
+    if(message==WM_ERASEBKGND){RECT r{};GetClientRect(hwnd,&r);FillRect(reinterpret_cast<HDC>(wparam),&r,GetSysColorBrush(COLOR_BTNFACE));return 1;}
+    return DefWindowProcW(hwnd,message,wparam,lparam);
+}
 LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-    if(message==WM_NCCREATE)SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams));
-    if(message==WM_KEYDOWN && wparam==VK_F9) {DestroyWindow(hwnd);return 0;}
-    auto* input=reinterpret_cast<input::ReceiverInput*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
-    if(input && input->message(hwnd,message,wparam,lparam))return 0;
+    if(message==WM_NCCREATE){auto* state=static_cast<PreviewWindow*>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams);state->hwnd=hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(state));}
+    auto* state=reinterpret_cast<PreviewWindow*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
+    if(state){
+        if(message==WM_KEYDOWN && (wparam==VK_F9||wparam==VK_F10||wparam==VK_F11)){
+            if(!(lparam&(1LL<<30))){if(wparam==VK_F9)DestroyWindow(hwnd);else if(wparam==VK_F11)state->toggle();else state->reveal();}return 0;
+        }
+        if(message==WM_KEYUP && (wparam==VK_F9||wparam==VK_F10||wparam==VK_F11))return 0;
+        if(message==toolbar_command){state->release_input();if(wparam==1)ShowWindow(hwnd,SW_MINIMIZE);if(wparam==2){if(state->fullscreen)state->toggle();ShowWindow(hwnd,IsZoomed(hwnd)?SW_RESTORE:SW_MAXIMIZE);}if(wparam==3)state->toggle();if(wparam==4)DestroyWindow(hwnd);return 0;}
+        if(message==WM_MOVE||message==WM_SIZE) {state->position_bar();if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);state->release_input();}}
+        if(message==WM_TIMER){POINT p{};GetCursorPos(&p);RECT r{};GetWindowRect(state->bar,&r);if(IsIconic(hwnd))ShowWindow(state->bar,SW_HIDE);else if(GetTickCount64()-state->last_reveal>2500&&!PtInRect(&r,p))ShowWindow(state->bar,SW_HIDE);return 0;}
+        if(message==WM_MOUSEMOVE&&GET_Y_LPARAM(lparam)<state->scale(12))state->reveal();
+        if(message==WM_POINTERDOWN){POINTER_INFO p{};if(GetPointerInfo(GET_POINTERID_WPARAM(wparam),&p)){ScreenToClient(hwnd,&p.ptPixelLocation);if(p.ptPixelLocation.y<state->scale(24)){state->edge_gesture=true;state->release_input();state->reveal();return 0;}}}
+        if(state->edge_gesture&&(message==WM_POINTERUPDATE||message==WM_POINTERUP||message==WM_POINTERCAPTURECHANGED)){state->reveal();if(message!=WM_POINTERUPDATE)state->edge_gesture=false;return 0;}
+        if(message==WM_DPICHANGED){auto* r=reinterpret_cast<RECT*>(lparam);if(!state->fullscreen)SetWindowPos(hwnd,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);state->position_bar();return 0;}
+        if(state->input&&state->input->message(hwnd,message,wparam,lparam))return 0;
+    }
     if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
     return DefWindowProcW(hwnd, message, wparam, lparam);
 }
@@ -28,25 +61,35 @@ struct DestroyWindowOnExit { HWND hwnd; ~DestroyWindowOnExit() { if (IsWindow(hw
 void preview_video(const net::Options& options, const std::string& pair,std::optional<unsigned> decoder_adapter,bool control,bool fullscreen) {
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     input::ReceiverInput input_capture(control);
+    PreviewWindow state;state.input=&input_capture;
     WNDCLASSW cls{};
     cls.lpfnWndProc = window_proc;
     cls.hInstance = GetModuleHandleW(nullptr);
     cls.lpszClassName = L"DMVideoFeasibilityPreview";
     cls.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Register preview window failed");
-    const HWND hwnd = CreateWindowExW(0, cls.lpszClassName, control?L"DM control - click/tap to focus; F8 pauses":L"DM video test - encrypted, view only", WS_OVERLAPPEDWINDOW,
-                                     CW_USEDEFAULT, CW_USEDEFAULT, 960, 600, nullptr, nullptr, cls.hInstance, &input_capture);
+    const HWND hwnd = CreateWindowExW(0, cls.lpszClassName, control?L"DM Display ? F8 pauses input ? F11 fullscreen":L"DM Display ? View only ? F11 fullscreen", WS_OVERLAPPEDWINDOW,
+                                     CW_USEDEFAULT, CW_USEDEFAULT, 960, 600, nullptr, nullptr, cls.hInstance, &state);
     if (!hwnd) throw std::runtime_error("Create preview window failed");
     DestroyWindowOnExit window{hwnd};
-    if(fullscreen) {
-        MONITORINFO monitor{sizeof(monitor)};
-        if(!GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&monitor))throw std::runtime_error("Cannot read fullscreen monitor bounds");
-        SetWindowLongPtrW(hwnd,GWL_STYLE,WS_POPUP);
-        SetWindowPos(hwnd,nullptr,monitor.rcMonitor.left,monitor.rcMonitor.top,monitor.rcMonitor.right-monitor.rcMonitor.left,monitor.rcMonitor.bottom-monitor.rcMonitor.top,SWP_FRAMECHANGED|SWP_NOZORDER);
-    }
+    WNDCLASSW toolbar{};toolbar.lpfnWndProc=bar_proc;toolbar.hInstance=cls.hInstance;toolbar.lpszClassName=L"DMDisplayToolbar";toolbar.hCursor=cls.hCursor;
+    RegisterClassW(&toolbar);
+    state.bar=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,toolbar.lpszClassName,L"Display controls",WS_POPUP,0,0,state.scale(360),state.scale(42),hwnd,nullptr,cls.hInstance,nullptr);
+    const DWORD corners=2;DwmSetWindowAttribute(state.bar,33,&corners,sizeof(corners));
+    const wchar_t* labels[]={L"Minimize",L"Maximize",L"Fullscreen",L"Close"};
+    for(int i=0;i<4;++i){auto button=CreateWindowW(L"BUTTON",labels[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,state.scale(i*90),0,state.scale(90),state.scale(40),state.bar,reinterpret_cast<HMENU>(static_cast<INT_PTR>(i+1)),cls.hInstance,nullptr);SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);}
+    SetTimer(hwnd,1,250,nullptr);
+    if(fullscreen)state.toggle();
+    MONITORINFOEXW panel{};panel.cbSize=sizeof(panel);GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&panel);
+    auto native=display::current_mode(panel.szDevice);
+    // EnumDisplaySettings reports 59 for common 59.94 Hz panels; target 60 frames.
+    if(native.hz==59)native.hz=60;
+    const wire::ClientDisplay preference{native.width,native.height,native.hz};
+    std::cout<<"CLIENT_DISPLAY "<<native.width<<'x'<<native.height<<'@'<<native.hz<<std::endl;
     ShowWindow(hwnd, SW_SHOWNORMAL);
     // Test launcher hides its PowerShell parent; explicitly show the native preview.
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    state.reveal();
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
     Microsoft::WRL::ComPtr<IDXGISwapChain> swap;
@@ -63,7 +106,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 if (cancel.load()) throw std::runtime_error("Video preview closed by user");
                 std::lock_guard guard(mutex);
                 latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
-            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;});
+            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference);
         } catch (...) { error = std::current_exception(); }
         done.store(true);
     });
@@ -149,7 +192,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
         throw;
     }
     worker.join();
-    if (error) std::rethrow_exception(error);
+    if (error && !cancel.load()) std::rethrow_exception(error);
     std::cout << "PREVIEW_PRESENTED frames=" << presented << " renderer=D3D11-test gpu_converted_frames=" << gpu_presented << " cpu_pixel_uploads=" << cpu_uploads << std::endl;
 }
 }

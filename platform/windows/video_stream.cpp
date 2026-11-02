@@ -18,7 +18,7 @@ namespace {
 using Clock = std::chrono::steady_clock;
 auto deadline() { return Clock::now() + std::chrono::seconds(5); }
 }
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout) {
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode) {
     if(allow_input && !extend && source.empty())throw std::invalid_argument("Input requires an explicit --display target or --extend");
     if((extend || !source.empty()) && codec!=wire::Codec::h264) throw std::invalid_argument("Selected/extended display requires H264");
     if(extend && !source.empty()) throw std::invalid_argument("Choose --extend or --display, not both");
@@ -31,23 +31,41 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     stream.handshake(deadline());
     std::array<std::uint8_t, wire::request.size()> request{};
     stream.read(request, deadline());
+    const auto preference=wire::take_client_display(request);
     if(request[7]>1)throw std::runtime_error("Unknown input permission request");
     const bool control=request[7]==1;request[7]=0;
     const unsigned requested_caps=request[8];request[8]=0;
     if(requested_caps>input::all_caps || control!=(requested_caps!=0))throw std::runtime_error("Invalid receiver input capabilities");
     if (request != wire::request) throw std::runtime_error("Unsupported video/input request");
     if(control && !allow_input)throw std::runtime_error("Host did not grant --allow-input permission");
+    if(client_mode && !extend)throw std::runtime_error("Client display matching requires extension");
+    if(client_mode && !preference.width)throw std::runtime_error("Client did not supply its display mode");
+    const unsigned profile_width=client_mode?preference.width:width,profile_height=client_mode?preference.height:height;
     std::unique_ptr<display::VirtualMonitor> virtual_monitor;
     auto selected_source=source;
+    display::Mode client_choice{};
     if(extend) {
         const auto baseline=display::active_monitors();
         virtual_monitor=std::make_unique<display::VirtualMonitor>();
         selected_source=virtual_monitor->wait_for_source();
-        if(!keep_layout || !display::restore_mode(selected_source,width,height))
-            display::set_virtual_mode(selected_source,width,height,(width==1280 && height==720 && fps<=30)?30:60,baseline);
+        if(client_mode) {
+            const auto chosen=display::closest_mode(selected_source,preference.width,preference.height,preference.hz);
+            client_choice=chosen;
+            width=chosen.width;height=chosen.height;fps=std::min(preference.hz,chosen.hz);
+            std::cout<<"CLIENT_MODE requested="<<preference.width<<'x'<<preference.height<<'@'<<preference.hz
+                     <<" selected="<<width<<'x'<<height<<'@'<<fps
+                     <<" fallback="<<(width!=preference.width || height!=preference.height || fps!=preference.hz)<<std::endl;
+        }
+        if(!keep_layout || !display::restore_mode(selected_source,profile_width,profile_height)) {
+            if(client_mode && client_choice.rotation) {
+                display::set_virtual_mode(selected_source,height,width,client_choice.hz,baseline);
+                auto rotated=display::current_mode(selected_source);rotated.width=width;rotated.height=height;rotated.rotation=client_choice.rotation;
+                display::configure_virtual(selected_source,rotated);
+            } else display::set_virtual_mode(selected_source,width,height,client_mode?client_choice.hz:((width==1280 && height==720 && fps<=30)?30:60),baseline);
+        }
     }
     if(!selected_source.empty()) std::wcout<<L"CAPTURE_SOURCE "<<selected_source<<L" extended="<<extend<<std::endl;
-    const unsigned profile_width=width,profile_height=height,target_fps=fps;
+    const unsigned target_fps=fps;
     std::optional<display::Mode> mode;
     std::wstring identity;
     if(!selected_source.empty()) {
@@ -170,11 +188,11 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     const auto seconds = std::chrono::duration<double>(Clock::now() - start).count();
     std::cout << "VIDEO_SENT frames=" << frames << " codec=" << codec_name << " encoded_bytes=" << total << " seconds=" << seconds << " achieved_fps=" << frames/seconds << " fresh_capture_frames=" << fresh_frames << " capture_ms_avg=" << capture_ms/frames << " encode_ms_avg=" << encode_ms/frames << " send_ms_avg=" << send_ms/frames << " raw_pixel_readbacks=" << (encoder ? 0 : frames) << " permissions=" << (control?"video+input":"video-only") << std::endl;
 }
-void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant) {
+void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display) {
     auto socket = net::connect_stream(options);
     security::TlsStream stream(std::move(socket), false, pair);
     stream.handshake(deadline());
-    auto request=wire::request;if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}stream.write(request, deadline());
+    auto request=wire::request;if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}wire::set_client_display(request,client_display);stream.write(request, deadline());
     wire::OfferBytes offer_bytes{};
     // Authenticated host may need to enumerate/start its session-owned driver.
     stream.read(offer_bytes, Clock::now()+std::chrono::seconds(45));

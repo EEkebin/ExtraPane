@@ -4,6 +4,8 @@
 #include <dm/display.hpp>
 #include <chrono>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 
@@ -67,6 +69,25 @@ Mode current_mode(const std::wstring& source) {
     DEVMODEW value{};value.dmSize=sizeof(value);
     if(!EnumDisplaySettingsW(source.c_str(),ENUM_CURRENT_SETTINGS,&value) || !value.dmPelsWidth || !value.dmPelsHeight)throw std::runtime_error("Display configuration is changing");
     return {value.dmPelsWidth,value.dmPelsHeight,value.dmDisplayFrequency,value.dmDisplayOrientation,value.dmPosition.x,value.dmPosition.y};
+}
+Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsigned hz) {
+    Mode best{};double score=std::numeric_limits<double>::max();
+    DEVMODEW m{};m.dmSize=sizeof(m);
+    for(DWORD i=0;EnumDisplaySettingsW(source.c_str(),i,&m);++i) {
+        if(m.dmDisplayOrientation!=DMDO_DEFAULT || m.dmPelsWidth>4096 || m.dmPelsHeight>4096 ||
+           m.dmPelsWidth%2 || m.dmPelsHeight%2 || m.dmDisplayFrequency>60 || !m.dmDisplayFrequency ||
+           static_cast<unsigned long long>(m.dmPelsWidth)*m.dmPelsHeight>8847360)continue;
+        for(unsigned rotation=0;rotation<2;++rotation) {
+            const auto w=rotation?m.dmPelsHeight:m.dmPelsWidth,h=rotation?m.dmPelsWidth:m.dmPelsHeight;
+            const double aspect=std::abs(std::log((double(w)/h)/(double(width)/height)));
+            const double size=std::abs(std::log((double(w)*h)/(double(width)*height)));
+            const double rate=std::abs(double(m.dmDisplayFrequency)-std::min(hz,60u))/60;
+            const double candidate=aspect*8+size+rate;
+            if(candidate<score){score=candidate;best={w,h,m.dmDisplayFrequency,rotation,0,0};}
+        }
+    }
+    if(!best.width)throw std::runtime_error("No compatible mode in the installed DM display driver");
+    return best;
 }
 void configure_virtual(const std::wstring& source,const Mode& value) {
     bool owned=false;for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
