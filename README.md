@@ -68,7 +68,7 @@ Both pages show addresses from connected physical adapters. The Server never nee
 | | What you can do |
 |:---|:---|
 | **Multiple extended monitors** | Connect up to four clients at once, each with its own Windows monitor, resolution, orientation and position. |
-| **Connection quality** | Choose Auto, Sharp or Smooth from the client toolbar Settings menu. Show statistics only when you want them; adaptation leaves the Windows display layout alone. |
+| **Connection quality** | Native-resolution streaming by default, with optional fixed 75% or 50% stream resolution for lower bandwidth. Statistics are opt-in. |
 | **GPU video** | D3D11 capture, H.264 encoding, GPU decoding and presentation. Native 3000×2000 with a 60 fps target is tested on a Surface Book 2; delivered frame rate depends on the hardware and network. |
 | **Touch and pen** | Native multi-touch and exposed pen pressure, tilt, buttons, inversion and eraser semantics. Support depends on the device and receiving app. |
 | **Mouse and keyboard** | Click, drag, scroll and type; pause remote input without closing the display. |
@@ -95,7 +95,7 @@ Top-right taps reach the remote app instead of opening the toolbar. Pen events d
 
 Windows has one shared mouse cursor and keyboard focus. Remote input gestures are serialized across clients so disconnecting one cannot release another client?s held keys or drag.
 
-**Connection settings:** reveal the client toolbar with **F10**, then choose **Settings**. **Show statistics** is off by default. **Auto** adapts the stream to sustained load, **Sharp** preserves stream resolution while adjusting bitrate, and **Smooth** starts at 75% transmission dimensions and can reduce further to favor frame rate. Quality changes apply during the session and are remembered for the next connection. The Windows monitor resolution and layout stay unchanged. Update both PCs together: this feature requires protocol 8.
+**Connection settings:** reveal the client toolbar with **F10**, then choose **Settings**. **Show statistics** is off by default. Native-resolution streaming is the default, using the original fixed bitrate and frame-pacing policy. Optional **75%** and **50%** stream resolutions reduce bandwidth without changing the Windows monitor dimensions. These settings apply on the next connection; streaming does not automatically switch tiers or restart the codecs/input handler under load. Old Auto/Sharp/Smooth preferences are ignored. Update both PCs together: this release uses protocol 9, without per-frame quality-feedback waits.
 
 Normal sessions have no test pattern or time limit. **Debug** is off by default and enables bounded diagnostic sessions when selected.
 

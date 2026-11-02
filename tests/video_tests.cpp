@@ -15,17 +15,10 @@ template<class F> void rejects(F action) {
 int main() {
     try {
         using namespace dm::video;
-        QualityController controller(Quality::automatic);
-        require(!controller.observe(40,2,5,0,60),"Single slow sample must not change quality");
-        require(controller.observe(40,2,5,0,60)&&controller.scale()==75,"Sustained overload must downscale");
-        for(int i=0;i<7;++i)require(!controller.observe(4,2,5,0,60),"Recovery must wait for stability");
-        require(controller.observe(4,2,5,0,60)&&controller.scale()==100,"Stable recovery must restore resolution");
-        controller.mode(Quality::sharp);controller.observe(40,2,5,0,60);controller.observe(40,2,5,0,60);
-        require(controller.scale()==100&&controller.bitrate(3000,2000,60)<45000000,"Sharp must preserve dimensions while reducing bitrate");
-        const auto fb=wire::decode_feedback(wire::encode_feedback({17,Quality::smooth,1200,4000,3}));
-        require(fb.sequence==17&&fb.quality==Quality::smooth&&fb.dropped==3,"Feedback roundtrip failed");
-        rejects([]{wire::encode_feedback({0,static_cast<Quality>(3)});});
-        rejects([]{wire::encode_feedback({0,Quality::automatic,5000001});});
+        require(QualityController(Quality::native).scale()==100,"Native must preserve resolution");
+        require(QualityController(Quality::native).bitrate(3000,2000,60)==45000000,"Native bitrate must match original streaming");
+        require(QualityController(Quality::reduced).scale()==75,"75% option");
+        require(QualityController(Quality::low_bandwidth).scale()==50,"50% option");
         require(stream_size(3000,2000,75)==std::pair<unsigned,unsigned>{2250,1500},"Stream scaling dimensions wrong");
         const auto portrait=content_rect(1080,1920,3000,2000);
         require(portrait.width==1125 && portrait.height==2000 && portrait.x==937 && portrait.y==0,"Portrait viewport must preserve aspect and center input area");

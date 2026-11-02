@@ -34,7 +34,7 @@ ClientDisplay take_client_display(std::span<std::uint8_t> bytes) {
 }
 OfferBytes encode_offer(const Offer& offer) {
     validate(offer);
-    OfferBytes out{'D','M','V','O',8,1,static_cast<std::uint8_t>(offer.codec),offer.input_caps};
+    OfferBytes out{'D','M','V','O',9,1,static_cast<std::uint8_t>(offer.codec),offer.input_caps};
     put32(out, 8, offer.width); put32(out, 12, offer.height);
     put32(out, 16, offer.fps); put32(out, 20, offer.frames);
     put32(out,24,static_cast<std::uint32_t>(offer.input_epoch>>32));put32(out,28,static_cast<std::uint32_t>(offer.input_epoch));
@@ -42,18 +42,10 @@ OfferBytes encode_offer(const Offer& offer) {
 }
 Offer decode_offer(std::span<const std::uint8_t> bytes) {
     if (bytes.size() != 32 || bytes[0] != 'D' || bytes[1] != 'M' || bytes[2] != 'V' || bytes[3] != 'O' ||
-        bytes[4] != 8 || bytes[5] != 1) throw std::runtime_error("Invalid or unsupported video offer (update both PCs)");
+        bytes[4] != 9 || bytes[5] != 1) throw std::runtime_error("Invalid or unsupported video offer (update both PCs)");
     Offer result{get32(bytes, 8), get32(bytes, 12), get32(bytes, 16), get32(bytes, 20),static_cast<Codec>(bytes[6]),bytes[7],(static_cast<std::uint64_t>(get32(bytes,24))<<32)|get32(bytes,28)};
     validate(result);
     return result;
-}
-FeedbackBytes encode_feedback(const Feedback& f){
-    if(static_cast<unsigned>(f.quality)>2 || f.decode_us>5000000 || f.render_us>5000000 || f.dropped>1000000)throw std::runtime_error("Invalid quality feedback");
-    FeedbackBytes out{'D','M','Q',8};put32(out,4,f.sequence);put32(out,8,static_cast<unsigned>(f.quality));put32(out,12,f.decode_us);put32(out,16,f.render_us);put32(out,20,f.dropped);return out;
-}
-Feedback decode_feedback(std::span<const std::uint8_t> b){
-    if(b.size()!=24||b[0]!='D'||b[1]!='M'||b[2]!='Q'||b[3]!=8)throw std::runtime_error("Invalid quality feedback header");
-    Feedback f{get32(b,4),static_cast<Quality>(get32(b,8)),get32(b,12),get32(b,16),get32(b,20)};(void)encode_feedback(f);return f;
 }
 HeaderBytes encode_header(const FrameHeader& header) {
     if (header.bytes > max_jpeg) throw std::runtime_error("Video payload length exceeds limit");
