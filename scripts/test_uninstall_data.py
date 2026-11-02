@@ -5,6 +5,7 @@ import os
 import re
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import winreg
@@ -73,8 +74,26 @@ def verify(installer):
         with tempfile.TemporaryDirectory(prefix='SideScreen-data-check-') as folder:
             target = Path(folder) / 'app'
             for reset in (False, True, True):
-                subprocess.run([str(installer), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
-                                f'/DIR={target}', '/GROUP=SideScreen Data Validation', '/TASKS='], check=True, timeout=90)
+                fixtures = []
+                try:
+                    markers = [str(Path(folder) / f'instance-{i}') for i in range(2)]
+                    for marker in markers:
+                        for suffix in ('.ready', '.stopped'):
+                            Path(marker + suffix).unlink(missing_ok=True)
+                        fixtures.append(subprocess.Popen([sys.executable, str(Path(__file__).with_name('installer_shutdown_fixture.py')), marker]))
+                    for _ in range(100):
+                        if all(Path(m + '.ready').exists() for m in markers): break
+                        assert all(p.poll() is None for p in fixtures), 'Shutdown fixture failed'
+                        time.sleep(.1)
+                    assert all(Path(m + '.ready').exists() for m in markers)
+                    subprocess.run([str(installer), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
+                                    f'/DIR={target}', '/GROUP=SideScreen Data Validation', '/TASKS='], check=True, timeout=90)
+                    assert all(Path(m + '.stopped').exists() for m in markers), 'Installer did not wait for every app/helper'
+                    assert all(p.wait(timeout=5) == 0 for p in fixtures)
+                finally:
+                    for process in fixtures:
+                        if process.poll() is None: process.kill()
+                        process.wait()
                 args = [str(registered_uninstaller(target)), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
                 if reset: args.append('/REMOVEUSERDATA=1')
                 subprocess.run(args, check=True, timeout=90)
@@ -94,4 +113,4 @@ def verify(installer):
         for name in KEYS:
             try: winreg.DeleteKey(winreg.HKEY_CURRENT_USER, name)
             except FileNotFoundError: pass
-    print('Uninstall passed: registration, preserve, reset, missing-data reset, unrelated credential survives')
+    print('Installer passed: all instances/helper cleanup; uninstall registration, preserve, reset, missing-data reset, unrelated credential survives')

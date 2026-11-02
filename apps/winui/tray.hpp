@@ -20,11 +20,11 @@ public:
         if(!window)throw std::runtime_error("Cannot create tray window");
         data_.cbSize=sizeof(data_);data_.hWnd=window;data_.uID=1;data_.uFlags=NIF_MESSAGE|NIF_ICON|NIF_TIP|NIF_SHOWTIP;
         data_.uCallbackMessage=WM_APP+18;data_.hIcon=LoadIconW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101));
-        update(false,false);add();
+        update(false,false);
     }
     ~Tray(){remove();if(window)DestroyWindow(window);}
     void remove(){if(ready)Shell_NotifyIconW(NIM_DELETE,&data_);ready=false;if(window)RemovePropW(window,L"SideScreen.TrayReady");}
-    void update(bool running,bool connected){active=running;receiving=connected;if(window){SetPropW(window,L"SideScreen.Running",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(running?1:0)));SetPropW(window,L"SideScreen.Receiving",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(connected?1:0)));}std::wstring label=L"SideScreen";if(running)label+=L" - Server running";if(connected)label+=L" - Client connected";wcsncpy_s(data_.szTip,label.c_str(),_TRUNCATE);if(ready)Shell_NotifyIconW(NIM_MODIFY,&data_);}
+    void update(bool running,bool connected){active=running;receiving=connected;if(window){SetPropW(window,L"SideScreen.Running",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(running?1:0)));SetPropW(window,L"SideScreen.Receiving",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(connected?1:0)));}std::wstring label=L"SideScreen";if(running)label+=L" - Server running";if(connected)label+=L" - Client connected";wcsncpy_s(data_.szTip,label.c_str(),_TRUNCATE);if(running&&!ready)add();else if(!running)remove();if(ready)Shell_NotifyIconW(NIM_MODIFY,&data_);}
 
 private:
     NOTIFYICONDATAW data_{};
@@ -43,7 +43,7 @@ private:
         if(message==WM_NCCREATE)SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams));
         auto* self=reinterpret_cast<Tray*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
         if(self){
-            if(message==self->restart_){self->ready=false;self->add();return 0;}
+            if(message==self->restart_){self->ready=false;if(self->active)self->add();return 0;}
             if(message==show_message){self->restore();return 0;}
             if(message==WM_APP+18){const auto action=LOWORD(lparam);if(action==NIN_SELECT||action==NIN_KEYSELECT)self->restore();else if(action==WM_CONTEXTMENU)self->menu();return 0;}
             if(message==WM_COMMAND){if(wparam==1)self->show(true);else if(wparam==2)self->toggle();else if(wparam==3)self->quit();else if(wparam==4)self->show(false);else if(wparam==5)self->disconnect();return 0;}

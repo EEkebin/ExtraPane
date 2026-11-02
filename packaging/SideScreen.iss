@@ -39,9 +39,52 @@ Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "
 Name: "{group}\SideScreen"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\SideScreen"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
+[Run]
+Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch SideScreen"; Flags: postinstall nowait skipifsilent
+
 [Code]
 var
   RemoveUserData: Boolean;
+
+function StopRunningSideScreen: Boolean;
+var
+  Window, LastWindow: HWND;
+  Attempt: Integer;
+begin
+  LastWindow := 0;
+  for Attempt := 0 to 399 do begin
+    Window := FindWindowByClassName('SideScreen.Tray');
+    if (Window = 0) and
+       not CheckForMutexes('Local\SideScreen.App,Local\SideScreen.DriverRuntime') then begin
+      Result := True;
+      Exit;
+    end;
+    if (Window <> 0) and (Window <> LastWindow) then begin
+      { The existing tray Exit command stops both roles and the elevated helper.
+        This also works with older builds whose ordinary Close hides to tray. }
+      Log('Requesting SideScreen shutdown before changing installed files.');
+      PostMessage(Window, $0111, 3, 0);
+      LastWindow := Window;
+    end;
+    Sleep(100);
+  end;
+  Log('SideScreen shutdown did not complete; installed files will not be replaced.');
+  Result := False;
+end;
+
+function InitializeSetup: Boolean;
+begin
+  Result := StopRunningSideScreen;
+  if not Result then
+    SuppressibleMsgBox('SideScreen could not finish shutting down. Close SideScreen and stop its driver, then run Setup again.', mbError, MB_OK, IDOK);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if not StopRunningSideScreen then
+    Result := 'SideScreen is still running. Close it and stop its driver before continuing.';
+end;
 
 function CredDelete(Target: String; CredType, Flags: LongWord): Boolean;
   external 'CredDeleteW@advapi32.dll stdcall uninstallonly';
@@ -55,7 +98,10 @@ var
 begin
   RemoveUserData := ExpandConstant('{param:REMOVEUSERDATA|0}') = '1';
   Result := True;
-  if UninstallSilent then Exit;
+  if UninstallSilent then begin
+    Result := StopRunningSideScreen;
+    Exit;
+  end;
 #if Ver < EncodeVer(6, 6, 0)
   Dialog := CreateCustomForm;
   Dialog.ClientWidth := ScaleX(460);
@@ -92,6 +138,11 @@ begin
     RemoveUserData := Result and Choice.Checked;
   finally
     Dialog.Free;
+  end;
+  if Result then begin
+    Result := StopRunningSideScreen;
+    if not Result then
+      SuppressibleMsgBox('SideScreen could not finish shutting down. Close it and stop its driver before uninstalling.', mbError, MB_OK, IDOK);
   end;
 end;
 

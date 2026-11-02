@@ -10,6 +10,11 @@ void pause(){std::this_thread::sleep_for(std::chrono::milliseconds(400));}
 int main(int argc,char** argv){try{
  SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
  need(argc>=2,"Supply receiver PID");Search s{static_cast<DWORD>(std::stoul(argv[1]))};EnumWindows(collect,reinterpret_cast<LPARAM>(&s));need(s.window&&s.bar,"Preview/toolbar missing");
+ if(argc>2&&std::string(argv[2])=="--next-75"){
+  SetForegroundWindow(s.window);PostMessageW(s.window,WM_APP+42,5,0);pause();
+  PostMessageW(s.window,WM_CHAR,'7',0);pause();
+  std::cout<<"NEXT_SCALE selected 75% once\n";return 0;
+ }
  if(argc>2&&std::string(argv[2])=="--disconnect"){
   SetForegroundWindow(s.window);pause();INPUT keys[6]{};const WORD codes[]={VK_CONTROL,VK_SHIFT,'Q','Q',VK_SHIFT,VK_CONTROL};
   for(int i=0;i<6;++i){keys[i].type=INPUT_KEYBOARD;keys[i].ki.wVk=codes[i];keys[i].ki.dwFlags=i>=3?KEYEVENTF_KEYUP:0;}
