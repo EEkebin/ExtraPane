@@ -100,6 +100,7 @@ struct Shell {
         window.AppWindow().Closing([this](auto&&,winrt::Microsoft::UI::Windowing::AppWindowClosingEventArgs const& args){if(!quitting && tray->ready){args.Cancel(true);window.AppWindow().Hide();}});
         window.Closed([this](auto&&,auto&&){attempt([&]{stop();});timer.Stop();});
         timer.Interval(std::chrono::milliseconds(200));timer.Tick([this](auto&&,auto&&){attempt([&]{tick();});});timer.Start();paired();
+        window.AppWindow().SetIcon((directory()/L"SideScreen.ico").wstring());
         window.AppWindow().Resize({760,850});
         window.Activate();
     }
