@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 <img src="assets/branding/banner.png" alt="SideScreen — Your desktop. More room." width="100%">
 
@@ -6,7 +6,7 @@
 
 [![Windows](https://img.shields.io/badge/Windows_11-x64-0078D4?style=for-the-badge)](#requirements)
 [![Status](https://img.shields.io/badge/Status-Prerelease-00A6D6?style=for-the-badge)](#current-status)
-[![Build](https://img.shields.io/github/actions/workflow/status/EEkebin/SideScreen/prerelease.yml?branch=main&style=for-the-badge&label=Build)](https://github.com/EEkebin/SideScreen/actions/workflows/prerelease.yml)
+[![Build](https://img.shields.io/badge/Build-Windows_CI-1F6FEB?style=for-the-badge)](https://github.com/EEkebin/SideScreen/actions/workflows/prerelease.yml)
 
 **[Downloads](https://github.com/EEkebin/SideScreen/releases)** · **[Quick start](#installation)** · **[Controls](#controls)** · **[Documentation](#development)**
 
