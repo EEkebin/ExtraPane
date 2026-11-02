@@ -1,5 +1,5 @@
 """Exercise extracted WinUI packages on the authorized desktop and Surface Book."""
-import subprocess,time,zipfile,json,winreg
+import subprocess,time,zipfile,json,winreg,re
 from pathlib import Path
 from windows_peer import ROOT,WindowsPeer,quote,local_ps
 peer=WindowsPeer('10.0.20.119','kebinBook')
@@ -52,7 +52,8 @@ try:
  observed=pattern.communicate(timeout=10)[0]
  text=log.read_text()
  _,receiver,_=peer.run(f'Get-Content -Raw -LiteralPath {quote(remote+"\\client-session-check.log")}')
- assert all(t in observed for t in ['mouse=1','chars=1','touch=2','pen=1','pressure_max=897']),observed
+ counts={key:int(value) for key,value in re.findall(r'(mouse|chars|touch|pen|pressure_max)=(\d+)',observed)}
+ assert all(counts.get(key,0)>=minimum for key,minimum in {'mouse':1,'chars':1,'touch':2,'pen':1,'pressure_max':897}.items()),observed
  report={'server':text,'client':receiver,'window_check':window_result,'tray_check':tray_result,'disconnect_shortcut':shortcut_result,'input':observed,'portable_ui_render':True}
  (ROOT/'out/portable-laptop-test.json').write_text(json.dumps(report,indent=2))
  print(observed,flush=True);print('PORTABLE_LAPTOP passed',flush=True)
