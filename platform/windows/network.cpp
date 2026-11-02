@@ -330,40 +330,42 @@ TcpStream connect_stream(const Options& requested) {
     return TcpStream(std::make_unique<TcpStream::State>(std::move(socket)));
 }
 
-TcpStream accept_stream(const Options& options, const std::function<void(const std::string&)>& ready) {
+struct TcpListener::State {
     Winsock runtime;
-    if (!options.peer.empty()) throw std::invalid_argument("Listener cannot select a remote address");
-    if(options.bind_address=="auto") {
-        std::vector<Socket> listeners;std::vector<Interface> adapters;std::string endpoints;
-        for(const auto& nic:interfaces()) {
-            if(!nic.up || std::any_of(adapters.begin(),adapters.end(),[&](const auto& a){return a.address==nic.address;}))continue;
-            if(listeners.size()>=FD_SETSIZE)throw std::runtime_error("Too many local IPv4 addresses");
-            auto selected=options;selected.bind_address=nic.address;
-            auto listener=bound_socket(selected,nic);
-            if(listen(listener.get(),1)==SOCKET_ERROR)fail("listen");
-            if(!endpoints.empty())endpoints+=", ";endpoints+=endpoint(listener,false);
-            listeners.push_back(std::move(listener));adapters.push_back(nic);
-        }
-        if(listeners.empty())throw std::runtime_error("No active IPv4 interfaces");
-        ready(endpoints);fd_set set;FD_ZERO(&set);for(const auto& listener:listeners)FD_SET(listener.get(),&set);
-        timeval timeout{static_cast<long>(options.timeout.count()/1000),static_cast<long>((options.timeout.count()%1000)*1000)};
-        const auto count=select(0,&set,nullptr,nullptr,options.timeout.count()?&timeout:nullptr);
-        if(count==SOCKET_ERROR)fail("accept");if(!count)throw std::runtime_error("Accept timed out");
-        for(size_t i=0;i<listeners.size();++i)if(FD_ISSET(listeners[i].get(),&set)) {
-            Socket client(accept(listeners[i].get(),nullptr,nullptr));nonblocking(client);constrain_outgoing_interface(client,adapters[i]);
-            return TcpStream(std::make_unique<TcpStream::State>(std::move(client)));
-        }
-        throw std::runtime_error("No ready listener");
+    std::vector<Socket> listeners;
+    std::vector<Interface> adapters;
+    std::string endpoints;
+    std::chrono::milliseconds timeout;
+};
+TcpListener::TcpListener(const Options& options):state_(std::make_unique<State>()) {
+    if(!options.peer.empty())throw std::invalid_argument("Listener cannot select a remote address");
+    auto& s=*state_;s.timeout=options.timeout;
+    const auto candidates=options.bind_address=="auto"?interfaces():std::vector<Interface>{find_interface(options.bind_address)};
+    for(const auto& nic:candidates) {
+        if(!nic.up || std::any_of(s.adapters.begin(),s.adapters.end(),[&](const auto& a){return a.address==nic.address;}))continue;
+        if(s.listeners.size()>=FD_SETSIZE)throw std::runtime_error("Too many local IPv4 addresses");
+        auto selected=options;selected.bind_address=nic.address;
+        auto listener=bound_socket(selected,nic);
+        if(listen(listener.get(),16)==SOCKET_ERROR)fail("listen");
+        if(!s.endpoints.empty())s.endpoints+=", ";s.endpoints+=endpoint(listener,false);
+        s.listeners.push_back(std::move(listener));s.adapters.push_back(nic);
     }
-    const auto adapter = find_interface(options.bind_address);
-    auto listener = bound_socket(options, adapter);
-    if (listen(listener.get(), 1) == SOCKET_ERROR) fail("listen");
-    ready(endpoint(listener, false));
-    const auto deadline = options.timeout.count()==0 ? Deadline::max() : Clock::now() + options.timeout;
-    wait_ready(listener, false, deadline, "accept");
-    Socket client(accept(listener.get(), nullptr, nullptr));
-    nonblocking(client);
-    constrain_outgoing_interface(client, adapter);
-    return TcpStream(std::make_unique<TcpStream::State>(std::move(client)));
+    if(s.listeners.empty())throw std::runtime_error("No active IPv4 interfaces");
+}
+TcpListener::~TcpListener()=default;
+std::string TcpListener::endpoints() const{return state_->endpoints;}
+TcpStream TcpListener::accept() {
+    auto& s=*state_;fd_set set;FD_ZERO(&set);for(const auto& listener:s.listeners)FD_SET(listener.get(),&set);
+    timeval timeout{static_cast<long>(s.timeout.count()/1000),static_cast<long>((s.timeout.count()%1000)*1000)};
+    const auto count=select(0,&set,nullptr,nullptr,s.timeout.count()?&timeout:nullptr);
+    if(count==SOCKET_ERROR)fail("accept");if(!count)throw std::runtime_error("Accept timed out");
+    for(size_t i=0;i<s.listeners.size();++i)if(FD_ISSET(s.listeners[i].get(),&set)) {
+        Socket client(::accept(s.listeners[i].get(),nullptr,nullptr));nonblocking(client);constrain_outgoing_interface(client,s.adapters[i]);
+        return TcpStream(std::make_unique<TcpStream::State>(std::move(client)));
+    }
+    throw std::runtime_error("No ready listener");
+}
+TcpStream accept_stream(const Options& options,const std::function<void(const std::string&)>& ready) {
+    TcpListener listener(options);ready(listener.endpoints());return listener.accept();
 }
 }

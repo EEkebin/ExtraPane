@@ -1,4 +1,16 @@
-# Current paired TLS prototype
+# Automatic LAN connection security
+
+The product app uses `dm-view --lan`: TLS 1.3 with a fresh ECDSA server certificate and ephemeral key exchange, with no pairing, password or approval prompt. The client does not verify server identity and the server does not authenticate clients. Encryption protects against passive observation, but this mode does not resist an active intermediary. While Start Driver is running, any client that can reach the scoped listener can receive its own desktop monitor and use input when the Server input checkbox is enabled. Use this on a trusted LAN. No application-wide static key is embedded.
+
+The listener has four bounded session slots; TLS/request deadlines release stalled slots. Each valid client receives an independent monitor and media pipeline. Invalid requests and disconnects close only their own slot. Stop Driver ends all sessions. Input still has bounds, epochs, permission negotiation and a per-session crash watchdog. A shared gesture lease prevents remote clients from releasing one another's held input.
+
+The existing executable/interface/port firewall scope and helper identity checks remain in effect. No new system signing or driver policies are changed. Legacy saved credentials are unused by the app and can be removed by the uninstaller's settings cleanup.
+
+## Legacy paired diagnostic CLI
+
+The following sections document the optional `dm-session` and `dm-view --name` diagnostic mode, not the product connection workflow.
+
+### Paired TLS prototype
 
 `dm-session` implements a one-shot authenticated diagnostic over interface-bound TCP. `dm-view` uses the same TLS wrapper for bounded video with separately granted native input. Microphone functionality is absent. See INPUT.md for the current input permission and watchdog boundaries.
 

@@ -17,6 +17,7 @@ struct Mode {
 Mode current_mode(const std::wstring& source);
 Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsigned hz);
 void configure_virtual(const std::wstring& source,const Mode& mode);
+void select_layout_profile(const std::wstring& profile);
 void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height);
 void remember_last_mode(const std::wstring& source);
 bool restore_last_mode(const std::wstring& source);
@@ -26,7 +27,7 @@ void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,
 // Device lifetime is the handle lifetime, including process termination.
 class VirtualMonitor {
 public:
-    VirtualMonitor();
+    explicit VirtualMonitor(unsigned slot=0);
     ~VirtualMonitor();
     VirtualMonitor(const VirtualMonitor&)=delete;
     VirtualMonitor& operator=(const VirtualMonitor&)=delete;

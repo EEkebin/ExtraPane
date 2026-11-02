@@ -6,6 +6,7 @@
 #include <winrt/Windows.UI.Text.h>
 #include <fstream>
 #include <functional>
+#include <set>
 using namespace winrt;
 using namespace winrt::Microsoft::UI::Xaml;
 using namespace winrt::Microsoft::UI::Xaml::Controls;
@@ -13,16 +14,17 @@ namespace {
 struct RolePage {
     const bool host;std::function<void()> changed;
     FrameworkElement root{nullptr};
-    TextBox peer{nullptr},code{nullptr},details{nullptr};TextBlock status{nullptr},addresses{nullptr};
+    TextBox peer{nullptr},details{nullptr};TextBlock status{nullptr},addresses{nullptr};
+    std::set<unsigned> connections;
     ULONGLONG last_addresses=0;
     CheckBox input{nullptr},debug{nullptr};Button start_button{nullptr},stop_button{nullptr};
     bool test_report=wcsstr(GetCommandLineW(),L"--test-report")!=nullptr;
     Child engine,pattern;bool active=false,pattern_started=false;std::string pending;std::wstring log;
     template<class T>T find(const wchar_t* name){return root.FindName(name).as<T>();}
     void attempt(const std::function<void()>& action){try{action();}catch(const hresult_error& e){status.Text(e.message());}catch(const std::exception& e){status.Text(wide(e.what()));}}
-    void enabled(bool running){active=running;peer.IsEnabled(!running);input.IsEnabled(!running);debug.IsEnabled(!running);start_button.IsEnabled(!running);stop_button.IsEnabled(running);find<Expander>(L"Pairing").IsEnabled(!running);if(changed)changed();}
-    void paired(){attempt([&]{auto key=dm::security::load_pairing("dm-lan");SecureZeroMemory(key.data(),key.size());status.Text(L"Paired and ready.");});}
-    void stop(){engine.stop();pattern.stop();enabled(false);status.Text(host?L"Driver stopped.":L"Disconnected. Ready when you are.");}
+    void enabled(bool running){active=running;peer.IsEnabled(!running);input.IsEnabled(!running);debug.IsEnabled(!running);start_button.IsEnabled(!running);stop_button.IsEnabled(running);if(changed)changed();}
+    void ready(){status.Text(host?L"Ready. Start Driver to accept LAN clients.":L"Ready. Enter the server address to connect.");}
+    void stop(){engine.stop();pattern.stop();connections.clear();enabled(false);status.Text(host?L"Driver stopped.":L"Disconnected. Ready when you are.");}
     void refresh_addresses(){
         std::wstring value;
         for(const auto& nic:dm::net::local_addresses()) {
@@ -36,9 +38,8 @@ struct RolePage {
     }
     void start(){
         const std::wstring remote(peer.Text());if(!host)ipv4(remote);
-        auto key=dm::security::load_pairing("dm-lan");SecureZeroMemory(key.data(),key.size());
         if(!host)save_setting(L"Peer",remote);pending.clear();log.clear();details.Text(L"");pattern_started=false;
-        std::vector<std::wstring> args{host?L"host":L"receive",L"--name",L"dm-lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId())};
+        std::vector<std::wstring> args{host?L"host":L"receive",L"--lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId())};
         if(host)engine.start_driver(input.IsChecked().Value(),debug.IsChecked().Value());
         else {const auto quality=setting(L"Quality",L"0");args.insert(args.end(),{L"--quality",quality==L"1"?L"sharp":quality==L"2"?L"smooth":L"auto",L"--peer",remote});if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);}
         enabled(true);status.Text(host?L"Starting driver...":L"Connecting securely to your server...");
@@ -46,7 +47,11 @@ struct RolePage {
     void tick(){if(GetTickCount64()-last_addresses>5000)refresh_addresses();if(!engine.process)return;pending+=engine.drain();size_t end;
         while((end=pending.find('\n'))!=std::string::npos){auto line=pending.substr(0,end);pending.erase(0,end+1);if(!line.empty()&&line.back()=='\r')line.pop_back();log+=wide(line)+L"\r\n";if(log.size()>24000)log.erase(0,log.size()-18000);
             if(line.starts_with("DRIVER_STARTED")||line.starts_with("LISTENING")||line.starts_with("DRIVER_WAITING")){status.Text(L"Driver running. Waiting for a client connection.");pattern.stop();pattern_started=false;}
-            if(line.starts_with("CLIENT_DISCONNECTED"))status.Text(L"Client disconnected. Driver remains running.");
+            if(host && (line.starts_with("CLIENT_CONNECTED slot=")||line.starts_with("CLIENT_DISCONNECTED slot="))){
+                const auto position=line.find("slot=");const auto slot=std::stoul(line.substr(position+5));
+                if(line.starts_with("CLIENT_CONNECTED"))connections.insert(slot);else connections.erase(slot);
+                status.Text(connections.empty()?L"Driver running. Waiting for clients.":std::to_wstring(connections.size())+L" client(s) connected. Driver running.");
+            }
             if(line.starts_with("CLIENT_MODE")){
                 const auto requested=line.find("requested="),selected=line.find("selected="),fallback=line.find(" fallback=");
                 if(requested!=std::string::npos&&selected!=std::string::npos&&fallback!=std::string::npos){
@@ -54,7 +59,7 @@ struct RolePage {
                     find<TextBlock>(L"Mode").Text(L"Client screen: "+wide(wanted)+L". Starting display: "+wide(chosen)+(line.find("fallback=1")!=std::string::npos?L" (limited by driver/codec support).":L". Saved Windows layout takes precedence."));
                 }
             }
-            if(line.starts_with("VIDEO_STARTED")||line.starts_with("VIDEO_RECEIVING")){status.Text(L"Connected. You can rearrange the display in Windows Settings.");if(host&&debug.IsChecked().Value()&&!pattern_started){pattern.start((directory()/L"dm-display.exe").wstring(),{L"pattern",L"60"});pattern_started=true;}}
+            if(line.starts_with("VIDEO_STARTED")||line.starts_with("VIDEO_RECEIVING")){status.Text(host?std::to_wstring(connections.size())+L" client(s) connected. Arrange monitors in Windows Settings.":L"Connected. You can rearrange the display in Windows Settings.");if(host&&debug.IsChecked().Value()&&!pattern_started){pattern.start((directory()/L"dm-display.exe").wstring(),{L"pattern",L"60"});pattern_started=true;}}
             if(line.starts_with("DISPLAY_RECONFIGURING"))status.Text(L"Applying your display changes...");
             if(line.starts_with("DISPLAY_RECONFIGURED"))status.Text(L"Connected. Display changes applied.");
             if(line.starts_with("error:"))status.Text(wide(line.substr(6)));
@@ -73,24 +78,20 @@ struct RolePage {
  <TextBlock x:Name="Mode" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
  <CheckBox x:Name="Input" Content="Mouse, keyboard, touch and pen" IsChecked="True"/>
  <StackPanel Orientation="Horizontal" Spacing="12"><Button x:Name="Start" Style="{StaticResource AccentButtonStyle}"/><Button x:Name="Stop" Content="Disconnect" IsEnabled="False"/></StackPanel>
- <TextBlock x:Name="Status" Text="Pair these computers once to get started." TextWrapping="Wrap"/>
+ <TextBlock x:Name="Status" Text="Ready to connect over LAN." TextWrapping="Wrap"/>
  </StackPanel></Border>
- <Expander x:Name="Pairing" Header="Pair computers" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"><StackPanel Spacing="12"><TextBlock Text="Generate a code, copy it to the other computer, then save on both. Existing pairing is retained until you forget it." TextWrapping="Wrap"/><TextBox x:Name="Code" PlaceholderText="Pairing code" MaxLength="64"/><StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="Generate" Content="Generate code"/><Button x:Name="Save" Content="Save pairing"/><Button x:Name="Forget" Content="Forget"/></StackPanel></StackPanel></Expander>
  <CheckBox x:Name="Debug" Content="Debug diagnostics"/>
  <TextBox x:Name="Details" Visibility="Collapsed" IsReadOnly="True" AcceptsReturn="True" Height="180" TextWrapping="Wrap"/>
  <TextBlock Text="Direct LAN · Encrypted connection · No audio yet" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 </StackPanel></ScrollViewer>)XAML").as<FrameworkElement>();
         find<TextBlock>(L"Title").Text(host?L"Server":L"Client");find<TextBlock>(L"Subtitle").Text(host?L"Extend your desktop onto another computer.":L"Make this screen part of your server's desktop.");
-        find<TextBlock>(L"Mode").Text(host?L"Resolution and frame-rate target come from the client's screen. Windows Display Settings remain in control after connecting.":L"Uses this screen's resolution and refresh, within server limits. Resize the display window freely; F11 toggles fullscreen.");
-        addresses=find<TextBlock>(L"Addresses");peer=find<TextBox>(L"Peer");code=find<TextBox>(L"Code");details=find<TextBox>(L"Details");status=find<TextBlock>(L"Status");input=find<CheckBox>(L"Input");debug=find<CheckBox>(L"Debug");if(host)debug.Content(box_value(L"Debug: color test and 3,600-frame session"));start_button=find<Button>(L"Start");stop_button=find<Button>(L"Stop");
+        find<TextBlock>(L"Mode").Text(host?L"Up to four clients, each with its own monitor. Clients connect automatically while the driver is running. Resolution and refresh come from each client.":L"Uses this screen's resolution and refresh, within server limits. Resize the display window freely; F11 toggles fullscreen.");
+        addresses=find<TextBlock>(L"Addresses");peer=find<TextBox>(L"Peer");details=find<TextBox>(L"Details");status=find<TextBlock>(L"Status");input=find<CheckBox>(L"Input");debug=find<CheckBox>(L"Debug");if(host)debug.Content(box_value(L"Debug: color test and 3,600-frame session"));start_button=find<Button>(L"Start");stop_button=find<Button>(L"Stop");
         refresh_addresses();peer.Text(host?L"":setting(L"Peer",L""));if(host)peer.Visibility(Visibility::Collapsed);
         start_button.Content(box_value(host?L"Start Driver":L"Connect"));stop_button.Content(box_value(host?L"Stop Driver":L"Disconnect"));
         start_button.Click([this](auto&&,auto&&){attempt([&]{start();});});stop_button.Click([this](auto&&,auto&&){attempt([&]{stop();});});
-        find<Button>(L"Generate").Click([this](auto&&,auto&&){attempt([&]{dm::security::Key key{};if(BCryptGenRandom(nullptr,key.data(),static_cast<ULONG>(key.size()),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0)throw std::runtime_error("Cannot generate pairing code");std::wstring value;for(auto b:key){value+=L"0123456789abcdef"[b>>4];value+=L"0123456789abcdef"[b&15];}code.Text(value);SecureZeroMemory(key.data(),key.size());SecureZeroMemory(value.data(),value.size()*sizeof(wchar_t));});});
-        find<Button>(L"Save").Click([this](auto&&,auto&&){attempt([&]{auto value=ascii(std::wstring(code.Text()));auto key=dm::security::parse_key(value);SecureZeroMemory(value.data(),value.size());try{dm::security::save_pairing("dm-lan",key);}catch(...){SecureZeroMemory(key.data(),key.size());throw;}SecureZeroMemory(key.data(),key.size());code.Text(L"");paired();});});
-        find<Button>(L"Forget").Click([this](auto&&,auto&&){attempt([&]{dm::security::revoke_pairing("dm-lan");status.Text(L"Pairing removed on this computer.");});});
         debug.Checked([this](auto&&,auto&&){details.Visibility(Visibility::Visible);});debug.Unchecked([this](auto&&,auto&&){details.Visibility(Visibility::Collapsed);});
-        paired();
+        ready();
 
     }
 };

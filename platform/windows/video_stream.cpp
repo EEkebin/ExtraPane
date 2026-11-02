@@ -12,21 +12,24 @@
 #include <stdexcept>
 #include <thread>
 #include <algorithm>
+#include <atomic>
+#include <mutex>
+#include <syncstream>
 
 namespace dm::video {
 namespace {
+std::mutex display_lifecycle;
 using Clock = std::chrono::steady_clock;
 auto deadline() { return Clock::now() + std::chrono::seconds(5); }
 }
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::function<std::wstring(bool&)>& acquire_monitor,bool* listener_ready) {
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::function<std::wstring(bool&)>& acquire_monitor,bool* listener_ready,net::TcpStream* accepted,unsigned monitor_slot) {
     if(allow_input && !extend && source.empty())throw std::invalid_argument("Input requires an explicit --display target or --extend");
     if((extend || !source.empty()) && codec!=wire::Codec::h264) throw std::invalid_argument("Selected/extended display requires H264");
     if(extend && !source.empty()) throw std::invalid_argument("Choose --extend or --display, not both");
     (void)wire::encode_offer({width,height,fps,frames,codec});
     // Authenticate before opening the capture API. Explicit CLI consent is checked by the caller.
-    auto key = security::load_pairing(pair);
-    SecureZeroMemory(key.data(), key.size());
-    auto socket = net::accept_stream(options, [&](const std::string& local) { if(listener_ready)*listener_ready=true;std::cout << "LISTENING " << local << " TLS-video-test" << std::endl; });
+    if(!pair.empty()){auto key = security::load_pairing(pair);SecureZeroMemory(key.data(), key.size());}
+    auto socket = accepted?std::move(*accepted):net::accept_stream(options, [&](const std::string& local) { if(listener_ready)*listener_ready=true;std::osyncstream(std::cout) << "LISTENING " << local << " TLS-video-test" << std::endl; });
     security::TlsStream stream(std::move(socket), true, pair);
     stream.handshake(deadline());
     std::array<std::uint8_t, wire::request.size()> request{};
@@ -43,21 +46,23 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     if(client_mode && !extend)throw std::runtime_error("Client display matching requires extension");
     if(client_mode && !preference.width)throw std::runtime_error("Client did not supply its display mode");
     const unsigned profile_width=client_mode?preference.width:width,profile_height=client_mode?preference.height:height;
-    std::unique_ptr<display::VirtualMonitor> virtual_monitor;
+    struct MonitorDelete {void operator()(display::VirtualMonitor* p) const {std::lock_guard lock(display_lifecycle);delete p;}};
+    std::unique_ptr<display::VirtualMonitor,MonitorDelete> virtual_monitor;
     auto selected_source=source;
     display::Mode client_choice{};
     if(extend) {
+        std::lock_guard lock(display_lifecycle);
         const auto baseline=display::active_monitors();
         bool existing_monitor=false;
         if(!acquire_monitor) {
-            virtual_monitor=std::make_unique<display::VirtualMonitor>();
+            virtual_monitor.reset(new display::VirtualMonitor(monitor_slot));
             selected_source=virtual_monitor->wait_for_source();
         } else selected_source=acquire_monitor(existing_monitor);
         if(client_mode) {
             const auto chosen=display::closest_mode(selected_source,preference.width,preference.height,preference.hz);
             client_choice=chosen;
             width=chosen.width;height=chosen.height;fps=std::min(preference.hz,chosen.hz);
-            std::cout<<"CLIENT_MODE requested="<<preference.width<<'x'<<preference.height<<'@'<<preference.hz
+            std::osyncstream(std::cout)<<"CLIENT_MODE requested="<<preference.width<<'x'<<preference.height<<'@'<<preference.hz
                      <<" selected="<<width<<'x'<<height<<'@'<<fps
                      <<" fallback="<<(width!=preference.width || height!=preference.height || fps!=preference.hz)<<std::endl;
         }
@@ -69,7 +74,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
             } else display::set_virtual_mode(selected_source,width,height,client_mode?client_choice.hz:((width==1280 && height==720 && fps<=30)?30:60),baseline);
         }
     }
-    if(!selected_source.empty()) std::wcout<<L"CAPTURE_SOURCE "<<selected_source<<L" extended="<<extend<<std::endl;
+    if(!selected_source.empty()) std::wosyncstream(std::wcout)<<L"CAPTURE_SOURCE "<<selected_source<<L" extended="<<extend<<std::endl;
     const unsigned target_fps=fps;
     std::optional<display::Mode> mode;
     std::wstring identity;
@@ -85,7 +90,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     std::unique_ptr<H264Encoder> encoder;
     if (codec==wire::Codec::h264) {
         encoder=std::make_unique<H264Encoder>(frame.width,frame.height,fps,frame.gpu->device.Get(),quality.bitrate(frame.width,frame.height,fps));
-        std::cout << "ENCODER " << encoder->description() << std::endl;
+        std::osyncstream(std::cout) << "ENCODER " << encoder->description() << std::endl;
     }
     std::unique_ptr<input::Broker> broker;
     std::uint64_t epoch=0;
@@ -95,14 +100,14 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         granted_caps=broker->capabilities()&requested_caps;
         if(!granted_caps)throw std::runtime_error("No mutually supported input families");
         if(BCryptGenRandom(nullptr,reinterpret_cast<PUCHAR>(&epoch),sizeof(epoch),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0 || !epoch)throw std::runtime_error("Cannot create input session epoch");
-        std::cout<<"INPUT_GRANTED caps="<<granted_caps<<" touch_contacts="<<((granted_caps&input::touch_cap)?10:0)<<" pen_devices="<<((granted_caps&input::pen_cap)?1:0)<<" watchdog_ms=1500"<<std::endl;
+        std::osyncstream(std::cout)<<"INPUT_GRANTED caps="<<granted_caps<<" touch_contacts="<<((granted_caps&input::touch_cap)?10:0)<<" pen_devices="<<((granted_caps&input::pen_cap)?1:0)<<" watchdog_ms=1500"<<std::endl;
     }
     const auto codec_name=codec==wire::Codec::h264 ? "H264" : "JPEG-test";
     stream.write(wire::encode_offer({frame.width, frame.height, fps, frames,codec,static_cast<std::uint8_t>(granted_caps),epoch}), deadline());
     std::array<std::uint8_t,wire::ready.size()> ready{};
     stream.read(ready,deadline());
     if(ready!=wire::ready) throw std::runtime_error("Receiver did not confirm decoder readiness");
-    std::cout << "VIDEO_STARTED " << frame.width << 'x' << frame.height << " codec=" << codec_name << " fps=" << fps << ' ' << stream.description() << std::endl;
+    std::osyncstream(std::cout) << "VIDEO_STARTED " << frame.width << 'x' << frame.height << " codec=" << codec_name << " fps=" << fps << ' ' << stream.description() << std::endl;
     const auto start = Clock::now();
     std::uint64_t total = 0;
     double capture_ms=0,encode_ms=0,send_ms=0;
@@ -113,7 +118,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         broker.reset(); // Release held contacts before the geometry can be reused.
         const auto micros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-start).count());
         stream.write(wire::encode_header({static_cast<std::uint32_t>(sequence),0,micros}),deadline());
-        std::cout<<"DISPLAY_RECONFIGURING"<<std::endl;
+        std::osyncstream(std::cout)<<"DISPLAY_RECONFIGURING"<<std::endl;
         encoder.reset();capture.reset();frame={};
         const auto until=Clock::now()+std::chrono::seconds(20);
         std::exception_ptr last;
@@ -145,7 +150,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         stream.read(ready,deadline());if(ready!=wire::ready)throw std::runtime_error("Receiver did not acknowledge changed geometry");
         if(keep_layout && extend)display::remember_mode(selected_source,profile_width,profile_height);
         last_input_time=0;next_frame=Clock::now();
-        std::cout<<"DISPLAY_RECONFIGURED "<<frame.width<<'x'<<frame.height<<" position="<<mode->x<<','<<mode->y<<" rotation="<<mode->rotation<<std::endl;
+        std::osyncstream(std::cout)<<"DISPLAY_RECONFIGURED "<<frame.width<<'x'<<frame.height<<" position="<<mode->x<<','<<mode->y<<" rotation="<<mode->rotation<<std::endl;
     };
     auto quality_start=Clock::now();double window_work=0,window_decode=0,window_render=0;unsigned window_frames=0,window_drops=0;
     bool quality_changed=false;
@@ -159,7 +164,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         stream.write(wire::encode_offer({frame.width,frame.height,fps,frames,codec,static_cast<std::uint8_t>(granted_caps),epoch}),deadline());
         stream.read(ready,deadline());if(ready!=wire::ready)throw std::runtime_error("Receiver did not acknowledge quality change");
         last_input_time=0;next_frame=Clock::now();quality_start=Clock::now();window_work=window_decode=window_render=0;window_frames=window_drops=0;
-        std::cout<<"QUALITY_CHANGED stream="<<frame.width<<'x'<<frame.height<<" bitrate="<<quality.bitrate(frame.width,frame.height,fps)<<" display_unchanged=1"<<std::endl;
+        std::osyncstream(std::cout)<<"QUALITY_CHANGED stream="<<frame.width<<'x'<<frame.height<<" bitrate="<<quality.bitrate(frame.width,frame.height,fps)<<" display_unchanged=1"<<std::endl;
     };
     if(keep_layout && extend)display::remember_mode(selected_source,profile_width,profile_height);
     for (std::uint64_t i = 0; !frames || i < frames; ++i) {
@@ -210,14 +215,14 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     }
     // Release input before waiting for the final acknowledgement or display removal.
     broker.reset();
-    std::cout<<"INPUT_SESSION events="<<input_events<<" granted="<<control<<std::endl;
+    std::osyncstream(std::cout)<<"INPUT_SESSION events="<<input_events<<" granted="<<control<<std::endl;
     // Receiver acknowledges every frame was decoded, not just received at TCP.
     std::array<std::uint8_t, 4> ack{};
     stream.read(ack, deadline());
     if (ack != std::array<std::uint8_t,4>{'D','O','N','E'}) throw std::runtime_error("Video receiver did not confirm completion");
     stream.close(deadline());
     const auto seconds = std::chrono::duration<double>(Clock::now() - start).count();
-    std::cout << "VIDEO_SENT frames=" << frames << " codec=" << codec_name << " encoded_bytes=" << total << " seconds=" << seconds << " achieved_fps=" << frames/seconds << " fresh_capture_frames=" << fresh_frames << " capture_ms_avg=" << capture_ms/frames << " encode_ms_avg=" << encode_ms/frames << " send_ms_avg=" << send_ms/frames << " raw_pixel_readbacks=" << (encoder ? 0 : frames) << " permissions=" << (control?"video+input":"video-only") << std::endl;
+    std::osyncstream(std::cout) << "VIDEO_SENT frames=" << frames << " codec=" << codec_name << " encoded_bytes=" << total << " seconds=" << seconds << " achieved_fps=" << frames/seconds << " fresh_capture_frames=" << fresh_frames << " capture_ms_avg=" << capture_ms/frames << " encode_ms_avg=" << encode_ms/frames << " send_ms_avg=" << send_ms/frames << " raw_pixel_readbacks=" << (encoder ? 0 : frames) << " permissions=" << (control?"video+input":"video-only") << std::endl;
 }
 void serve_video(const net::Options& requested,const std::string& pair,bool allow_input,unsigned frames) {
     // WinRT capture factories outlive an individual session. Keep their MTA alive
@@ -225,26 +230,35 @@ void serve_video(const net::Options& requested,const std::string& pair,bool allo
     const auto com_result=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
     if(FAILED(com_result))throw std::runtime_error("Cannot initialize driver service COM apartment");
     struct Apartment {~Apartment(){CoUninitialize();}} apartment;
-    auto key=security::load_pairing(pair);SecureZeroMemory(key.data(),key.size());
-    std::unique_ptr<display::VirtualMonitor> monitor;std::wstring source;
-    auto acquire=[&](bool& existing) {
-        existing=static_cast<bool>(monitor);
-        if(!monitor){
-            auto created=std::make_unique<display::VirtualMonitor>();
-            source=created->wait_for_source();monitor=std::move(created);
-            std::wcout<<L"DISPLAY_CREATED "<<source<<std::endl;
-        }
-        return source;
-    };
-    std::cout<<"DRIVER_STARTED waiting-for-client"<<std::endl;
+    if(!pair.empty()){auto key=security::load_pairing(pair);SecureZeroMemory(key.data(),key.size());}
     auto options=requested;options.timeout=std::chrono::milliseconds(0);
+    net::TcpListener listener(options);
+    std::osyncstream(std::cout)<<"DRIVER_STARTED waiting-for-clients capacity=4"<<std::endl;
+    std::osyncstream(std::cout)<<"LISTENING "<<listener.endpoints()<<std::endl;
+    struct Session {std::thread worker;std::atomic<bool> done{true};};
+    std::array<Session,4> sessions;
+    // The launcher owns process lifetime. Each worker owns its own monitor,
+    // capture, encoder, TLS stream and input watchdog; failure stays local.
     for(;;) {
-        bool listening=false;
-        try{host_video(options,pair,frames,60,wire::Codec::h264,L"",true,allow_input,1280,720,true,true,acquire,&listening);}
-        catch(const std::exception& error){if(!listening)throw;std::cout<<"CLIENT_DISCONNECTED "<<error.what()<<std::endl;}
-        // Keep the same software-device handle and layout until Stop Driver.
-        std::cout<<"DRIVER_WAITING"<<std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        auto socket=listener.accept();
+        auto free=std::find_if(sessions.begin(),sessions.end(),[](const auto& session){return session.done.load();});
+        if(free==sessions.end()){std::osyncstream(std::cout)<<"CLIENT_REJECTED all four display slots are in use"<<std::endl;continue;}
+        if(free->worker.joinable())free->worker.join();
+        auto* session=&*free;session->done.store(false);
+        const auto slot=static_cast<unsigned>(free-sessions.begin())+1;
+        session->worker=std::thread([session,slot,options,pair,allow_input,frames,socket=std::move(socket)]() mutable {
+            const auto com=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+            try {
+                if(FAILED(com))throw std::runtime_error("Cannot initialize client COM apartment");
+                const auto peer=socket.peer_endpoint();const auto ip=peer.substr(0,peer.find(':'));
+                display::select_layout_profile(std::wstring(ip.begin(),ip.end()));
+                std::osyncstream(std::cout)<<"CLIENT_CONNECTED slot="<<slot<<" peer="<<peer<<std::endl;
+                host_video(options,pair,frames,60,wire::Codec::h264,L"",true,allow_input,1280,720,true,true,{},nullptr,&socket,slot);
+            } catch(const std::exception& error){std::osyncstream(std::cout)<<"CLIENT_ERROR slot="<<slot<<" "<<error.what()<<std::endl;}
+            if(SUCCEEDED(com))CoUninitialize();
+            std::osyncstream(std::cout)<<"CLIENT_DISCONNECTED slot="<<slot<<std::endl;
+            session->done.store(true);
+        });
     }
 }
 void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display,const std::function<wire::Feedback()>& feedback,const std::function<void(StreamStats)>& statistics) {
@@ -263,10 +277,10 @@ void receive_video(const net::Options& options, const std::string& pair, const s
     std::unique_ptr<H264Decoder> decoder;
     if (offer.codec==wire::Codec::h264) {
         decoder=std::make_unique<H264Decoder>(offer.width,offer.height,offer.fps,decoder_adapter,true);
-        std::cout << "DECODER " << decoder->description() << std::endl;
+        std::osyncstream(std::cout) << "DECODER " << decoder->description() << std::endl;
     }
     const auto codec_name=decoder ? "H264" : "JPEG-test";
-    std::cout << "VIDEO_RECEIVING " << offer.width << 'x' << offer.height << " codec=" << codec_name << ' ' << stream.description() << std::endl;
+    std::osyncstream(std::cout) << "VIDEO_RECEIVING " << offer.width << 'x' << offer.height << " codec=" << codec_name << ' ' << stream.description() << std::endl;
     stream.write(wire::ready,deadline());
     std::uint64_t total = 0, previous_time = 0;
     const auto start = Clock::now();
@@ -297,7 +311,7 @@ void receive_video(const net::Options& options, const std::string& pair, const s
             if(input_source)(void)input_source();
             if(input_grant)input_grant(offer.input_caps);
             stream.write(wire::ready,deadline());
-            std::cout<<"DISPLAY_RECONFIGURED "<<offer.width<<'x'<<offer.height<<std::endl;
+            std::osyncstream(std::cout)<<"DISPLAY_RECONFIGURED "<<offer.width<<'x'<<offer.height<<std::endl;
             stream.read(header_bytes,deadline());header=wire::decode_header(header_bytes);
         }
         if (header.sequence != static_cast<std::uint32_t>(i) || header.micros < previous_time) throw std::runtime_error("Out-of-order video frame");
@@ -326,6 +340,6 @@ void receive_video(const net::Options& options, const std::string& pair, const s
     stream.write(std::array<std::uint8_t,4>{'D','O','N','E'}, deadline());
     stream.close(deadline());
     const auto seconds = std::chrono::duration<double>(Clock::now() - start).count();
-    std::cout << "VIDEO_RECEIVED decoded_frames=" << decoded_frames << " codec=" << codec_name << " encoded_bytes=" << total << " seconds=" << seconds << " decode_ms_avg=" << decode_ms/decoded_frames << " gpu_surface_frames=" << (decoder ? retired_gpu_frames+decoder->gpu_frames() : 0) << " raw_pixel_readbacks=0 permissions=" << (offer.input_caps?"video+input":"video-only") << std::endl;
+    std::osyncstream(std::cout) << "VIDEO_RECEIVED decoded_frames=" << decoded_frames << " codec=" << codec_name << " encoded_bytes=" << total << " seconds=" << seconds << " decode_ms_avg=" << decode_ms/decoded_frames << " gpu_surface_frames=" << (decoder ? retired_gpu_frames+decoder->gpu_frames() : 0) << " raw_pixel_readbacks=0 permissions=" << (offer.input_caps?"video+input":"video-only") << std::endl;
 }
 }

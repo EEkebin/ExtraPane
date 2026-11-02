@@ -98,3 +98,13 @@ User chose one app with Server and Client pages in a left sidebar and About at t
 Implement quality before additional Windows renderers. Quality controls and opt-in statistics belong in the receiving preview's Settings menu, not a permanent main-window panel. Adapt transmission dimensions/bitrate without modifying the extended monitor's Windows geometry. Protocol 8 carries explicit bounded feedback; never label local decode/render measurements as end-to-end latency.
 
 The user requested a manual verification stop after every feature. Finish and hand off connection quality first. Only after verification, implement D3D12, then Vulkan, then OpenGL as separate stages. Keep unavailable renderer choices visible but disabled with an explanatory yellow status based on actual runtime/device/interop checks. Linux and macOS work is deferred.
+
+## Automatic LAN connections and multiple monitors
+
+The user explicitly removed pairing and per-connection approval. Start Driver is the permission to accept reachable LAN clients; Stop Driver closes every session. Use ephemeral ECDSA certificates and TLS 1.3, without saved peer trust or a built-in shared secret. This encrypts traffic but does not authenticate the remote PC or prevent an active intermediary. Retain paired PSK mode only for diagnostic CLI compatibility.
+
+The persistent listener admits up to four simultaneous sessions. Each owns its own software-device adapter, capture/encoder, TLS context and input watchdog. Validate the display request before creating a monitor. A disconnect removes only that session's monitor and frees its slot. The listener and other sessions survive. Display creation/removal is serialized and identifies the newly created target rather than selecting the first virtual display. Layout profiles use client IPv4 address and native dimensions; a changed address starts a new profile, and overlapping saved virtual layouts fall back to placement beside existing screens.
+
+Windows still has one pointer and keyboard focus. A process-shared gesture lease prevents different remote clients from overlapping held input; other clients' input is ignored until that gesture is released. Video reception remains independent. This is one desktop with multiple interactive monitors, not separate Windows user sessions.
+
+Validation: four concurrent certificate TLS sessions with bounded fifth-client rejection, malformed-request isolation, and slot reuse; live 1280x720 and 1920x1080 extended streams with isolated disconnect/reconnect and physical-topology restoration. Surface hardware pen/touch validation remains a user test before proceeding to About/updater and then additional renderers.

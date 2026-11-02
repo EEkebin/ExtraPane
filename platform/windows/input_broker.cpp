@@ -19,6 +19,12 @@ struct Injector {
         HANDLE handle=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);
         ~Timer(){if(handle)CloseHandle(handle);}
     } pacing;
+    struct InputLease {
+        HANDLE handle=CreateMutexW(nullptr,FALSE,L"Local\\SideScreen.RemoteInput");bool held=false;
+        bool acquire(){if(held)return true;const auto result=WaitForSingleObject(handle,0);return held=(result==WAIT_OBJECT_0 || result==WAIT_ABANDONED);}
+        void release(){if(held){ReleaseMutex(handle);held=false;}}
+        ~InputLease(){release();if(handle)CloseHandle(handle);}
+    } lease;
     Clock::time_point last_pointer=Clock::now()-std::chrono::seconds(1);
     display::Monitor target;
     HSYNTHETICPOINTERDEVICE touch=CreateSyntheticPointerDevice(PT_TOUCH,10,POINTER_FEEDBACK_DEFAULT);
@@ -51,6 +57,7 @@ struct Injector {
         }return CallNextHookEx(nullptr,code,message,param);
     }
     explicit Injector(const std::wstring& source) {
+        need(lease.handle!=nullptr,"Cannot coordinate remote input");
         need(pacing.handle!=nullptr,"Cannot create pointer pacing timer");
         for(const auto& monitor:display::active_monitors()) if(monitor.source==source) target=monitor;
         need(!target.source.empty(),"Input target is not an active monitor");
@@ -176,9 +183,10 @@ struct Injector {
         while(!buttons.empty()) { auto e=buttons.begin()->second;e.action=Action::up;try { mouse_event(e,false); }catch(...) {buttons.erase(e.code);} }
         if(touch && !contacts.empty()) { std::vector<POINTER_TYPE_INFO> frame;for(const auto& [id,event]:contacts) { (void)id;auto e=event;e.action=Action::cancel;e.flags=0;frame.push_back(pointer(e)); }try{inject(touch,frame.data(),static_cast<UINT32>(frame.size()),"Touch reset failed");}catch(...){}contacts.clear(); }
         if(pen && pen_last) { auto e=*pen_last;e.action=(e.flags&2)?Action::cancel:Action::move;e.flags=0;auto info=pointer(e);try{inject(pen,&info,1,"Pen reset failed");}catch(...){}pen_last.reset(); }
+        lease.release();
     }
     ~Injector() { reset();if(keyboard_hook)UnhookWindowsHookEx(keyboard_hook);if(mouse_hook)UnhookWindowsHookEx(mouse_hook);active=nullptr;if(touch)DestroySyntheticPointerDevice(touch);if(pen)DestroySyntheticPointerDevice(pen); }
-    void apply(const Event& e) { validate(e);if(e.kind==Kind::reset)reset();else if(e.kind==Kind::mouse)mouse_event(e);else if(e.kind==Kind::key)key(e);else pointer_event(e); }
+    void apply(const Event& e) { validate(e);if(!lease.acquire())return;if(e.kind==Kind::reset)reset();else if(e.kind==Kind::mouse)mouse_event(e);else if(e.kind==Kind::key)key(e);else pointer_event(e);if(keys.empty()&&buttons.empty()&&contacts.empty()&&(!pen_last || !(pen_last->flags&2)))lease.release(); }
 };
 }
 struct Broker::State {

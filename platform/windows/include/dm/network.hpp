@@ -51,5 +51,15 @@ private:
     std::unique_ptr<State> state_;
 };
 TcpStream connect_stream(const Options& options);
+class TcpListener {
+public:
+    struct State;
+    explicit TcpListener(const Options& options);
+    ~TcpListener();
+    TcpStream accept();
+    std::string endpoints() const;
+private:
+    std::unique_ptr<State> state_;
+};
 TcpStream accept_stream(const Options& options, const std::function<void(const std::string&)>& ready);
 }
