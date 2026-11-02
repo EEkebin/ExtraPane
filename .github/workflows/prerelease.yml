@@ -43,6 +43,20 @@ jobs:
             $publish=@($prs | Where-Object {$_.merged_at -and $_.base.ref -eq 'main' -and $_.merge_commit_sha -eq $env:GITHUB_SHA}).Count -gt 0
           }
           "publish=$($publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Check installer behavior before building apps
+        shell: pwsh
+        run: |
+          $stage=Join-Path $env:RUNNER_TEMP 'SideScreen-installer-check'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          'Installer test payload' | Set-Content (Join-Path $stage 'README.txt')
+          Copy-Item "$env:WINDIR\System32\where.exe" (Join-Path $stage 'SideScreen.exe')
+          $env:SIDESCREEN_ROLE='SideScreen'
+          $env:SIDESCREEN_STAGE=$stage
+          $env:SIDESCREEN_DIST=Join-Path $stage 'output'
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging/SideScreen.iss
+          if($LASTEXITCODE -ne 0){throw 'Installer preflight compilation failed'}
+          python -c "import sys,os; from pathlib import Path; sys.path.insert(0,'scripts'); from test_uninstall_data import verify; verify(next(Path(os.environ['SIDESCREEN_DIST']).glob('*.exe')))"
+          if($LASTEXITCODE -ne 0){throw 'Installer preflight behavior failed'}
       - name: Build apps and run engine tests
         shell: pwsh
         run: ./scripts/build-apps.ps1

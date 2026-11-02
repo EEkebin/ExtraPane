@@ -55,11 +55,15 @@ begin
   RemoveUserData := ExpandConstant('{param:REMOVEUSERDATA|0}') = '1';
   Result := True;
   if UninstallSilent then Exit;
+#if Ver < EncodeVer(6, 6, 0)
   Dialog := CreateCustomForm;
+  Dialog.ClientWidth := ScaleX(460);
+  Dialog.ClientHeight := ScaleY(180);
+#else
+  Dialog := CreateCustomForm(460, 180, True, True);
+#endif
   try
     Dialog.Caption := 'Uninstall SideScreen';
-    Dialog.ClientWidth := ScaleX(460);
-    Dialog.ClientHeight := ScaleY(180);
     Description := TNewStaticText.Create(Dialog);
     Description.Parent := Dialog;
     Description.SetBounds(ScaleX(20), ScaleY(20), ScaleX(420), ScaleY(55));
