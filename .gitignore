@@ -1,0 +1,15 @@
+/out/
+/.vs/
+/CMakeUserPresets.json
+__pycache__/
+*.user
+
+# Credentials, crash dumps and local settings
+.env
+.env.*
+*.pfx
+*.p12
+*.key
+*.pem
+*.dmp
+*.log

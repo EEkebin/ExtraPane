@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup><DMDriverTools>$(MSBuildThisFileDirectory)..\..\out\driver-tools\</DMDriverTools></PropertyGroup>
+  <Import Project="$(DMDriverTools)microsoft.windows.wdk.x64.10.0.28000.2526\build\native\Microsoft.Windows.WDK.x64.props" />
+  <Import Project="$(DMDriverTools)microsoft.windows.sdk.cpp.x64.10.0.28000.2526\build\native\Microsoft.Windows.SDK.cpp.x64.props" />
+  <Import Project="$(DMDriverTools)microsoft.windows.sdk.cpp.10.0.28000.2526\build\native\Microsoft.Windows.SDK.cpp.props" />
+</Project>

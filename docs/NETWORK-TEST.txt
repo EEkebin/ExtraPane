@@ -1,0 +1,36 @@
+DM NETWORK DIAGNOSTIC - FIRST TWO-COMPUTER TEST
+
+Windows x64. No build tools or separate VC runtime installation needed.
+This checks connectivity only. It does not stream a screen, record audio,
+authenticate a peer, or control either computer.
+
+1. Copy dm-net.exe to a folder on each computer.
+2. Open PowerShell in that folder and run:
+
+   .\dm-net.exe interfaces
+
+3. Pick an up IPv4 address on the intended Ethernet or Wi-Fi adapter.
+   Do not pick loopback (127.0.0.1), VPN, or a virtual-machine adapter.
+4. On the desktop, replacing DESKTOP_IP with its actual address:
+
+   .\dm-net.exe listen --bind DESKTOP_IP --timeout-ms 60000
+
+5. Within 60 seconds, on the laptop, replace BOTH IP placeholders:
+
+   .\dm-net.exe probe --bind LAPTOP_IP --peer DESKTOP_IP --timeout-ms 5000
+
+6. Expect PROBE_OK on both. Save both outputs, including any error message.
+7. Swap roles and repeat to test the other direction.
+
+The listener serves ONE probe, then exits. Start a new listener for every test.
+Default TCP port: 43821. Use --port NUMBER at both ends to override.
+If Windows prompts for network access, allow only the intended trusted network.
+The tool never modifies your firewall or adapter addresses.
+
+Both machines need a reachable IP path. Same-subnet LAN addresses work.
+DHCP, DNS, automatic discovery, and internet access are not required.
+For a direct cable, compatible static addresses on an unused subnet work too.
+Do not change addresses for this first test if the existing LAN already works.
+
+PROBE_OK means a diagnostic TCP exchange succeeded. It does NOT prove pairing,
+video performance, pen delivery, or Windows+K support.

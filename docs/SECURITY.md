@@ -1,0 +1,55 @@
+# Current paired TLS prototype
+
+`dm-session` implements a one-shot authenticated diagnostic over interface-bound TCP. `dm-view` uses the same TLS wrapper for bounded video with separately granted native input. Microphone functionality is absent. See INPUT.md for the current input permission and watchdog boundaries.
+
+## Trust model
+
+Each pair has a name and a cryptographically random 32-byte shared key. Provision the same name/key at both endpoints through an already authenticated channel; laptop automation currently uses the accepted SSH host key and the user's supplied SSH login. This is developer provisioning, not the final user-facing pairing flow. Human passwords or short numeric codes are not suitable replacements for the random key.
+
+Pairing keys are stored under the current Windows user's `DM/peers/<name>` generic credential in Credential Manager. They never appear in process arguments or saved test reports. Existing entries cannot be silently overwritten; explicitly revoke before replacing. `peers` lists names only.
+
+TLS uses the hash-pinned official Mbed TLS 4.1.1 release, including TF-PSA-Crypto 1.1.1. Configuration requires TLS 1.3 and PSK with ephemeral key exchange. It does not permit a certificate fallback or TLS 1.2. Session tickets are disabled and early data is not enabled. Windows supplies platform entropy through the dependency's supported platform backend. All socket callbacks catch exceptions at the C boundary.
+
+Pairing trust is distinct from permissions: `dm-session` grants none. `dm-view host` requires explicit `--allow-screen`. Input additionally requires host `--allow-input`, a selected target monitor, and receiver `--control`; the host grants only intersecting input families and a fresh session epoch. Receiver input requests without the host grant are rejected. Audio/mic grants are not implemented. No plaintext media mode is implemented.
+
+## Commands
+
+```powershell
+.\out\build\windows-release\dm-session.exe peers
+.\out\build\windows-release\dm-session.exe pair --name PAIR_NAME --secret-stdin
+.\out\build\windows-release\dm-session.exe revoke --name PAIR_NAME
+```
+
+The pair command reads one bounded line of exactly 64 hexadecimal characters from stdin. Generate keys with an OS cryptographic RNG and deliver them over a trusted channel; do not put keys in shell arguments/history. The automated test runners handle provisioning without printing the key.
+
+With an existing pairing, on one computer:
+
+```powershell
+.\dm-session.exe listen --name PAIR_NAME --bind LOCAL_IP --timeout-ms 60000
+```
+
+On the other:
+
+```powershell
+.\dm-session.exe connect --name PAIR_NAME --bind LOCAL_IP --peer LISTENER_IP
+```
+
+Default secure diagnostic port is TCP 43823. Expect `SESSION_OK TLSv1.3 ... permissions=none`. It is an authenticated diagnostic, not a persistent control session.
+
+## Evidence from 2026-11-01
+
+- Debug/Release integration tests pass for successful TLS, invalid/duplicate key provisioning, plaintext rejection, stalled peers, revocation, and bounds. Python 3.14/OpenSSL additionally verified same-identity/wrong-key rejection, wrong-identity rejection, TLS 1.2 rejection, and malformed application payload rejection inside a valid TLS session.
+- On the laptop, TLS sessions pass in both directions. Same identity with different keys fails at handshake; revoked pairing fails before a listener opens.
+- Temporary test credentials are revoked at both ends after checks. Temporary program/address/peer/port-scoped firewall rules are removed. Development SSH access is separate.
+
+The test harness found Windows error 1312 when Credential Manager was accessed from the SSH logon context. Secure test processes now run as temporary tasks in the already signed-in user's desktop session. Pairing data travels in memory through an owner-only local named pipe. Uploaded helper scripts contain no keys and are removed after the task; the scheduled task is also removed. This requires a signed-in laptop user and administrative setup rights in the SSH test runner; the app itself runs with the interactive user's normal rights.
+
+## Remaining lifecycle work
+
+Current processes are bounded and single-session. Revocation prevents new sessions; live-session revocation/permission withdrawal, explicit device identity management, friendly verified pairing UX, reconnect epochs, rate limiting, and product privilege separation still need implementation. The current input prototype has explicit grants, bounded/epoch-checked reverse batches, and a separate watchdog child for crash cleanup; see INPUT.md. The current prototype must not be described as a complete remote-control authentication system.
+
+Dependency review and update cadence remain release responsibilities. The chosen 4.1 branch is maintained according to [upstream branch policy](https://github.com/Mbed-TLS/mbedtls/blob/development/BRANCHES.md). The source archive URL and SHA256 are recorded in `cmake/Dependencies.cmake`; dependency license material is documented in `third_party/README.md`.
+
+## Desktop app lifecycle
+
+The 0.8 launchers use a persistent `dm-lan` pairing in Windows Credential Manager. LAN addresses and display settings are stored separately under HKCU Software/DM; pairing keys are never settings values. Host Start grants a firewall rule only for the selected local IPv4, peer IPv4, engine path and TCP 43824. Normal stop removes it. A crashed launcher stops its child engine via a parent-process handle; the input watchdog remains separate to release owned contacts. A stale firewall rule after a crash is still narrowly scoped and is replaced on the next Start. Continuous streaming removes only the session frame budget, not authentication, message bounds, failure deadlines or the input watchdog.

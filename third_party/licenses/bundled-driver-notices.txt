@@ -1,0 +1,2912 @@
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/Hacl_Curve25519.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlib/FStar_UInt128.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlib/FStar_UInt64_FStar_UInt32_FStar_UInt16_FStar_UInt8.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlib.h
+/*
+ *  Copyright 2016-2018 INRIA and Microsoft Corporation
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *  This file is part of Mbed TLS (https://tls.mbed.org) and
+ *  originated from Project Everest (https://project-everest.github.io/)
+ */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlin/c_endianness.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlin/internal/builtin.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlin/internal/callconv.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlin/internal/compat.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlin/internal/debug.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlin/internal/target.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlin/internal/types.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/kremlin/internal/wasmsupport.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/vs2013/Hacl_Curve25519.h
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/include/tf-psa-crypto/private/everest/x25519.h
+/*
+ *  ECDH with curve-optimized implementation multiplexing
+ *
+ *  Copyright 2016-2018 INRIA and Microsoft Corporation
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *  This file is part of Mbed TLS (https://tls.mbed.org)
+ */
+
+tf-psa-crypto/drivers/everest/library/Hacl_Curve25519.c
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/library/Hacl_Curve25519_joined.c
+/*
+ *  Interface to code from Project Everest
+ *
+ *  Copyright 2016-2018 INRIA and Microsoft Corporation
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *  This file is part of Mbed TLS (https://tls.mbed.org)
+ */
+
+tf-psa-crypto/drivers/everest/library/kremlib/FStar_UInt128_extracted.c
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/library/kremlib/FStar_UInt64_FStar_UInt32_FStar_UInt16_FStar_UInt8.c
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/library/legacy/Hacl_Curve25519.c
+/* Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+   Licensed under the Apache 2.0 License. */
+
+tf-psa-crypto/drivers/everest/library/x25519.c
+/*
+ *  ECDH with curve-optimized implementation multiplexing
+ *
+ *  Copyright 2016-2018 INRIA and Microsoft Corporation
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *  This file is part of Mbed TLS (https://tls.mbed.org)
+ */
+
+tf-psa-crypto/drivers/p256-m/p256-m/p256-m.c
+/*
+ * Implementation of curve P-256 (ECDH and ECDSA)
+ *
+ * Copyright The Mbed TLS Contributors
+ * Author: Manuel Pégourié-Gonnard.
+ * SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/p256-m/p256-m/p256-m.h
+/*
+ * Interface of curve P-256 (ECDH and ECDSA)
+ *
+ * Copyright The Mbed TLS Contributors
+ * Author: Manuel Pégourié-Gonnard.
+ * SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/aes.c
+/*
+ *  FIPS-197 compliant AES implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/aesce.c
+/*
+ *  Armv8-A Cryptographic Extension support functions for Aarch64
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/aesni.c
+/*
+ *  AES-NI support functions
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/aria.c
+/*
+ *  ARIA implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/bignum.c
+/*
+ *  Multi-precision integer library
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/bignum_core.c
+/*
+ *  Core bignum functions
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/bignum_mod.c
+/**
+ *  Modular bignum functions
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/bignum_mod_raw.c
+/*
+ *  Low-level modular bignum functions
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/camellia.c
+/*
+ *  Camellia implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ccm.c
+/*
+ *  NIST SP800-38C compliant CCM implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/chacha20.c
+/**
+ * \file chacha20.c
+ *
+ * \brief ChaCha20 cipher.
+ *
+ * \author Daniel King <damaki.gh@gmail.com>
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/chacha20_neon.c
+/**
+ * \file chacha20_neon.c
+ *
+ * \brief Neon implementation of ChaCha20
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/chacha20_neon.h
+/**
+ * \file chacha20_neon.h
+ *
+ * \brief Neon implementation of ChaCha20
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/chachapoly.c
+/**
+ * \file chachapoly.c
+ *
+ * \brief ChaCha20-Poly1305 AEAD construction based on RFC 7539.
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/cipher.c
+/**
+ * \file cipher.c
+ *
+ * \brief Generic cipher wrapper for Mbed TLS
+ *
+ * \author Adriaan de Jong <dejong@fox-it.com>
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/cipher_wrap.c
+/**
+ * \file cipher_wrap.c
+ *
+ * \brief Generic cipher wrapper for Mbed TLS
+ *
+ * \author Adriaan de Jong <dejong@fox-it.com>
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/cmac.c
+/**
+ * \file cmac.c
+ *
+ * \brief NIST SP800-38B compliant CMAC implementation for AES and 3DES
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ctr.h
+/**
+ * \file ctr.h
+ *
+ * \brief    This file contains common functionality for counter algorithms.
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ctr_drbg.c
+/*
+ *  CTR_DRBG implementation based on AES-256 (NIST SP 800-90)
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ecdsa.c
+/*
+ *  Elliptic curve DSA
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ecjpake.c
+/*
+ *  Elliptic curve J-PAKE
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ecp.c
+/*
+ *  Elliptic curves over GF(p): generic functions
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ecp_curves.c
+/*
+ *  Elliptic curves over GF(p): curve-specific data and functions
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ecp_curves_new.c
+/*
+ *  This file used to be non-empty. It's kept only for compatibility
+ *  with custom build systems in LTS branches.
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/entropy.c
+/*
+ *  Entropy accumulator implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/entropy_poll.c
+/*
+ *  Platform-specific and custom entropy polling functions
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/gcm.c
+/*
+ *  NIST SP800-38D compliant GCM implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/hmac_drbg.c
+/*
+ *  HMAC_DRBG implementation (NIST SP 800-90)
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/md5.c
+/*
+ *  RFC 1321 compliant MD5 implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/md_psa.h
+/**
+ * Translation between MD and PSA identifiers (algorithms, errors).
+ *
+ *  Note: this internal module will go away when everything becomes based on
+ *  PSA Crypto; it is a helper for the transition period.
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/poly1305.c
+/**
+ * \file poly1305.c
+ *
+ * \brief Poly1305 authentication algorithm.
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/psa_util_internal.c
+/*
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/ripemd160.c
+/*
+ *  RIPE MD-160 implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/rsa.c
+/*
+ *  The RSA public-key cryptosystem
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/rsa_alt_helpers.c
+/*
+ *  Helper functions for the RSA module
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ *
+ */
+
+tf-psa-crypto/drivers/builtin/src/sha1.c
+/*
+ *  FIPS-180-1 compliant SHA-1 implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/sha256.c
+/*
+ *  FIPS-180-2 compliant SHA-256 implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/sha3.c
+/*
+ *  FIPS-202 compliant SHA3 implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/builtin/src/sha512.c
+/*
+ *  FIPS-180-2 compliant SHA-384/512 implementation
+ *
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/meta.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/aarch64_zetas.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/arith_native_aarch64.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/intt.S
+/* Copyright (c) 2022 Arm Limited
+ * Copyright (c) 2022 Hanno Becker
+ * Copyright (c) 2023 Amin Abdulrahman, Matthias Kannwischer
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/mld_polyvecl_pointwise_acc_montgomery_l4.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/mld_polyvecl_pointwise_acc_montgomery_l5.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/mld_polyvecl_pointwise_acc_montgomery_l7.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/ntt.S
+/* Copyright (c) 2022 Arm Limited
+ * Copyright (c) 2022 Hanno Becker
+ * Copyright (c) 2023 Amin Abdulrahman, Matthias Kannwischer
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/pointwise_montgomery.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/poly_caddq_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/poly_chknorm_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/poly_decompose_32_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/poly_decompose_88_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/poly_use_hint_32_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/poly_use_hint_88_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/polyz_unpack_17_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/polyz_unpack_19_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/polyz_unpack_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/rej_uniform_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/rej_uniform_eta2_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/rej_uniform_eta4_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/rej_uniform_eta_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_clean/src/rej_uniform_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/meta.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/aarch64_zetas.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/arith_native_aarch64.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/intt.S
+/* Copyright (c) 2022 Arm Limited
+ * Copyright (c) 2022 Hanno Becker
+ * Copyright (c) 2023 Amin Abdulrahman, Matthias Kannwischer
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/mld_polyvecl_pointwise_acc_montgomery_l4.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/mld_polyvecl_pointwise_acc_montgomery_l5.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/mld_polyvecl_pointwise_acc_montgomery_l7.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/ntt.S
+/* Copyright (c) 2022 Arm Limited
+ * Copyright (c) 2022 Hanno Becker
+ * Copyright (c) 2023 Amin Abdulrahman, Matthias Kannwischer
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/pointwise_montgomery.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/poly_caddq_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/poly_chknorm_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/poly_decompose_32_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/poly_decompose_88_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/poly_use_hint_32_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/poly_use_hint_88_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/polyz_unpack_17_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/polyz_unpack_19_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/polyz_unpack_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/rej_uniform_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/rej_uniform_eta2_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/rej_uniform_eta4_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/rej_uniform_eta_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/aarch64_opt/src/rej_uniform_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/auto.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/src/fips202_native_aarch64.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/src/keccak_f1600_x1_scalar_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/src/keccak_f1600_x1_v84a_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/src/keccak_f1600_x2_v84a_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/src/keccak_f1600_x4_v8a_scalar_hybrid_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/src/keccak_f1600_x4_v8a_v84a_scalar_hybrid_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/src/keccakf1600_round_constants.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/x1_scalar.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/x1_v84a.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/x2_v84a.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/x4_v8a_scalar.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/fips202/aarch64/x4_v8a_v84a_scalar.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/meta.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/arith_native_x86_64.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/consts.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/consts.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/intt.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/ntt.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/nttunpack.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/pointwise.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/pointwise_acc_l4.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/pointwise_acc_l5.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/pointwise_acc_l7.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/poly_caddq_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/poly_chknorm_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/poly_decompose_32_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/poly_decompose_88_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/poly_use_hint_32_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/poly_use_hint_88_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/polyz_unpack_17_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/polyz_unpack_19_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/rej_uniform_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/rej_uniform_eta2_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/rej_uniform_eta4_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/dev/x86_64/src/rej_uniform_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic/main.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic/test_only_rng/notrandombytes.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic/test_only_rng/notrandombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic_deterministic/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic_deterministic/main.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic_deterministic/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic_deterministic/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic_lowram/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic_lowram/main.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic_lowram/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/basic_lowram/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/custom_fips202/fips202.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/custom_fips202/fips202x4.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/custom_fips202/tiny_sha3/sha3.c
+/* SPDX-License-Identifier: MIT
+ *
+ * sha3.c
+ * 19-Nov-11  Markku-Juhani O. Saarinen <mjos@iki.fi> */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/custom_fips202/tiny_sha3/sha3.h
+/* SPDX-License-Identifier: MIT
+ *
+ * sha3.h
+ * 19-Nov-11  Markku-Juhani O. Saarinen <mjos@iki.fi> */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/main.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/cbmc.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/common.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/ct.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/ct.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/debug.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/debug.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/packing.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/packing.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/params.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/poly.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/poly.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/poly_kl.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/poly_kl.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/polyvec.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/polyvec.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/randombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/reduce.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/rounding.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/sign.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/sign.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/symmetric.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/mldsa_native/src/sys.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/test_only_rng/notrandombytes.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202/test_only_rng/notrandombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/custom_fips202/fips202.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/main.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/cbmc.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/common.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/ct.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/ct.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/debug.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/debug.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/packing.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/packing.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/params.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/poly.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/poly.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/poly_kl.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/poly_kl.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/polyvec.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/polyvec.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/randombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/reduce.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/rounding.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/sign.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/sign.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/symmetric.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/mldsa_native/src/sys.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/test_only_rng/notrandombytes.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/bring_your_own_fips202_static/test_only_rng/notrandombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/main.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/cbmc.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/common.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/ct.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/ct.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/debug.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/debug.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/fips202.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/fips202.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/fips202x4.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/fips202x4.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/keccakf1600.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/keccakf1600.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/native/api.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/native/custom/custom.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/native/custom/src/sha3.c
+/* SPDX-License-Identifier: MIT
+ *
+ * sha3.c
+ * 19-Nov-11  Markku-Juhani O. Saarinen <mjos@iki.fi> */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/fips202/native/custom/src/sha3.h
+/* SPDX-License-Identifier: MIT
+ *
+ * sha3.h
+ * 19-Nov-11  Markku-Juhani O. Saarinen <mjos@iki.fi> */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/packing.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/packing.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/params.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/poly.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/poly.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/poly_kl.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/poly_kl.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/polyvec.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/polyvec.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/randombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/reduce.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/rounding.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/sign.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/sign.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/symmetric.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/mldsa_native/src/sys.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/test_only_rng/notrandombytes.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/custom_backend/test_only_rng/notrandombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build/main.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build/mldsa_native/mldsa_native.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel/main.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel/mldsa_native/mldsa_native.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel/mldsa_native/mldsa_native.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel/mldsa_native_all.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel/mldsa_native_all.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel_native/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel_native/main.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel_native/mldsa_native/mldsa_native.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel_native/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel_native/mldsa_native/mldsa_native.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel_native/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_multilevel_native/mldsa_native_all.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_native/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_native/main.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_native/mldsa_native/mldsa_native.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_native/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_native/mldsa_native/mldsa_native.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/monolithic_build_native/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build/main.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build/mldsa_native_all.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build/test_only_rng/notrandombytes.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build/test_only_rng/notrandombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build_native/expected_signatures.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build_native/main.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build_native/mldsa_native/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build_native/mldsa_native/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build_native/mldsa_native_all.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build_native/test_only_rng/notrandombytes.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/examples/multilevel_build_native/test_only_rng/notrandombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/integration/liboqs/config_aarch64.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/integration/liboqs/config_c.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/integration/liboqs/config_x86_64.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/integration/liboqs/fips202_glue.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/integration/liboqs/fips202x4_glue.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/mldsa_native.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/mldsa_native.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/mldsa_native.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/mldsa_native_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/cbmc.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/common.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/ct.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/ct.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/debug.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/debug.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/fips202.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/fips202.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/fips202x4.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/fips202x4.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/keccakf1600.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/keccakf1600.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/auto.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/src/fips202_native_aarch64.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/src/keccak_f1600_x1_scalar_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/src/keccak_f1600_x1_v84a_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/src/keccak_f1600_x2_v84a_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/src/keccak_f1600_x4_v8a_scalar_hybrid_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/src/keccak_f1600_x4_v8a_v84a_scalar_hybrid_asm.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) 2021-2022 Arm Limited
+ * Copyright (c) 2022 Matthias Kannwischer
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/src/keccakf1600_round_constants.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/x1_scalar.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/x1_v84a.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/x2_v84a.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/x4_v8a_scalar.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/aarch64/x4_v8a_v84a_scalar.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/api.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/auto.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/x86_64/src/KeccakP_1600_times4_SIMD256.c
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/x86_64/src/KeccakP_1600_times4_SIMD256.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/fips202/native/x86_64/xkcp.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/meta.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/aarch64_zetas.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/arith_native_aarch64.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/intt.S
+/* Copyright (c) 2022 Arm Limited
+ * Copyright (c) 2022 Hanno Becker
+ * Copyright (c) 2023 Amin Abdulrahman, Matthias Kannwischer
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/mld_polyvecl_pointwise_acc_montgomery_l4.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/mld_polyvecl_pointwise_acc_montgomery_l5.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/mld_polyvecl_pointwise_acc_montgomery_l7.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/ntt.S
+/* Copyright (c) 2022 Arm Limited
+ * Copyright (c) 2022 Hanno Becker
+ * Copyright (c) 2023 Amin Abdulrahman, Matthias Kannwischer
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/pointwise_montgomery.S
+/* Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/poly_caddq_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/poly_chknorm_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/poly_decompose_32_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/poly_decompose_88_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/poly_use_hint_32_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/poly_use_hint_88_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/polyz_unpack_17_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/polyz_unpack_19_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/polyz_unpack_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/rej_uniform_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/rej_uniform_eta2_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/rej_uniform_eta4_asm.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/rej_uniform_eta_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/aarch64/src/rej_uniform_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/api.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/meta.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/meta.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/arith_native_x86_64.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/consts.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/consts.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/intt.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/ntt.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/nttunpack.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/pointwise.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/pointwise_acc_l4.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/pointwise_acc_l5.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/pointwise_acc_l7.S
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/poly_caddq_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/poly_chknorm_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/poly_decompose_32_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/poly_decompose_88_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/poly_use_hint_32_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/poly_use_hint_88_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/polyz_unpack_17_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/polyz_unpack_19_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/rej_uniform_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/rej_uniform_eta2_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/rej_uniform_eta4_avx2.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/native/x86_64/src/rej_uniform_table.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/packing.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/packing.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/params.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/poly.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/poly.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/poly_kl.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/poly_kl.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/polyvec.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/polyvec.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/randombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/reduce.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/rounding.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/sign.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/sign.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/symmetric.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/mldsa/src/sys.h
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/proofs/cbmc/dummy_backend.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/proofs/cbmc/dummy_backend_fips202_x1.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/proofs/cbmc/dummy_backend_fips202_x4.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/proofs/hol_light/x86_64/mldsa/mldsa_ntt.S
+/*
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/acvp/acvp_mldsa.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/bench/bench_components_mldsa.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/bench/bench_mldsa.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/break_pct_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_heap_alloc_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_memcpy_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_memset_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_native_capability_config_0.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_native_capability_config_1.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_native_capability_config_CPUID_AVX2.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_native_capability_config_ID_AA64PFR1_EL1.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_randombytes_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_stdlib_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/custom_zeroize_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/no_asm_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/serial_fips202_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/configs/test_alloc_config.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/hal/hal.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) 2022 Arm Limited
+ * Copyright (c) 2020 Dougall Johnson
+ * SPDX-License-Identifier: MIT
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/hal/hal.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * Copyright (c) The mlkem-native project authors
+ * Copyright (c) 2022 Arm Limited
+ * SPDX-License-Identifier: MIT
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/notrandombytes/notrandombytes.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/notrandombytes/notrandombytes.h
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/src/gen_KAT.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/src/test_alloc.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/src/test_mldsa.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/src/test_rng_fail.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/src/test_stack.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */
+
+tf-psa-crypto/drivers/pqcp/mldsa-native/test/src/test_unit.c
+/*
+ * Copyright (c) The mldsa-native project authors
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT
+ */

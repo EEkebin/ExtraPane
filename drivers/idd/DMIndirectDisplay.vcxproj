@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{93CDF812-4C0A-4742-8BDB-82A90D31EC17}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0.28000.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>WindowsUserModeDriver10.0</PlatformToolset>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+    <TargetVersion>Windows10</TargetVersion>
+    <UMDF_VERSION_MAJOR>2</UMDF_VERSION_MAJOR><UMDF_VERSION_MINOR>25</UMDF_VERSION_MINOR>
+    <IndirectDisplayDriver>true</IndirectDisplayDriver>
+    <IDDCX_VERSION_MAJOR>1</IDDCX_VERSION_MAJOR><IDDCX_VERSION_MINOR>4</IDDCX_VERSION_MINOR>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <Driver_SpectreMitigation>false</Driver_SpectreMitigation>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(MSBuildThisFileDirectory)..\..\out\driver\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)..\..\out\driver-obj\</IntDir>
+    <TargetName>DMIndirectDisplay</TargetName>
+    <SignMode>Off</SignMode>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <Inf><SpecifyDriverVerDirectiveVersion>true</SpecifyDriverVerDirectiveVersion><TimeStamp>0.7.0.0</TimeStamp></Inf>
+    <ClCompile>
+      <WppEnabled>true</WppEnabled><WppRecorderEnabled>true</WppRecorderEnabled>
+      <WppScanConfigurationData>Trace.h</WppScanConfigurationData>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;UMDF_DRIVER;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/DIDDCX_VERSION_MAJOR=1 /DIDDCX_VERSION_MINOR=6 /DIDDCX_MINIMUM_VERSION_REQUIRED=4 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link><AdditionalDependencies>OneCoreUAP.lib;avrt.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup><ClCompile Include="Driver.cpp" /><ClInclude Include="Driver.h" /><ClInclude Include="Trace.h" /><Inf Include="DMIndirectDisplay.inf" /></ItemGroup>
+  <ItemGroup><FilesToPackage Include="$(TargetPath)" /></ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

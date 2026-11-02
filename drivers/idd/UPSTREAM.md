@@ -1,0 +1,2 @@
+Driver.cpp, Driver.h, and Trace.h derive from Microsoft Windows-driver-samples, commit f4c1ff842b6a0001152f44cb61788b216a1c7627, video/IndirectDisplay/IddSampleDriver. Licensed under the accompanying Microsoft Public License. Changes: one monitor, DM identity and synthetic EDID, stable container identity, separate project/INF. The swap-chain consumer still drains frames; capture/transport integration is separate.
+Additional adaptations: matching monitor/target modes, bounded default/target mode buffers, unique DM trace GUID.
