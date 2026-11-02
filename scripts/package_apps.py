@@ -41,17 +41,19 @@ and About pages. Switching pages does not interrupt either role.
 
 On the desktop PC, open Server and choose Start Driver. Administrator approval
 is requested only for the separate driver helper. On the second PC, open Client,
-enter the server IPv4 address and Connect. Pair the PCs once using the same code.
-Pairings stay in Windows Credential Manager. The app normally runs unelevated.
+enter the server IPv4 address and Connect. No pairing or approval is needed.
+The app normally runs unelevated. Use automatic connections on a trusted LAN: TLS
+encrypts traffic but does not verify the identity of the other computer.
 
 The Server requires the separately installed DM virtual-display driver. This
 installer/ZIP does not install a driver or change signing/security settings.
 The current driver is a development test-signed component. Receiving needs no driver.
 
-Start Driver waits for a paired client before creating its display. The client
+Start Driver waits for a valid client before creating its display. Each client
 supplies resolution/refresh preferences (currently capped at 60 fps). Windows
-layout changes are retained. Disconnecting the client leaves the server listening
-with its monitor intact. Stop Driver or tray Exit removes it.
+layout changes are retained. Up to four clients can connect at once. Disconnecting
+a client removes only its monitor; other clients and the server keep running.
+Stop Driver or tray Exit removes all session monitors.
 
 Close the setup window to hide it to the tray. The tray has Server and Client
 controls and Exit. Ctrl+Shift+Q disconnects reception; F11 toggles fullscreen,

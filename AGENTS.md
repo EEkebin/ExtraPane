@@ -17,7 +17,7 @@ Read README.md and docs/DECISIONS.md first, then the documents relevant to the t
 - System audio playback and reverse microphone forwarding have independent controls and permissions. A mic stream is not a system recording device without an endpoint integration.
 - Distinguish existing-display capture from a true extended desktop requiring a virtual display integration.
 - Use native media/input paths. Do not move per-frame pixels or high-frequency pen traffic through UI JSON IPC.
-- Pair and authenticate before sending media or accepting input. Scope listeners and firewall rules to intended interfaces; discovery is untrusted.
+- Product LAN mode explicitly accepts clients without pairing or approval, as requested by the user. Keep TLS encryption and scope listeners/firewall rules to intended interfaces. Do not claim peer identity verification in automatic LAN mode. Paired diagnostic CLI mode remains separate.
 - On disconnect, focus loss, permission withdrawal, or timeout, stop injection and release session-owned keys, buttons, and contacts. Do not release unrelated local input.
 - Do not promise arbitrary vendor pen features, legacy WinTab support, elevated-window control, secure-desktop control, or Windows+K compatibility without specific evidence.
 

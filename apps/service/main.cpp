@@ -18,7 +18,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
         ULONG server=0;if(!GetNamedPipeServerProcessId(pipe,&server)||server!=pid)throw std::runtime_error("Launcher channel identity mismatch");
         instance=CreateMutexW(nullptr,FALSE,L"Local\\SideScreen.DriverRuntime");if(!instance||GetLastError()==ERROR_ALREADY_EXISTS)throw std::runtime_error("SideScreen driver is already running");
         firewall(true);rule=true;
-        std::vector<std::wstring> args{L"host",L"--name",L"dm-lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--allow-screen",L"--extend",L"--serve",L"--keep-layout",L"--client-mode",L"--frames",debug?L"3600":L"0",L"--timeout-ms",L"0"};if(input)args.push_back(L"--allow-input");
+        std::vector<std::wstring> args{L"host",L"--lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--allow-screen",L"--extend",L"--serve",L"--keep-layout",L"--client-mode",L"--frames",debug?L"3600":L"0",L"--timeout-ms",L"0"};if(input)args.push_back(L"--allow-input");
         engine.start((directory()/L"dm-view.exe").wstring(),args);
         while(WaitForSingleObject(parent,25)==WAIT_TIMEOUT){
             DWORD available=0;if(!PeekNamedPipe(pipe,nullptr,0,nullptr,&available,nullptr)||available)break;

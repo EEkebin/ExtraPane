@@ -74,7 +74,7 @@ begin
     Choice := TNewCheckBox.Create(Dialog);
     Choice.Parent := Dialog;
     Choice.SetBounds(ScaleX(20), ScaleY(80), ScaleX(420), ScaleY(25));
-    Choice.Caption := 'Remove saved pairings and settings on this PC';
+    Choice.Caption := 'Remove saved settings on this PC';
     Choice.Checked := RemoveUserData;
     ConfirmButton := TNewButton.Create(Dialog);
     ConfirmButton.Parent := Dialog;

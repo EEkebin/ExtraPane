@@ -4,10 +4,10 @@ struct Shell {
     std::unique_ptr<RolePage> server,client;std::unique_ptr<Tray> tray;DispatcherTimer timer;
     bool quitting=false;ULONGLONG started=GetTickCount64();unsigned test_seconds=0;
     void show(){window.AppWindow().Show();window.Activate();}
-    void update(){if(tray)tray->update(server->active,client->active);const bool idle=!server->active&&!client->active;server->find<Expander>(L"Pairing").IsEnabled(idle);client->find<Expander>(L"Pairing").IsEnabled(idle);}
+    void update(){if(tray)tray->update(server->active,client->active);}
     void select(const std::wstring& page){
         auto content=root.FindName(L"PageContent").as<ContentControl>();
-        if(page==L"About")content.Content(about);else {auto& role=page==L"Server"?server:client;content.Content(role->root);if(!role->active)role->paired();}
+        if(page==L"About")content.Content(about);else {auto& role=page==L"Server"?server:client;content.Content(role->root);if(!role->active)role->ready();}
         save_setting(L"Page",page);show();
     }
     void choose(bool host){navigation.SelectedItem(navigation.MenuItems().GetAt(host?0:1));show();}

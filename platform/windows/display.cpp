@@ -11,6 +11,7 @@
 
 namespace dm::display {
 namespace {
+thread_local std::wstring layout_name=L"Layout";
 void check(HRESULT result,const char* operation) {
     if(FAILED(result)) throw std::runtime_error(std::string(operation)+" failed, HRESULT="+std::to_string(static_cast<unsigned long>(result)));
 }
@@ -54,6 +55,8 @@ std::vector<Monitor> active_monitors() {
         return TRUE;
     },reinterpret_cast<LPARAM>(&result))) throw std::runtime_error("Monitor enumeration failed");
     for(auto& monitor:result) {
+        DEVMODEW mode{};mode.dmSize=sizeof(mode);
+        if(EnumDisplaySettingsW(monitor.source.c_str(),ENUM_CURRENT_SETTINGS,&mode)){monitor.rotation=mode.dmDisplayOrientation;monitor.hz=mode.dmDisplayFrequency;}
         unsigned matches=0;
         for(const auto& identity:identities) if(identity.source==monitor.source) {
             ++matches;
@@ -64,6 +67,25 @@ std::vector<Monitor> active_monitors() {
         if(matches!=1) monitor.dm_virtual=false;
     }
     return result;
+}
+void restore_monitors(const std::vector<Monitor>& baseline) {
+    if(baseline.empty())return;
+    auto current=active_monitors();const auto original=current;bool changed=false;
+    for(auto& monitor:current)for(const auto& old:baseline)if(monitor.device_path==old.device_path){
+        if(monitor.left!=old.left || monitor.top!=old.top || monitor.right!=old.right || monitor.bottom!=old.bottom || monitor.rotation!=old.rotation || monitor.hz!=old.hz)changed=true;
+        const auto source=monitor.source;monitor=old;monitor.source=source;
+    }
+    if(!changed)return;
+    // Stage every active source, then apply once. Moving monitors individually
+    // can create an invalid intermediate arrangement and reset other modes.
+    const auto apply=[](const std::vector<Monitor>& monitors){for(const auto& monitor:monitors){
+        DEVMODEW mode{};mode.dmSize=sizeof(mode);
+        mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION|DM_POSITION;
+        mode.dmPelsWidth=monitor.right-monitor.left;mode.dmPelsHeight=monitor.bottom-monitor.top;
+        mode.dmDisplayFrequency=monitor.hz;mode.dmDisplayOrientation=monitor.rotation;mode.dmPosition={monitor.left,monitor.top};
+        if(ChangeDisplaySettingsExW(monitor.source.c_str(),&mode,nullptr,CDS_UPDATEREGISTRY|CDS_NORESET,nullptr)!=DISP_CHANGE_SUCCESSFUL)return false;
+    }return ChangeDisplaySettingsExW(nullptr,nullptr,nullptr,0,nullptr)==DISP_CHANGE_SUCCESSFUL;};
+    if(!apply(current)){(void)apply(original);throw std::runtime_error("Cannot apply retained display layout");}
 }
 Mode current_mode(const std::wstring& source) {
     DEVMODEW value{};value.dmSize=sizeof(value);
@@ -99,29 +121,37 @@ void configure_virtual(const std::wstring& source,const Mode& value) {
     mode.dmPelsWidth=value.width;mode.dmPelsHeight=value.height;mode.dmDisplayFrequency=value.hz;mode.dmDisplayOrientation=value.rotation;mode.dmPosition={value.x,value.y};
     if(ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)!=DISP_CHANGE_SUCCESSFUL || ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)throw std::runtime_error("Windows rejected the DM mode");
 }
+void select_layout_profile(const std::wstring& profile) {
+    if(profile.find_first_not_of(L"0123456789.-")!=std::wstring::npos)throw std::invalid_argument("Invalid layout profile");
+    layout_name=profile.empty()?L"Layout":L"Layout-"+profile;
+}
 void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height) {
     const auto mode=current_mode(source);
     const DWORD data[]{1,profile_width,profile_height,mode.width,mode.height,mode.hz,mode.rotation,static_cast<DWORD>(mode.x),static_cast<DWORD>(mode.y)};
     HKEY key=nullptr;
     if(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\DM\\Display",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS){
-        RegSetValueExW(key,L"Layout",0,REG_BINARY,reinterpret_cast<const BYTE*>(data),sizeof(data));RegCloseKey(key);
+        RegSetValueExW(key,layout_name.c_str(),0,REG_BINARY,reinterpret_cast<const BYTE*>(data),sizeof(data));RegCloseKey(key);
     }
 }
 void remember_last_mode(const std::wstring& source) {
     DWORD data[9]{};DWORD size=sizeof(data);
-    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",L"Layout",RRF_RT_REG_BINARY,nullptr,data,&size)==ERROR_SUCCESS && size==sizeof(data) && data[0]==1)
+    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",layout_name.c_str(),RRF_RT_REG_BINARY,nullptr,data,&size)==ERROR_SUCCESS && size==sizeof(data) && data[0]==1)
         remember_mode(source,data[1],data[2]);
 }
 bool restore_last_mode(const std::wstring& source) {
     DWORD data[9]{};DWORD size=sizeof(data);
-    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",L"Layout",RRF_RT_REG_BINARY,nullptr,data,&size)!=ERROR_SUCCESS || size!=sizeof(data) || data[0]!=1)return false;
+    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",layout_name.c_str(),RRF_RT_REG_BINARY,nullptr,data,&size)!=ERROR_SUCCESS || size!=sizeof(data) || data[0]!=1)return false;
     return restore_mode(source,data[1],data[2]);
 }
 bool restore_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height,bool preserve_current) {
     DWORD data[9]{};DWORD size=sizeof(data);
-    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",L"Layout",RRF_RT_REG_BINARY,nullptr,data,&size)!=ERROR_SUCCESS || size!=sizeof(data) || data[0]!=1 || data[1]!=profile_width || data[2]!=profile_height)return false;
+    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",layout_name.c_str(),RRF_RT_REG_BINARY,nullptr,data,&size)!=ERROR_SUCCESS || size!=sizeof(data) || data[0]!=1 || data[1]!=profile_width || data[2]!=profile_height)return false;
     bool owned=false;for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
     if(!owned || data[3]<2 || data[4]<2 || data[3]>4096 || data[4]>4096 || data[6]>3)return false;
+    const LONG x=static_cast<LONG>(data[7]),y=static_cast<LONG>(data[8]);
+    for(const auto& monitor:active_monitors())if(monitor.source!=source && monitor.dm_virtual &&
+        static_cast<long long>(x)<monitor.right && static_cast<long long>(x)+data[3]>monitor.left &&
+        static_cast<long long>(y)<monitor.bottom && static_cast<long long>(y)+data[4]>monitor.top)return false;
     if(preserve_current)return true; // The running driver already owns the latest Windows layout.
     DEVMODEW mode{};mode.dmSize=sizeof(mode);mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION|DM_POSITION;
     mode.dmPelsWidth=data[3];mode.dmPelsHeight=data[4];mode.dmDisplayFrequency=data[5];mode.dmDisplayOrientation=data[6];mode.dmPosition={static_cast<LONG>(data[7]),static_cast<LONG>(data[8])};
@@ -136,22 +166,13 @@ void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,
     mode.dmPelsWidth=width;mode.dmPelsHeight=height;mode.dmDisplayFrequency=fps;mode.dmDisplayOrientation=DMDO_DEFAULT;
     mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION;
     if(!baseline.empty()) {
-        LONG right=0;for(const auto& monitor:baseline)if(!monitor.dm_virtual)right=std::max(right,monitor.right);
+        LONG right=0;for(const auto& monitor:baseline)if(monitor.source!=source)right=std::max(right,monitor.right);
         mode.dmPosition={right,0};mode.dmFields|=DM_POSITION;
     }
     if(ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)!=DISP_CHANGE_SUCCESSFUL ||
        ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)
         throw std::runtime_error("Requested DM resolution/refresh is unavailable in the installed driver");
-    // Windows can reposition another source while attaching a remembered virtual
-    // layout. Restore the original physical origins without changing their modes.
-    for(const auto& monitor:baseline)if(!monitor.dm_virtual) {
-        DEVMODEW original{};original.dmSize=sizeof(original);
-        if(!EnumDisplaySettingsW(monitor.source.c_str(),ENUM_CURRENT_SETTINGS,&original))throw std::runtime_error("Physical display disappeared during extension");
-        if(original.dmPosition.x!=monitor.left || original.dmPosition.y!=monitor.top) {
-            original.dmFields=DM_POSITION;original.dmPosition={monitor.left,monitor.top};
-            if(ChangeDisplaySettingsExW(monitor.source.c_str(),&original,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)throw std::runtime_error("Cannot retain physical display position");
-        }
-    }
+    restore_monitors(baseline);
     const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);
     unsigned stable=0;
     do {
@@ -164,6 +185,9 @@ void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,
     throw std::runtime_error("DM display mode did not stabilize");
 }
 struct VirtualMonitor::State {
+    std::vector<Monitor> baseline;
+    unsigned slot=0;
+    std::wstring path;
     HANDLE event=CreateEventW(nullptr,TRUE,FALSE,nullptr);
     HSWDEVICE device=nullptr;
     HRESULT result=E_PENDING;
@@ -176,12 +200,13 @@ struct VirtualMonitor::State {
         SetEvent(state.event);
     }
 };
-VirtualMonitor::VirtualMonitor():state_(std::make_unique<State>()) {
-    auto& s=*state_;
+VirtualMonitor::VirtualMonitor(unsigned slot):state_(std::make_unique<State>()) {
+    auto& s=*state_;s.slot=slot;if(slot)s.baseline=active_monitors();
     if(!s.event) throw std::runtime_error("Cannot create device completion event");
-    // A fixed identity prevents two local sessions from silently creating extra monitors.
+    // Slot zero retains the diagnostic identity; server slots are independent adapters.
+    const auto instance=slot?L"SideScreen-LAN-"+std::to_wstring(slot):L"DM-LAN-1";
     SW_DEVICE_CREATE_INFO info{}; info.cbSize=sizeof(info);
-    info.pszInstanceId=L"DM-LAN-1";
+    info.pszInstanceId=instance.c_str();
     info.pszzHardwareIds=L"DMIndirectDisplay\0";
     info.pszzCompatibleIds=L"DMIndirectDisplay\0";
     info.pszDeviceDescription=L"DM LAN Virtual Display";
@@ -190,17 +215,32 @@ VirtualMonitor::VirtualMonitor():state_(std::make_unique<State>()) {
     if(WaitForSingleObject(s.event,10000)!=WAIT_OBJECT_0) throw std::runtime_error("DM device creation timed out");
     check(s.result,"Enumerate DM virtual display");
 }
-VirtualMonitor::~VirtualMonitor()=default;
+VirtualMonitor::~VirtualMonitor(){
+    if(!state_->slot || state_->path.empty())return;
+    try {
+        auto baseline=active_monitors();
+        std::erase_if(baseline,[&](const auto& monitor){return monitor.device_path==state_->path;});
+        SwDeviceClose(state_->device);state_->device=nullptr;
+        const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        do {
+            const auto current=active_monitors();
+            if(std::none_of(current.begin(),current.end(),[&](const auto& monitor){return monitor.device_path==state_->path;})){
+                restore_monitors(baseline);return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }while(std::chrono::steady_clock::now()<until);
+    }catch(...){/* Device destruction must still finish if topology is changing. */}
+}
 std::wstring VirtualMonitor::wait_for_source() {
     const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(15);
     std::wstring previous;
     unsigned stable=0;
     do {
         bool found=false;
-        for(const auto& monitor:active_monitors()) if(monitor.dm_virtual) {
+        for(const auto& monitor:active_monitors()) if(monitor.dm_virtual && (!state_->slot || std::none_of(state_->baseline.begin(),state_->baseline.end(),[&](const auto& old){return old.device_path==monitor.device_path;}))) {
             found=true;
             if(previous==monitor.source)++stable;else {previous=monitor.source;stable=0;}
-            if(stable>=2)return monitor.source;
+            if(stable>=2){state_->path=monitor.device_path;return monitor.source;}
         }
         if(!found){previous.clear();stable=0;}
         std::this_thread::sleep_for(std::chrono::milliseconds(100));

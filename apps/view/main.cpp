@@ -24,8 +24,8 @@ int main(int argc, char** argv) {
                          "  dm-view info\n"
                          "  dm-view codec-check\n"
                          "  dm-view gpu-check\n"
-                         "  dm-view host --name <pair> --bind <local-ipv4> --allow-screen [--extend | --display <GDI-name>] [--allow-input] [--frames 0] [--fps 30] [--width 1280 --height 720] [--codec h264|jpeg]\n"
-                         "  dm-view receive --name <pair> --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality auto|sharp|smooth]\n"
+                         "  dm-view host --lan --bind <local-ipv4> --allow-screen [--extend | --display <GDI-name>] [--allow-input] [--frames 0] [--fps 30] [--width 1280 --height 720] [--codec h264|jpeg]\n"
+                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality auto|sharp|smooth]\n"
                          "  Common options: --port 43824 --timeout-ms 15000\n"
                          "Pairs: dm-session. Displays: dm-display list. Default source: primary output.\n"
                          "--extend requires separately installed signed DM driver and an administrator token.\n";
@@ -53,9 +53,10 @@ int main(int argc, char** argv) {
         }
         if (command != "host" && command != "receive") throw std::invalid_argument("Unknown command");
         bool allow = false, headless = false, extend=false,allow_input=false,control=false,fullscreen=false,keep_layout=false,client_mode=false,serve=false;
-        std::map<std::string,std::string> args;
+        std::map<std::string,std::string> args;bool automatic_lan=false;
         for (int i = 2; i < argc; ++i) {
             const std::string key(argv[i]);
+            if(key=="--lan"){automatic_lan=true;continue;}
             if(key=="--serve") {serve=true;continue;}
             if(key=="--client-mode") {client_mode=true;continue;}
             if(key=="--keep-layout") {keep_layout=true;continue;}
@@ -68,7 +69,8 @@ int main(int argc, char** argv) {
             if (key != "--quality" && key != "--name" && key != "--bind" && key != "--peer" && key != "--port" && key != "--timeout-ms" && key != "--frames" && key != "--fps" && key != "--codec" && key != "--decoder-adapter" && key != "--display" && key != "--width" && key != "--height" && key != "--parent-pid") throw std::invalid_argument("Unknown option: " + key);
             if (++i >= argc || !args.emplace(key, argv[i]).second) throw std::invalid_argument("Missing value or duplicate option");
         }
-        if (!args.contains("--name") || !args.contains("--bind")) throw std::invalid_argument("--name and --bind are required");
+        if(automatic_lan){if(args.contains("--name"))throw std::invalid_argument("Choose --lan or --name");args["--name"]="";}
+        if (!args.contains("--name") || !args.contains("--bind")) throw std::invalid_argument("--lan (or diagnostic --name) and --bind are required");
         if(args.contains("--parent-pid")) {
             const auto pid=number(args.at("--parent-pid"),0xffffffffu);
             const auto parent=OpenProcess(SYNCHRONIZE,FALSE,pid);

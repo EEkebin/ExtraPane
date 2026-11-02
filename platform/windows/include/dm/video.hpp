@@ -30,7 +30,7 @@ private:
 std::vector<std::uint8_t> encode_jpeg(const Frame& frame);
 Frame decode_jpeg(const std::vector<std::uint8_t>& jpeg, std::uint32_t width, std::uint32_t height);
 void hardware_info();
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec=wire::Codec::h264, const std::wstring& source=L"", bool extend=false,bool allow_input=false,unsigned width=1280,unsigned height=720,bool keep_layout=false,bool client_mode=false,const std::function<std::wstring(bool&)>& acquire_monitor={},bool* listener_ready=nullptr);
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec=wire::Codec::h264, const std::wstring& source=L"", bool extend=false,bool allow_input=false,unsigned width=1280,unsigned height=720,bool keep_layout=false,bool client_mode=false,const std::function<std::wstring(bool&)>& acquire_monitor={},bool* listener_ready=nullptr,net::TcpStream* accepted=nullptr,unsigned monitor_slot=0);
 void serve_video(const net::Options& options,const std::string& pair,bool allow_input,unsigned frames=0);
 void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink, std::optional<unsigned> decoder_adapter=std::nullopt, const std::function<std::vector<input::Event>()>& input_source={},const std::function<void(unsigned)>& input_grant={},wire::ClientDisplay client_display={},const std::function<wire::Feedback()>& feedback={},const std::function<void(StreamStats)>& statistics={});
 void preview_video(const net::Options& options, const std::string& pair, std::optional<unsigned> decoder_adapter=std::nullopt,bool control=false,bool fullscreen=false,Quality quality=Quality::automatic);
