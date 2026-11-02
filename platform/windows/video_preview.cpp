@@ -21,7 +21,7 @@
 namespace dm::video {
 namespace {
 struct PreviewWindow {
-    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr,stats=nullptr;bool show_statistics=false;std::atomic<Quality> quality{Quality::automatic};std::atomic<bool> menu_open{false},minimized{false};bool fullscreen=false,edge_gesture=false;
+    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr,stats=nullptr;bool show_statistics=false;std::atomic<Quality> quality{Quality::native};std::atomic<bool> menu_open{false},minimized{false};bool fullscreen=false,edge_gesture=false;
     UINT32 gesture_id=0;POINT gesture_start{};ULONGLONG edge_hover=0;
     WINDOWPLACEMENT saved{sizeof(saved)};ULONGLONG last_reveal=0;
     int scale(int n)const{return MulDiv(n,static_cast<int>(GetDpiForWindow(hwnd)),96);}
@@ -30,11 +30,12 @@ struct PreviewWindow {
     void position_bar(){if(!bar)return;RECT r{};GetClientRect(hwnd,&r);POINT p{(r.right-scale(450))/2,scale(8)};ClientToScreen(hwnd,&p);SetWindowPos(bar,HWND_TOP,p.x,p.y,scale(450),scale(42),SWP_NOACTIVATE);}
     void settings(){
         menu_open.store(true);auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING|(show_statistics?MF_CHECKED:0),10,L"Show statistics");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
-        const wchar_t* modes[]={L"Auto - adapt to connection",L"Sharp - preserve stream resolution",L"Smooth - prioritize frame rate"};
+        AppendMenuW(menu,MF_STRING|MF_DISABLED,0,L"Stream resolution - applies on next connection");
+        const wchar_t* modes[]={L"Native resolution (default)",L"75% resolution - lower bandwidth",L"50% resolution - lowest bandwidth"};
         for(unsigned i=0;i<3;++i)AppendMenuW(menu,MF_STRING|(static_cast<unsigned>(quality.load())==i?MF_CHECKED:0),20+i,modes[i]);
         RECT r{};GetWindowRect(GetDlgItem(bar,5),&r);SetForegroundWindow(hwnd);const auto command=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTALIGN,r.right,r.bottom,0,hwnd,nullptr);DestroyMenu(menu);menu_open.store(false);PostMessageW(hwnd,WM_NULL,0,0);
         if(command==10){show_statistics=!show_statistics;ShowWindow(stats,show_statistics?SW_SHOWNOACTIVATE:SW_HIDE);}
-        if(command>=20&&command<=22){quality.store(static_cast<Quality>(command-20));HKEY key=nullptr;if(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\DM\\Receiver",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS){const auto value=std::to_wstring(command-20);RegSetValueExW(key,L"Quality",0,REG_SZ,reinterpret_cast<const BYTE*>(value.c_str()),static_cast<DWORD>((value.size()+1)*sizeof(wchar_t)));RegCloseKey(key);}}
+        if(command>=20&&command<=22){quality.store(static_cast<Quality>(command-20));HKEY key=nullptr;if(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\DM\\Receiver",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS){const auto value=std::to_wstring(command-20);RegSetValueExW(key,L"StreamScale",0,REG_SZ,reinterpret_cast<const BYTE*>(value.c_str()),static_cast<DWORD>((value.size()+1)*sizeof(wchar_t)));RegCloseKey(key);}}
         reveal();
     }
     void reveal(){last_reveal=GetTickCount64();position_bar();ShowWindow(bar,SW_SHOWNOACTIVATE);}
@@ -129,7 +130,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     std::unique_ptr<GpuProcessor> gpu_processor;
     std::mutex mutex;
     std::optional<Frame> latest;
-    StreamStats stream_stats;std::atomic<unsigned> dropped{0},render_us{0};std::uint64_t dropped_total=0;
+    StreamStats stream_stats;std::uint64_t dropped_total=0;
     auto stats_time=std::chrono::steady_clock::now();std::uint64_t interval_presented=0;double render_total=0;
     std::exception_ptr error;
     std::atomic<bool> done{false};
@@ -139,8 +140,8 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
             receive_video(options, pair, [&](Frame frame) {
                 if (cancel.load()) throw std::runtime_error("Video preview closed by user");
                 std::lock_guard guard(mutex);
-                if(latest){++dropped;++dropped_total;}latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
-            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,[&]{const auto skipped=dropped.exchange(0);const bool paused=state.menu_open.load()||state.minimized.load();return wire::Feedback{0,state.quality.load(),0,paused?0u:render_us.load(),paused?0u:skipped};},[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;});
+                if(latest){++dropped_total;}latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
+            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,quality,[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;});
         } catch (...) { error = std::current_exception(); }
         done.store(true);
     });
@@ -217,12 +218,12 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 check(swap->Present(1, 0), "Present preview failed");
                 backbuffer.Reset();
                 ++presented;++interval_presented;
-                const auto cost=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-render_start).count();render_total+=cost;render_us.store(static_cast<unsigned>(std::clamp(cost*1000,0.0,5000000.0)));
+                const auto cost=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-render_start).count();render_total+=cost;
             }
             const auto now=std::chrono::steady_clock::now();const auto elapsed=std::chrono::duration<double>(now-stats_time).count();
             if(elapsed>=1){
                 StreamStats stats;std::uint64_t skipped;{std::lock_guard guard(mutex);stats=stream_stats;skipped=dropped_total;}
-                std::wostringstream text;text<<std::fixed<<std::setprecision(1)<<L"  "<<quality_name(state.quality.load())<<L" | "<<stats.width<<L" x "<<stats.height<<L" | target "<<stats.target_fps<<L" FPS\n  Received "<<stats.received_fps<<L" FPS | presented "<<interval_presented/elapsed<<L" FPS\n  Video "<<stats.mbps<<L" Mbps | skipped in preview "<<skipped<<L"\n  Decode "<<stats.decode_ms<<L" ms | render/present "<<(interval_presented?render_total/interval_presented:0)<<L" ms\n  Local timings; not end-to-end latency.";
+                std::wostringstream text;text<<std::fixed<<std::setprecision(1)<<L"  "<<quality_name(quality)<<L" | "<<stats.width<<L" x "<<stats.height<<L" | target "<<stats.target_fps<<L" FPS\n  Received "<<stats.received_fps<<L" FPS | presented "<<interval_presented/elapsed<<L" FPS\n  Video "<<stats.mbps<<L" Mbps | skipped in preview "<<skipped<<L"\n  Decode "<<stats.decode_ms<<L" ms | render/present "<<(interval_presented?render_total/interval_presented:0)<<L" ms\n  Local timings; not end-to-end latency.";
                 SetWindowTextW(state.stats,text.str().c_str());stats_time=now;interval_presented=0;render_total=0;
                 std::cout<<"QUALITY_STATS received_fps="<<stats.received_fps<<" mbps="<<stats.mbps<<" decode_ms="<<stats.decode_ms<<" skipped="<<skipped<<" stream="<<stats.width<<'x'<<stats.height<<std::endl;
             }

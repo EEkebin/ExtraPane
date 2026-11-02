@@ -37,13 +37,13 @@ class Client:
         ctx.minimum_version=ctx.maximum_version=ssl.TLSVersion.TLSv1_3
         self.stream=ctx.wrap_socket(socket.create_connection(('127.0.0.1',port),timeout=10))
         self.stream.settimeout(45)
-        request=bytearray(b'DMVR'+bytes([8,1,3])+bytes(25))
+        request=bytearray(b'DMVR'+bytes([9,1,3])+bytes(25))
         struct.pack_into('>III',request,16,width,height,30)
         self.stream.sendall(request)
         self.thread=threading.Thread(target=self.run,daemon=True); self.thread.start()
     def offer(self):
-        offer=read(self.stream,32); assert offer[:5]==b'DMVO\x08',offer
-        self.size=struct.unpack_from('>II',offer,8);self.stream.sendall(b'RDY8')
+        offer=read(self.stream,32); assert offer[:5]==b'DMVO\x09',offer
+        self.size=struct.unpack_from('>II',offer,8);self.stream.sendall(b'RDY9')
     def run(self):
         try:
             self.offer()
@@ -51,7 +51,6 @@ class Client:
                 header=read(self.stream,24);sequence,length=struct.unpack_from('>II',header,4)
                 if not length: self.offer();continue
                 read(self.stream,length)
-                self.stream.sendall(struct.pack('>4sIIIII',b'DMQ\x08',sequence,1,1000,1000,0))
                 self.count+=1
         except Exception as error:
             if not self.stop:self.error=repr(error)

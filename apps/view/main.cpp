@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
                          "  dm-view codec-check\n"
                          "  dm-view gpu-check\n"
                          "  dm-view host --lan --bind <local-ipv4> --allow-screen [--extend | --display <GDI-name>] [--allow-input] [--frames 0] [--fps 30] [--width 1280 --height 720] [--codec h264|jpeg]\n"
-                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality auto|sharp|smooth]\n"
+                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality native|75|50]\n"
                          "  Common options: --port 43824 --timeout-ms 15000\n"
                          "Pairs: dm-session. Displays: dm-display list. Default source: primary output.\n"
                          "--extend requires separately installed signed DM driver and an administrator token.\n";
@@ -104,9 +104,9 @@ int main(int argc, char** argv) {
             options.peer = args.at("--peer");
             std::optional<unsigned> adapter;
             if (args.contains("--decoder-adapter")) adapter=number(args.at("--decoder-adapter"),255,true);
-            dm::video::Quality quality=dm::video::Quality::automatic;
-            if(args.contains("--quality")){const auto& value=args.at("--quality");if(value=="sharp")quality=dm::video::Quality::sharp;else if(value=="smooth")quality=dm::video::Quality::smooth;else if(value!="auto")throw std::invalid_argument("Quality must be auto, sharp or smooth");}
-            if (headless) dm::video::receive_video(options,args.at("--name"),[](dm::video::Frame){},adapter,{},{},{},[&]{return dm::video::wire::Feedback{0,quality};});
+            dm::video::Quality quality=dm::video::Quality::native;
+            if(args.contains("--quality")){const auto& value=args.at("--quality");if(value=="75")quality=dm::video::Quality::reduced;else if(value=="50")quality=dm::video::Quality::low_bandwidth;else if(value!="native")throw std::invalid_argument("Stream quality must be native, 75 or 50");}
+            if (headless) dm::video::receive_video(options,args.at("--name"),[](dm::video::Frame){},adapter,{},{},{},quality);
             else dm::video::preview_video(options,args.at("--name"),adapter,control,fullscreen,quality);
         }
         return 0;

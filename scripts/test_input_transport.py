@@ -48,14 +48,14 @@ def main():
                 context.set_psk_client_callback(lambda hint:(name,key))
                 with context.wrap_socket(socket.create_connection(('127.0.0.1',port),timeout=5)) as stream:
                     stream.settimeout(20)
-                    stream.sendall(b'DMVR'+bytes([8,1,3,1,15])+bytes(23))
+                    stream.sendall(b'DMVR'+bytes([9,1,3,1,15])+bytes(23))
                     if case=='denied':
                         try: read(stream,32)
                         except (EOFError,ssl.SSLError): pass
                     else:
                         offer=read(stream,32);epoch=struct.unpack_from('>Q',offer,24)[0]
                         if not epoch or offer[7]!=15: raise RuntimeError('Expected full native input grant')
-                        stream.sendall(b'RDY8')
+                        stream.sendall(b'RDY9')
                         for sequence in range(3):
                             header=read(stream,24);length=struct.unpack_from('>I',header,8)[0];read(stream,length)
                             sent_epoch=epoch^(1 if case=='wrong-epoch' else 0)
@@ -67,7 +67,6 @@ def main():
                                 payload[0:4]=bytes([4,1,0,3]);struct.pack_into('>I',payload,4,1);struct.pack_into('>I',payload,24,1025)
                             stream.sendall(packet+payload)
                             if case!='valid-reset':break
-                            stream.sendall(struct.pack('>4sIIIII',b'DMQ'+bytes([8]),sequence,0,0,0,0))
                         if case=='valid-reset':stream.sendall(b'DONE');stream.unwrap()
                 out,err=host.communicate(timeout=6)
                 success=case=='valid-reset'
