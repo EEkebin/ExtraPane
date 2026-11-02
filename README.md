@@ -1,44 +1,144 @@
-# SideScreen
+﻿<div align="center">
 
-Project for using another device as a Windows display and input surface over a local IP network.
+<img src="assets/branding/banner.png" alt="SideScreen — Your desktop. More room." width="100%">
 
-**Status:** native development apps run on the desktop and Surface Book 2. Encrypted **3000x2000 H.264 targeting 60 fps** is tested with GPU capture/scaling/color conversion, NVIDIA hardware encoding, and GPU decoding/presentation on both laptop GPUs. The H264 path performs no application raw-pixel readbacks or CPU pixel uploads; compressed access units still use CPU/TLS buffers. Opt-in native mouse/keyboard/touch/pen forwarding is implemented and passes generated end-to-end tests; the user confirmed the repaired physical-pen session worked; individual pen features, physical touch and drawing-app compatibility still need acceptance checks. Audio and Windows+K are not implemented. Extended display is installed for local testing; see its validation status below. Stack: C++20, C++/WinRT/WinUI 3 controls, and D3D11/DXGI. Internal driver and settings identifiers retain `DM` for compatibility.
+***Turn another Windows PC into an interactive extension of your desktop.***
 
-See [build instructions and the laptop test](docs/DEVELOPMENT.md) for the current runnable slice.
+[![Windows](https://img.shields.io/badge/Windows_11-x64-0078D4?style=for-the-badge)](#requirements)
+[![Status](https://img.shields.io/badge/Status-Prerelease-00A6D6?style=for-the-badge)](#current-status)
+[![Build](https://img.shields.io/github/actions/workflow/status/EEkebin/SideScreen/prerelease.yml?branch=main&style=for-the-badge&label=Build)](https://github.com/EEkebin/SideScreen/actions/workflows/prerelease.yml)
 
-**Run it (0.11):** open **SideScreen Server** on the desktop and click **Start Driver** (waits for a client before creating a display). Open **SideScreen Client** on the laptop, enter a server IPv4 address from its address list, then click **Connect**. Both apps list their own network addresses automatically; the server needs no client address. Closing a setup window hides it to the tray. Use the tray menu to reopen or Exit. Client disconnects leave the monitor and its layout intact; **Stop Driver** removes it. The client supplies its screen resolution and refresh target; saved Windows layout changes are retained. The stream currently caps at 60 fps and chooses a supported driver mode if an exact match is unavailable.
+**[Downloads](https://github.com/EEkebin/SideScreen/releases)** · **[Quick start](#installation)** · **[Controls](#controls)** · **[Documentation](#development)**
 
-The display opens as a resizable window. Its small toolbar provides minimize, maximize/restore, fullscreen and close; it auto-hides and reappears after hovering at the top center or swiping down from the top center. **F10** reveals controls, **F11** toggles fullscreen, **F8** pauses input and **Ctrl+Shift+Q** disconnects; **F9** also closes. Normal sessions have no color test or time limit.
+</div>
 
-**Portable apps:** build with `scripts/build-apps.ps1`, then `python scripts/package_apps.py`. The two ZIPs in `out/dist` include the WinUI runtime. Extract the entire Client/Server folder and run `Client.exe` / `Server.exe`. The server still requires the separately installed DM display driver; these development bundles are not a production signed-driver installer. See [setup, packaging and controls](docs/DESKTOP-APPS.md).
+---
 
-**Live Display Settings (0.9):** rearrange the DM monitor or change resolution/orientation while connected. Video briefly pauses and resumes with the chosen configuration; the host remembers it for the next session using the same startup profile. See [display changes](docs/DESKTOP-APPS.md#display-settings-changes-09).
+More space for your work. A touchscreen for your desktop. A pen surface for the apps you already use.
 
-Current apps: `Client.exe` and `Server.exe` provide WinUI 3 launch windows and saved pairing. The earlier `dm-host` / `dm-receiver` Win32 launchers remain developer diagnostics. Diagnostic programs: `dm-net` for reachability, `dm-session` for credential pairing and TLS checks, and `dm-view` for the media/input engine and native preview. See [GPU pipeline results](docs/GPU.md), [security](docs/SECURITY.md), [H.264 integration](docs/H264.md), and the [earlier JPEG baseline](docs/VIDEO.md).
+SideScreen extends your Windows desktop onto a second PC over Wi-Fi or Ethernet, with encrypted video and native mouse, keyboard, touch and pen input. Use a normal LAN or a direct cable with static IPs. There is no cloud account, relay or internet service in the connection path.
 
-**Native mode in validation:** 0.7 adds explicit `--width 3000 --height 2000 --fps 60`, fullscreen reception and a 3000x2000/60 Hz driver mode. Requested refresh and measured delivered fps are distinct; see [native-resolution results](docs/NATIVE-DISPLAY.md).
+## **Downloads**
 
-**Extended desktop:** the local test-signed IddCx driver is installed. `host --extend` adds an independent 1280x720 monitor while preserving both physical displays. Virtual capture, laptop streaming at 720p30, and repeated host/receiver-loss removal tests pass. See [status, setup, and rollback](docs/EXTENDED-DISPLAY.md).
+**[Open the newest prerelease →](https://github.com/EEkebin/SideScreen/releases)**
 
-## Intended experience
+Choose a role, then choose how you want to run it. Every prerelease includes all four downloads and `SHA256SUMS.txt`.
 
-1. Open the host on the Windows computer and the receiver on the display device.
-2. Enter the server IP address, including over a direct Ethernet cable with static addresses.
-3. Pair explicitly, choose a display, and grant input/audio/microphone permissions.
-4. Mirror a display or, with the virtual display component installed, extend the Windows desktop.
-5. Control the host with touch, dragging, mouse, keyboard, and the pen features available end to end.
-6. Independently mute received audio and microphone forwarding, or disconnect at either device.
+| Where it runs | Portable | Installer |
+|:---|:---|:---|
+| **Client** · the laptop or second screen | `SideScreen-<version>-Client-win-x64.zip` | `SideScreen-<version>-Client-Setup-win-x64.exe` |
+| **Server** · the PC whose desktop you extend | `SideScreen-<version>-Server-win-x64.zip` | `SideScreen-<version>-Server-Setup-win-x64.exe` |
 
-Windows+K compatibility is a separate feasibility track using Miracast. It is not provided by custom LAN discovery and must not be advertised before hardware testing.
+> **Server driver required.** The Server needs the separately installed SideScreen/DM virtual-display driver. The current driver is a development test-signed component. Neither the portable apps nor the installers install it or change Windows signing policy. The Client does not need a display driver. See [driver setup and status](docs/EXTENDED-DISPLAY.md).
+>
+> These are unsigned development prereleases, not a signed, turnkey driver installation for a new PC. Repository access is required while SideScreen is private.
 
-## Planning documents
+## **Requirements**
 
-- [Product requirements](docs/PRODUCT.md)
-- [Architecture and selected stack](docs/ARCHITECTURE.md)
-- [Stack decision and engineering rules](docs/STACK.md)
-- [Direct IP and network interfaces](docs/NETWORKING.md)
-- [Capabilities and input contract](docs/CAPABILITIES.md)
-- [Milestones and acceptance checks](docs/ROADMAP.md)
-- [Evidence and pending decisions](docs/DECISIONS.md)
+- **Windows 11 x64** on both PCs.
+- A reachable IPv4 connection over Wi-Fi or Ethernet. Static addresses work; DHCP is optional.
+- A compatible D3D11 GPU and H.264 encoding/decoding support.
+- The virtual-display driver and administrator elevation on the Server.
+- A touchscreen or compatible pen on the Client to use those input features.
 
-Start with the development guide for current behavior and the roadmap for remaining work. Product and capability documents describe intended behavior unless explicitly marked implemented.
+The apps include their WinUI runtime. Running them does not require Python, SSH, Visual Studio or a separate WinUI installation.
+
+## **Installation**
+
+### Choose your format
+
+**Installer:** run the Setup executable for the appropriate role. It installs for your Windows user, adds a Start menu shortcut, and offers a desktop shortcut. Client and Server can be installed independently. Uninstalling an app preserves pairing and display preferences.
+
+**Portable:** extract the entire ZIP and run `Client.exe` or `Server.exe`. Keep the DLLs, resources and icon beside the executable.
+
+### Connect your screens
+
+1. Open **SideScreen Server** on the desktop PC.
+2. Pair the computers once: expand **Pair computers**, generate a code, copy it to the other PC, and save the same code on both. Copy it before saving; saving clears the field.
+3. Click **Start Driver**. The Server waits for a connection; it does not create an empty extra screen yet.
+4. Open **SideScreen Client** on the second PC. Enter the Server's IPv4 address from its address list and click **Connect**.
+5. Move an application onto the new display. Arrange it in **Windows Settings → System → Display**, just like a physical monitor.
+
+The Client supplies its display resolution and refresh preference. SideScreen selects a supported mode, targeting up to 60 fps. Later Windows resolution, orientation and arrangement changes take precedence and are remembered for the same client resolution profile.
+
+Both apps show addresses from connected physical adapters. The Server never needs the Client's address. No automatic discovery is required.
+
+## **Features**
+
+| | What you can do |
+|:---|:---|
+| **A real extended desktop** | Use a separate Windows monitor, with its own resolution, orientation and position. |
+| **GPU video** | D3D11 capture, H.264 encoding, GPU decoding and presentation. Native 3000×2000 with a 60 fps target is tested on a Surface Book 2; delivered frame rate depends on the hardware and network. |
+| **Touch and pen** | Native multi-touch and exposed pen pressure, tilt, buttons, inversion and eraser semantics. Support depends on the device and receiving app. |
+| **Mouse and keyboard** | Click, drag, scroll and type; pause remote input without closing the display. |
+| **Windowed or fullscreen** | Resize freely, maximize, or use the small disappearing local toolbar. |
+| **Direct LAN** | Wi-Fi, Ethernet and reachable static-IP connections, with paired TLS encryption. |
+| **Tray controls** | Close a setup window to hide it. Reopen it from the tray; use tray **Exit** to quit. |
+| **Persistent server** | Disconnect the Client and reconnect later. The Server keeps listening and retains the monitor until **Stop Driver** or **Exit**. |
+
+## **Controls**
+
+| Action | Control |
+|:---|:---|
+| Disconnect the Client | **Ctrl+Shift+Q** or **F9** |
+| Toggle fullscreen | **F11** |
+| Reveal the toolbar | **F10** |
+| Pause/resume remote input | **F8** |
+| Reveal with a mouse | Hover briefly at the **top center** |
+| Reveal with touch | Swipe down from the small **top-center** strip |
+| Stop the Server and remove its monitor | **Stop Driver**, or Server tray **Exit** |
+
+Top-right taps reach the remote app instead of opening the toolbar. Pen events do not trigger the reveal gesture. The display window's close control disconnects reception; closing the setup window hides it to the tray.
+
+Normal sessions have no test pattern or time limit. **Debug** is off by default and enables bounded diagnostic sessions when selected.
+
+## **Current Status**
+
+SideScreen is actively developed and tested on a Windows desktop and Surface Book 2. Automated checks cover protocol bounds, authentication, input transport, display reconfiguration, reconnects, window controls, tray behavior and packaged apps. Physical pen use has also been tested; individual hardware/app combinations still need acceptance testing.
+
+**Not implemented yet:** system audio, microphone passthrough, Windows+K/Miracast, IPv6 transport, automatic Client reconnection, ARM64 packages and production driver signing/distribution. The driver currently offers 720p, 1080p and 3000×2000 modes with rotation; arbitrary panel modes are not guaranteed.
+
+## **Troubleshooting**
+
+- **No connection:** use the Server's IPv4 address and verify the PCs can reach each other. The Server opens a scoped TCP 43824 rule when started. Restart Driver after changing local addresses or adapters.
+- **Driver startup fails after connecting:** verify the development virtual-display driver is installed. App installation alone does not install the driver.
+- **A blank desktop:** move a window onto the new monitor; SideScreen extends the desktop rather than mirroring the primary screen.
+- **A window seems gone after closing setup:** open the notification-area icon. Closing setup hides it; tray **Exit** quits.
+- **Updating:** disconnect, then choose **Exit** from both apps' tray menus before replacing portable files or running an installer. Update both endpoints together.
+
+## **Building**
+
+Install Visual Studio C++ desktop tools with CMake, Windows SDK 10.0.26100, and Python 3. Build from PowerShell:
+
+```powershell
+./scripts/build-apps.ps1
+python scripts/package_apps.py
+./scripts/package-installers.ps1  # requires Inno Setup 6
+python scripts/verify_packages.py
+```
+
+Outputs go to `out/dist`. NuGet dependencies are locked; the native engine uses C++20 and D3D11, and the setup windows use C++/WinRT with WinUI 3. See [the development guide](docs/DEVELOPMENT.md) for detailed requirements and tests.
+
+## **Prereleases**
+
+Pull requests build and test both roles. After a PR merges into `main`, GitHub Actions builds the merge commit and publishes a new prerelease with both portable ZIPs, both installers and SHA-256 checksums. A direct push to `main` builds but does not publish; maintainers can also run the workflow manually on `main`.
+
+Each build has a unique version such as `0.12.0-pre.12.1`. A failed build never publishes a partial release. See [release maintenance](docs/RELEASING.md).
+
+## **Development**
+
+| Guide | Contents |
+|:---|:---|
+| [Desktop apps](docs/DESKTOP-APPS.md) | Pairing, lifecycle, window controls and validation |
+| [Networking](docs/NETWORKING.md) | Direct IP, static Ethernet and routing |
+| [Security](docs/SECURITY.md) | Authentication, permissions and firewall scope |
+| [Extended display](docs/EXTENDED-DISPLAY.md) | Driver status, setup and rollback |
+| [Native display](docs/NATIVE-DISPLAY.md) | Native-resolution measurements and limits |
+| [Input](docs/INPUT.md) | Touch, pen and input cleanup |
+| [Roadmap](docs/ROADMAP.md) | Remaining features and feasibility gates |
+
+## **Credits & Licensing**
+
+Created by **[EEkebin](https://github.com/EEkebin)**. Built with Microsoft's Windows graphics and UI platforms, Mbed TLS, and the dependencies listed in [third_party](third_party/README.md). Bundles include dependency license notices.
+
+A project-wide open-source license has not been selected. Third-party components retain their own licenses. SideScreen is an independent project and is not affiliated with Microsoft.

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(dm VERSION 0.11.0 LANGUAGES C CXX)
+project(dm VERSION 0.12.0 LANGUAGES C CXX)
 
 # Standalone diagnostic executable: no VC runtime installation on the test laptop.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -84,3 +84,10 @@ foreach(app dm-host dm-receiver)
 endforeach()
 target_compile_definitions(dm-host PRIVATE DM_HOST_APP)
 target_link_options(dm-host PRIVATE "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'")
+
+# Brand shipped executables, including the native preview/helper processes.
+enable_language(RC)
+foreach(app dm-view dm-display dm-host dm-receiver)
+  target_sources(${app} PRIVATE apps/winui/app.rc)
+  target_include_directories(${app} PRIVATE assets/branding)
+endforeach()

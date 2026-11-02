@@ -1,8 +1,9 @@
 """Build distributable self-contained folders as ZIPs; no credentials or local settings."""
 from pathlib import Path
-import zipfile,hashlib,json
+import zipfile,hashlib,json,os,re
 ROOT=Path(__file__).resolve().parent.parent
-VERSION='0.11.0'
+VERSION=os.environ.get('SIDESCREEN_VERSION','0.12.0')
+if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?',VERSION):raise ValueError('Invalid release version')
 out=ROOT/'out/dist';out.mkdir(parents=True,exist_ok=True)
 reports=[]
 for role in ['Client','Server']:

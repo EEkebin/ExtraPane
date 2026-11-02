@@ -12,15 +12,16 @@
 </PropertyGroup>
 <ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
 <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props"/>
-<PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v145</PlatformToolset><CharacterSet>Unicode</CharacterSet><UseDebugLibraries>false</UseDebugLibraries><DesktopCompatible>true</DesktopCompatible></PropertyGroup>
+<PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset Condition="'$(PlatformToolset)'==''">v145</PlatformToolset><CharacterSet>Unicode</CharacterSet><UseDebugLibraries>false</UseDebugLibraries><DesktopCompatible>true</DesktopCompatible></PropertyGroup>
 <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props"/>
 <PropertyGroup><OutDir>$(MSBuildThisFileDirectory)..\..\out\winui\$(DMRole)\</OutDir><IntDir>$(MSBuildThisFileDirectory)..\..\out\winui-obj\$(DMRole)\</IntDir><AppxPriInitialPath></AppxPriInitialPath></PropertyGroup>
 <ItemGroup><PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001"/><PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.250303.1"/></ItemGroup>
 <ItemDefinitionGroup>
+<ResourceCompile><AdditionalIncludeDirectories>..\..\assets\branding;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ResourceCompile>
 <ClCompile><LanguageStandard>stdcpp20</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader><RuntimeLibrary>MultiThreaded</RuntimeLibrary><WarningLevel>Level4</WarningLevel><AdditionalOptions>/bigobj /utf-8 %(AdditionalOptions)</AdditionalOptions><PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalIncludeDirectories>..\..\platform\windows\include;..\..\core\protocol\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
 <Link><SubSystem>Windows</SubSystem><IgnoreSpecificDefaultLibraries>libucrt.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries><AdditionalOptions>/defaultlib:ucrt.lib %(AdditionalOptions)</AdditionalOptions><AdditionalLibraryDirectories>..\..\out\build\windows-release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><AdditionalDependencies>dm_display.lib;swdevice.lib;cfgmgr32.lib;dm_security.lib;dm_network.lib;dm_probe_protocol.lib;ws2_32.lib;iphlpapi.lib;bcrypt.lib;advapi32.lib;ole32.lib;oleaut32.lib;user32.lib;gdi32.lib;shell32.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
 </ItemDefinitionGroup>
 <ItemDefinitionGroup Condition="'$(DMRole)'=='Server'"><ClCompile><PreprocessorDefinitions>DM_HOST_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><UACExecutionLevel>RequireAdministrator</UACExecutionLevel></Link></ItemDefinitionGroup>
-<ItemGroup><ClCompile Include="App.xaml.cpp"/><ClInclude Include="App.xaml.h"/><ClInclude Include="pch.h"/><ClInclude Include="backend.hpp"/><ClInclude Include="tray.hpp"/></ItemGroup>
+<ItemGroup><ResourceCompile Include="app.rc"/><ClCompile Include="App.xaml.cpp"/><ClInclude Include="App.xaml.h"/><ClInclude Include="pch.h"/><ClInclude Include="backend.hpp"/><ClInclude Include="tray.hpp"/></ItemGroup>
 <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
 </Project>

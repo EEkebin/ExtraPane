@@ -19,7 +19,7 @@ public:
         window=CreateWindowExW(WS_EX_TOOLWINDOW,cls.lpszClassName,server?L"SideScreen Server tray":L"SideScreen Client tray",WS_POPUP,0,0,0,0,nullptr,nullptr,cls.hInstance,this);
         if(!window)throw std::runtime_error("Cannot create tray window");
         data_.cbSize=sizeof(data_);data_.hWnd=window;data_.uID=1;data_.uFlags=NIF_MESSAGE|NIF_ICON|NIF_TIP|NIF_SHOWTIP;
-        data_.uCallbackMessage=WM_APP+18;data_.hIcon=LoadIconW(nullptr,IDI_APPLICATION);
+        data_.uCallbackMessage=WM_APP+18;data_.hIcon=LoadIconW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101));
         update(false);add();
     }
     ~Tray(){remove();if(window)DestroyWindow(window);}

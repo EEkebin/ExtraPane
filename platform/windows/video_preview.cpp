@@ -77,6 +77,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     cls.hInstance = GetModuleHandleW(nullptr);
     cls.lpszClassName = L"DMVideoFeasibilityPreview";
     cls.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    cls.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(101));
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Register preview window failed");
     const HWND hwnd = CreateWindowExW(0, cls.lpszClassName, control?L"DM Display ? F8 pauses input ? F11 fullscreen":L"DM Display ? View only ? F11 fullscreen", WS_OVERLAPPEDWINDOW,
                                      CW_USEDEFAULT, CW_USEDEFAULT, 960, 600, nullptr, nullptr, cls.hInstance, &state);

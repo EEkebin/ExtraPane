@@ -10,10 +10,10 @@ try:
  with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as k:saved=winreg.QueryValueEx(k,'Layout')
 except FileNotFoundError:saved=None
 try:
- with zipfile.ZipFile(ROOT/'out/dist/SideScreen-0.11.0-Server-win-x64.zip') as z:z.extractall(stage)
+ with zipfile.ZipFile(ROOT/'out/dist/SideScreen-0.12.0-Server-win-x64.zip') as z:z.extractall(stage)
  server=stage/'Server/Server.exe'
  subprocess.run([str(server),'--smoke-test'],check=True,timeout=20)
- archive=peer.upload(ROOT/'out/dist/SideScreen-0.11.0-Client-win-x64.zip');drive=peer.upload(b/'dm-input-drive.exe');check=peer.upload(b/'dm-window-check.exe');tray_check=peer.upload(b/'dm-tray-check.exe')
+ archive=peer.upload(ROOT/'out/dist/SideScreen-0.12.0-Client-win-x64.zip');drive=peer.upload(b/'dm-input-drive.exe');check=peer.upload(b/'dm-window-check.exe');tray_check=peer.upload(b/'dm-tray-check.exe')
  _,remote,_=peer.run(f"$root=Join-Path $env:LOCALAPPDATA 'DM\\portable-check'; New-Item -ItemType Directory -Path $root -Force | Out-Null; Expand-Archive -LiteralPath {quote(archive)} -DestinationPath $root -Force; Join-Path $root 'Client'")
  client=remote+'\\Client.exe'
  peer.run(f"$p=Start-Process -FilePath {quote(client)} -ArgumentList '--smoke-test' -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(20000) -or $p.ExitCode -ne 0){{throw 'Portable Client render check failed'}}; 'LAPTOP_WINUI_RENDER passed'",interactive=True)

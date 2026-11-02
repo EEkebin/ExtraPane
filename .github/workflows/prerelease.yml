@@ -1,0 +1,90 @@
+name: Build and prerelease
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: release-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      publish: ${{ steps.metadata.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Release metadata
+        id: metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version="0.12.0-pre.${{ github.run_number }}.${{ github.run_attempt }}"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "SIDESCREEN_VERSION=$version" >> $env:GITHUB_ENV
+          $publish=$false
+          if('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ github.ref }}' -eq 'refs/heads/main'){$publish=$true}
+          if('${{ github.event_name }}' -eq 'push'){
+            $prs=gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:GITHUB_SHA/pulls" | ConvertFrom-Json
+            if($LASTEXITCODE -ne 0){throw 'Cannot verify merged PR'}
+            $publish=@($prs | Where-Object {$_.merged_at -and $_.base.ref -eq 'main' -and $_.merge_commit_sha -eq $env:GITHUB_SHA}).Count -gt 0
+          }
+          "publish=$($publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Build apps and run engine tests
+        shell: pwsh
+        run: ./scripts/build-apps.ps1
+      - name: Package portable apps
+        run: python scripts/package_apps.py
+      - name: Build installers
+        shell: pwsh
+        run: ./scripts/package-installers.ps1
+      - name: Verify release artifacts
+        run: python scripts/verify_packages.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SideScreen-${{ steps.metadata.outputs.version }}
+          path: |
+            out/dist/SideScreen-${{ steps.metadata.outputs.version }}-*.zip
+            out/dist/SideScreen-${{ steps.metadata.outputs.version }}-*.exe
+            out/dist/SHA256SUMS.txt
+          if-no-files-found: error
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SideScreen-${{ needs.build.outputs.version }}
+          path: dist
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cat > notes.md <<'NOTES'
+          ## Downloads
+          Choose **Client** for the second screen, **Server** for the computer being extended.
+          Each role has a portable ZIP and a per-user Setup.exe installer. Extract the entire portable folder.
+
+          **Server prerequisite:** separately installed SideScreen/DM virtual-display driver. These app installers do not install a driver or change driver-signing settings. The current driver is a development test-signed component. Client needs no display driver.
+
+          Apps and installers are currently unsigned development builds. Audio, microphone passthrough and Windows+K are not implemented. Use SHA256SUMS.txt to verify downloads.
+          NOTES
+          gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" --title "SideScreen $VERSION" --prerelease --generate-notes --notes-file notes.md
