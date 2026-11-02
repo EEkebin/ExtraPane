@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.28)
-project(dm VERSION 0.13.0 LANGUAGES C CXX)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" DM_VERSION)
+if(DEFINED ENV{SIDESCREEN_VERSION})
+  set(DM_VERSION "$ENV{SIDESCREEN_VERSION}")
+endif()
+string(REGEX REPLACE "-.*" "" DM_VERSION "${DM_VERSION}")
+string(STRIP "${DM_VERSION}" DM_VERSION)
+project(dm VERSION ${DM_VERSION} LANGUAGES C CXX)
+find_package(Python3 3.10 COMPONENTS Interpreter REQUIRED)
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/release_version.py"
+  --header "${CMAKE_CURRENT_SOURCE_DIR}/out/generated/SideScreenVersion.h" COMMAND_ERROR_IS_FATAL ANY)
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/out/generated")
 
 # Standalone diagnostic executable: no VC runtime installation on the test laptop.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

@@ -1,4 +1,4 @@
-name: Build and prerelease
+name: Build and release
 on:
   pull_request:
     branches: [main]
@@ -6,7 +6,24 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel (merged PRs always create prereleases)
+        type: choice
+        options: [pre, stable]
+        default: pre
+      title:
+        description: Stable release name, e.g. The Elbow Room Update
+        type: string
+      explanation:
+        description: Stable release name explanation (define any unusual word)
+        type: string
+      revision:
+        description: Same-day stable revision (0 for first, then 2, 3, ...)
+        default: '0'
+        type: string
 permissions:
+  actions: read
   contents: read
   pull-requests: read
 concurrency:
@@ -31,10 +48,18 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_TITLE: ${{ inputs.title }}
+          RELEASE_EXPLANATION: ${{ inputs.explanation }}
+          RELEASE_REVISION: ${{ inputs.revision }}
         run: |
-          $version="0.13.0-pre.${{ github.run_number }}.${{ github.run_attempt }}"
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "SIDESCREEN_VERSION=$version" >> $env:GITHUB_ENV
+          python -m unittest discover -s tests -p test_release_version.py
+          if($LASTEXITCODE -ne 0){throw 'Release version tests failed'}
+          $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID" | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0){throw 'Cannot read workflow creation date'}
+          $env:RELEASE_DATE=([DateTimeOffset]::Parse($run.created_at)).UtcDateTime.ToString('yyyy-MM-dd')
+          python scripts/release_version.py --metadata
+          if($LASTEXITCODE -ne 0){throw 'Invalid release metadata'}
           $publish=$false
           if('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ github.ref }}' -eq 'refs/heads/main'){$publish=$true}
           if('${{ github.event_name }}' -eq 'push'){
@@ -67,10 +92,14 @@ jobs:
         run: ./scripts/package-installers.ps1
       - name: Verify release artifacts
         run: python scripts/verify_packages.py
+      - name: Include release metadata
+        shell: pwsh
+        run: Copy-Item release-metadata.json out/dist/release-metadata.json
       - uses: actions/upload-artifact@v4
         with:
           name: SideScreen-${{ steps.metadata.outputs.version }}
           path: |
+            out/dist/release-metadata.json
             out/dist/SideScreen-${{ steps.metadata.outputs.version }}-*.zip
             out/dist/SideScreen-${{ steps.metadata.outputs.version }}-*.exe
             out/dist/SHA256SUMS.txt
@@ -82,23 +111,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: SideScreen-${{ needs.build.outputs.version }}
           path: dist
-      - name: Publish prerelease
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          cat > notes.md <<'NOTES'
-          ## Downloads
-          One SideScreen app works on either PC. Choose the **Server** sidebar page on the PC being extended and **Client** on the second screen.
-          Choose the portable ZIP or per-user Setup.exe installer. Both include Server, Client and About. Extract the entire portable folder.
-
-          **Server prerequisite:** separately installed SideScreen/DM virtual-display driver. The app installer do not install a driver or change driver-signing settings. The current driver is a development test-signed component. Client needs no display driver.
-
-          Apps and installers are currently unsigned development builds. Audio, microphone passthrough and Windows+K are not implemented. Use SHA256SUMS.txt to verify downloads.
-          NOTES
-          gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" --title "SideScreen $VERSION" --prerelease --generate-notes --notes-file notes.md
+          python3 scripts/publish_release.py

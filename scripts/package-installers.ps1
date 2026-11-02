@@ -1,11 +1,13 @@
 param([string]$Version=$env:SIDESCREEN_VERSION)
 $ErrorActionPreference='Stop'
-if(-not $Version){$Version='0.13.0'}
-if($Version -notmatch '^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$'){throw 'Invalid version'}
+if(-not $Version){$Version=& python "$PSScriptRoot/release_version.py"}
+
 $root=Split-Path -Parent $PSScriptRoot
 $iscc=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
 if(-not (Test-Path -LiteralPath $iscc)){throw 'Install Inno Setup 6; GitHub windows-2025 includes it.'}
 $env:SIDESCREEN_VERSION=$Version
+$env:SIDESCREEN_NUMERIC_VERSION=& python "$PSScriptRoot/release_version.py" --numeric
+if($LASTEXITCODE -ne 0){throw 'Invalid release version'}
 $env:SIDESCREEN_DIST=Join-Path $root 'out\dist'
 foreach($role in @('SideScreen')){
  $stage=Join-Path $root "out\installer-stage\$role"

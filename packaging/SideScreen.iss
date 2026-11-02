@@ -6,7 +6,8 @@
 AppId=SideScreen
 AppName=SideScreen
 AppVersion={#ReleaseVersion}
-VersionInfoVersion=0.13.0.0
+VersionInfoVersion={#GetEnv("SIDESCREEN_NUMERIC_VERSION")}
+VersionInfoProductTextVersion={#ReleaseVersion}
 AppPublisher=EEkebin
 AppPublisherURL=https://github.com/EEkebin/SideScreen
 AppSupportURL=https://github.com/EEkebin/SideScreen/issues
