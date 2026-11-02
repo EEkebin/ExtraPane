@@ -1,6 +1,7 @@
 """Validate distributable contents, checksums and embedded app icons without a GPU."""
 from pathlib import Path
 import os,zipfile,json,hashlib,ctypes,tempfile,subprocess,time,re
+from test_uninstall_data import registered_uninstaller
 from ctypes import wintypes
 ctypes.windll.shell32.ExtractIconW.argtypes=[wintypes.HINSTANCE,wintypes.LPCWSTR,wintypes.UINT]
 ctypes.windll.shell32.ExtractIconW.restype=wintypes.HICON
@@ -34,7 +35,7 @@ for role in ['SideScreen']:
   subprocess.run([str(installer),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',f'/DIR={target}',f'/GROUP=SideScreen Validation {role}','/TASKS='],check=True,timeout=90)
   for entry in manifest['files']:
    assert hashlib.sha256((target/entry['path']).read_bytes()).hexdigest()==entry['sha256'],entry['path']
-  subprocess.run([str(target/'unins000.exe'),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'],check=True,timeout=90)
+  subprocess.run([str(registered_uninstaller(target)),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'],check=True,timeout=90)
   for attempt in range(100):
    if not (target/(role+'.exe')).exists():break
    time.sleep(.1)

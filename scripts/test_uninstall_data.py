@@ -2,6 +2,7 @@
 import ctypes
 from ctypes import wintypes as w
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -24,6 +25,18 @@ PAIR = 'DM/peers/dm-lan'
 OTHER = 'SideScreen-uninstall-test-unrelated'
 KEYS = ['Software\\DM\\' + role for role in ('Host', 'Receiver', 'Display')]
 UNINSTALL = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen_is1'
+
+def registered_uninstaller(target):
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, UNINSTALL) as key:
+        assert winreg.QueryValueEx(key, 'DisplayName')[0].startswith('SideScreen')
+        location = winreg.QueryValueEx(key, 'InstallLocation')[0]
+        assert Path(location).resolve() == target.resolve()
+        command = winreg.QueryValueEx(key, 'UninstallString')[0]
+    match = re.match(r'^"([^"]+)"|^(\S+)', command)
+    assert match, 'Missing registered uninstaller'
+    exe = Path(match.group(1) or match.group(2))
+    assert exe.is_file(), f'Registered uninstaller missing: {exe}'
+    return exe
 
 def exists(key):
     try:
@@ -62,10 +75,7 @@ def verify(installer):
             for reset in (False, True, True):
                 subprocess.run([str(installer), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
                                 f'/DIR={target}', '/GROUP=SideScreen Data Validation', '/TASKS='], check=True, timeout=90)
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, UNINSTALL) as key:
-                    assert winreg.QueryValueEx(key, 'DisplayName')[0].startswith('SideScreen')
-                    assert 'unins000.exe' in winreg.QueryValueEx(key, 'UninstallString')[0]
-                args = [str(target / 'unins000.exe'), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
+                args = [str(registered_uninstaller(target)), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
                 if reset: args.append('/REMOVEUSERDATA=1')
                 subprocess.run(args, check=True, timeout=90)
                 for _ in range(100):
