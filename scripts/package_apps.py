@@ -67,4 +67,3 @@ Update Client and Server together: this release uses protocol 7.
  reports.append({'archive':archive.name,'bytes':archive.stat().st_size,'sha256':hashlib.sha256(archive.read_bytes()).hexdigest()})
 (out/'SHA256SUMS.txt').write_text(''.join(f"{r['sha256']}  {r['archive']}\n" for r in reports))
 print(json.dumps(reports,indent=2))
-
