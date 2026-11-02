@@ -7,16 +7,19 @@ ctypes.windll.shell32.ExtractIconW.argtypes=[wintypes.HINSTANCE,wintypes.LPCWSTR
 ctypes.windll.shell32.ExtractIconW.restype=wintypes.HICON
 ctypes.windll.user32.DestroyIcon.argtypes=[wintypes.HICON]
 root=Path(__file__).resolve().parent.parent
-version=os.environ.get('SIDESCREEN_VERSION','0.13.0');dist=root/'out/dist'
+from release_version import current
+version=current();dist=root/'out/dist'
 for role in ['SideScreen']:
  archive=dist/f'SideScreen-{version}-win-x64.zip'
  with zipfile.ZipFile(archive) as z:
   names=z.namelist();prefix=role+'/'
+  assert z.read(prefix+'version.txt').decode().strip()==version
   for required in [role+'.exe','dm-view.exe','SideScreen.Service.exe','dm-display.exe','SideScreen.ico','README.txt','manifest.json']:
    assert prefix+required in names,required
   assert not any(n.lower().endswith(('.pfx','.key','.pem','.log','.bmp','.pdb')) for n in names)
   manifest=json.loads(z.read(prefix+'manifest.json'))
   for exe,level in [('SideScreen.exe',b'asInvoker'),('SideScreen.Service.exe',b'requireAdministrator')]:
+   assert version.encode('utf-16-le') in z.read(prefix+exe), f'Wrong embedded version: {exe}'
    manifests=re.findall(rb'<requestedExecutionLevel[^>]+>',z.read(prefix+exe))
    assert any(level in entry for entry in manifests),f'Wrong elevation manifest: {exe}'
 

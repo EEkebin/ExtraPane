@@ -2,13 +2,14 @@
 from pathlib import Path
 import zipfile,hashlib,json,os,re
 ROOT=Path(__file__).resolve().parent.parent
-VERSION=os.environ.get('SIDESCREEN_VERSION','0.13.0')
-if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?',VERSION):raise ValueError('Invalid release version')
+from release_version import current
+VERSION=current()
 out=ROOT/'out/dist';out.mkdir(parents=True,exist_ok=True)
 reports=[]
 for role in ['SideScreen']:
  source=ROOT/'out/winui'/role
  if not (source/(role+'.exe')).exists():raise RuntimeError('Run scripts/build-apps.ps1 first')
+ if (source/'version.txt').read_text().strip()!=VERSION:raise RuntimeError('Rebuild apps with the requested release version')
  archive=out/f'SideScreen-{VERSION}-win-x64.zip'
  with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
   files=[]
@@ -32,7 +33,7 @@ for role in ['SideScreen']:
    file=ROOT/'out/build/windows-release/_deps'/relative/'LICENSE'
    if not file.exists():raise RuntimeError('Missing TLS dependency license: '+str(file))
    z.write(file,role+'/Licenses/'+dependency+'/LICENSE')
-  readme=f'''SideScreen {VERSION} - Windows 11 x64 development prerelease
+  readme=f'''SideScreen {VERSION} - Windows 11 x64
 
 Extract the entire folder and run SideScreen.exe on either PC. No Python, SSH or
 separate WinUI runtime installation is required. The sidebar has Server, Client

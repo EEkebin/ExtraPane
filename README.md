@@ -124,7 +124,7 @@ Outputs go to `out/dist`. NuGet dependencies are locked; the native engine uses 
 
 Pull requests build and test the unified app. After a PR merges into `main`, GitHub Actions builds the merge commit and publishes a new prerelease with one portable ZIP, one installer and SHA-256 checksums. A direct push to `main` builds but does not publish; maintainers can also run the workflow manually on `main`.
 
-Each build has a unique version such as `0.13.0-pre.12.1`. A failed build never publishes a partial release. See [release maintenance](docs/RELEASING.md).
+Prereleases use date tags such as `v2026.11.02-pre.14.1`, which also serve as their release titles. Stable releases use a date tag such as `v2026.11.02` and a friendly name such as **The Elbow Room Update**, explained in the release notes. A failed build never publishes a partial release. See [release maintenance](docs/RELEASING.md).
 
 ## **Development**
 
