@@ -15,17 +15,28 @@
 #include <thread>
 #include <stdexcept>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 
 namespace dm::video {
 namespace {
 struct PreviewWindow {
-    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr;bool fullscreen=false,edge_gesture=false;
+    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr,stats=nullptr;bool show_statistics=false;std::atomic<Quality> quality{Quality::automatic};std::atomic<bool> menu_open{false},minimized{false};bool fullscreen=false,edge_gesture=false;
     UINT32 gesture_id=0;POINT gesture_start{};ULONGLONG edge_hover=0;
     WINDOWPLACEMENT saved{sizeof(saved)};ULONGLONG last_reveal=0;
     int scale(int n)const{return MulDiv(n,static_cast<int>(GetDpiForWindow(hwnd)),96);}
     bool reveal_area(POINT p)const{RECT r{};GetClientRect(hwnd,&r);return p.y>=0&&p.y<scale(8)&&abs(p.x-r.right/2)<scale(48);}
     void release_input(){input->message(hwnd,WM_KILLFOCUS,0,0);input->message(hwnd,WM_SETFOCUS,0,0);}
-    void position_bar(){if(!bar)return;RECT r{};GetClientRect(hwnd,&r);POINT p{(r.right-scale(360))/2,scale(8)};ClientToScreen(hwnd,&p);SetWindowPos(bar,HWND_TOP,p.x,p.y,scale(360),scale(42),SWP_NOACTIVATE);}
+    void position_bar(){if(!bar)return;RECT r{};GetClientRect(hwnd,&r);POINT p{(r.right-scale(450))/2,scale(8)};ClientToScreen(hwnd,&p);SetWindowPos(bar,HWND_TOP,p.x,p.y,scale(450),scale(42),SWP_NOACTIVATE);}
+    void settings(){
+        menu_open.store(true);auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING|(show_statistics?MF_CHECKED:0),10,L"Show statistics");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+        const wchar_t* modes[]={L"Auto - adapt to connection",L"Sharp - preserve stream resolution",L"Smooth - prioritize frame rate"};
+        for(unsigned i=0;i<3;++i)AppendMenuW(menu,MF_STRING|(static_cast<unsigned>(quality.load())==i?MF_CHECKED:0),20+i,modes[i]);
+        RECT r{};GetWindowRect(GetDlgItem(bar,5),&r);SetForegroundWindow(hwnd);const auto command=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTALIGN,r.right,r.bottom,0,hwnd,nullptr);DestroyMenu(menu);menu_open.store(false);PostMessageW(hwnd,WM_NULL,0,0);
+        if(command==10){show_statistics=!show_statistics;ShowWindow(stats,show_statistics?SW_SHOWNOACTIVATE:SW_HIDE);}
+        if(command>=20&&command<=22){quality.store(static_cast<Quality>(command-20));HKEY key=nullptr;if(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\DM\\Receiver",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS){const auto value=std::to_wstring(command-20);RegSetValueExW(key,L"Quality",0,REG_SZ,reinterpret_cast<const BYTE*>(value.c_str()),static_cast<DWORD>((value.size()+1)*sizeof(wchar_t)));RegCloseKey(key);}}
+        reveal();
+    }
     void reveal(){last_reveal=GetTickCount64();position_bar();ShowWindow(bar,SW_SHOWNOACTIVATE);}
     void toggle(){release_input();if(!fullscreen){GetWindowPlacement(hwnd,&saved);MONITORINFO m{sizeof(m)};GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&m);SetWindowLongPtrW(hwnd,GWL_STYLE,WS_POPUP|WS_VISIBLE);SetWindowPos(hwnd,nullptr,m.rcMonitor.left,m.rcMonitor.top,m.rcMonitor.right-m.rcMonitor.left,m.rcMonitor.bottom-m.rcMonitor.top,SWP_FRAMECHANGED|SWP_NOZORDER);fullscreen=true;}else{SetWindowLongPtrW(hwnd,GWL_STYLE,WS_OVERLAPPEDWINDOW|WS_VISIBLE);SetWindowPlacement(hwnd,&saved);SetWindowPos(hwnd,nullptr,0,0,0,0,SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER);fullscreen=false;}SetWindowTextW(GetDlgItem(bar,3),fullscreen?L"Windowed":L"Fullscreen");reveal();}
 };
@@ -37,6 +48,12 @@ LRESULT CALLBACK bar_proc(HWND hwnd,UINT message,WPARAM wparam,LPARAM lparam){
     if(message==WM_ERASEBKGND){RECT r{};GetClientRect(hwnd,&r);FillRect(reinterpret_cast<HDC>(wparam),&r,GetSysColorBrush(COLOR_BTNFACE));return 1;}
     return DefWindowProcW(hwnd,message,wparam,lparam);
 }
+LRESULT CALLBACK stats_proc(HWND hwnd,UINT message,WPARAM wparam,LPARAM lparam){
+    if(message==WM_NCHITTEST)return HTTRANSPARENT;
+    if(message==WM_MOUSEACTIVATE)return MA_NOACTIVATE;
+    if(message==WM_PAINT){PAINTSTRUCT paint{};auto dc=BeginPaint(hwnd,&paint);RECT r{};GetClientRect(hwnd,&r);auto brush=CreateSolidBrush(RGB(24,24,28));FillRect(dc,&r,brush);DeleteObject(brush);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,RGB(245,245,245));auto font=CreateFontW(-MulDiv(13,static_cast<int>(GetDpiForWindow(hwnd)),96),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");auto old=SelectObject(dc,font);wchar_t text[1024]{};GetWindowTextW(hwnd,text,1024);DrawTextW(dc,text,-1,&r,DT_LEFT|DT_TOP|DT_NOPREFIX|DT_WORDBREAK);SelectObject(dc,old);DeleteObject(font);EndPaint(hwnd,&paint);return 0;}
+    auto result=DefWindowProcW(hwnd,message,wparam,lparam);if(message==WM_SETTEXT)InvalidateRect(hwnd,nullptr,FALSE);return result;
+}
 LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     if(message==WM_NCCREATE){auto* state=static_cast<PreviewWindow*>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams);state->hwnd=hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(state));}
     auto* state=reinterpret_cast<PreviewWindow*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
@@ -46,8 +63,8 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
             if(!(lparam&(1LL<<30))){if(wparam==VK_F9)DestroyWindow(hwnd);else if(wparam==VK_F11)state->toggle();else state->reveal();}return 0;
         }
         if(message==WM_KEYUP && (wparam==VK_F9||wparam==VK_F10||wparam==VK_F11))return 0;
-        if(message==toolbar_command){state->release_input();if(wparam==1)ShowWindow(hwnd,SW_MINIMIZE);if(wparam==2){if(state->fullscreen)state->toggle();ShowWindow(hwnd,IsZoomed(hwnd)?SW_RESTORE:SW_MAXIMIZE);}if(wparam==3)state->toggle();if(wparam==4)DestroyWindow(hwnd);return 0;}
-        if(message==WM_MOVE||message==WM_SIZE) {state->position_bar();if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);state->release_input();}}
+        if(message==toolbar_command){state->release_input();if(wparam==1)ShowWindow(hwnd,SW_MINIMIZE);if(wparam==2){if(state->fullscreen)state->toggle();ShowWindow(hwnd,IsZoomed(hwnd)?SW_RESTORE:SW_MAXIMIZE);}if(wparam==3)state->toggle();if(wparam==4)DestroyWindow(hwnd);if(wparam==5)state->settings();return 0;}
+        if(message==WM_MOVE||message==WM_SIZE) {state->position_bar();state->minimized.store(IsIconic(hwnd)!=FALSE);if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);state->release_input();}}
         if(message==WM_TIMER){POINT p{};GetCursorPos(&p);RECT r{};GetWindowRect(state->bar,&r);if(IsIconic(hwnd))ShowWindow(state->bar,SW_HIDE);else if(GetTickCount64()-state->last_reveal>2500&&!PtInRect(&r,p))ShowWindow(state->bar,SW_HIDE);POINT local=p;ScreenToClient(hwnd,&local);if(state->edge_hover&&state->reveal_area(local)&&GetTickCount64()-state->edge_hover>=600){state->reveal();state->edge_hover=0;}return 0;}
         if(message==WM_MOUSEMOVE){
             const bool promoted=(GetMessageExtraInfo()&0xFFFFFF00)==0xFF515700;
@@ -68,10 +85,10 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
 void check(HRESULT hr, const char* message) { if (FAILED(hr)) throw std::runtime_error(message); }
 struct DestroyWindowOnExit { HWND hwnd; ~DestroyWindowOnExit() { if (IsWindow(hwnd)) DestroyWindow(hwnd); } };
 }
-void preview_video(const net::Options& options, const std::string& pair,std::optional<unsigned> decoder_adapter,bool control,bool fullscreen) {
+void preview_video(const net::Options& options, const std::string& pair,std::optional<unsigned> decoder_adapter,bool control,bool fullscreen,Quality quality) {
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     input::ReceiverInput input_capture(control);
-    PreviewWindow state;state.input=&input_capture;
+    PreviewWindow state;state.input=&input_capture;state.quality.store(quality);
     WNDCLASSW cls{};
     cls.lpfnWndProc = window_proc;
     cls.hInstance = GetModuleHandleW(nullptr);
@@ -86,10 +103,13 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     if(!RegisterHotKey(hwnd,1,MOD_CONTROL|MOD_SHIFT|MOD_NOREPEAT,'Q'))std::cout<<"DISCONNECT_SHORTCUT focused-window-only"<<std::endl;
     WNDCLASSW toolbar{};toolbar.lpfnWndProc=bar_proc;toolbar.hInstance=cls.hInstance;toolbar.lpszClassName=L"DMDisplayToolbar";toolbar.hCursor=cls.hCursor;
     RegisterClassW(&toolbar);
-    state.bar=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,toolbar.lpszClassName,L"Display controls",WS_POPUP,0,0,state.scale(360),state.scale(42),hwnd,nullptr,cls.hInstance,nullptr);
+    state.bar=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,toolbar.lpszClassName,L"Display controls",WS_POPUP,0,0,state.scale(450),state.scale(42),hwnd,nullptr,cls.hInstance,nullptr);
     const DWORD corners=2;DwmSetWindowAttribute(state.bar,33,&corners,sizeof(corners));
-    const wchar_t* labels[]={L"Minimize",L"Maximize",L"Fullscreen",L"Close"};
-    for(int i=0;i<4;++i){auto button=CreateWindowW(L"BUTTON",labels[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,state.scale(i*90),0,state.scale(90),state.scale(40),state.bar,reinterpret_cast<HMENU>(static_cast<INT_PTR>(i+1)),cls.hInstance,nullptr);SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);}
+    const wchar_t* labels[]={L"Minimize",L"Maximize",L"Fullscreen",L"Close",L"Settings"};
+    for(int i=0;i<5;++i){auto button=CreateWindowW(L"BUTTON",labels[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,state.scale(i*90),0,state.scale(90),state.scale(40),state.bar,reinterpret_cast<HMENU>(static_cast<INT_PTR>(i+1)),cls.hInstance,nullptr);SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);}
+    WNDCLASSW statistics_class{};statistics_class.lpfnWndProc=stats_proc;statistics_class.hInstance=cls.hInstance;statistics_class.lpszClassName=L"SideScreenStatistics";RegisterClassW(&statistics_class);
+    state.stats=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_LAYERED|WS_EX_TRANSPARENT,statistics_class.lpszClassName,L"Waiting for stream statistics...",WS_POPUP,0,0,state.scale(440),state.scale(150),hwnd,nullptr,cls.hInstance,nullptr);
+    SetLayeredWindowAttributes(state.stats,0,235,LWA_ALPHA);SendMessageW(state.stats,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);
     SetTimer(hwnd,1,250,nullptr);
     if(fullscreen)state.toggle();
     MONITORINFOEXW panel{};panel.cbSize=sizeof(panel);GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&panel);
@@ -109,6 +129,8 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     std::unique_ptr<GpuProcessor> gpu_processor;
     std::mutex mutex;
     std::optional<Frame> latest;
+    StreamStats stream_stats;std::atomic<unsigned> dropped{0},render_us{0};std::uint64_t dropped_total=0;
+    auto stats_time=std::chrono::steady_clock::now();std::uint64_t interval_presented=0;double render_total=0;
     std::exception_ptr error;
     std::atomic<bool> done{false};
     std::atomic<bool> cancel{false};
@@ -117,8 +139,8 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
             receive_video(options, pair, [&](Frame frame) {
                 if (cancel.load()) throw std::runtime_error("Video preview closed by user");
                 std::lock_guard guard(mutex);
-                latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
-            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference);
+                if(latest){++dropped;++dropped_total;}latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
+            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,[&]{const auto skipped=dropped.exchange(0);const bool paused=state.menu_open.load()||state.minimized.load();return wire::Feedback{0,state.quality.load(),0,paused?0u:render_us.load(),paused?0u:skipped};},[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;});
         } catch (...) { error = std::current_exception(); }
         done.store(true);
     });
@@ -141,6 +163,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 frame.swap(latest);
             }
             if (frame) {
+                const auto render_start=std::chrono::steady_clock::now();
                 input_capture.dimensions(frame->width,frame->height);
                 RECT client{};GetClientRect(hwnd,&client);
                 if(client.right<2 || client.bottom<2)continue;
@@ -193,8 +216,17 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 }
                 check(swap->Present(1, 0), "Present preview failed");
                 backbuffer.Reset();
-                ++presented;
+                ++presented;++interval_presented;
+                const auto cost=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-render_start).count();render_total+=cost;render_us.store(static_cast<unsigned>(std::clamp(cost*1000,0.0,5000000.0)));
             }
+            const auto now=std::chrono::steady_clock::now();const auto elapsed=std::chrono::duration<double>(now-stats_time).count();
+            if(elapsed>=1){
+                StreamStats stats;std::uint64_t skipped;{std::lock_guard guard(mutex);stats=stream_stats;skipped=dropped_total;}
+                std::wostringstream text;text<<std::fixed<<std::setprecision(1)<<L"  "<<quality_name(state.quality.load())<<L" | "<<stats.width<<L" x "<<stats.height<<L" | target "<<stats.target_fps<<L" FPS\n  Received "<<stats.received_fps<<L" FPS | presented "<<interval_presented/elapsed<<L" FPS\n  Video "<<stats.mbps<<L" Mbps | skipped in preview "<<skipped<<L"\n  Decode "<<stats.decode_ms<<L" ms | render/present "<<(interval_presented?render_total/interval_presented:0)<<L" ms\n  Local timings; not end-to-end latency.";
+                SetWindowTextW(state.stats,text.str().c_str());stats_time=now;interval_presented=0;render_total=0;
+                std::cout<<"QUALITY_STATS received_fps="<<stats.received_fps<<" mbps="<<stats.mbps<<" decode_ms="<<stats.decode_ms<<" skipped="<<skipped<<" stream="<<stats.width<<'x'<<stats.height<<std::endl;
+            }
+            if(state.show_statistics&&!IsIconic(hwnd)){RECT r{};GetClientRect(hwnd,&r);POINT p{state.scale(12),std::max(state.scale(8),static_cast<int>(r.bottom)-state.scale(150))};ClientToScreen(hwnd,&p);SetWindowPos(state.stats,HWND_TOP,p.x,p.y,state.scale(440),state.scale(140),SWP_NOACTIVATE|SWP_SHOWWINDOW);}else ShowWindow(state.stats,SW_HIDE);
             if (done.load()) break;
             MsgWaitForMultipleObjects(0, nullptr, FALSE, frame ? 0 : 1, QS_ALLINPUT);
         }

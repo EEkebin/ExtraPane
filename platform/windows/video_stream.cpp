@@ -32,6 +32,8 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     std::array<std::uint8_t, wire::request.size()> request{};
     stream.read(request, deadline());
     const auto preference=wire::take_client_display(request);
+    if(request[9]>2)throw std::runtime_error("Unknown quality mode");
+    QualityController quality(static_cast<Quality>(request[9]));request[9]=0;
     if(request[7]>1)throw std::runtime_error("Unknown input permission request");
     const bool control=request[7]==1;request[7]=0;
     const unsigned requested_caps=request[8];request[8]=0;
@@ -78,9 +80,11 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     }
     auto capture=std::make_unique<DesktopCapture>(selected_source,width,height);
     auto frame = codec==wire::Codec::h264 ? capture->next_gpu() : capture->next();
+    auto scale_frame=[&]{if(codec==wire::Codec::h264){auto size=stream_size(frame.width,frame.height,quality.scale());frame.width=size.first;frame.height=size.second;}};
+    scale_frame();
     std::unique_ptr<H264Encoder> encoder;
     if (codec==wire::Codec::h264) {
-        encoder=std::make_unique<H264Encoder>(frame.width,frame.height,fps,frame.gpu->device.Get());
+        encoder=std::make_unique<H264Encoder>(frame.width,frame.height,fps,frame.gpu->device.Get(),quality.bitrate(frame.width,frame.height,fps));
         std::cout << "ENCODER " << encoder->description() << std::endl;
     }
     std::unique_ptr<input::Broker> broker;
@@ -125,8 +129,8 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
                 fps=std::min(target_fps,std::clamp(current.hz,1u,60u));
                 (void)wire::encode_offer({current.width,current.height,fps,frames,codec});
                 capture=std::make_unique<DesktopCapture>(selected_source,current.width,current.height);
-                frame=capture->next_gpu();
-                encoder=std::make_unique<H264Encoder>(frame.width,frame.height,fps,frame.gpu->device.Get());
+                frame=capture->next_gpu();scale_frame();
+                encoder=std::make_unique<H264Encoder>(frame.width,frame.height,fps,frame.gpu->device.Get(),quality.bitrate(frame.width,frame.height,fps));
                 mode=current;
                 if(control) {
                     broker=std::make_unique<input::Broker>(selected_source);
@@ -143,16 +147,32 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         last_input_time=0;next_frame=Clock::now();
         std::cout<<"DISPLAY_RECONFIGURED "<<frame.width<<'x'<<frame.height<<" position="<<mode->x<<','<<mode->y<<" rotation="<<mode->rotation<<std::endl;
     };
+    auto quality_start=Clock::now();double window_work=0,window_decode=0,window_render=0;unsigned window_frames=0,window_drops=0;
+    bool quality_changed=false;
+    auto change_quality=[&](std::uint64_t sequence){
+        broker.reset();
+        const auto micros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-start).count());
+        stream.write(wire::encode_header({static_cast<std::uint32_t>(sequence),0,micros}),deadline());
+        encoder.reset();frame=capture->next_gpu();scale_frame();
+        encoder=std::make_unique<H264Encoder>(frame.width,frame.height,fps,frame.gpu->device.Get(),quality.bitrate(frame.width,frame.height,fps));
+        if(control){broker=std::make_unique<input::Broker>(selected_source);if((broker->capabilities()&granted_caps)!=granted_caps)throw std::runtime_error("Input capabilities changed");if(BCryptGenRandom(nullptr,reinterpret_cast<PUCHAR>(&epoch),sizeof(epoch),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0||!epoch)throw std::runtime_error("Cannot renew input epoch");}
+        stream.write(wire::encode_offer({frame.width,frame.height,fps,frames,codec,static_cast<std::uint8_t>(granted_caps),epoch}),deadline());
+        stream.read(ready,deadline());if(ready!=wire::ready)throw std::runtime_error("Receiver did not acknowledge quality change");
+        last_input_time=0;next_frame=Clock::now();quality_start=Clock::now();window_work=window_decode=window_render=0;window_frames=window_drops=0;
+        std::cout<<"QUALITY_CHANGED stream="<<frame.width<<'x'<<frame.height<<" bitrate="<<quality.bitrate(frame.width,frame.height,fps)<<" display_unchanged=1"<<std::endl;
+    };
     if(keep_layout && extend)display::remember_mode(selected_source,profile_width,profile_height);
     for (std::uint64_t i = 0; !frames || i < frames; ++i) {
         const auto begin_capture=Clock::now();
         if(mode) {
             bool changed=false;
             try{changed=display::current_mode(selected_source)!=*mode;}catch(...){changed=true;}
-            if(changed)reconfigure(i);
+            if(changed){reconfigure(i);quality_changed=false;}
         }
+        if(quality_changed&&codec==wire::Codec::h264){change_quality(i);quality_changed=false;}
         try{frame = encoder ? capture->next_gpu() : capture->next();}
-        catch(...){if(!mode || codec!=wire::Codec::h264)throw;reconfigure(i);}
+        catch(...){if(!mode || codec!=wire::Codec::h264)throw;reconfigure(i);frame=capture->next_gpu();}
+        scale_frame();
         if(frame.capture_generation!=last_generation){++fresh_frames;last_generation=frame.capture_generation;}
         const auto sample = Clock::now();
         auto payload = encoder ? encoder->encode(frame,i) : encode_jpeg(frame);
@@ -172,7 +192,15 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
             }
             broker->send(events);input_events+=header.count;
         }
+        wire::FeedbackBytes feedback_bytes{};stream.read(feedback_bytes,deadline());const auto feedback=wire::decode_feedback(feedback_bytes);
+        if(feedback.sequence!=static_cast<std::uint32_t>(i))throw std::runtime_error("Quality feedback sequence mismatch");
+        quality_changed=quality.mode(feedback.quality)||quality_changed;
         const auto sent=Clock::now();
+        window_work+=std::chrono::duration<double,std::milli>(sent-begin_capture).count();window_decode+=feedback.decode_us/1000.0;window_render+=feedback.render_us/1000.0;++window_frames;window_drops+=feedback.dropped;
+        if(std::chrono::duration<double>(sent-quality_start).count()>=1){
+            quality_changed=quality.observe(window_work/window_frames,window_decode/window_frames,window_render/window_frames,window_drops,fps)||quality_changed;
+            quality_start=sent;window_work=window_decode=window_render=0;window_frames=window_drops=0;
+        }
         capture_ms+=std::chrono::duration<double,std::milli>(sample-begin_capture).count();
         encode_ms+=std::chrono::duration<double,std::milli>(encoded-sample).count();
         send_ms+=std::chrono::duration<double,std::milli>(sent-encoded).count();
@@ -219,11 +247,11 @@ void serve_video(const net::Options& requested,const std::string& pair,bool allo
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 }
-void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display) {
+void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display,const std::function<wire::Feedback()>& feedback,const std::function<void(StreamStats)>& statistics) {
     auto socket = net::connect_stream(options);
     security::TlsStream stream(std::move(socket), false, pair);
     stream.handshake(deadline());
-    auto request=wire::request;if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}wire::set_client_display(request,client_display);stream.write(request, deadline());
+    auto request=wire::request;if(feedback)request[9]=static_cast<std::uint8_t>(feedback().quality);if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}wire::set_client_display(request,client_display);stream.write(request, deadline());
     wire::OfferBytes offer_bytes{};
     // Authenticated host may need to enumerate/start its session-owned driver.
     stream.read(offer_bytes, Clock::now()+std::chrono::seconds(45));
@@ -243,7 +271,8 @@ void receive_video(const net::Options& options, const std::string& pair, const s
     std::uint64_t total = 0, previous_time = 0;
     const auto start = Clock::now();
     std::uint64_t decoded_frames=0,retired_gpu_frames=0;
-    double decode_ms=0;
+    double decode_ms=0,last_decode_ms=0,interval_decode_ms=0;
+    auto stats_start=Clock::now();std::uint64_t interval_bytes=0,interval_frames=0;
     auto deliver=[&](Frame frame) {
         if (++decoded_frames>offer.frames && offer.frames) throw std::runtime_error("Decoded frame count exceeds negotiated limit");
         sink(std::move(frame));
@@ -281,11 +310,15 @@ void receive_video(const net::Options& options, const std::string& pair, const s
             stream.write(input::encode_header({offer.input_epoch,static_cast<std::uint32_t>(i),static_cast<std::uint32_t>(events.size())}),deadline());
             const auto bytes=input::encode_events(events);if(!bytes.empty())stream.write(bytes,deadline());
         }
+        auto report=feedback?feedback():wire::Feedback{};report.sequence=static_cast<std::uint32_t>(i);report.decode_us=static_cast<unsigned>(std::clamp(last_decode_ms*1000,0.0,5000000.0));stream.write(wire::encode_feedback(report),deadline());
         const auto decode_start=Clock::now();
         if (decoder) {
             for (auto& frame:decoder->decode(payload,i)) deliver(std::move(frame));
         } else deliver(decode_jpeg(payload,offer.width,offer.height));
-        decode_ms+=std::chrono::duration<double,std::milli>(Clock::now()-decode_start).count();
+        last_decode_ms=std::chrono::duration<double,std::milli>(Clock::now()-decode_start).count();decode_ms+=last_decode_ms;
+        interval_decode_ms+=last_decode_ms;interval_bytes+=payload.size();++interval_frames;
+        const double elapsed=std::chrono::duration<double>(Clock::now()-stats_start).count();
+        if(elapsed>=1){if(statistics)statistics({interval_frames/elapsed,interval_bytes*8.0/elapsed/1000000,interval_decode_ms/interval_frames,offer.width,offer.height,offer.fps});stats_start=Clock::now();interval_bytes=interval_frames=0;interval_decode_ms=0;}
         total += payload.size();
     }
     if (decoder) for (auto& frame:decoder->finish()) deliver(std::move(frame));

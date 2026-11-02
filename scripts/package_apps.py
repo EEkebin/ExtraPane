@@ -60,7 +60,7 @@ at the top center or swiping down from the small top-center strip.
 
 Normal sessions have no time limit. Debug is off by default. Audio, microphone,
 Windows+K and automatic client reconnect are not implemented. Update both PCs
-together. Apps/installers are unsigned development builds; protocol version 7.
+together. Apps/installers are unsigned development builds; protocol version 8.
 '''
 
   z.writestr(role+'/README.txt',readme)

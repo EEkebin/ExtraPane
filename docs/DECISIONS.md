@@ -92,3 +92,9 @@ Lazy display creation and overlay input: Start Driver only listens until a paire
 ## Unified app (0.13)
 
 User chose one app with Server and Client pages in a left sidebar and About at the bottom. Ship one portable ZIP and one installer for either PC. Keep page state independent. Main UI runs asInvoker; a narrowly scoped elevated helper owns server engine/firewall lifecycle with user-restricted, process-checked IPC. Keep the existing driver, pairings and layout settings compatible.
+
+## Connection quality and renderer rollout
+
+Implement quality before additional Windows renderers. Quality controls and opt-in statistics belong in the receiving preview's Settings menu, not a permanent main-window panel. Adapt transmission dimensions/bitrate without modifying the extended monitor's Windows geometry. Protocol 8 carries explicit bounded feedback; never label local decode/render measurements as end-to-end latency.
+
+The user requested a manual verification stop after every feature. Finish and hand off connection quality first. Only after verification, implement D3D12, then Vulkan, then OpenGL as separate stages. Keep unavailable renderer choices visible but disabled with an explanatory yellow status based on actual runtime/device/interop checks. Linux and macOS work is deferred.

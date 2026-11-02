@@ -6,7 +6,7 @@ struct ID3D11Device;
 namespace dm::video {
 class H264Encoder {
 public:
-    H264Encoder(unsigned width, unsigned height, unsigned fps,ID3D11Device* gpu_device=nullptr);
+    H264Encoder(unsigned width, unsigned height, unsigned fps,ID3D11Device* gpu_device=nullptr,unsigned bitrate=0);
     ~H264Encoder();
     std::vector<std::uint8_t> encode(const Frame& frame, std::uint64_t sequence);
     std::string description() const;

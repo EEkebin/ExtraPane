@@ -151,7 +151,7 @@ struct H264Encoder::State {
     unsigned width, height, fps;
     unsigned input_ready = 0, output_ready = 0;
     std::string name;
-    State(unsigned w, unsigned h, unsigned f,ID3D11Device* gpu_device) :device(gpu_device), width(w), height(h), fps(f) {
+    State(unsigned w, unsigned h, unsigned f,ID3D11Device* gpu_device,unsigned requested_bitrate) :device(gpu_device), width(w), height(h), fps(f) {
         dimensions(w,h,f);
         if(device) {
             UINT token=0; check(MFCreateDXGIDeviceManager(&token,&manager),"Encoder GPU device manager");
@@ -186,7 +186,7 @@ struct H264Encoder::State {
                 codec_uint(api.Get(), CODECAPI_AVEncMPVDefaultBPictureCount, 0);
                 codec_uint(api.Get(), CODECAPI_AVEncMPVGOPSize, fps);
                 codec_uint(api.Get(), CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_CBR);
-                const auto bitrate=static_cast<UINT32>(std::clamp<std::uint64_t>(static_cast<std::uint64_t>(width)*height*fps/8,4000000,60000000));
+                const auto bitrate=requested_bitrate?requested_bitrate:static_cast<UINT32>(std::clamp<std::uint64_t>(static_cast<std::uint64_t>(width)*height*fps/8,4000000,60000000));
                 codec_uint(api.Get(), CODECAPI_AVEncCommonMeanBitRate, bitrate);
                 const auto output=media_type(MFVideoFormat_H264,width,height,fps);
                 check(output->SetUINT32(MF_MT_AVG_BITRATE,bitrate), "H264 bitrate");
@@ -220,7 +220,7 @@ struct H264Encoder::State {
         }
     }
 };
-H264Encoder::H264Encoder(unsigned w,unsigned h,unsigned fps,ID3D11Device* device):state_(std::make_unique<State>(w,h,fps,device)){}
+H264Encoder::H264Encoder(unsigned w,unsigned h,unsigned fps,ID3D11Device* device,unsigned bitrate):state_(std::make_unique<State>(w,h,fps,device,bitrate)){}
 H264Encoder::~H264Encoder()=default;
 std::string H264Encoder::description() const { return state_->name + " hardware-MFT low-latency "+(state_->device ? "D3D11-NV12-surface-input" : "CPU-NV12-input"); }
 std::vector<std::uint8_t> H264Encoder::encode(const Frame& frame,std::uint64_t sequence) {
