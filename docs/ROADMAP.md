@@ -42,6 +42,19 @@ Deliver signed virtual display integration with supported resolution/refresh neg
 
 Installer/uninstaller, per-component driver lifecycle, accessible setup, keyboard navigation, session status, pairing revocation, redacted diagnostic export, recovery, and measured performance. Resolve licenses and distribution obligations before shipping dependencies/drivers.
 
+### Launch after installation
+
+Implemented for the reconnect/lifecycle fixes: a **Launch SideScreen** checkbox on the installer's final **Finish** page, checked by default. Clicking Finish launches the app if checked; unchecking it finishes without launching. Silent installations do not launch the app automatically.
+
+### Installer shutdown and conditional tray behavior
+
+Implemented for the reconnect/lifecycle fixes:
+
+- Before replacing installed files, the installer must gracefully close running SideScreen instances and stop their server driver runtime, sessions, previews and helpers. Wait for shutdown so files are no longer in use and session-owned monitors/input are cleaned up. Stopping the driver runtime does not mean uninstalling the separately installed display driver.
+- Closing the main app hides it to the tray **only while its Server driver runtime is running**, regardless of which sidebar page is selected.
+- If the Server driver runtime is stopped, closing the main app exits normally, disconnects any active Client session, and leaves no tray-resident app or helper behind. Client-only use must not require starting the driver or using tray Exit to quit.
+- Explicit tray **Exit** continues to stop all active roles and fully quit.
+
 ## Acceptance scenarios
 
 | Scenario | Required observable result |

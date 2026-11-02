@@ -30,12 +30,12 @@ struct PreviewWindow {
     void position_bar(){if(!bar)return;RECT r{};GetClientRect(hwnd,&r);POINT p{(r.right-scale(450))/2,scale(8)};ClientToScreen(hwnd,&p);SetWindowPos(bar,HWND_TOP,p.x,p.y,scale(450),scale(42),SWP_NOACTIVATE);}
     void settings(){
         menu_open.store(true);auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING|(show_statistics?MF_CHECKED:0),10,L"Show statistics");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
-        AppendMenuW(menu,MF_STRING|MF_DISABLED,0,L"Stream resolution - applies on next connection");
+        AppendMenuW(menu,MF_STRING|MF_DISABLED,0,L"Stream resolution - next connection only (not saved)");
         const wchar_t* modes[]={L"Native resolution (default)",L"75% resolution - lower bandwidth",L"50% resolution - lowest bandwidth"};
         for(unsigned i=0;i<3;++i)AppendMenuW(menu,MF_STRING|(static_cast<unsigned>(quality.load())==i?MF_CHECKED:0),20+i,modes[i]);
         RECT r{};GetWindowRect(GetDlgItem(bar,5),&r);SetForegroundWindow(hwnd);const auto command=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTALIGN,r.right,r.bottom,0,hwnd,nullptr);DestroyMenu(menu);menu_open.store(false);PostMessageW(hwnd,WM_NULL,0,0);
         if(command==10){show_statistics=!show_statistics;ShowWindow(stats,show_statistics?SW_SHOWNOACTIVATE:SW_HIDE);}
-        if(command>=20&&command<=22){quality.store(static_cast<Quality>(command-20));HKEY key=nullptr;if(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\DM\\Receiver",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS){const auto value=std::to_wstring(command-20);RegSetValueExW(key,L"StreamScale",0,REG_SZ,reinterpret_cast<const BYTE*>(value.c_str()),static_cast<DWORD>((value.size()+1)*sizeof(wchar_t)));RegCloseKey(key);}}
+        if(command>=20&&command<=22){quality.store(static_cast<Quality>(command-20));std::cout<<"NEXT_STREAM_SCALE "<<(command-20)<<std::endl;}
         reveal();
     }
     void reveal(){last_reveal=GetTickCount64();position_bar();ShowWindow(bar,SW_SHOWNOACTIVATE);}

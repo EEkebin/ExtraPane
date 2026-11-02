@@ -30,14 +30,14 @@ def wait(predicate, seconds=35):
     raise AssertionError('Timed out waiting for session/topology')
 
 class Client:
-    def __init__(self, port, width, height):
+    def __init__(self, port, width, height, quality=0):
         self.count=0; self.error=None; self.stop=False; self.size=None
         ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
         ctx.minimum_version=ctx.maximum_version=ssl.TLSVersion.TLSv1_3
         self.stream=ctx.wrap_socket(socket.create_connection(('127.0.0.1',port),timeout=10))
         self.stream.settimeout(45)
-        request=bytearray(b'DMVR'+bytes([9,1,3])+bytes(25))
+        request=bytearray(b'DMVR'+bytes([9,1,3])+bytes(25));request[9]=quality
         struct.pack_into('>III',request,16,width,height,30)
         self.stream.sendall(request)
         self.thread=threading.Thread(target=self.run,daemon=True); self.thread.start()
@@ -105,6 +105,15 @@ try:
     third.close();fourth.close();replacement.close();second.close()
     wait(lambda:topology()==baseline)
     assert host.poll() is None,'Server exited when clients disconnected'
+    # Same native profile forces restore_mode on reconnect. That path used to
+    # start WGC while Windows was still resizing the restored monitor.
+    for quality,expected in [(0,(3000,2000)),(1,(2250,1500)),(2,(1500,1000)),(0,(3000,2000))]:
+        reconnect=Client(port,3000,2000,quality);clients.append(reconnect)
+        wait(lambda:reconnect.count>10 or reconnect.error)
+        assert not reconnect.error,(reconnect.error,logs)
+        assert reconnect.size==expected,(reconnect.size,expected)
+        reconnect.close();wait(lambda:topology()==baseline)
+    assert host.poll() is None
     print(json.dumps({'independent_modes':True,'disconnect_isolated':True,'reconnect':True,'server_stays_running':True,'four_simultaneous_streams':True,'frames':[c.count for c in clients]},indent=2))
 finally:
     for client in clients:client.close()

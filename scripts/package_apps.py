@@ -55,14 +55,17 @@ layout changes are retained. Up to four clients can connect at once. Disconnecti
 a client removes only its monitor; other clients and the server keep running.
 Stop Driver or tray Exit removes all session monitors.
 
-Close the setup window to hide it to the tray. The tray has Server and Client
-controls and Exit. Ctrl+Shift+Q disconnects reception; F11 toggles fullscreen,
+Closing setup hides to the tray only while the Server driver is running.
+Client-only and idle windows exit fully. The tray has Server and Client controls
+and Exit. Ctrl+Shift+Q disconnects reception; F11 toggles fullscreen,
 F10 reveals the toolbar, F8 pauses input. Reveal the toolbar by hovering briefly
 at the top center or swiping down from the small top-center strip.
 
 Normal sessions have no time limit. Debug is off by default. Audio, microphone,
 Windows+K and automatic client reconnect are not implemented. Update both PCs
-together. Apps/installers are unsigned development builds; protocol version 8.
+together. Apps/installers are unsigned development builds; protocol version 9.
+Toolbar Settings offers 75%/50% stream resolution for the next connection only;
+it is not saved and subsequent connections default to Native.
 '''
 
   z.writestr(role+'/README.txt',readme)

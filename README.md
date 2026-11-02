@@ -74,7 +74,7 @@ Both pages show addresses from connected physical adapters. The Server never nee
 | **Mouse and keyboard** | Click, drag, scroll and type; pause remote input without closing the display. |
 | **Windowed or fullscreen** | Resize freely, maximize, or use the small disappearing local toolbar. |
 | **Direct LAN** | Wi-Fi, Ethernet and reachable static-IP connections, with TLS 1.3 encryption and automatic connections. |
-| **Tray controls** | Close the window to hide the app. Reopen it from the tray; use tray **Exit** to quit. |
+| **Tray controls** | A running Server stays in the tray when closed. Client-only and idle windows exit normally. |
 | **Persistent server** | Disconnect the Client and reconnect later. The Server keeps listening. Only the disconnected client?s monitor is removed; other clients keep working. |
 
 The left sidebar keeps **Server** and **Client** separate, with **About** at the bottom. Switching pages does not disconnect either role. The main app and receiving client run without administrator rights; only the server helper is elevated.
@@ -91,11 +91,11 @@ The left sidebar keeps **Server** and **Client** separate, with **About** at the
 | Reveal with touch | Swipe down from the small **top-center** strip |
 | Stop the Server and remove its monitors | **Stop Driver**, or Server tray **Exit** |
 
-Top-right taps reach the remote app instead of opening the toolbar. Pen events do not trigger the reveal gesture. The display window's close control disconnects reception; closing the setup window hides it to the tray.
+Top-right taps reach the remote app instead of opening the toolbar. Pen events do not trigger the reveal gesture. The display window's close control disconnects reception. Closing the setup window exits unless the Server driver is running; a running Server stays available in the tray.
 
 Windows has one shared mouse cursor and keyboard focus. Remote input gestures are serialized across clients so disconnecting one cannot release another client?s held keys or drag.
 
-**Connection settings:** reveal the client toolbar with **F10**, then choose **Settings**. **Show statistics** is off by default. Native-resolution streaming is the default, using the original fixed bitrate and frame-pacing policy. Optional **75%** and **50%** stream resolutions reduce bandwidth without changing the Windows monitor dimensions. These settings apply on the next connection; streaming does not automatically switch tiers or restart the codecs/input handler under load. Old Auto/Sharp/Smooth preferences are ignored. Update both PCs together: this release uses protocol 9, without per-frame quality-feedback waits.
+**Connection settings:** reveal the client toolbar with **F10**, then choose **Settings**. **Show statistics** is off by default. Native-resolution streaming is the default, using the original fixed bitrate and frame-pacing policy. Optional **75%** and **50%** stream resolutions reduce bandwidth without changing the Windows monitor dimensions. A selection applies to the **next connection only**, is never saved, and then returns to Native for later connections. Closing the app discards the selection; a failed connection resets it to Native. Streaming does not automatically switch tiers or restart the codecs/input handler under load. Old saved quality preferences are ignored. Update both PCs together: this release uses protocol 9, without per-frame quality-feedback waits.
 
 Normal sessions have no test pattern or time limit. **Debug** is off by default and enables bounded diagnostic sessions when selected.
 
@@ -110,8 +110,8 @@ SideScreen is actively developed and tested on a Windows desktop and Surface Boo
 - **No connection:** use the Server's IPv4 address and verify the PCs can reach each other. The Server opens a scoped TCP 43824 rule when started. Restart Driver after changing local addresses or adapters.
 - **Driver startup fails after connecting:** verify the development virtual-display driver is installed. App installation alone does not install the driver.
 - **A blank desktop:** move a window onto the new monitor; SideScreen extends the desktop rather than mirroring the primary screen.
-- **A window seems gone after closing setup:** open the notification-area icon. Closing setup hides it; tray **Exit** quits.
-- **Updating:** disconnect, then choose **Exit** from SideScreen's tray menu on each PC before replacing portable files or running an installer. Update both endpoints together.
+- **A window seems gone after closing setup:** a running Server stays in the notification area. Reopen it there, or use **Exit** to stop everything. Client-only and idle windows close fully.
+- **Updating:** the installer closes SideScreen and waits for its driver runtime and sessions to stop before replacing files. The Finish page offers **Launch SideScreen**, checked by default; silent installs do not launch it. For portable updates, exit SideScreen first. Update both endpoints together.
 
 ## **Building**
 

@@ -84,8 +84,36 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         mode=display::current_mode(selected_source);
         if(extend){width=mode->width;height=mode->height;}
     }
-    auto capture=std::make_unique<DesktopCapture>(selected_source,width,height);
-    auto frame = codec==wire::Codec::h264 ? capture->next_gpu() : capture->next();
+    std::unique_ptr<DesktopCapture> capture;
+    Frame frame;
+    // Restoring a remembered mode returns before Windows/WGC finish resizing.
+    // No offer has been sent yet: retry startup against the same monitor
+    // identity rather than dropping the connection on the first stale frame.
+    const auto startup_until=Clock::now()+std::chrono::seconds(20);
+    bool reported_startup_wait=false;
+    for(;;){
+        try {
+            if(mode){
+                bool found=false;
+                for(const auto& monitor:display::active_monitors())if(monitor.device_path==identity && (!extend || monitor.dm_virtual)){selected_source=monitor.source;found=true;break;}
+                if(!found)throw std::runtime_error("Waiting for selected display during startup");
+                const auto current=display::current_mode(selected_source);
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if(current!=display::current_mode(selected_source))throw std::runtime_error("Display mode is still settling");
+                mode=current;
+                if(extend){width=current.width;height=current.height;fps=std::min(target_fps,std::clamp(current.hz,1u,60u));}
+            }
+            capture=std::make_unique<DesktopCapture>(selected_source,width,height);
+            frame=codec==wire::Codec::h264?capture->next_gpu():capture->next();
+            if(mode && *mode!=display::current_mode(selected_source))throw std::runtime_error("Display changed during capture startup");
+            break;
+        }catch(...){
+            capture.reset();frame={};
+            if(!mode || Clock::now()>=startup_until)throw;
+            if(!reported_startup_wait){std::osyncstream(std::cout)<<"DISPLAY_STARTING waiting-for-stable-capture"<<std::endl;reported_startup_wait=true;}
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
     auto scale_frame=[&]{if(codec==wire::Codec::h264){auto size=stream_size(frame.width,frame.height,quality.scale());frame.width=size.first;frame.height=size.second;}};
     scale_frame();
     std::unique_ptr<H264Encoder> encoder;
