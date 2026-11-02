@@ -204,13 +204,18 @@ std::vector<LocalAddress> local_addresses() {
         if(result==ERROR_BUFFER_OVERFLOW){buffer.resize(size);continue;}
         if(result!=NO_ERROR)throw std::runtime_error("Cannot enumerate network addresses");
         std::vector<LocalAddress> output;
-        for(auto* adapter=first;adapter;adapter=adapter->Next)for(auto* entry=adapter->FirstUnicastAddress;entry;entry=entry->Next) {
+        for(auto* adapter=first;adapter;adapter=adapter->Next) {
+            if(adapter->OperStatus!=IfOperStatusUp || adapter->IfType==IF_TYPE_SOFTWARE_LOOPBACK || adapter->IfType==IF_TYPE_TUNNEL)continue;
+            MIB_IF_ROW2 row{};row.InterfaceLuid=adapter->Luid;
+            if(GetIfEntry2(&row)!=NO_ERROR || !row.InterfaceAndOperStatusFlags.HardwareInterface)continue;
+            for(auto* entry=adapter->FirstUnicastAddress;entry;entry=entry->Next) {
             const auto* sock=entry->Address.lpSockaddr;if(!sock)continue;
             char text[INET6_ADDRSTRLEN]{};std::string address_text;
             if(sock->sa_family==AF_INET){const auto* v=reinterpret_cast<const sockaddr_in*>(sock);if(!InetNtopA(AF_INET,&v->sin_addr,text,sizeof(text)))continue;address_text=text;}
             else if(sock->sa_family==AF_INET6){const auto* v=reinterpret_cast<const sockaddr_in6*>(sock);if(!InetNtopA(AF_INET6,&v->sin6_addr,text,sizeof(text)))continue;address_text=text;if(v->sin6_scope_id)address_text+='%'+std::to_string(v->sin6_scope_id);}
             else continue;
             output.push_back({utf8(adapter->FriendlyName),address_text,adapter->OperStatus==IfOperStatusUp,sock->sa_family==AF_INET6});
+            }
         }
         std::stable_sort(output.begin(),output.end(),[](const auto& a,const auto& b){
             if(a.up!=b.up)return a.up>b.up;

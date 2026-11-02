@@ -2,7 +2,7 @@
 
 ## Implemented setup (0.11)
 
-Client enters the server IPv4 address only. Both apps display all local IPv4/IPv6 addresses with adapter names; IPv6 transport is not implemented. Server listens on each active IPv4 address, and the client uses Windows route selection to choose its source address. TCP 43824 carries paired TLS media/control/input. No discovery, DHCP, DNS, STUN, TURN or internet service is required. Explicit CLI `--bind` remains available for interface-specific diagnostics; the UI uses `--bind auto`. Restart Driver after local address/interface changes. See DESKTOP-APPS.md and SECURITY.md for lifecycle and firewall scope.
+Client enters the server IPv4 address only. Both apps display IPv4/IPv6 addresses on connected physical adapters; IPv6 transport is not implemented. Server listens on each active IPv4 address, and the client uses Windows route selection to choose its source address. TCP 43824 carries paired TLS media/control/input. No discovery, DHCP, DNS, STUN, TURN or internet service is required. Explicit CLI `--bind` remains available for interface-specific diagnostics; the UI uses `--bind auto`. Restart Driver after local address/interface changes. See DESKTOP-APPS.md and SECURITY.md for lifecycle and firewall scope.
 
 The earlier transport/interface proposals below are design background, not the current UI or transport contract. Automatic discovery is deferred by user choice.
 

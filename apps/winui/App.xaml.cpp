@@ -31,9 +31,9 @@ struct Shell {
         for(const auto& nic:dm::net::local_addresses()) {
             if(!value.empty())value+=L"\n";
             const auto name=winrt::to_hstring(nic.name);value+=name.c_str();value+=L"  -  "+wide(nic.address);
-            value+=nic.ipv6?L"  (IPv6)":L"  (IPv4)";if(!nic.up)value+=L"  -  Disconnected";
+            value+=nic.ipv6?L"  (IPv6)":L"  (IPv4)";
         }
-        if(value.empty())value=L"No network addresses found.";
+        if(value.empty())value=L"No connected LAN adapters found.";
         if(addresses.Text()!=value)addresses.Text(value);
         last_addresses=GetTickCount64();
     }

@@ -37,7 +37,7 @@ Extract this entire folder, then run {role}.exe. Keep the runtime DLLs beside it
 No Python, SSH, WinUI runtime installation or internet connection is required to run.
 
 Run Server on the computer whose desktop you want to extend. Run Client on the
-second PC. Both apps list all local network addresses automatically. Pair once,
+second PC. Both apps list connected LAN addresses automatically. Pair once,
 choose Start Driver on Server, enter a server IPv4 address on Client, then Connect.
 The server never needs a client address. Windows chooses the client route.
 
