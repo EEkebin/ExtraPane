@@ -2,6 +2,7 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <iphlpapi.h>
+#include <netioapi.h>
 #include <bcrypt.h>
 
 #include <dm/network.hpp>
@@ -195,6 +196,37 @@ std::vector<Interface> interfaces() {
     throw std::runtime_error("Network adapters kept changing; retry enumeration");
 }
 
+std::vector<LocalAddress> local_addresses() {
+    Winsock runtime;ULONG size=16384;std::vector<unsigned char> buffer(size);
+    for(unsigned attempt=0;attempt<4;++attempt) {
+        auto* first=reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data());
+        const auto result=GetAdaptersAddresses(AF_UNSPEC,GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER,nullptr,first,&size);
+        if(result==ERROR_BUFFER_OVERFLOW){buffer.resize(size);continue;}
+        if(result!=NO_ERROR)throw std::runtime_error("Cannot enumerate network addresses");
+        std::vector<LocalAddress> output;
+        for(auto* adapter=first;adapter;adapter=adapter->Next)for(auto* entry=adapter->FirstUnicastAddress;entry;entry=entry->Next) {
+            const auto* sock=entry->Address.lpSockaddr;if(!sock)continue;
+            char text[INET6_ADDRSTRLEN]{};std::string address_text;
+            if(sock->sa_family==AF_INET){const auto* v=reinterpret_cast<const sockaddr_in*>(sock);if(!InetNtopA(AF_INET,&v->sin_addr,text,sizeof(text)))continue;address_text=text;}
+            else if(sock->sa_family==AF_INET6){const auto* v=reinterpret_cast<const sockaddr_in6*>(sock);if(!InetNtopA(AF_INET6,&v->sin6_addr,text,sizeof(text)))continue;address_text=text;if(v->sin6_scope_id)address_text+='%'+std::to_string(v->sin6_scope_id);}
+            else continue;
+            output.push_back({utf8(adapter->FriendlyName),address_text,adapter->OperStatus==IfOperStatusUp,sock->sa_family==AF_INET6});
+        }
+        std::stable_sort(output.begin(),output.end(),[](const auto& a,const auto& b){
+            if(a.up!=b.up)return a.up>b.up;
+            if(a.ipv6!=b.ipv6)return !a.ipv6;
+            const bool a_loop=a.address=="::1"||a.address.starts_with("127."),b_loop=b.address=="::1"||b.address.starts_with("127.");
+            return a_loop!=b_loop && !a_loop;
+        });return output;
+    }
+    throw std::runtime_error("Network addresses kept changing");
+}
+std::string route_source(const std::string& peer) {
+    Winsock runtime;SOCKADDR_INET destination{},source{};destination.Ipv4=address(peer,0);MIB_IPFORWARD_ROW2 route{};
+    if(GetBestRoute2(nullptr,0,nullptr,&destination,0,&route,&source)!=NO_ERROR || source.si_family!=AF_INET)throw std::runtime_error("No IPv4 route to the server");
+    return ip_text(source.Ipv4);
+}
+
 void listen_once(const Options& options) {
     Winsock runtime;
     const auto adapter = find_interface(options.bind_address);
@@ -272,7 +304,9 @@ void TcpStream::wait(bool writing, Clock::time_point deadline) { wait_ready(stat
 std::string TcpStream::local_endpoint() const { return endpoint(state_->socket, false); }
 std::string TcpStream::peer_endpoint() const { return endpoint(state_->socket, true); }
 
-TcpStream connect_stream(const Options& options) {
+TcpStream connect_stream(const Options& requested) {
+    auto options=requested;
+    if(options.bind_address=="auto")options.bind_address=route_source(options.peer);
     Winsock runtime;
     if (options.peer.empty()) throw std::invalid_argument("A peer is required");
     const auto remote = address(options.peer, options.port);
@@ -294,6 +328,28 @@ TcpStream connect_stream(const Options& options) {
 TcpStream accept_stream(const Options& options, const std::function<void(const std::string&)>& ready) {
     Winsock runtime;
     if (!options.peer.empty()) throw std::invalid_argument("Listener cannot select a remote address");
+    if(options.bind_address=="auto") {
+        std::vector<Socket> listeners;std::vector<Interface> adapters;std::string endpoints;
+        for(const auto& nic:interfaces()) {
+            if(!nic.up || std::any_of(adapters.begin(),adapters.end(),[&](const auto& a){return a.address==nic.address;}))continue;
+            if(listeners.size()>=FD_SETSIZE)throw std::runtime_error("Too many local IPv4 addresses");
+            auto selected=options;selected.bind_address=nic.address;
+            auto listener=bound_socket(selected,nic);
+            if(listen(listener.get(),1)==SOCKET_ERROR)fail("listen");
+            if(!endpoints.empty())endpoints+=", ";endpoints+=endpoint(listener,false);
+            listeners.push_back(std::move(listener));adapters.push_back(nic);
+        }
+        if(listeners.empty())throw std::runtime_error("No active IPv4 interfaces");
+        ready(endpoints);fd_set set;FD_ZERO(&set);for(const auto& listener:listeners)FD_SET(listener.get(),&set);
+        timeval timeout{static_cast<long>(options.timeout.count()/1000),static_cast<long>((options.timeout.count()%1000)*1000)};
+        const auto count=select(0,&set,nullptr,nullptr,options.timeout.count()?&timeout:nullptr);
+        if(count==SOCKET_ERROR)fail("accept");if(!count)throw std::runtime_error("Accept timed out");
+        for(size_t i=0;i<listeners.size();++i)if(FD_ISSET(listeners[i].get(),&set)) {
+            Socket client(accept(listeners[i].get(),nullptr,nullptr));nonblocking(client);constrain_outgoing_interface(client,adapters[i]);
+            return TcpStream(std::make_unique<TcpStream::State>(std::move(client)));
+        }
+        throw std::runtime_error("No ready listener");
+    }
     const auto adapter = find_interface(options.bind_address);
     auto listener = bound_socket(options, adapter);
     if (listen(listener.get(), 1) == SOCKET_ERROR) fail("listen");

@@ -18,7 +18,9 @@ Mode current_mode(const std::wstring& source);
 Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsigned hz);
 void configure_virtual(const std::wstring& source,const Mode& mode);
 void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height);
-bool restore_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height);
+void remember_last_mode(const std::wstring& source);
+bool restore_last_mode(const std::wstring& source);
+bool restore_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height,bool preserve_current=false);
 void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,unsigned fps,const std::vector<Monitor>& baseline={});
 // Requires a separately staged/signed DM driver and an administrator token.
 // Device lifetime is the handle lifetime, including process termination.

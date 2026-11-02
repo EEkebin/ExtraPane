@@ -18,7 +18,7 @@ namespace {
 using Clock = std::chrono::steady_clock;
 auto deadline() { return Clock::now() + std::chrono::seconds(5); }
 }
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode) {
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::wstring& managed_source,bool* listener_ready) {
     if(allow_input && !extend && source.empty())throw std::invalid_argument("Input requires an explicit --display target or --extend");
     if((extend || !source.empty()) && codec!=wire::Codec::h264) throw std::invalid_argument("Selected/extended display requires H264");
     if(extend && !source.empty()) throw std::invalid_argument("Choose --extend or --display, not both");
@@ -26,7 +26,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     // Authenticate before opening the capture API. Explicit CLI consent is checked by the caller.
     auto key = security::load_pairing(pair);
     SecureZeroMemory(key.data(), key.size());
-    auto socket = net::accept_stream(options, [](const std::string& local) { std::cout << "LISTENING " << local << " TLS-video-test" << std::endl; });
+    auto socket = net::accept_stream(options, [&](const std::string& local) { if(listener_ready)*listener_ready=true;std::cout << "LISTENING " << local << " TLS-video-test" << std::endl; });
     security::TlsStream stream(std::move(socket), true, pair);
     stream.handshake(deadline());
     std::array<std::uint8_t, wire::request.size()> request{};
@@ -46,8 +46,10 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     display::Mode client_choice{};
     if(extend) {
         const auto baseline=display::active_monitors();
-        virtual_monitor=std::make_unique<display::VirtualMonitor>();
-        selected_source=virtual_monitor->wait_for_source();
+        if(managed_source.empty()) {
+            virtual_monitor=std::make_unique<display::VirtualMonitor>();
+            selected_source=virtual_monitor->wait_for_source();
+        } else selected_source=managed_source;
         if(client_mode) {
             const auto chosen=display::closest_mode(selected_source,preference.width,preference.height,preference.hz);
             client_choice=chosen;
@@ -56,7 +58,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
                      <<" selected="<<width<<'x'<<height<<'@'<<fps
                      <<" fallback="<<(width!=preference.width || height!=preference.height || fps!=preference.hz)<<std::endl;
         }
-        if(!keep_layout || !display::restore_mode(selected_source,profile_width,profile_height)) {
+        if(!keep_layout || !display::restore_mode(selected_source,profile_width,profile_height,!managed_source.empty())) {
             if(client_mode && client_choice.rotation) {
                 display::set_virtual_mode(selected_source,height,width,client_choice.hz,baseline);
                 auto rotated=display::current_mode(selected_source);rotated.width=width;rotated.height=height;rotated.rotation=client_choice.rotation;
@@ -187,6 +189,27 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     stream.close(deadline());
     const auto seconds = std::chrono::duration<double>(Clock::now() - start).count();
     std::cout << "VIDEO_SENT frames=" << frames << " codec=" << codec_name << " encoded_bytes=" << total << " seconds=" << seconds << " achieved_fps=" << frames/seconds << " fresh_capture_frames=" << fresh_frames << " capture_ms_avg=" << capture_ms/frames << " encode_ms_avg=" << encode_ms/frames << " send_ms_avg=" << send_ms/frames << " raw_pixel_readbacks=" << (encoder ? 0 : frames) << " permissions=" << (control?"video+input":"video-only") << std::endl;
+}
+void serve_video(const net::Options& requested,const std::string& pair,bool allow_input,unsigned frames) {
+    // WinRT capture factories outlive an individual session. Keep their MTA alive
+    // while the driver service accepts subsequent connections.
+    const auto com_result=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+    if(FAILED(com_result))throw std::runtime_error("Cannot initialize driver service COM apartment");
+    struct Apartment {~Apartment(){CoUninitialize();}} apartment;
+    auto key=security::load_pairing(pair);SecureZeroMemory(key.data(),key.size());
+    const auto baseline=display::active_monitors();
+    display::VirtualMonitor monitor;const auto source=monitor.wait_for_source();
+    if(!display::restore_last_mode(source))display::set_virtual_mode(source,1280,720,60,baseline);
+    std::wcout<<L"DRIVER_STARTED "<<source<<std::endl;
+    auto options=requested;options.timeout=std::chrono::milliseconds(0);
+    for(;;) {
+        bool listening=false;
+        try{host_video(options,pair,frames,60,wire::Codec::h264,L"",true,allow_input,1280,720,true,true,source,&listening);}
+        catch(const std::exception& error){if(!listening)throw;std::cout<<"CLIENT_DISCONNECTED "<<error.what()<<std::endl;}
+        // Keep the same software-device handle and layout until Stop Driver.
+        std::cout<<"DRIVER_WAITING"<<std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
 }
 void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display) {
     auto socket = net::connect_stream(options);

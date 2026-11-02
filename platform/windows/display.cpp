@@ -74,11 +74,13 @@ Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsi
     Mode best{};double score=std::numeric_limits<double>::max();
     DEVMODEW m{};m.dmSize=sizeof(m);
     for(DWORD i=0;EnumDisplaySettingsW(source.c_str(),i,&m);++i) {
-        if(m.dmDisplayOrientation!=DMDO_DEFAULT || m.dmPelsWidth>4096 || m.dmPelsHeight>4096 ||
+        if(m.dmDisplayOrientation>3 || m.dmPelsWidth>4096 || m.dmPelsHeight>4096 ||
            m.dmPelsWidth%2 || m.dmPelsHeight%2 || m.dmDisplayFrequency>60 || !m.dmDisplayFrequency ||
            static_cast<unsigned long long>(m.dmPelsWidth)*m.dmPelsHeight>8847360)continue;
+        const auto native_width=(m.dmDisplayOrientation&1)?m.dmPelsHeight:m.dmPelsWidth;
+        const auto native_height=(m.dmDisplayOrientation&1)?m.dmPelsWidth:m.dmPelsHeight;
         for(unsigned rotation=0;rotation<2;++rotation) {
-            const auto w=rotation?m.dmPelsHeight:m.dmPelsWidth,h=rotation?m.dmPelsWidth:m.dmPelsHeight;
+            const auto w=rotation?native_height:native_width,h=rotation?native_width:native_height;
             const double aspect=std::abs(std::log((double(w)/h)/(double(width)/height)));
             const double size=std::abs(std::log((double(w)*h)/(double(width)*height)));
             const double rate=std::abs(double(m.dmDisplayFrequency)-std::min(hz,60u))/60;
@@ -105,11 +107,22 @@ void remember_mode(const std::wstring& source,unsigned profile_width,unsigned pr
         RegSetValueExW(key,L"Layout",0,REG_BINARY,reinterpret_cast<const BYTE*>(data),sizeof(data));RegCloseKey(key);
     }
 }
-bool restore_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height) {
+void remember_last_mode(const std::wstring& source) {
+    DWORD data[9]{};DWORD size=sizeof(data);
+    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",L"Layout",RRF_RT_REG_BINARY,nullptr,data,&size)==ERROR_SUCCESS && size==sizeof(data) && data[0]==1)
+        remember_mode(source,data[1],data[2]);
+}
+bool restore_last_mode(const std::wstring& source) {
+    DWORD data[9]{};DWORD size=sizeof(data);
+    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",L"Layout",RRF_RT_REG_BINARY,nullptr,data,&size)!=ERROR_SUCCESS || size!=sizeof(data) || data[0]!=1)return false;
+    return restore_mode(source,data[1],data[2]);
+}
+bool restore_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height,bool preserve_current) {
     DWORD data[9]{};DWORD size=sizeof(data);
     if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\DM\\Display",L"Layout",RRF_RT_REG_BINARY,nullptr,data,&size)!=ERROR_SUCCESS || size!=sizeof(data) || data[0]!=1 || data[1]!=profile_width || data[2]!=profile_height)return false;
     bool owned=false;for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
     if(!owned || data[3]<2 || data[4]<2 || data[3]>4096 || data[4]>4096 || data[6]>3)return false;
+    if(preserve_current)return true; // The running driver already owns the latest Windows layout.
     DEVMODEW mode{};mode.dmSize=sizeof(mode);mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION|DM_POSITION;
     mode.dmPelsWidth=data[3];mode.dmPelsHeight=data[4];mode.dmDisplayFrequency=data[5];mode.dmDisplayOrientation=data[6];mode.dmPosition={static_cast<LONG>(data[7]),static_cast<LONG>(data[8])};
     return ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)==DISP_CHANGE_SUCCESSFUL && ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)==DISP_CHANGE_SUCCESSFUL;

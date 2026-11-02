@@ -25,28 +25,6 @@ namespace
 #pragma comment(                                                                                                       \
     linker,                                                                                                            \
     "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
-int scaled(int value)
-{
-    return MulDiv(value, static_cast<int>(GetDpiForSystem()), 96);
-}
-enum ControlId
-{
-    Bind = 101,
-    Peer,
-    Resolution,
-    Fps,
-    Input,
-    Debug,
-    Start,
-    Stop,
-    Code,
-    Generate,
-    Save,
-    Forget,
-    Status,
-    Log,
-    Footer
-};
 std::wstring wide(const std::string &s)
 {
     return {s.begin(), s.end()};
@@ -61,14 +39,6 @@ std::string ascii(const std::wstring &s)
         result.push_back(static_cast<char>(c));
     }
     return result;
-}
-std::wstring text(HWND h)
-{
-    const int n = GetWindowTextLengthW(h);
-    std::wstring s(static_cast<size_t>(n) + 1, L'\0');
-    GetWindowTextW(h, s.data(), n + 1);
-    s.resize(n);
-    return s;
 }
 std::wstring quoted(const std::wstring &s)
 { // Windows CreateProcess quoting, never a shell.
@@ -127,7 +97,7 @@ void ipv4(const std::wstring &value)
 {
     IN_ADDR address{};
     if (InetPtonW(AF_INET, value.c_str(), &address) != 1)
-        throw std::runtime_error("Enter a valid IPv4 address for each computer.");
+        throw std::runtime_error("Enter a valid server IPv4 address.");
 }
 void check(HRESULT hr)
 {
@@ -153,9 +123,9 @@ struct Bstr
         return value;
     }
 };
-// Explicit Start on the host grants only this executable, chosen local interface,
-// peer IPv4, TCP port. Never opens all remote addresses.
-void firewall(bool add, const std::wstring &local = L"", const std::wstring &peer = L"")
+// Start Driver exposes only this executable and TCP port on active IPv4 addresses.
+// Routed private LANs are supported without preconfiguring a particular client.
+void firewall(bool add)
 {
     if (!host)
         return;
@@ -178,6 +148,11 @@ void firewall(bool add, const std::wstring &local = L"", const std::wstring &pee
     }
     if (!add)
         return;
+    std::wstring local;
+    for(const auto& nic:dm::net::interfaces())if(nic.up && nic.address!="127.0.0.1") {
+        if(!local.empty())local+=L",";local+=wide(nic.address);
+    }
+    if(local.empty())throw std::runtime_error("No connected LAN interface is available");
     ComPtr<INetFwRule> rule;
     check(CoCreateInstance(__uuidof(NetFwRule), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&rule)));
     check(rule->put_Name(name));
@@ -185,7 +160,7 @@ void firewall(bool add, const std::wstring &local = L"", const std::wstring &pee
     check(rule->put_Protocol(NET_FW_IP_PROTOCOL_TCP));
     check(rule->put_LocalPorts(Bstr(L"43824")));
     check(rule->put_LocalAddresses(Bstr(local)));
-    check(rule->put_RemoteAddresses(Bstr(peer)));
+    check(rule->put_RemoteAddresses(Bstr(L"LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10")));
     check(rule->put_Direction(NET_FW_RULE_DIR_IN));
     check(rule->put_Action(NET_FW_ACTION_ALLOW));
     check(rule->put_Profiles(NET_FW_PROFILE2_ALL));

@@ -10,7 +10,7 @@ The **host/source** is the Windows computer whose desktop is displayed and contr
 
 | Area | Intended behavior | Important boundary |
 | --- | --- | --- |
-| Connection | Wi-Fi LAN, switched Ethernet, direct Ethernet, manual IP/port, selected adapter, static addresses | Reachable IP path required; DHCP and internet optional |
+| Connection | Wi-Fi LAN, switched Ethernet, direct Ethernet, client-entered server IP, automatic route selection, static addresses | Reachable IP path required; DHCP and internet optional |
 | Display | Mirror a selected monitor; genuine extended desktop | Extend needs a virtual monitor integration; window sharing optional later |
 | Touch | Native contacts, tap, press, drag, multiple fingers, gesture delivery | Native touch and touch-as-mouse are distinct selectable modes |
 | Mouse | Absolute/relative motion where supported, left/right/middle/extra buttons, wheel and drag | Pointer capture and shortcut escape must remain accessible |

@@ -1,12 +1,12 @@
-# DM — interactive network display
+# SideScreen
 
 Project for using another device as a Windows display and input surface over a local IP network.
 
-**Status:** native development apps run on the desktop and Surface Book 2. Encrypted **3000x2000 H.264 targeting 60 fps** is tested with GPU capture/scaling/color conversion, NVIDIA hardware encoding, and GPU decoding/presentation on both laptop GPUs. The H264 path performs no application raw-pixel readbacks or CPU pixel uploads; compressed access units still use CPU/TLS buffers. Opt-in native mouse/keyboard/touch/pen forwarding is implemented and passes generated end-to-end tests; the user confirmed the repaired physical-pen session worked; individual pen features, physical touch and drawing-app compatibility still need acceptance checks. Audio and Windows+K are not implemented. Extended display is installed for local testing; see its validation status below. Stack: C++20, C++/WinRT/WinUI 3 controls, and D3D11/DXGI. `DM` is a working name.
+**Status:** native development apps run on the desktop and Surface Book 2. Encrypted **3000x2000 H.264 targeting 60 fps** is tested with GPU capture/scaling/color conversion, NVIDIA hardware encoding, and GPU decoding/presentation on both laptop GPUs. The H264 path performs no application raw-pixel readbacks or CPU pixel uploads; compressed access units still use CPU/TLS buffers. Opt-in native mouse/keyboard/touch/pen forwarding is implemented and passes generated end-to-end tests; the user confirmed the repaired physical-pen session worked; individual pen features, physical touch and drawing-app compatibility still need acceptance checks. Audio and Windows+K are not implemented. Extended display is installed for local testing; see its validation status below. Stack: C++20, C++/WinRT/WinUI 3 controls, and D3D11/DXGI. Internal driver and settings identifiers retain `DM` for compatibility.
 
 See [build instructions and the laptop test](docs/DEVELOPMENT.md) for the current runnable slice.
 
-**Run it (0.10):** open **DM Server** on the desktop and **DM Client** on the laptop. Click **Start display**, then **Connect**. The client supplies its screen resolution and refresh target; saved Windows layout changes are retained. The stream currently caps at 60 fps and chooses a supported driver mode if an exact match is unavailable.
+**Run it (0.11):** open **SideScreen Server** on the desktop and click **Start Driver**. Open **SideScreen Client** on the laptop, enter a server IPv4 address from its address list, then click **Connect**. Both apps list their own network addresses automatically; the server needs no client address. Closing a setup window hides it to the tray. Use the tray menu to reopen or Exit. Client disconnects leave the monitor and its layout intact; **Stop Driver** removes it. The client supplies its screen resolution and refresh target; saved Windows layout changes are retained. The stream currently caps at 60 fps and chooses a supported driver mode if an exact match is unavailable.
 
 The display opens as a resizable window. Its small toolbar provides minimize, maximize/restore, fullscreen and close; it auto-hides and reappears at the top edge by mouse or touch. **F10** reveals controls, **F11** toggles fullscreen, **F8** pauses input and **F9** closes. Normal sessions have no color test or time limit.
 
@@ -23,7 +23,7 @@ Current apps: `Client.exe` and `Server.exe` provide WinUI 3 launch windows and s
 ## Intended experience
 
 1. Open the host on the Windows computer and the receiver on the display device.
-2. Discover a peer locally or enter its IP address and port, including over a direct Ethernet cable with static addresses.
+2. Enter the server IP address, including over a direct Ethernet cable with static addresses.
 3. Pair explicitly, choose a display, and grant input/audio/microphone permissions.
 4. Mirror a display or, with the virtual display component installed, extend the Windows desktop.
 5. Control the host with touch, dragging, mouse, keyboard, and the pen features available end to end.

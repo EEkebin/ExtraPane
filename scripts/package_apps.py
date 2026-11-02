@@ -2,13 +2,13 @@
 from pathlib import Path
 import zipfile,hashlib,json
 ROOT=Path(__file__).resolve().parent.parent
-VERSION='0.10.0'
+VERSION='0.11.0'
 out=ROOT/'out/dist';out.mkdir(parents=True,exist_ok=True)
 reports=[]
 for role in ['Client','Server']:
  source=ROOT/'out/winui'/role
  if not (source/(role+'.exe')).exists():raise RuntimeError('Run scripts/build-apps.ps1 first')
- archive=out/f'DM-{VERSION}-{role}-win-x64.zip'
+ archive=out/f'SideScreen-{VERSION}-{role}-win-x64.zip'
  with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
   files=[]
   for file in sorted(source.rglob('*')):
@@ -31,13 +31,20 @@ for role in ['Client','Server']:
    file=ROOT/'out/build/windows-release/_deps'/relative/'LICENSE'
    if not file.exists():raise RuntimeError('Missing TLS dependency license: '+str(file))
    z.write(file,role+'/Licenses/'+dependency+'/LICENSE')
-  readme=f'''DM {role} {VERSION} — Windows 11 x64 development build
+  readme=f'''SideScreen {role} {VERSION} — Windows 11 x64 development build
 
 Extract this entire folder, then run {role}.exe. Keep the runtime DLLs beside it.
 No Python, SSH, WinUI runtime installation or internet connection is required to run.
 
 Run Server on the computer whose desktop you want to extend. Run Client on the
-second PC. Enter the LAN addresses, pair once, Start display, then Connect.
+second PC. Both apps list all local network addresses automatically. Pair once,
+choose Start Driver on Server, enter a server IPv4 address on Client, then Connect.
+The server never needs a client address. Windows chooses the client route.
+
+Close either setup window to keep it running in the notification area (tray).
+The tray menu offers Open, Start/Stop Driver (Server) or Disconnect (Client), and
+Exit. Only Stop Driver or tray Exit removes the server's virtual monitor. Client
+disconnects leave the driver listening and preserve the current monitor layout.
 Pairing keys are stored in each user's Windows Credential Manager, never this ZIP.
 
 Server requires administrator elevation and the separately installed DM virtual
@@ -59,7 +66,8 @@ F11 toggles fullscreen, F8 pauses input, F9 closes the display. Local window con
 are not forwarded to the server.
 
 Normal sessions have no time limit. Debug is off by default. Audio, microphone,
-Windows+K/Miracast and automatic sleep/network reconnection are not implemented.
+Windows+K/Miracast and automatic client sleep/network reconnection are not implemented.
+Server listens again after a client disconnects; reconnect from Client.
 Update Client and Server together: this release uses protocol 7.
 '''
   z.writestr(role+'/README.txt',readme)

@@ -10,10 +10,10 @@ try:
  with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as k:saved=winreg.QueryValueEx(k,'Layout')
 except FileNotFoundError:saved=None
 try:
- with zipfile.ZipFile(ROOT/'out/dist/DM-0.10.0-Server-win-x64.zip') as z:z.extractall(stage)
+ with zipfile.ZipFile(ROOT/'out/dist/SideScreen-0.11.0-Server-win-x64.zip') as z:z.extractall(stage)
  server=stage/'Server/Server.exe'
  subprocess.run([str(server),'--smoke-test'],check=True,timeout=20)
- archive=peer.upload(ROOT/'out/dist/DM-0.10.0-Client-win-x64.zip');drive=peer.upload(b/'dm-input-drive.exe');check=peer.upload(b/'dm-window-check.exe')
+ archive=peer.upload(ROOT/'out/dist/SideScreen-0.11.0-Client-win-x64.zip');drive=peer.upload(b/'dm-input-drive.exe');check=peer.upload(b/'dm-window-check.exe');tray_check=peer.upload(b/'dm-tray-check.exe')
  _,remote,_=peer.run(f"$root=Join-Path $env:LOCALAPPDATA 'DM\\portable-check'; New-Item -ItemType Directory -Path $root -Force | Out-Null; Expand-Archive -LiteralPath {quote(archive)} -DestinationPath $root -Force; Join-Path $root 'Client'")
  client=remote+'\\Client.exe'
  peer.run(f"$p=Start-Process -FilePath {quote(client)} -ArgumentList '--smoke-test' -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(20000) -or $p.ExitCode -ne 0){{throw 'Portable Client render check failed'}}; 'LAPTOP_WINUI_RENDER passed'",interactive=True)
@@ -23,6 +23,7 @@ try:
   except FileNotFoundError:pass
  host=subprocess.Popen([str(server),'--start','--test-report','--test-duration','65'])
  time.sleep(2)
+ subprocess.run([str(b/'dm-tray-check.exe'),str(host.pid),'server','--keep-running'],check=True)
  _,pid,_=peer.run(f"$p=Start-Process -FilePath {quote(client)} -ArgumentList '--start --test-report --test-duration 55' -WindowStyle Hidden -PassThru; $p.Id",interactive=True)
  remote_pid=int(pid.strip())
  log=server.parent/'session-check.log';until=time.monotonic()+35
@@ -37,13 +38,15 @@ try:
  pattern=subprocess.Popen([str(b/'dm-display.exe'),'pattern','90'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
  _,window_result,_=peer.run(f"$engine=Get-CimInstance Win32_Process | Where-Object {{ $_.Name -eq 'dm-view.exe' -and $_.ExecutablePath -eq {quote(remote+'\\dm-view.exe')} }}; if(@($engine).Count -ne 1){{throw 'Expected one client engine'}}; & {quote(check)} $engine.ProcessId",interactive=True)
  print(window_result,flush=True)
+ _,tray_result,_=peer.run(f'& {quote(tray_check)} {remote_pid} client --keep-running',interactive=True)
+ print(tray_result,flush=True)
  _,input_result,_=peer.run(f'& {quote(drive)}',interactive=True)
  host.wait(timeout=75)
  observed=pattern.communicate(timeout=10)[0]
  text=log.read_text()
  _,receiver,_=peer.run(f'Get-Content -Raw -LiteralPath {quote(remote+"\\session-check.log")}')
  assert all(t in observed for t in ['mouse=1','chars=1','touch=2','pen=1','pressure_max=897']),observed
- report={'server':text,'client':receiver,'window_check':window_result,'input':observed,'portable_ui_render':True}
+ report={'server':text,'client':receiver,'window_check':window_result,'tray_check':tray_result,'input':observed,'portable_ui_render':True}
  (ROOT/'out/portable-laptop-test.json').write_text(json.dumps(report,indent=2))
  print(observed,flush=True);print('PORTABLE_LAPTOP passed',flush=True)
 finally:
@@ -52,7 +55,7 @@ finally:
  if remote_pid:peer.run(f'Stop-Process -Id {remote_pid} -ErrorAction SilentlyContinue',required=False)
  peer.close()
  # A failed test may terminate the GUI before its normal scoped-rule cleanup.
- local_ps(f"$rule=Get-NetFirewallRule -DisplayName 'DM Host LAN display' -ErrorAction SilentlyContinue; if($rule){{$app=$rule | Get-NetFirewallApplicationFilter;if($app.Program -eq {quote(stage/'Server/dm-view.exe')}){{$rule | Remove-NetFirewallRule}}}}")
+ local_ps(f"$rule=Get-NetFirewallRule -DisplayName 'DM Host LAN display' -ErrorAction SilentlyContinue; if($rule){{$app=$rule | Get-NetFirewallApplicationFilter;if($app.Program -eq {quote(stage/'Server/dm-view.exe')}){{$rule | Remove-NetFirewallRule -ErrorAction Stop}}}}; exit 0")
  with winreg.CreateKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as k:
   if saved:winreg.SetValueEx(k,'Layout',0,saved[1],saved[0])
   else:

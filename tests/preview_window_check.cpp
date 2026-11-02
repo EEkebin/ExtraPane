@@ -8,6 +8,7 @@ BOOL CALLBACK collect(HWND h,LPARAM p){auto& s=*reinterpret_cast<Search*>(p);DWO
 void need(bool value,const char* message){if(!value)throw std::runtime_error(message);}
 void pause(){std::this_thread::sleep_for(std::chrono::milliseconds(400));}
 int main(int argc,char** argv){try{
+ SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
  need(argc==2,"Supply receiver PID");Search s{static_cast<DWORD>(std::stoul(argv[1]))};EnumWindows(collect,reinterpret_cast<LPARAM>(&s));need(s.window&&s.bar,"Preview/toolbar missing");
  need((GetWindowLongPtrW(s.window,GWL_STYLE)&WS_THICKFRAME)!=0,"Preview must start resizable");
  SetWindowPos(s.window,nullptr,80,80,1100,720,SWP_NOZORDER|SWP_NOACTIVATE);pause();RECT before{};GetWindowRect(s.window,&before);
@@ -20,7 +21,7 @@ int main(int argc,char** argv){try{
  // No global mouse/key injection: only the owned preview receives test messages.
  SendMessageW(s.window,WM_KEYDOWN,VK_F10,0);SendMessageW(s.window,WM_KEYUP,VK_F10,0);need(IsWindowVisible(s.bar)!=FALSE,"Toolbar keyboard reveal failed");
  POINT cursor{};GetCursorPos(&cursor);RECT bar{};GetWindowRect(s.bar,&bar);
- if(!PtInRect(&bar,cursor)){std::this_thread::sleep_for(std::chrono::seconds(3));need(!IsWindowVisible(s.bar),"Toolbar did not auto-hide");}
+ if(!PtInRect(&bar,cursor)){for(int i=0;i<25&&IsWindowVisible(s.bar);++i)std::this_thread::sleep_for(std::chrono::milliseconds(200));need(!IsWindowVisible(s.bar),"Toolbar did not auto-hide");}
  SendMessageW(s.window,WM_MOUSEMOVE,0,MAKELPARAM(100,1));pause();need(IsWindowVisible(s.bar)!=FALSE,"Top-edge reveal failed");
  need(IsWindow(s.window)!=FALSE,"Preview closed during window changes");
  std::cout<<"WINDOW_CHECK passed resize fullscreen bounds restore maximize minimize toolbar-hide edge-reveal keyboard-reveal\n";return 0;

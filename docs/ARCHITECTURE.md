@@ -10,7 +10,7 @@ Keep XAML controls separate from high-frequency input and decoded video. Use a n
 
 ## Components
 
-The diagram describes the target architecture. Current evidence: interface-bound TCP, paired Mbed TLS 4.1.1 sessions, Credential Manager, GPU Desktop Duplication, GPU video-processor BGRA-to-NV12 scaling/conversion, DXGI-surface hardware H264 input, GPU-surface decoding, and GPU shader NV12-to-BGRA presentation on the decoder's device. The H264 path avoids application CPU raw-pixel buffers; compressed access units still use CPU/TLS. WIC JPEG remains an explicit diagnostic option. Higher resolution/refresh, production transport, and WinUI remain pending. See GPU.md, SECURITY.md, and H264.md.
+The diagram describes the target architecture. Current evidence: interface-bound TCP, paired Mbed TLS 4.1.1 sessions, Credential Manager, GPU Desktop Duplication, GPU video-processor BGRA-to-NV12 scaling/conversion, DXGI-surface hardware H264 input, GPU-surface decoding, and GPU shader NV12-to-BGRA presentation on the decoder's device. The H264 path avoids application CPU raw-pixel buffers; compressed access units still use CPU/TLS. WIC JPEG remains an explicit diagnostic option. Native 3000x2000 with a 60 fps target and WinUI launchers are implemented. Production transport remains pending. See GPU.md, SECURITY.md, and H264.md.
 
 ```mermaid
 flowchart LR

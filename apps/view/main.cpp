@@ -52,10 +52,11 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (command != "host" && command != "receive") throw std::invalid_argument("Unknown command");
-        bool allow = false, headless = false, extend=false,allow_input=false,control=false,fullscreen=false,keep_layout=false,client_mode=false;
+        bool allow = false, headless = false, extend=false,allow_input=false,control=false,fullscreen=false,keep_layout=false,client_mode=false,serve=false;
         std::map<std::string,std::string> args;
         for (int i = 2; i < argc; ++i) {
             const std::string key(argv[i]);
+            if(key=="--serve") {serve=true;continue;}
             if(key=="--client-mode") {client_mode=true;continue;}
             if(key=="--keep-layout") {keep_layout=true;continue;}
             if(key=="--fullscreen") {if(fullscreen)throw std::invalid_argument("Duplicate fullscreen option");fullscreen=true;continue;}
@@ -94,9 +95,10 @@ int main(int argc, char** argv) {
                 if(text.empty() || text.size()>32) throw std::invalid_argument("Invalid GDI display name");
                 for(const unsigned char c:text) { if(c>127) throw std::invalid_argument("Display name must be ASCII");source.push_back(c); }
             }
-            dm::video::host_video(options,args.at("--name"),frames,fps,codec,source,extend,allow_input,args.contains("--width")?number(args.at("--width"),4096):1280,args.contains("--height")?number(args.at("--height"),4096):720,keep_layout,client_mode);
+            if(serve){if(!extend || !source.empty() || codec!=dm::video::wire::Codec::h264)throw std::invalid_argument("--serve requires H264 extension");dm::video::serve_video(options,args.at("--name"),allow_input,frames);}
+            else dm::video::host_video(options,args.at("--name"),frames,fps,codec,source,extend,allow_input,args.contains("--width")?number(args.at("--width"),4096):1280,args.contains("--height")?number(args.at("--height"),4096):720,keep_layout,client_mode);
         } else {
-            if (allow || allow_input || extend || keep_layout || client_mode || ((control || fullscreen) && headless) || args.contains("--width") || args.contains("--height") || args.contains("--display") || args.contains("--frames") || args.contains("--fps") || args.contains("--codec") || !args.contains("--peer")) throw std::invalid_argument("Unsupported receiver options or missing --peer");
+            if (allow || allow_input || serve || extend || keep_layout || client_mode || ((control || fullscreen) && headless) || args.contains("--width") || args.contains("--height") || args.contains("--display") || args.contains("--frames") || args.contains("--fps") || args.contains("--codec") || !args.contains("--peer")) throw std::invalid_argument("Unsupported receiver options or missing --peer");
             options.peer = args.at("--peer");
             std::optional<unsigned> adapter;
             if (args.contains("--decoder-adapter")) adapter=number(args.at("--decoder-adapter"),255,true);

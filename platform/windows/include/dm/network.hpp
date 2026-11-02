@@ -25,6 +25,9 @@ struct Options {
 };
 
 std::vector<Interface> interfaces();
+struct LocalAddress { std::string name,address; bool up=false,ipv6=false; };
+std::vector<LocalAddress> local_addresses();
+std::string route_source(const std::string& peer);
 void listen_once(const Options& options);
 void probe_peer(const Options& options);
 
