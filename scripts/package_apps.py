@@ -2,14 +2,14 @@
 from pathlib import Path
 import zipfile,hashlib,json,os,re
 ROOT=Path(__file__).resolve().parent.parent
-VERSION=os.environ.get('SIDESCREEN_VERSION','0.12.0')
+VERSION=os.environ.get('SIDESCREEN_VERSION','0.13.0')
 if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?',VERSION):raise ValueError('Invalid release version')
 out=ROOT/'out/dist';out.mkdir(parents=True,exist_ok=True)
 reports=[]
-for role in ['Client','Server']:
+for role in ['SideScreen']:
  source=ROOT/'out/winui'/role
  if not (source/(role+'.exe')).exists():raise RuntimeError('Run scripts/build-apps.ps1 first')
- archive=out/f'SideScreen-{VERSION}-{role}-win-x64.zip'
+ archive=out/f'SideScreen-{VERSION}-win-x64.zip'
  with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
   files=[]
   for file in sorted(source.rglob('*')):
@@ -32,46 +32,36 @@ for role in ['Client','Server']:
    file=ROOT/'out/build/windows-release/_deps'/relative/'LICENSE'
    if not file.exists():raise RuntimeError('Missing TLS dependency license: '+str(file))
    z.write(file,role+'/Licenses/'+dependency+'/LICENSE')
-  readme=f'''SideScreen {role} {VERSION} — Windows 11 x64 development build
+  readme=f'''SideScreen {VERSION} - Windows 11 x64 development prerelease
 
-Extract this entire folder, then run {role}.exe. Keep the runtime DLLs beside it.
-No Python, SSH, WinUI runtime installation or internet connection is required to run.
+Extract the entire folder and run SideScreen.exe on either PC. No Python, SSH or
+separate WinUI runtime installation is required. The sidebar has Server, Client
+and About pages. Switching pages does not interrupt either role.
 
-Run Server on the computer whose desktop you want to extend. Run Client on the
-second PC. Both apps list connected LAN addresses automatically. Pair once,
-choose Start Driver on Server, enter a server IPv4 address on Client, then Connect.
-Start Driver waits for an authenticated client before creating the monitor.
-The server never needs a client address. Windows chooses the client route.
+On the desktop PC, open Server and choose Start Driver. Administrator approval
+is requested only for the separate driver helper. On the second PC, open Client,
+enter the server IPv4 address and Connect. Pair the PCs once using the same code.
+Pairings stay in Windows Credential Manager. The app normally runs unelevated.
 
-Close either setup window to keep it running in the notification area (tray).
-The tray menu offers Open, Start/Stop Driver (Server) or Disconnect (Client), and
-Exit. Only Stop Driver or tray Exit removes the server's virtual monitor. Client
-disconnects leave the driver listening and preserve the current monitor layout.
-Pairing keys are stored in each user's Windows Credential Manager, never this ZIP.
+The Server requires the separately installed DM virtual-display driver. This
+installer/ZIP does not install a driver or change signing/security settings.
+The current driver is a development test-signed component. Receiving needs no driver.
 
-Server requires administrator elevation and the separately installed DM virtual
-display driver. This ZIP does not install a driver or change signing/security
-settings. The current driver is a development test-signed component: these app
-bundles are not a production signed-driver installer for a clean third-party PC.
-Client needs no virtual-display driver.
+Start Driver waits for a paired client before creating its display. The client
+supplies resolution/refresh preferences (currently capped at 60 fps). Windows
+layout changes are retained. Disconnecting the client leaves the server listening
+with its monitor intact. Stop Driver or tray Exit removes it.
 
-The client's display supplies resolution and refresh preferences. Current driver
-modes: 1280x720 (30/60), 1920x1080 (60), 3000x2000 (60), plus rotation. The stream
-currently caps at 60 fps. A supported fallback is shown if exact matching is not
-available. Windows Display Settings can override layout/resolution/orientation;
-that layout is remembered for the same client resolution profile.
-
-The display window is resizable. Use its top toolbar for minimize, maximize,
-fullscreen or close. The toolbar hides automatically; hover at the top center for 600 ms or swipe
-down from the small top-center strip to reveal it. Corner taps reach remote apps. F10 reveals the toolbar,
-F11 toggles fullscreen, F8 pauses input, Ctrl+Shift+Q disconnects, F9 also closes the display. Local window controls
-are not forwarded to the server.
+Close the setup window to hide it to the tray. The tray has Server and Client
+controls and Exit. Ctrl+Shift+Q disconnects reception; F11 toggles fullscreen,
+F10 reveals the toolbar, F8 pauses input. Reveal the toolbar by hovering briefly
+at the top center or swiping down from the small top-center strip.
 
 Normal sessions have no time limit. Debug is off by default. Audio, microphone,
-Windows+K/Miracast and automatic client sleep/network reconnection are not implemented.
-Server listens again after a client disconnects; reconnect from Client.
-Update Client and Server together: this release uses protocol 7.
+Windows+K and automatic client reconnect are not implemented. Update both PCs
+together. Apps/installers are unsigned development builds; protocol version 7.
 '''
+
   z.writestr(role+'/README.txt',readme)
   z.writestr(role+'/manifest.json',json.dumps({'version':VERSION,'role':role,'files':files},indent=2))
  reports.append({'archive':archive.name,'bytes':archive.stat().st_size,'sha256':hashlib.sha256(archive.read_bytes()).hexdigest()})

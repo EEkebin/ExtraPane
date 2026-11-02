@@ -2,7 +2,7 @@
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 <PropertyGroup Label="Globals">
 <ProjectGuid>{823D4A25-19DD-436E-A72C-1ED241EE7ADC}</ProjectGuid><RootNamespace>DM</RootNamespace>
-<DMRole Condition="'$(DMRole)'==''">Client</DMRole><TargetName>$(DMRole)</TargetName>
+<DMRole Condition="'$(DMRole)'==''">SideScreen</DMRole><TargetName>$(DMRole)</TargetName>
 <TargetPlatformVersion>10.0.26100.0</TargetPlatformVersion><TargetPlatformIdentifier>Windows</TargetPlatformIdentifier><WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion><WindowsTargetPlatformMinVersion>10.0.22000.0</WindowsTargetPlatformMinVersion>
 <AppContainerApplication>false</AppContainerApplication>
 <UseWinUI>true</UseWinUI><WindowsPackageType>None</WindowsPackageType><AppxPackage>false</AppxPackage><WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
@@ -21,7 +21,7 @@
 <ClCompile><LanguageStandard>stdcpp20</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader><RuntimeLibrary>MultiThreaded</RuntimeLibrary><WarningLevel>Level4</WarningLevel><AdditionalOptions>/bigobj /utf-8 %(AdditionalOptions)</AdditionalOptions><PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalIncludeDirectories>..\..\platform\windows\include;..\..\core\protocol\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
 <Link><SubSystem>Windows</SubSystem><IgnoreSpecificDefaultLibraries>libucrt.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries><AdditionalOptions>/defaultlib:ucrt.lib %(AdditionalOptions)</AdditionalOptions><AdditionalLibraryDirectories>..\..\out\build\windows-release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><AdditionalDependencies>dm_display.lib;swdevice.lib;cfgmgr32.lib;dm_security.lib;dm_network.lib;dm_probe_protocol.lib;ws2_32.lib;iphlpapi.lib;bcrypt.lib;advapi32.lib;ole32.lib;oleaut32.lib;user32.lib;gdi32.lib;shell32.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
 </ItemDefinitionGroup>
-<ItemDefinitionGroup Condition="'$(DMRole)'=='Server'"><ClCompile><PreprocessorDefinitions>DM_HOST_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><UACExecutionLevel>RequireAdministrator</UACExecutionLevel></Link></ItemDefinitionGroup>
-<ItemGroup><ResourceCompile Include="app.rc"/><ClCompile Include="App.xaml.cpp"/><ClInclude Include="App.xaml.h"/><ClInclude Include="pch.h"/><ClInclude Include="backend.hpp"/><ClInclude Include="tray.hpp"/></ItemGroup>
+
+<ItemGroup><ResourceCompile Include="app.rc"/><ClCompile Include="App.xaml.cpp"/><ClInclude Include="App.xaml.h"/><ClInclude Include="pch.h"/><ClInclude Include="backend.hpp"/><ClInclude Include="tray.hpp"/><ClInclude Include="shell.hpp"/></ItemGroup>
 <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
 </Project>

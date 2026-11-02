@@ -32,7 +32,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version="0.12.0-pre.${{ github.run_number }}.${{ github.run_attempt }}"
+          $version="0.13.0-pre.${{ github.run_number }}.${{ github.run_attempt }}"
           "version=$version" >> $env:GITHUB_OUTPUT
           "SIDESCREEN_VERSION=$version" >> $env:GITHUB_ENV
           $publish=$false
@@ -80,10 +80,10 @@ jobs:
         run: |
           cat > notes.md <<'NOTES'
           ## Downloads
-          Choose **Client** for the second screen, **Server** for the computer being extended.
-          Each role has a portable ZIP and a per-user Setup.exe installer. Extract the entire portable folder.
+          One SideScreen app works on either PC. Choose the **Server** sidebar page on the PC being extended and **Client** on the second screen.
+          Choose the portable ZIP or per-user Setup.exe installer. Both include Server, Client and About. Extract the entire portable folder.
 
-          **Server prerequisite:** separately installed SideScreen/DM virtual-display driver. These app installers do not install a driver or change driver-signing settings. The current driver is a development test-signed component. Client needs no display driver.
+          **Server prerequisite:** separately installed SideScreen/DM virtual-display driver. The app installer do not install a driver or change driver-signing settings. The current driver is a development test-signed component. Client needs no display driver.
 
           Apps and installers are currently unsigned development builds. Audio, microphone passthrough and Windows+K are not implemented. Use SHA256SUMS.txt to verify downloads.
           NOTES

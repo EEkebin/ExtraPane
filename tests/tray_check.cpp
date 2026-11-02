@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <string>
 struct Search{DWORD pid;HWND window=nullptr,tray=nullptr;bool server;};
-BOOL CALLBACK collect(HWND h,LPARAM p){auto& s=*reinterpret_cast<Search*>(p);DWORD pid=0;GetWindowThreadProcessId(h,&pid);if(pid!=s.pid)return TRUE;wchar_t cls[100]{},title[100]{};GetClassNameW(h,cls,100);GetWindowTextW(h,title,100);if(wcscmp(cls,s.server?L"SideScreen.Server.Tray":L"SideScreen.Client.Tray")==0)s.tray=h;else if(wcscmp(title,s.server?L"SideScreen Server":L"SideScreen Client")==0)s.window=h;return TRUE;}
+BOOL CALLBACK collect(HWND h,LPARAM p){auto& s=*reinterpret_cast<Search*>(p);DWORD pid=0;GetWindowThreadProcessId(h,&pid);if(pid!=s.pid)return TRUE;wchar_t cls[100]{},title[100]{};GetClassNameW(h,cls,100);GetWindowTextW(h,title,100);if(wcscmp(cls,L"SideScreen.Tray")==0)s.tray=h;else if(wcscmp(title,L"SideScreen")==0)s.window=h;return TRUE;}
 void need(bool ok,const char* what){if(!ok)throw std::runtime_error(what);}
 void pause(){std::this_thread::sleep_for(std::chrono::milliseconds(350));}
 bool monitor(){try{for(const auto& m:dm::display::active_monitors())if(m.dm_virtual)return true;}catch(...){}return false;}
@@ -17,6 +17,7 @@ int main(int argc,char** argv){try{
  SendMessageW(s.window,WM_CLOSE,0,0);pause();need(IsWindow(s.window)&&!IsWindowVisible(s.window),"Close did not hide to tray");need((GetPropW(s.tray,L"SideScreen.Running")!=nullptr)==running,"Close changed driver/session state");
  SendMessageW(s.tray,WM_COMMAND,1,0);pause();need(IsWindowVisible(s.window)!=FALSE,"Tray Open did not restore window");
  std::cout<<"TRAY_CHECK close-to-tray and reopen passed\n";
+ SendMessageW(s.tray,WM_COMMAND,4,0);pause();SendMessageW(s.tray,WM_COMMAND,1,0);pause();need((GetPropW(s.tray,L"SideScreen.Running")!=nullptr)==running,"Page changes stopped server");
  if(argc>3&&std::string(argv[3])=="--keep-running")return 0;
  if(s.server){if(running){SendMessageW(s.tray,WM_COMMAND,2,0);wait_monitor(false);}SendMessageW(s.tray,WM_COMMAND,2,0);pause();wait_monitor(false);need(GetPropW(s.tray,L"SideScreen.Running")!=nullptr,"Tray Start Driver failed");std::cout<<"TRAY_DRIVER start/stop passed\n";}
  HANDLE process=OpenProcess(SYNCHRONIZE,FALSE,s.pid);need(process!=nullptr,"Cannot wait for app exit");

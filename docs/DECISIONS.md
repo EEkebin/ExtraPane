@@ -88,3 +88,7 @@ Start Driver owns a persistent virtual monitor across sequential authenticated c
 Address-list refinement: show connected physical adapters only; omit disconnected, loopback, tunnel and virtual adapters. This is a presentation filter; existing listener and route selection behavior is unchanged.
 
 Lazy display creation and overlay input: Start Driver only listens until a paired client sends valid display preferences. Retain that monitor across later disconnects until Stop Driver. Reserve a 96-by-8 logical-pixel strip at the top center for a downward touch swipe, with a 24-pixel threshold; mouse reveal requires 600 ms hover there. Other title-bar taps and pen events pass through. Ctrl+Shift+Q disconnects the preview, leaving the server listening.
+
+## Unified app (0.13)
+
+User chose one app with Server and Client pages in a left sidebar and About at the bottom. Ship one portable ZIP and one installer for either PC. Keep page state independent. Main UI runs asInvoker; a narrowly scoped elevated helper owns server engine/firewall lifecycle with user-restricted, process-checked IPC. Keep the existing driver, pairings and layout settings compatible.
