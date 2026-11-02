@@ -3,7 +3,7 @@
 Creates two independent TLS clients, checks distinct display modes, disconnects
 one while the other keeps receiving, then reconnects. Never installs a driver.
 """
-import json, socket, ssl, struct, subprocess, threading, time
+import json, socket, ssl, struct, subprocess, threading, time, winreg
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +59,9 @@ class Client:
         except OSError:pass
         self.stream.close();self.thread.join(timeout=5)
 
+try:
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as key:saved_layout=winreg.QueryValueEx(key,'Layout-127.0.0.1')
+except FileNotFoundError:saved_layout=None
 baseline=topology();assert 'dm_virtual=1' not in baseline,'Stop existing SideScreen server before this test'
 with socket.socket() as port_probe:
     port_probe.bind(('127.0.0.1',0));port=port_probe.getsockname()[1]
@@ -94,5 +97,10 @@ try:
 finally:
     for client in clients:client.close()
     if host.poll() is None:host.terminate();host.wait(timeout=10)
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as key:
+        if saved_layout:winreg.SetValueEx(key,'Layout-127.0.0.1',0,saved_layout[1],saved_layout[0])
+        else:
+            try:winreg.DeleteValue(key,'Layout-127.0.0.1')
+            except FileNotFoundError:pass
     (ROOT/'out/multi-client-test.log').write_text('\n'.join(logs))
     wait(lambda:topology()==baseline)

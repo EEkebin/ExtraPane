@@ -34,6 +34,7 @@ struct Injector {
     std::optional<Event> pen_last;
     std::map<unsigned,Event> keys,buttons;
     std::array<bool,256> physical{};
+    bool physical_initialized=false;
     HHOOK keyboard_hook=nullptr,mouse_hook=nullptr;
     static inline Injector* active=nullptr;
     static LRESULT CALLBACK keyboard(int code,WPARAM message,LPARAM param) {
@@ -61,7 +62,6 @@ struct Injector {
         need(pacing.handle!=nullptr,"Cannot create pointer pacing timer");
         for(const auto& monitor:display::active_monitors()) if(monitor.source==source) target=monitor;
         need(!target.source.empty(),"Input target is not an active monitor");
-        for(unsigned vk=1;vk<256;++vk)physical[vk]=(GetAsyncKeyState(static_cast<int>(vk))&0x8000)!=0;
         active=this;
         keyboard_hook=SetWindowsHookExW(WH_KEYBOARD_LL,keyboard,GetModuleHandleW(nullptr),0);
         mouse_hook=SetWindowsHookExW(WH_MOUSE_LL,mouse,GetModuleHandleW(nullptr),0);
@@ -170,6 +170,7 @@ struct Injector {
         if(e.action==Action::up || e.action==Action::cancel)contacts.erase(e.id);
     }
     void refresh() {
+        if(!lease.acquire())return;
         // Windows can cancel synthetic pointers left unrefreshed while held.
         if(touch && !contacts.empty()) {
             std::vector<POINTER_TYPE_INFO> frame;
@@ -177,6 +178,7 @@ struct Injector {
             inject(touch,frame.data(),static_cast<UINT32>(frame.size()),"Touch hold refresh failed");
         }
         if(pen && pen_last) {auto e=*pen_last;e.action=Action::move;auto info=pointer(e);inject(pen,&info,1,"Pen hold refresh failed");}
+        if(keys.empty()&&buttons.empty()&&contacts.empty()&&(!pen_last || !(pen_last->flags&2)))lease.release();
     }
     void reset() noexcept {
         while(!keys.empty()) { auto e=keys.begin()->second;e.action=Action::up;try { key(e); }catch(...) {keys.erase(e.id);} }
@@ -186,7 +188,14 @@ struct Injector {
         lease.release();
     }
     ~Injector() { reset();if(keyboard_hook)UnhookWindowsHookEx(keyboard_hook);if(mouse_hook)UnhookWindowsHookEx(mouse_hook);active=nullptr;if(touch)DestroySyntheticPointerDevice(touch);if(pen)DestroySyntheticPointerDevice(pen); }
-    void apply(const Event& e) { validate(e);if(!lease.acquire())return;if(e.kind==Kind::reset)reset();else if(e.kind==Kind::mouse)mouse_event(e);else if(e.kind==Kind::key)key(e);else pointer_event(e);if(keys.empty()&&buttons.empty()&&contacts.empty()&&(!pen_last || !(pen_last->flags&2)))lease.release(); }
+    void apply(const Event& e) {
+        validate(e);if(!lease.acquire())return;
+        // Snapshot only after any other remote gesture ended, so its held
+        // keys are not mistaken for permanently held local physical keys.
+        if(!physical_initialized){for(unsigned vk=1;vk<256;++vk)physical[vk]=(GetAsyncKeyState(static_cast<int>(vk))&0x8000)!=0;physical_initialized=true;}
+        if(e.kind==Kind::reset)reset();else if(e.kind==Kind::mouse)mouse_event(e);else if(e.kind==Kind::key)key(e);else pointer_event(e);
+        if(keys.empty()&&buttons.empty()&&contacts.empty()&&(!pen_last || !(pen_last->flags&2)))lease.release();
+    }
 };
 }
 struct Broker::State {
