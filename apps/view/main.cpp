@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
                          "  dm-view codec-check\n"
                          "  dm-view gpu-check\n"
                          "  dm-view host --name <pair> --bind <local-ipv4> --allow-screen [--extend | --display <GDI-name>] [--allow-input] [--frames 0] [--fps 30] [--width 1280 --height 720] [--codec h264|jpeg]\n"
-                         "  dm-view receive --name <pair> --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX]\n"
+                         "  dm-view receive --name <pair> --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality auto|sharp|smooth]\n"
                          "  Common options: --port 43824 --timeout-ms 15000\n"
                          "Pairs: dm-session. Displays: dm-display list. Default source: primary output.\n"
                          "--extend requires separately installed signed DM driver and an administrator token.\n";
@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
             if (key == "--extend") { if(extend) throw std::invalid_argument("Duplicate extend flag"); extend=true;continue; }
             if(key=="--allow-input") {if(allow_input)throw std::invalid_argument("Duplicate input grant");allow_input=true;continue;}
             if(key=="--control") {if(control)throw std::invalid_argument("Duplicate control request");control=true;continue;}
-            if (key != "--name" && key != "--bind" && key != "--peer" && key != "--port" && key != "--timeout-ms" && key != "--frames" && key != "--fps" && key != "--codec" && key != "--decoder-adapter" && key != "--display" && key != "--width" && key != "--height" && key != "--parent-pid") throw std::invalid_argument("Unknown option: " + key);
+            if (key != "--quality" && key != "--name" && key != "--bind" && key != "--peer" && key != "--port" && key != "--timeout-ms" && key != "--frames" && key != "--fps" && key != "--codec" && key != "--decoder-adapter" && key != "--display" && key != "--width" && key != "--height" && key != "--parent-pid") throw std::invalid_argument("Unknown option: " + key);
             if (++i >= argc || !args.emplace(key, argv[i]).second) throw std::invalid_argument("Missing value or duplicate option");
         }
         if (!args.contains("--name") || !args.contains("--bind")) throw std::invalid_argument("--name and --bind are required");
@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
         if (args.contains("--timeout-ms")) options.timeout = std::chrono::milliseconds(number(args.at("--timeout-ms"),60000,command=="host"));
         if (command == "host") {
             if (!allow) throw std::invalid_argument("Screen capture requires explicit --allow-screen consent");
-            if (headless || control || fullscreen || args.contains("--peer") || args.contains("--decoder-adapter")) throw std::invalid_argument("Unsupported host option");
+            if (headless || control || fullscreen || args.contains("--quality") || args.contains("--peer") || args.contains("--decoder-adapter")) throw std::invalid_argument("Unsupported host option");
             auto codec=dm::video::wire::Codec::h264;
             if (args.contains("--codec")) {
                 if(args.at("--codec")=="jpeg") codec=dm::video::wire::Codec::jpeg;
@@ -102,8 +102,10 @@ int main(int argc, char** argv) {
             options.peer = args.at("--peer");
             std::optional<unsigned> adapter;
             if (args.contains("--decoder-adapter")) adapter=number(args.at("--decoder-adapter"),255,true);
-            if (headless) dm::video::receive_video(options,args.at("--name"),[](dm::video::Frame){},adapter);
-            else dm::video::preview_video(options,args.at("--name"),adapter,control,fullscreen);
+            dm::video::Quality quality=dm::video::Quality::automatic;
+            if(args.contains("--quality")){const auto& value=args.at("--quality");if(value=="sharp")quality=dm::video::Quality::sharp;else if(value=="smooth")quality=dm::video::Quality::smooth;else if(value!="auto")throw std::invalid_argument("Quality must be auto, sharp or smooth");}
+            if (headless) dm::video::receive_video(options,args.at("--name"),[](dm::video::Frame){},adapter,{},{},{},[&]{return dm::video::wire::Feedback{0,quality};});
+            else dm::video::preview_video(options,args.at("--name"),adapter,control,fullscreen,quality);
         }
         return 0;
     } catch (const std::exception& error) { std::cerr << "error: " << error.what() << '\n'; return 1; }

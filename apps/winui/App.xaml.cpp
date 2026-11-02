@@ -40,7 +40,7 @@ struct RolePage {
         if(!host)save_setting(L"Peer",remote);pending.clear();log.clear();details.Text(L"");pattern_started=false;
         std::vector<std::wstring> args{host?L"host":L"receive",L"--name",L"dm-lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId())};
         if(host)engine.start_driver(input.IsChecked().Value(),debug.IsChecked().Value());
-        else {args.insert(args.end(),{L"--peer",remote});if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);}
+        else {const auto quality=setting(L"Quality",L"0");args.insert(args.end(),{L"--quality",quality==L"1"?L"sharp":quality==L"2"?L"smooth":L"auto",L"--peer",remote});if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);}
         enabled(true);status.Text(host?L"Starting driver...":L"Connecting securely to your server...");
     }
     void tick(){if(GetTickCount64()-last_addresses>5000)refresh_addresses();if(!engine.process)return;pending+=engine.drain();size_t end;
