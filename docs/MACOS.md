@@ -1,6 +1,6 @@
 # macOS preview
 
-The macOS app receives a Windows or Linux host's display using the same protocol 9 and automatic LAN mode. It targets macOS 12 or newer and contains both Apple Silicon (arm64) and Intel (x86_64) code in one Universal app. The development host also creates a real extended Mac monitor on macOS 13 or newer; iOS remains a separate milestone. Host packaging validation is still pending.
+The macOS app receives a Windows or Linux host's display using the same protocol 9 and automatic LAN mode. It targets macOS 12 or newer and contains both Apple Silicon (arm64) and Intel (x86_64) code in one Universal app. The development host also creates a real extended Mac monitor on macOS 13 or newer; iOS remains a separate milestone. The host/client Universal ZIP and DMG pass hosted packaging validation on Apple Silicon, with native build/checks also passing on Intel.
 
 ## Install and connect
 
@@ -34,7 +34,7 @@ A client connection creates its own virtual monitor; starting the listener alone
 
 Remote keyboard shortcuts use **Ctrl ? Command**, **Windows/Super ? Control**, **Alt ? Option**, and unchanged Shift, preserving left/right modifiers. For example, Ctrl+C/V/Z invokes Mac copy/paste/undo. The host performs this conversion before tracking pressed keys, including cleanup on disconnect. The Mac client still sends its documented physical-key mapping; this policy applies to incoming input at a Mac host.
 
-Virtual monitors use the undocumented CGVirtualDisplay interface, checked at runtime. Future macOS versions may break it. ScreenCaptureKit captures that monitor and VideoToolbox encodes H.264; no driver installation is needed. Native touch/pen injection, audio and microphone forwarding are unavailable. The user reported the initial host session working on the M3 Pro; the new modifier mapping, multiple simultaneous clients and host release packages still require verification.
+Virtual monitors use the undocumented CGVirtualDisplay interface, checked at runtime. Future macOS versions may break it. ScreenCaptureKit captures that monitor and VideoToolbox encodes H.264; no driver installation is needed. Native touch/pen injection, audio and microphone forwarding are unavailable. The user reported the initial host session working on the M3 Pro; multiple simultaneous clients and physical shortcut delivery still require verification. [Host/client deployment packages passed CI](https://github.com/EEkebin/ExtraPane/actions/runs/41738412800), including extracted-app checks; no public release was published.
 
 ## Native implementation
 
