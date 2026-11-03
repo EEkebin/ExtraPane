@@ -1,0 +1,64 @@
+name: Android APK
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      sign:
+        required: true
+        type: boolean
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      EXTRAPANE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install pinned Android tools
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+          echo "EXTRAPANE_ANDROID_VERSION_CODE=$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
+      - name: Build and lint
+        working-directory: apps/android
+        run: bash gradlew assembleDebug assembleDebugAndroidTest lintDebug assembleRelease --no-daemon --console=plain
+      - name: Sign and verify release APK
+        if: inputs.sign
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE: ${{ runner.temp }}/extrapane-release.p12
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" && test -n "$ANDROID_KEYSTORE_PASSWORD"
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE"
+          trap 'rm -f "$ANDROID_KEYSTORE"' EXIT
+          python3 scripts/package_android.py
+      - uses: actions/upload-artifact@v4
+        if: inputs.sign
+        with:
+          name: ExtraPane-Android-${{ inputs.version }}
+          path: |
+            out/dist-android/*.apk
+            out/dist-android/*.apk.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.sign }}
+        with:
+          name: ExtraPane-Android-development-${{ inputs.version }}
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

@@ -186,3 +186,10 @@ The user supplied an Arch Linux KDE/Wayland Hyper-V VM and explicitly approved i
 ## Linux connection verification and toolbar fixes (2026-11-03)
 
 The user authorized a Windows-to-Arch VM connection test and confirmed video, mouse/keyboard, reconnect and fullscreen. Screenshots and feedback identified mixed theme contrast and unreadable toolbar controls. Fix the Linux UI using a consistent Qt Controls style, explicit toolbar contrast and local F10/F8 input suspension. Do not interpret VM mouse feedback as proof of a transport fault or claim Linux touch/pen support based on synthetic events. Rebuild on the VM, preserving the current session until the user restarts the client.
+
+
+## Android stylus, keyboards and distribution (2026-11-03)
+
+Implement native Android stylus forwarding and USB/Bluetooth keyboard handling before macOS. Preserve actual reported pressure, tilt, hover, primary barrel and eraser semantics; do not manufacture barrel rotation from Android direction. Reset owned input on input-device removal/change. Keep unsupported axes/buttons and host grants visible. Android hosting remains deferred: MediaProjection screen sharing is distinct from an extended desktop and remote control needs separate platform permission/integration.
+
+Build and release adds a persistently signed Android APK with pinned toolchain, certificate verification and numeric upgrade versioning. Fork PRs never receive release signing secrets. macOS (Apple Silicon and Intel) follows Android user verification. Physical Android stylus verification remains pending; synthetic event tests are not hardware evidence.

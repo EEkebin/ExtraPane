@@ -26,7 +26,7 @@ The downloads include the app's WinUI runtime. Users do not need Python, SSH, Vi
 
 ExtraPane was previously named SideScreen. Existing published binaries still carry that name until the next release. The repository and download links now use ExtraPane.
 
-The release workflow produces a Windows installer and portable ZIP, a Linux x86_64 AppImage with dependency notices, and combined `SHA256SUMS.txt`. Use matching releases on both endpoints. Android APKs are development builds for now.
+The release workflow produces a Windows installer and portable ZIP, a Linux x86_64 AppImage with dependency notices, a signed Android client APK, and combined `SHA256SUMS.txt`. Use matching releases on both endpoints. See [Android installation and input support](docs/ANDROID.md).
 
 ### Installer
 

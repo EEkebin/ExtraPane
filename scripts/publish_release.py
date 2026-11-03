@@ -19,14 +19,17 @@ On Windows, choose the portable ZIP or per-user Setup.exe installer. Both includ
 
 The driver is development signed, not Microsoft release signed. Its installer adds the package's public code-signing certificate to machine Root and TrustedPublisher. Windows policy can still prevent loading. Setup does not change Secure Boot, Memory Integrity or test-signing mode. The driver has its own Windows Apps uninstall entry; uninstalling the app preserves the driver for other users and portable copies.
 
-Apps and installers are currently unsigned development builds. Audio, microphone passthrough and Windows+K are not implemented. Use SHA256SUMS.txt to verify downloads.
+**Android 11+:** install the Android APK on an ARM64 or x86_64 device and allow installation from your download app when Android asks. Android is a receiver only. It supports native touch, mouse, physical keyboard and compatible stylus input, subject to host/device capabilities. The APK uses the project's persistent Android signing key for updates. An old debug-key build must be uninstalled before installing the release-key APK. See docs/ANDROID.md.
+
+Windows apps and installers are currently unsigned development builds. Audio, microphone passthrough and Windows+K are not implemented. Use SHA256SUMS.txt to verify downloads.
 '''
 Path('release-notes.md').write_text(notes)
 version = data['version']
 artifacts = [Path('dist') / f'ExtraPane-{version}-win-x64.zip',
              Path('dist') / f'ExtraPane-{version}-Setup-win-x64.exe',
              Path('dist') / f'ExtraPane-{version}-linux-x86_64.AppImage',
-             Path('dist') / f'ExtraPane-{version}-linux-dependencies.tar.gz']
+             Path('dist') / f'ExtraPane-{version}-linux-dependencies.tar.gz',
+             Path('dist') / f'ExtraPane-{version}-android.apk']
 assert all(path.is_file() for path in artifacts), 'Incomplete release artifacts'
 checksum = Path('dist/SHA256SUMS.txt')
 existing = dict(line.strip().split('  ', 1)[::-1] for line in checksum.read_text().splitlines() if line.strip())
@@ -35,9 +38,9 @@ for path in artifacts:
         actual = hashlib.file_digest(stream, 'sha256').hexdigest()
     if path.name in existing and existing[path.name] != actual:
         raise RuntimeError(f'Artifact checksum mismatch: {path.name}')
-    if path.suffix == '.AppImage':
-        recorded = path.with_suffix('.AppImage.sha256').read_text().split()[0]
-        if recorded != actual: raise RuntimeError('Linux AppImage checksum mismatch')
+    if path.suffix in ('.AppImage', '.apk'):
+        recorded = path.with_suffix(path.suffix+'.sha256').read_text().split()[0]
+        if recorded != actual: raise RuntimeError('Platform package checksum mismatch')
     existing[path.name] = actual
 checksum.write_text(''.join(f'{value}  {name}\n' for name,value in sorted(existing.items())))
 artifacts.append(checksum)

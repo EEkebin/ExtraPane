@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      android_only:
+        description: Validate Android only (never publishes a release)
+        type: boolean
+        default: false
       linux_only:
         description: Validate Linux only (never publishes a release)
         type: boolean
@@ -82,7 +86,7 @@ jobs:
           if-no-files-found: error
   build:
     needs: metadata
-    if: inputs.linux_only != true
+    if: inputs.linux_only != true && inputs.android_only != true
     runs-on: windows-2025
     timeout-minutes: 45
     env:
@@ -161,12 +165,23 @@ jobs:
           if-no-files-found: error
   linux:
     needs: metadata
+    if: inputs.android_only != true
     uses: ./.github/workflows/linux-appimage.yml
     with:
       version: ${{ needs.metadata.outputs.version }}
+  android:
+    needs: metadata
+    if: inputs.linux_only != true
+    uses: ./.github/workflows/android.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
+      sign: ${{ github.event_name != 'pull_request' }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
   publish:
-    needs: [metadata, build, linux]
-    if: needs.metadata.outputs.publish == 'true' && inputs.linux_only != true
+    needs: [metadata, build, linux, android]
+    if: needs.metadata.outputs.publish == 'true' && inputs.linux_only != true && inputs.android_only != true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -181,6 +196,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ExtraPane-Linux-${{ needs.metadata.outputs.version }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: ExtraPane-Android-${{ needs.metadata.outputs.version }}
           path: dist
       - name: Publish release
         env:

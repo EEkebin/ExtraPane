@@ -4,21 +4,29 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import java.util.HashSet;
+import java.util.HashMap;
 
 final class RemoteInput {
     final InputQueue queue;
     boolean enabled;
-    private final HashSet<Integer> contacts=new HashSet<>(),keys=new HashSet<>();
+    private final HashSet<Integer> contacts=new HashSet<>();
+    private final HashMap<Long,Integer> keys=new HashMap<>();
+    private final StylusInput stylus;
     private int buttons;
-    RemoteInput(InputQueue queue){this.queue=queue;}
-    void reset(){contacts.clear();keys.clear();buttons=0;queue.reset();}
+    RemoteInput(InputQueue queue){this.queue=queue;stylus=new StylusInput(queue);}
+    RemoteInput(InputQueue queue,StylusInput.Axes axes){this.queue=queue;stylus=new StylusInput(queue,axes);}
+    void reset(){contacts.clear();keys.clear();buttons=0;stylus.clear();queue.reset();}
     void enable(boolean value){reset();enabled=value;}
     private int coordinate(float value,int size){return Math.round(Math.max(0,Math.min(1,value/Math.max(1,size)))*65535);}
     boolean motion(View view,MotionEvent event){
         if(!enabled)return true;
-        if(event.getToolType(0)==MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(0)==MotionEvent.TOOL_TYPE_ERASER)return true; // no fake mouse pen fallback
         int action=event.getActionMasked();
         if(action==MotionEvent.ACTION_CANCEL){reset();return true;}
+        boolean allPen=true;
+        for(int i=0;i<event.getPointerCount();i++){
+            if(StylusInput.isPen(event.getToolType(i)))stylus.motion(view,event,i);else allPen=false;
+        }
+        if(allPen)return true;
         if(event.getToolType(0)==MotionEvent.TOOL_TYPE_MOUSE){
             int x=coordinate(event.getX(),view.getWidth()),y=coordinate(event.getY(),view.getHeight());
             if(action==MotionEvent.ACTION_SCROLL){for(int axis=0;axis<2;axis++){int delta=Math.max(-32767,Math.min(32767,Math.round(event.getAxisValue(axis==0?MotionEvent.AXIS_VSCROLL:MotionEvent.AXIS_HSCROLL)*120)));if(delta!=0){int[] p=new int[15];p[0]=1;p[1]=4;p[4]=x;p[5]=y;p[6]=axis;p[7]=delta;queue.add(p);}}return true;}
@@ -37,7 +45,7 @@ final class RemoteInput {
             if(down){if(contacts.size()>=10 || !contacts.add(id))continue;}
             else if(!contacts.contains(id))continue;
             if(!down && !up && action!=MotionEvent.ACTION_MOVE)continue;
-            int[] p=new int[15];p[0]=3;p[1]=down?1:up?2:0;p[2]=up?0:3;p[3]=id;p[4]=coordinate(event.getX(i),view.getWidth());p[5]=coordinate(event.getY(i),view.getHeight());
+            int[] p=new int[15];p[0]=3;p[1]=down?1:up?((event.getFlags()&MotionEvent.FLAG_CANCELED)!=0?3:2):0;p[2]=up?0:3;p[3]=id;p[4]=coordinate(event.getX(i),view.getWidth());p[5]=coordinate(event.getY(i),view.getHeight());
             // Android pressure can be calibrated above 1; normalize to protocol bounds.
             if(event.getDevice()!=null && event.getDevice().getMotionRange(MotionEvent.AXIS_PRESSURE,event.getSource())!=null){p[8]=Math.round(Math.max(0,Math.min(1,event.getPressure(i)))*1024);p[12]|=4;}
             float major=event.getTouchMajor(i),minor=event.getTouchMinor(i);
@@ -52,7 +60,9 @@ final class RemoteInput {
         0x70,0x71,0x72,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x90,0x91,0x67,0x68,0x69,0x6d,0x64,0x65,0x66,0x6b,0x61,0x62,0x63,0x60,0x6e};
     boolean key(KeyEvent e){
         if(!enabled || (queue.capabilities()&2)==0 || (e.getAction()!=KeyEvent.ACTION_DOWN && e.getAction()!=KeyEvent.ACTION_UP))return false;
+        if((e.getFlags()&KeyEvent.FLAG_SOFT_KEYBOARD)!=0)return false;
         int code=e.getScanCode(),scan=code,vk=0,ext=0;
+        if(code==0){code=KeyboardMapping.evdev(e.getKeyCode());scan=code;}
         if(code>0 && code<VK.length)vk=VK[code];else{
             int[] codes={86,87,88,96,97,98,100,102,103,104,105,106,107,108,109,110,111,125,126,127};
             int[] scans={86,87,88,28,29,53,56,71,72,73,75,77,79,80,81,82,83,91,92,93};
@@ -60,7 +70,9 @@ final class RemoteInput {
             for(int i=0;i<codes.length;i++)if(code==codes[i]){scan=scans[i];vk=vks[i];ext=i>=3?1:0;break;}
         }
         if(vk==0)return false;boolean down=e.getAction()==KeyEvent.ACTION_DOWN;
-        if(down)keys.add(vk);else if(!keys.remove(vk))return true;
+        long identity=((long)e.getDeviceId()<<32)|(code&0xffffffffL);
+        if(down){if(e.getRepeatCount()>0 && !keys.containsKey(identity))return true;keys.put(identity,vk);}
+        else {if(keys.remove(identity)==null)return true;if(keys.containsValue(vk))return true;}
         int[] p=new int[15];p[0]=2;p[1]=down?1:2;p[3]=vk;p[6]=scan;p[7]=ext;queue.add(p);return true;
     }
 }
