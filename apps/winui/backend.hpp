@@ -78,6 +78,7 @@ std::wstring setting(const wchar_t *name, const std::wstring &fallback,bool host
                ? v
                : fallback;
 }
+std::wstring renderer_setting(){auto value=setting(L"Renderer",L"d3d11");return value==L"d3d12"||value==L"vulkan"?value:L"d3d11";}
 void save_setting(const wchar_t *name, const std::wstring &value,bool host=false)
 {
     HKEY key = nullptr;

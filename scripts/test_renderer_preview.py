@@ -2,7 +2,7 @@
 
 Never installs a driver. Runs each renderer on connection, not a live switch.
 """
-import subprocess,time,json,os
+import subprocess,time,json,os,argparse
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
@@ -10,8 +10,9 @@ b=ROOT/'out/build/windows-release'
 baseline=subprocess.check_output([str(b/'dm-display.exe'),'list'],text=True)
 assert 'dm_virtual=1' not in baseline,'Disconnect existing virtual displays before this test'
 reports=[]
-for initial in ('d3d11','d3d12'):
-    with open(f'out/d3d12-{initial}-host.log','w') as ho,open(f'out/d3d12-{initial}-client.log','w') as co:
+parser=argparse.ArgumentParser();parser.add_argument('--renderer',choices=('d3d11','d3d12','vulkan'));selected=parser.parse_args().renderer
+for initial in ((selected,) if selected else ('d3d11','d3d12','vulkan')):
+    with open(f'out/renderer-{initial}-host.log','w') as ho,open(f'out/renderer-{initial}-client.log','w') as co:
         host=subprocess.Popen([str(b/'dm-view.exe'),'host','--lan','--bind','127.0.0.1','--port','43832','--allow-screen','--extend','--frames','0','--fps','60'],stdout=ho,stderr=subprocess.STDOUT)
         client=None
         try:
@@ -29,8 +30,8 @@ for initial in ('d3d11','d3d12'):
             if host.poll() is None:
                 try:host.wait(timeout=8)
                 except subprocess.TimeoutExpired:host.kill();host.wait()
-    text=Path(f'out/d3d12-{initial}-client.log').read_text()
+    text=Path(f'out/renderer-{initial}-client.log').read_text()
     assert 'RENDERER_FALLBACK' not in text and 'cpu_pixel_uploads=0' in text,text
-    assert f'renderer={initial.upper()}' in text,text
+    assert f'renderer={initial}'.lower() in text.lower(),text
     reports.append({'initial':initial,'passed':True,'log':text})
-Path('out/d3d12-preview-tests.json').write_text(json.dumps(reports,indent=2))
+Path('out/renderer-preview-tests.json').write_text(json.dumps(reports,indent=2))
