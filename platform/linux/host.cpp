@@ -34,7 +34,7 @@ struct SampleRelease{void operator()(GstSample* p)const{if(p)gst_sample_unref(p)
 }
 QString Host::unavailable(){
     auto reason=Portal::unavailable();if(!reason.isEmpty())return reason;
-    for(const char* name:{"pipewiresrc","videoconvert","videoscale","videorate","x264enc","h264parse","appsink"}){
+    for(const char* name:{"pipewiresrc","videoconvert","videoscale","videorate","openh264enc","h264parse","appsink"}){
         auto* factory=gst_element_factory_find(name);if(!factory)return "Missing hosting component: "+QString::fromUtf8(name);gst_object_unref(factory);
     }return {};
 }
@@ -80,7 +80,7 @@ void Host::serve(int socket){
     const unsigned fps=std::clamp(display.hz?display.hz:60,1u,60u);
     std::uint64_t epoch=0;if(granted){if(RAND_bytes(reinterpret_cast<unsigned char*>(&epoch),sizeof(epoch))!=1)throw std::runtime_error("Cannot generate input epoch");if(!epoch)epoch=1;}
     Pipeline media;GError* error=nullptr;
-    const auto description=QString("pipewiresrc name=capture do-timestamp=true ! queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! videorate ! video/x-raw,format=I420,width=%1,height=%2,framerate=%3/1 ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=12000 key-int-max=%3 bframes=0 threads=2 byte-stream=true ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au ! appsink name=encoded sync=false max-buffers=2 drop=false").arg(width).arg(height).arg(fps);
+    const auto description=QString("pipewiresrc name=capture do-timestamp=true ! queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! videorate ! video/x-raw,format=I420,width=%1,height=%2,framerate=%3/1 ! openh264enc complexity=low bitrate=12000000 gop-size=%3 rate-control=bitrate enable-frame-skip=true ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au ! appsink name=encoded sync=false max-buffers=2 drop=false").arg(width).arg(height).arg(fps);
     media.pipeline=gst_parse_launch(description.toUtf8().constData(),&error);
     if(error || !media.pipeline){std::string reason=error?error->message:"Cannot create capture encoder";if(error)g_error_free(error);throw std::runtime_error(reason);}
     auto* source=gst_bin_get_by_name(GST_BIN(media.pipeline),"capture");

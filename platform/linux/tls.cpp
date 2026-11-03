@@ -95,6 +95,7 @@ Tls::Tls(int acceptedSocket,std::function<bool()> cancelled):state_(std::make_un
     s.context=SSL_CTX_new(TLS_server_method());
     if(!s.context)failure("Create server TLS context");
     if(SSL_CTX_set_min_proto_version(s.context,TLS1_3_VERSION)!=1 || SSL_CTX_set_max_proto_version(s.context,TLS1_3_VERSION)!=1)failure("Require TLS 1.3");
+    SSL_CTX_set_num_tickets(s.context,0); // Windows Mbed TLS client does not consume post-handshake tickets.
     SSL_CTX_set_verify(s.context,SSL_VERIFY_NONE,nullptr);SSL_CTX_set_options(s.context,SSL_OP_NO_TICKET);
     SSL_CTX_set_session_cache_mode(s.context,SSL_SESS_CACHE_OFF);
     std::unique_ptr<EVP_PKEY,decltype(&EVP_PKEY_free)> key(EVP_EC_gen("prime256v1"),EVP_PKEY_free);

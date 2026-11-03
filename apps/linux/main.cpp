@@ -8,14 +8,19 @@
 #include <QSGRendererInterface>
 #include <gst/gst.h>
 #include <csignal>
+#include <QTimer>
+namespace { volatile std::sig_atomic_t quitRequested=0; }
 
 int main(int argc,char** argv){
     std::signal(SIGPIPE,SIG_IGN);
+    std::signal(SIGTERM,[](int){quitRequested=1;});
+    std::signal(SIGINT,[](int){quitRequested=1;});
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents,false);
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTabletEvents,false);
     // A consistent Controls style honors our palette on KDE light and dark desktops.
     QQuickStyle::setStyle("Fusion");
     QGuiApplication app(argc,argv);
+    QTimer shutdownTimer;QObject::connect(&shutdownTimer,&QTimer::timeout,&app,[]{if(quitRequested)QCoreApplication::quit();});shutdownTimer.start(100);
     QCoreApplication::setOrganizationName("ExtraPane");QCoreApplication::setApplicationName("ExtraPane");
     QGuiApplication::setDesktopFileName("io.github.EEkebin.ExtraPane");
     QGuiApplication::setWindowIcon(QIcon(":/extrapane.png"));

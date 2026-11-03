@@ -19,8 +19,8 @@ from release_version import current
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = {'linuxdeploy', 'linuxdeploy-plugin-qt', 'linuxdeploy-plugin-gstreamer.sh'}
 REQUIRED_PLUGINS = ('app', 'coreelements', 'playback', 'typefindfunctions',
-                    'videoparsersbad', 'opengl', 'qml6', 'videoconvertscale')
-DECODER_PLUGINS = ('va', 'vaapi', 'nvcodec', 'v4l2codecs', 'libav', 'openh264')
+                    'videoparsersbad', 'opengl', 'qml6', 'videoconvertscale', 'videorate', 'pipewire', 'openh264')
+DECODER_PLUGINS = ('va', 'vaapi', 'nvcodec', 'v4l2codecs')
 
 
 def digest(path):
@@ -67,8 +67,7 @@ def main():
         plugins.append(path)
     decoders = [args.plugins_dir/f'libgst{name}.so' for name in DECODER_PLUGINS
                 if (args.plugins_dir/f'libgst{name}.so').is_file()]
-    if not decoders:
-        raise SystemExit('No candidate H.264 decoder plugin was supplied.')
+    # The required OpenH264 plugin includes a software encoder and decoder.
     plugins += decoders
     output.parent.mkdir(parents=True, exist_ok=True)
     (ROOT/'out').mkdir(exist_ok=True)
