@@ -71,3 +71,9 @@ Stop Driver or tray Exit removes the owned rule and virtual monitor. Closing the
 ## Unified app privilege boundary (0.13)
 
 SideScreen.exe is asInvoker. Server startup elevates SideScreen.Service.exe with fixed options; that helper manages the firewall and launches the fixed sibling media engine. The randomized named pipe is restricted to the launching user and SYSTEM, rejects remote clients, and both endpoints verify peer process IDs. The helper additionally checks the launcher executable path. The only inbound control is stop; media/input never flow through this IPC. The helper monitors launcher death and removes its owned firewall rule after stopping the engine. Pairing remains in the interactive user's credential store; elevation must use that same Windows account. Apps remain unsigned development builds.
+
+## Development driver installation
+
+Server + Client setup requires a machine-wide virtual-display driver. The elevated driver installer explicitly asks to trust its development code-signing certificate in machine Root and TrustedPublisher. The app itself remains per-user; Client only makes no driver/trust changes. The build discards its ephemeral private signing key and ships only the public certificate. This is not Microsoft release signing.
+
+The manager and records live under Program Files. Package hashes, allowed filenames, certificate identity and catalog signer are verified before trust changes; Windows SetupAPI validates catalog membership when staging. Removal verifies recorded package identities and removes only installer-owned packages/certificate entries. App uninstall preserves the driver for other users/portable copies. No boot security policy is changed and staging is not proof of runtime loading under every Windows policy. See DRIVER-INSTALLATION.md for consent, rollback and logs.

@@ -45,3 +45,5 @@ For opt-in stage timing, set `SIDESCREEN_GL_PROFILE=1` in the diagnostic process
 The pixel diagnostic deliberately uploads known input and reads back the result. Neither operation belongs to production streaming. Physical pen/touch, perceived responsiveness and visual acceptance remain the user's handoff.
 
 References: [WGL D3D11 interoperability](https://registry.khronos.org/OpenGL/extensions/NV/WGL_NV_DX_interop2.txt), [resource registration and lock/unlock semantics](https://registry.khronos.org/OpenGL/extensions/NV/WGL_NV_DX_interop.txt).
+
+A later user-requested test assigned the temporary receiver to the high-performance GPU. Windows then enumerated the GTX 1050 as adapter 0. With both decoding and OpenGL on NVIDIA, pixel checks passed and native fullscreen presented 566/600 frames over 10.51 seconds, with no CPU pixel bridge or fallback. The temporary GPU preference and executable were removed afterward. The earlier rejection was a cross-adapter configuration, not a general GTX 1050 incompatibility.

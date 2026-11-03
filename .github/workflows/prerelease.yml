@@ -85,6 +85,12 @@ jobs:
       - name: Build apps and run engine tests
         shell: pwsh
         run: ./scripts/build-apps.ps1
+      - name: Build and package server driver
+        shell: pwsh
+        run: |
+          ./scripts/build-driver.ps1
+          ./scripts/package-driver.ps1
+          ./scripts/build-driver-installer.ps1
       - name: Package portable apps
         run: python scripts/package_apps.py
       - name: Build installers
@@ -92,6 +98,24 @@ jobs:
         run: ./scripts/package-installers.ps1
       - name: Verify release artifacts
         run: python scripts/verify_packages.py
+      - name: Verify server install and driver ownership
+        run: python scripts/test_driver_installer.py
+      - name: Preserve driver installer diagnostics on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $target='out/driver-installer-logs/manager'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          $source='C:/Program Files/SideScreen Driver'
+          if(Test-Path "$source/driver-setup.log") { Copy-Item "$source/driver-setup.log" $target }
+          if(Test-Path "$source/state") { Copy-Item "$source/state/*.json" $target -ErrorAction SilentlyContinue }
+      - name: Upload driver installer diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-installer-diagnostics
+          path: out/driver-installer-logs/
+          if-no-files-found: ignore
       - name: Include release metadata
         shell: pwsh
         run: Copy-Item release-metadata.json out/dist/release-metadata.json

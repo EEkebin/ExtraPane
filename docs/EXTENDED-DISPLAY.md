@@ -1,4 +1,6 @@
-# Extended desktop prototype
+# Extended desktop development history
+
+For current installer behavior, use [Server driver installation](DRIVER-INSTALLATION.md). This document records earlier prototypes and local development installs; statements about bounded sessions and missing runtime features below describe those historical milestones.
 
 The goal is an independent Windows monitor on the source computer. This host has two active physical monitors; a DM monitor would provide a third desktop surface, streamed to the Surface Book 2. Windows assigns its display number.
 

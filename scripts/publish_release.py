@@ -12,7 +12,9 @@ notes += '''## Downloads
 One SideScreen app works on either PC. Choose **Server** on the PC being extended and **Client** on the second screen.
 Choose the portable ZIP or per-user Setup.exe installer. Both include Server, Client and About. Extract the entire portable folder.
 
-**Server prerequisite:** separately installed SideScreen/DM virtual-display driver. The app installer does not install a driver or change driver-signing settings. The current driver is a development test-signed component. Client needs no display driver.
+**Server installation:** select **Server + Client** in Setup. The bundled virtual-display driver is required for this choice and asks for certificate consent and administrator permission. Portable users run `SideScreen.DriverSetup.exe` once before hosting. **Client only** needs no driver.
+
+The driver is development signed, not Microsoft release signed. Its installer adds the package's public code-signing certificate to machine Root and TrustedPublisher. Windows policy can still prevent loading. Setup does not change Secure Boot, Memory Integrity or test-signing mode. The driver has its own Windows Apps uninstall entry; uninstalling the app preserves the driver for other users and portable copies.
 
 Apps and installers are currently unsigned development builds. Audio, microphone passthrough and Windows+K are not implemented. Use SHA256SUMS.txt to verify downloads.
 '''
