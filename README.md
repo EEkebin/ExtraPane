@@ -24,7 +24,7 @@ The downloads include the app's WinUI runtime. Users do not need Python, SSH, Vi
 
 ## Install
 
-ExtraPane was previously named SideScreen. Existing published binaries still carry that name until the next release. The repository and download links now use ExtraPane.
+ExtraPane was previously named SideScreen. Older releases retain that name; current packages use ExtraPane. Windows upgrades preserve the existing installation identity and driver ownership.
 
 The release workflow produces a Windows installer and portable ZIP, a Linux x86_64 AppImage with dependency notices, a signed Android client APK, a macOS Universal ZIP/DMG preview, and combined `SHA256SUMS.txt`. Use matching releases on both endpoints. See [Android installation and input support](docs/ANDROID.md).
 

@@ -226,3 +226,7 @@ The modifier build passed native protocol/input/media checks on the M3 Pro. Duri
 Automatic route now works for Mac hosting: enumerate the same connected physical IPv4 addresses shown in the UI, then bind a separate listener to each, sharing four session slots. Explicit selection binds only that address. Never bind a wildcard address or require a default internet route. The listener snapshot updates on server restart; Refresh preserves a still-present explicit selection.
 
 Host/client Universal deployment validation passed in run 41738412800 on both hosted Mac architectures, including extracted ZIP app checks and DMG integrity. This validates packaging, not a physical Intel host. At the user's request, ExtraPane was stopped and removed from the M3 Pro, along with its entire preview workspace, settings/logs and app-scoped privacy permissions. No app process, listener or virtual monitor remained; do not reinstall there without new authorization.
+
+## Four-platform release authorization (2026-11-03)
+
+The user deferred iOS before implementation and explicitly requested merging the completed Windows, Linux, Android and macOS work and publishing a release. Consolidate the platform branches, keep all four package jobs required for publication, preserve the existing Android signing identity and Windows upgrade identifiers, and retain the documented preview limitations. No installation on the user's Mac is authorized.
