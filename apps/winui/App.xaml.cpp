@@ -15,7 +15,7 @@ struct RolePage {
     const bool host;std::function<void()> changed;
     FrameworkElement root{nullptr};
     TextBox peer{nullptr},details{nullptr};TextBlock status{nullptr},addresses{nullptr};
-    unsigned next_scale=0;std::wstring last_error;
+    unsigned next_scale=0;std::wstring last_error,renderer_warning;
     std::set<unsigned> connections;
     ULONGLONG last_addresses=0;
     CheckBox input{nullptr},debug{nullptr};Button start_button{nullptr},stop_button{nullptr};
@@ -39,10 +39,10 @@ struct RolePage {
     }
     void start(){
         const std::wstring remote(peer.Text());if(!host)ipv4(remote);
-        if(!host)save_setting(L"Peer",remote);pending.clear();log.clear();last_error.clear();details.Text(L"");pattern_started=false;
+        if(!host)save_setting(L"Peer",remote);pending.clear();log.clear();last_error.clear();renderer_warning.clear();details.Text(L"");pattern_started=false;
         std::vector<std::wstring> args{host?L"host":L"receive",L"--lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId())};
         if(host)engine.start_driver(input.IsChecked().Value(),debug.IsChecked().Value());
-        else {const auto quality=std::exchange(next_scale,0u);find<TextBlock>(L"Mode").Text(quality==0?L"This connection: Native resolution.":quality==1?L"This connection: 75% stream resolution. The next connection defaults to Native.":L"This connection: 50% stream resolution. The next connection defaults to Native.");args.insert(args.end(),{L"--quality",quality==1?L"75":quality==2?L"50":L"native",L"--peer",remote});if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);}
+        else {const auto quality=std::exchange(next_scale,0u);find<TextBlock>(L"Mode").Text(quality==0?L"This connection: Native resolution.":quality==1?L"This connection: 75% stream resolution. The next connection defaults to Native.":L"This connection: 50% stream resolution. The next connection defaults to Native.");args.insert(args.end(),{L"--quality",quality==1?L"75":quality==2?L"50":L"native",L"--renderer",setting(L"Renderer",L"d3d11")==L"d3d12"?L"d3d12":L"d3d11",L"--peer",remote});if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);}
         enabled(true);status.Text(host?L"Starting driver...":L"Connecting securely to your server...");
     }
     void drain_output(){if(!engine.process)return;pending+=engine.drain();size_t end;
@@ -68,6 +68,7 @@ struct RolePage {
                 find<TextBlock>(L"Mode").Text(next_scale==0?L"Next connection: Native resolution.":next_scale==1?L"Next connection only: 75% stream resolution. Later connections return to Native.":L"Next connection only: 50% stream resolution. Later connections return to Native.");
             }
             if(line.starts_with("error:")){last_error=wide(line.substr(6));status.Text(last_error);}
+            if(!host&&line.starts_with("RENDERER_UNAVAILABLE D3D12 ")){renderer_warning=wide(line.substr(std::string_view("RENDERER_UNAVAILABLE D3D12 ").size()));status.Text(L"D3D12 could not run; using D3D11. "+renderer_warning);if(changed)changed();}
         }
         if(pending.size()>16384)pending.clear();if(debug.IsChecked().Value())details.Text(log);if(test_report){std::ofstream out(directory()/(host?L"server-session-check.log":L"client-session-check.log"));out<<ascii(log);}
     }
@@ -84,9 +85,9 @@ struct RolePage {
     RolePage(bool server):host(server){
         root=Markup::XamlReader::Load(LR"XAML(
 <ScrollViewer xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-<StackPanel Padding="32" Spacing="20" MaxWidth="760" HorizontalAlignment="Stretch">
+<StackPanel x:Name="RoleOptions" Padding="32" Spacing="20" MaxWidth="760" HorizontalAlignment="Stretch">
  <StackPanel Spacing="6"><TextBlock x:Name="Title" FontSize="32" FontWeight="SemiBold"/><TextBlock x:Name="Subtitle" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
- <Border Padding="20" CornerRadius="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"><StackPanel Spacing="16">
+ <Border Padding="20" CornerRadius="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"><StackPanel x:Name="ConnectionOptions" Spacing="16">
  <StackPanel Spacing="8"><TextBlock Text="This PC's network addresses" FontWeight="SemiBold"/><ScrollViewer MaxHeight="165" HorizontalScrollBarVisibility="Auto"><TextBlock x:Name="Addresses" IsTextSelectionEnabled="True" FontSize="13"/></ScrollViewer><TextBlock Text="Connections use IPv4. Addresses are detected automatically." FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
  <TextBox x:Name="Peer" Header="Server address" PlaceholderText="Enter the server's IPv4 address"/>
  <TextBlock x:Name="Mode" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -109,6 +110,7 @@ struct RolePage {
 
     }
 };
+#include "settings.hpp"
 #include "shell.hpp"
 winrt::fire_and_forget capture_check(Shell* ui) {
     try {
@@ -130,7 +132,7 @@ void App::OnLaunched(LaunchActivatedEventArgs const&){
     try{Resources().MergedDictionaries().Append(XamlControlsResources());window=Window();shell=std::make_unique<Shell>(window);
         if(wcsstr(GetCommandLineW(),L"--smoke-test")){
             for(auto* page:{shell->server.get(),shell->client.get()})if(!page->start_button.IsEnabled()||page->stop_button.IsEnabled()||page->debug.IsChecked().Value()||page->addresses.Text().empty())throw std::runtime_error("Bad initial page state");
-            shell->choose(false);shell->select(L"About");shell->choose(true);
+            shell->choose(false);shell->select(L"About");shell->choose(true);if(wcsstr(GetCommandLineW(),L"--settings"))shell->navigation.SelectedItem(shell->navigation.FooterMenuItems().GetAt(0));
             shell->timer.Interval(std::chrono::milliseconds(700));shell->timer.Tick([](auto&&,auto&&){shell->timer.Stop();capture_check(shell.get());});
         }else if(wcsstr(GetCommandLineW(),L"--start")){auto& page=wcsstr(GetCommandLineW(),L"--client")?shell->client:shell->server;page->attempt([&]{page->start();});}
 

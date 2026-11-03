@@ -35,8 +35,8 @@ target_link_libraries(dm_security PUBLIC dm_network mbedtls PRIVATE advapi32)
 add_executable(dm-session apps/session/main.cpp)
 target_link_libraries(dm-session PRIVATE dm_security)
 
-add_library(dm_video STATIC platform/windows/video_capture.cpp platform/windows/monitor_capture.cpp platform/windows/video_stream.cpp platform/windows/video_preview.cpp platform/windows/h264.cpp platform/windows/video_gpu.cpp platform/windows/input_capture.cpp platform/windows/input_broker.cpp)
-target_link_libraries(dm_video PUBLIC dm_security PRIVATE dm_display windowsapp d3d11 d3dcompiler dxgi dxguid windowscodecs ole32 oleaut32 mfplat mfuuid mf user32 wmcodecdspuuid)
+add_library(dm_video STATIC platform/windows/video_capture.cpp platform/windows/monitor_capture.cpp platform/windows/video_stream.cpp platform/windows/video_preview.cpp platform/windows/video_d3d12.cpp platform/windows/h264.cpp platform/windows/video_gpu.cpp platform/windows/input_capture.cpp platform/windows/input_broker.cpp)
+target_link_libraries(dm_video PUBLIC dm_security PRIVATE dm_display windowsapp d3d11 d3d12 d3dcompiler dxgi dxguid windowscodecs ole32 oleaut32 mfplat mfuuid mf user32 wmcodecdspuuid)
 add_executable(dm-view apps/view/main.cpp)
 target_link_libraries(dm-view PRIVATE dm_video)
 

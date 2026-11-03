@@ -42,6 +42,12 @@ Deliver signed virtual display integration with supported resolution/refresh neg
 
 Installer/uninstaller, per-component driver lifecycle, accessible setup, keyboard navigation, session status, pairing revocation, redacted diagnostic export, recovery, and measured performance. Resolve licenses and distribution obligations before shipping dependencies/drivers.
 
+### Current renderer work: D3D12 handoff
+
+D3D12 client backend and shared app Settings are implemented. Renderer selection is configured before connecting and saved on this PC; live toolbar switching was removed at the user's request. D3D11 remains the default. Shared Settings, unavailable-option handling, GPU presentation, window controls and display reconfiguration checks passed. Hand off D3D12 for user acceptance before Vulkan and OpenGL.
+
+See [D3D12 evidence and limits](D3D12.md).
+
 ### Launch after installation
 
 Implemented for the reconnect/lifecycle fixes: a **Launch SideScreen** checkbox on the installer's final **Finish** page, checked by default. Clicking Finish launches the app if checked; unchecking it finishes without launching. Silent installations do not launch the app automatically.
