@@ -49,7 +49,8 @@ void Media::prepare(QQuickItem* item,unsigned width,unsigned height,unsigned ser
         "caps=video/x-h264,stream-format=byte-stream,alignment=au ! h264parse ! decodebin name=decoder "
         "! capsfilter name=geometry ! identity name=decoded silent=true ! glupload ! glcolorconvert ! qml6glsink name=screen sync=false enable-last-sample=false",&error);
     if(error || !pipeline_){const QString reason=error?QString::fromUtf8(error->message):"Cannot create video pipeline";
-        if(error)g_error_free(error);stop();reject(reason);return;}
+        if(error)g_error_free(error);
+        stop();reject(reason);return;}
     source_=gst_bin_get_by_name(GST_BIN(pipeline_),"network");
     auto* sink=gst_bin_get_by_name(GST_BIN(pipeline_),"screen");
     auto* decoder=gst_bin_get_by_name(GST_BIN(pipeline_),"decoder");
@@ -124,7 +125,8 @@ void Media::inspectBus(){
         QString reason;
         if(GST_MESSAGE_TYPE(message)==GST_MESSAGE_ERROR){GError* error=nullptr;gchar* details=nullptr;
             gst_message_parse_error(message,&error,&details);reason=error?QString::fromUtf8(error->message):"Video pipeline failed";
-            if(error)g_error_free(error);g_free(details);}
+            if(error)g_error_free(error);
+            g_free(details);}
         {std::lock_guard lock(mutex_);if(!reason.isEmpty())failure_=reason;else eos_=true;changed_.notify_all();}
         gst_message_unref(message);if(!reason.isEmpty()){emit failed(reason);return;}
     }

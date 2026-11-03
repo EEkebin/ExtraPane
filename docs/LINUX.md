@@ -1,6 +1,6 @@
 # Linux client and AppImage work
 
-Status: initial source implementation, **not built or tested**. The user authorized development but explicitly prohibited testing while gaming. No Linux application, build, GPU probe, CI run, connection test, driver operation, or display change has been run for this work. There is no downloadable Linux build yet. The current published release remains Windows-only.
+Status: **source build succeeded on an Arch Linux x86_64 Hyper-V VM** on 2026-11-03. The user authorized dependency installation and a two-job Linux compilation. App launch, QML/runtime behavior, streaming, input, GPU acceleration and AppImage packaging remain untested. No Windows app, driver operation or display change was run. There is no downloadable Linux release yet; published downloads remain Windows-only.
 
 The first target is Linux x86_64, with KDE Plasma on Wayland as the first intended acceptance environment. Windows hosts the extended desktop; Linux receives its video and returns input. Linux hosting is a later milestone. macOS is deferred.
 
@@ -34,11 +34,28 @@ bash scripts/build-linux.sh
 
 It configures `linux-release` with `BUILD_TESTING=OFF` and builds the `ExtraPane` executable in `out/build/linux-release/platform/linux`. It does not launch the app or run tests. No Linux test preset or automatic release workflow has been enabled.
 
+## Arch VM build evidence
+
+The initial build completed on KDE Plasma/Wayland with GCC 16.2.1, CMake 4.4.5, Ninja 1.13.2, Qt 6.12.0, OpenSSL 3.6.5 and GStreamer 1.28.8. The VM has 12 virtual CPUs and 15 GiB RAM; compilation was limited to two jobs. This proves compilation/linking only, not runtime or cross-distribution compatibility.
+
+Arch dependencies (synchronize and upgrade together to avoid partial upgrades):
+
+```sh
+sudo pacman -Syu --needed base-devel cmake ninja pkgconf git python \
+  qt6-base qt6-declarative qt6-wayland openssl gstreamer \
+  gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav gst-plugin-qml6
+EXTRAPANE_BUILD_JOBS=2 bash scripts/build-linux.sh
+```
+
+`gst-plugin-qml6` supplies the required Qt 6 integration. `gst-plugin-qmlgl` is the Qt 5 plugin and is not a substitute. Optional Qt Vulkan-header discovery is not required by this OpenGL client. An AppImage built against rolling Arch libraries is not evidence of compatibility with older distributions; the proposed Ubuntu baseline still needs its own build and packaging verification.
+
+The VM checkout is `/home/user/ExtraPane`; the native executable is `out/build/linux-release/platform/linux/ExtraPane`. No AppImage was produced.
+
 ## AppImage packaging draft
 
 `scripts/package_linux.py` packages an already-built executable. It does not build, test, launch or publish ExtraPane. The planned output name is `ExtraPane-<version>-linux-x86_64.AppImage`, with a separate SHA-256 file.
 
-The packager requires locally supplied linuxdeploy, its Qt plugin, and its GStreamer plugin. Copy `packaging/linux/tools.example.json` to an ignored local file, replace its paths and placeholder hashes with reviewed exact tool identities, and keep that lock with the packaging inputs. Placeholders deliberately fail. No packaging tools or dependencies are downloaded by the script, and no dependency has been installed for this work.
+The packager requires locally supplied linuxdeploy, its Qt plugin, and its GStreamer plugin. Copy `packaging/linux/tools.example.json` to an ignored local file, replace its paths and placeholder hashes with reviewed exact tool identities, and keep that lock with the packaging inputs. Placeholders deliberately fail. No packaging tools or dependencies are downloaded by the script. Build/runtime dependencies were installed separately in the development VM.
 
 The GStreamer plugin input is restricted to the application, parser, playback, OpenGL/Qt integration and selected decoder plugins. The scanner is included; system GPU drivers are not bundled. Qt's Wayland platform plugins are requested explicitly. The package also requires reviewed license notices and any applicable source-offer materials for its actual dependency set; a nonempty directory is only an input requirement, not an automated compliance audit.
 
