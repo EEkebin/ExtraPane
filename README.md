@@ -8,11 +8,11 @@ ExtraPane uses another Windows PC as an extended monitor over Wi-Fi or Ethernet.
 
 [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
-The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers support up to four clients; the Linux host currently supports one. The Android preview is a client only.
+The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers support up to four clients; the Linux host currently supports one. The Android and macOS previews are clients only.
 
 ## Requirements
 
-The following requirements apply to Windows. See [Linux setup](docs/LINUX.md) and [Android setup](docs/ANDROID.md) for those platforms.
+The following requirements apply to Windows. See [Linux setup](docs/LINUX.md), [Android setup](docs/ANDROID.md) and [macOS setup](docs/MACOS.md) for those platforms.
 
 - Windows 11 x64 on each PC.
 - A reachable IPv4 connection over Wi-Fi, Ethernet or a direct cable with static addresses. DHCP and internet access are not required for a connection.
@@ -26,7 +26,7 @@ The downloads include the app's WinUI runtime. Users do not need Python, SSH, Vi
 
 ExtraPane was previously named SideScreen. Existing published binaries still carry that name until the next release. The repository and download links now use ExtraPane.
 
-The release workflow produces a Windows installer and portable ZIP, a Linux x86_64 AppImage with dependency notices, a signed Android client APK, and combined `SHA256SUMS.txt`. Use matching releases on both endpoints. See [Android installation and input support](docs/ANDROID.md).
+The release workflow produces a Windows installer and portable ZIP, a Linux x86_64 AppImage with dependency notices, a signed Android client APK, a macOS Universal ZIP/DMG preview, and combined `SHA256SUMS.txt`. Use matching releases on both endpoints. See [Android installation and input support](docs/ANDROID.md).
 
 ### Installer
 
@@ -53,7 +53,7 @@ The current driver uses a development code-signing certificate. It is **not Micr
 
 Setup does not disable Secure Boot or Memory Integrity, enable test-signing mode, or restart Windows automatically. Windows policy may still reject the driver when it loads. Successful package installation does not prove that every Windows configuration can load it. If setup or hosting fails, see [driver installation and troubleshooting](docs/DRIVER-INSTALLATION.md).
 
-Apps and installers are currently unsigned. The bundled driver is development-signed; compatibility on a new PC depends on Windows policy and the hardware in use.
+Windows apps and installers are currently unsigned. The macOS preview is ad-hoc signed, not notarized. The bundled driver is development-signed; compatibility on a new PC depends on Windows policy and the hardware in use.
 
 ## Connect
 

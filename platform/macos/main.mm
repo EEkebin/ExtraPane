@@ -180,4 +180,6 @@ static int checks(){try{
     require(dm::mac::ipv4("10.0.0.1") && !dm::mac::ipv4("127.0.0.1") && !dm::mac::ipv4("hostname"));
     mediaCheck();puts("macOS protocol, input cleanup and native H.264 color round-trip checks passed");return 0;
 }catch(const std::exception& e){fprintf(stderr,"%s\n",e.what());return 1;}}
-int main(int argc,const char* argv[]){@autoreleasepool{if(argc>1 && !strcmp(argv[1],"--self-test"))return checks();[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];App* app=[App new];NSApp.delegate=app;[NSApp run];return 0;}}
+int main(int argc,const char* argv[]){@autoreleasepool{if(argc>1 && !strcmp(argv[1],"--self-test"))return checks();[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];App* app=[App new];NSApp.delegate=app;
+    if(argc>1 && !strcmp(argv[1],"--ui-smoke"))dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(!app.window || !app.video || !app.address || !app.connectButton.enabled)exit(1);puts("macOS AppKit startup/shutdown passed");[NSApp terminate:nil];});
+    [NSApp run];return 0;}}

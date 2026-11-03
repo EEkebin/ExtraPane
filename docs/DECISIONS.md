@@ -193,3 +193,10 @@ The user authorized a Windows-to-Arch VM connection test and confirmed video, mo
 Implement native Android stylus forwarding and USB/Bluetooth keyboard handling before macOS. Preserve actual reported pressure, tilt, hover, primary barrel and eraser semantics; do not manufacture barrel rotation from Android direction. Reset owned input on input-device removal/change. Keep unsupported axes/buttons and host grants visible. Android hosting remains deferred: MediaProjection screen sharing is distinct from an extended desktop and remote control needs separate platform permission/integration.
 
 Build and release adds a persistently signed Android APK with pinned toolchain, certificate verification and numeric upgrade versioning. Fork PRs never receive release signing secrets. macOS (Apple Silicon and Intel) follows Android user verification. Physical Android stylus verification remains pending; synthetic event tests are not hardware evidence.
+
+
+## macOS receiver milestone (2026-11-03)
+
+The user approved macOS after the Android input/packaging checkpoint and specified Apple Silicon plus Intel. Use Objective-C++20/AppKit, Network.framework TLS 1.3 and Apple's CoreMedia/AVSampleBufferDisplayLayer H.264 path, retaining the shared C++ wire protocol. Build Universal arm64/x86_64 for macOS 12+ and validate natively on both hosted architectures. First implement receiving with mouse/keyboard; Mac hosting and iOS remain separate milestones. Trackpad gestures are not evidence of native remote touch, and tablet mouse events are not native pen support.
+
+Package a ZIP and drag-to-Applications DMG. Ad-hoc signing is a preview packaging measure, not Developer ID signing/notarization. Do not change Gatekeeper settings or imply notarization. Real M3 Pro connection, presentation and input validation require the user's Mac access; hosted build/codec tests do not replace them. Stop at this receiver checkpoint for user verification before hosting or iOS.

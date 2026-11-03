@@ -14,3 +14,5 @@ set_target_properties(ExtraPane PROPERTIES MACOSX_BUNDLE_SHORT_VERSION_STRING "$
 target_compile_definitions(ExtraPane PRIVATE EXTRAPANE_MAC_VERSION="${EXTRAPANE_MAC_VERSION}")
 enable_testing()
 add_test(NAME macos-protocol-media-input COMMAND ExtraPane --self-test)
+add_test(NAME macos-ui-startup COMMAND ExtraPane --ui-smoke)
+set_tests_properties(macos-ui-startup PROPERTIES TIMEOUT 20)
