@@ -100,6 +100,16 @@ jobs:
         run: python scripts/verify_packages.py
       - name: Verify server install and driver ownership
         run: python scripts/test_driver_installer.py
+      - name: Preserve driver installer diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-installer-diagnostics
+          path: |
+            out/driver-installer-logs/*.log
+            C:/Program Files/SideScreen Driver/driver-setup.log
+            C:/Program Files/SideScreen Driver/state/*.json
+          if-no-files-found: ignore
       - name: Include release metadata
         shell: pwsh
         run: Copy-Item release-metadata.json out/dist/release-metadata.json

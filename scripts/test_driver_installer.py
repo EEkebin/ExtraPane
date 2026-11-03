@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+import uuid
 import winreg
 
 from release_version import current
@@ -17,15 +18,23 @@ from test_uninstall_data import registered_uninstaller
 DRIVER_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen.VirtualDisplayDriver_is1'
 
 def ps(script, check=True):
-    return subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
                            "$ErrorActionPreference='Stop'; " + script],
-                          text=True, capture_output=True, check=check, timeout=180)
+                          text=True, capture_output=True, timeout=180)
+    if check and result.returncode:
+        raise RuntimeError(f'PowerShell failed ({result.returncode}): {result.stdout}\n{result.stderr}')
+    return result
 
 def quote(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 def run(exe, *args, success=True):
-    result = subprocess.run([str(exe), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', *args], timeout=240)
+    logs = Path(__file__).resolve().parent.parent/'out/driver-installer-logs'
+    logs.mkdir(exist_ok=True)
+    log = logs/(uuid.uuid4().hex+'.log')
+    result = subprocess.run([str(exe), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', f'/LOG={log}', *args], timeout=240)
+    if (result.returncode == 0) != success and log.exists():
+        print(log.read_text(encoding='utf-8', errors='replace')[-12000:], flush=True)
     assert (result.returncode == 0) == success, (exe, result.returncode, args)
 
 def driver_uninstaller():

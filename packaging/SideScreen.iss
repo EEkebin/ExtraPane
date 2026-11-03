@@ -68,13 +68,29 @@ begin
     'Client only receives another PC''s display and needs no virtual-display driver. Server + Client can also host displays and requires the driver on this PC.', True, False);
   RoleChoice.Add('Client only');
   RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
-  if ExpandConstant('{param:SERVER|0}') = '1' then RoleChoice.SelectedValueIndex := 1
-  else RoleChoice.SelectedValueIndex := 0;
+  RoleChoice.SelectedValueIndex := 0;
+  if ExpandConstant('{param:SERVER|}') = '1' then RoleChoice.SelectedValueIndex := 1
+  else if (ExpandConstant('{param:SERVER|}') = '') and not WizardSilent and
+    (GetPreviousData('ServerInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 1;
   DriverConsent := CreateInputOptionPage(RoleChoice.ID, 'Required server driver',
     'Server setup includes a machine-wide virtual-display driver.',
     'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver has its own Windows uninstall entry. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.', False, False);
   DriverConsent.Add('I agree to install the driver and trust its development certificate on this PC.');
   DriverConsent.Values[0] := ExpandConstant('{param:ACCEPTDEVELOPMENTCERT|0}') = '1';
+end;
+
+procedure RegisterPreviousData(PreviousDataKey: Integer);
+begin
+  if RoleChoice.SelectedValueIndex = 1 then SetPreviousData(PreviousDataKey, 'ServerInstall', '1')
+  else SetPreviousData(PreviousDataKey, 'ServerInstall', '0');
+end;
+
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+begin
+  Result := MemoDirInfo + NewLine + NewLine;
+  if RoleChoice.SelectedValueIndex = 1 then Result := Result + 'Use: Server + Client (virtual-display driver required)'
+  else Result := Result + 'Use: Client only (no driver installation)';
+  Result := Result + NewLine + NewLine + MemoGroupInfo + NewLine + MemoTasksInfo;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;

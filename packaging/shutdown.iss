@@ -23,4 +23,3 @@ begin
   Log('SideScreen shutdown did not complete; installed files will not be replaced.');
   Result := False;
 end;
-
