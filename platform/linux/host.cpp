@@ -108,7 +108,8 @@ void Host::serve(int socket){
             if(header.epoch!=epoch || header.sequence!=sequence)throw std::runtime_error("Invalid input epoch or sequence");
             std::vector<uint8_t> payload(header.count*event_size);stream.read(payload,deadline(2));
             for(const auto& event:decode_events(payload,header.count)){
-                if(capability(event.kind)&~granted)throw std::runtime_error("Client sent ungranted input");portal.inject(event);
+                if(capability(event.kind)&~granted)throw std::runtime_error("Client sent ungranted input");
+                portal.inject(event);
             }
         }
         ++sequence;

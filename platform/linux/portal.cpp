@@ -21,7 +21,7 @@ QDBusMessage call(const QString& object,const QString& interface,const QString& 
     if(result.type()==QDBusMessage::ErrorMessage)throw std::runtime_error(result.errorMessage().toStdString());
     return result;
 }
-unsigned property(const QString& interface,const QString& name){
+unsigned portalProperty(const QString& interface,const QString& name){
     QDBusReply<QDBusVariant> reply(call(path,"org.freedesktop.DBus.Properties","Get",{interface,name}));
     if(!reply.isValid())throw std::runtime_error("Desktop portal is unavailable");
     return reply.value().variant().toUInt();
@@ -41,8 +41,8 @@ Portal::~Portal(){
 }
 QString Portal::unavailable(){
     if(!QGuiApplication::platformName().startsWith("wayland"))return "Hosting requires a Wayland desktop with a virtual-display portal.";
-    try{if(!(property(cast,"AvailableSourceTypes")&4))return "This desktop portal does not provide virtual monitors.";
-        if((property(remote,"AvailableDeviceTypes")&3)!=3)return "The desktop portal does not provide mouse and keyboard control.";
+    try{if(!(portalProperty(cast,"AvailableSourceTypes")&4))return "This desktop portal does not provide virtual monitors.";
+        if((portalProperty(remote,"AvailableDeviceTypes")&3)!=3)return "The desktop portal does not provide mouse and keyboard control.";
     }catch(const std::exception& e){return QString::fromUtf8(e.what());}return {};
 }
 void Portal::response(uint code,const QVariantMap& results){responseCode_=code;results_=results;replied_=true;if(loop_)loop_->quit();}
@@ -58,7 +58,8 @@ QVariantMap Portal::request(const QString& interface,const QString& method,QVari
         if(!reply.isValid() || reply.value().path()!=handle)throw std::runtime_error("Unexpected portal request handle");
         QEventLoop loop;loop_=&loop;QElapsedTimer elapsed;elapsed.start();QTimer timer;
         connect(&timer,&QTimer::timeout,&loop,[&]{if(cancelled_() || closed_ || elapsed.elapsed()>40000)loop.quit();});timer.start(50);
-        if(!replied_)loop.exec();loop_=nullptr;
+        if(!replied_)loop.exec();
+        loop_=nullptr;
         if(!replied_){try{call(handle,"org.freedesktop.portal.Request","Close",{});}catch(...){}throw std::runtime_error("Portal permission canceled or timed out");}
         if(responseCode_!=0)throw std::runtime_error("Desktop sharing permission was declined");
     }catch(...){loop_=nullptr;bus.disconnect(service,handle,"org.freedesktop.portal.Request","Response",this,SLOT(response(uint,QVariantMap)));throw;}
@@ -70,19 +71,21 @@ void Portal::start(bool input){
     if(session_.path().isEmpty())throw std::runtime_error("Missing portal session");
     QDBusConnection::sessionBus().connect(service,session_.path(),"org.freedesktop.portal.Session","Closed",this,SLOT(sessionClosed()));
     // RemoteDesktop requires at least one device. Only forward negotiated input.
-    request(remote,"SelectDevices",{QVariant::fromValue(session_)},{{"types",property(remote,"AvailableDeviceTypes")&7u},{"persist_mode",0u}});
+    request(remote,"SelectDevices",{QVariant::fromValue(session_)},{{"types",portalProperty(remote,"AvailableDeviceTypes")&7u},{"persist_mode",0u}});
     request(cast,"SelectSources",{QVariant::fromValue(session_)},{{"types",4u},{"multiple",false},{"cursor_mode",2u}});
     result=request(remote,"Start",{QVariant::fromValue(session_),QString{}},{});
     devices=input?result.value("devices").toUInt():0;
     auto streams=result.value("streams").value<QDBusArgument>();streams.beginArray();
     if(streams.atEnd())throw std::runtime_error("Portal did not create a virtual display");
     QVariantMap properties;streams.beginStructure();streams>>node>>properties;streams.endStructure();
-    if(!streams.atEnd())throw std::runtime_error("Expected one session-owned virtual display");streams.endArray();
+    if(!streams.atEnd())throw std::runtime_error("Expected one session-owned virtual display");
+    streams.endArray();
     if(properties.value("source_type").toUInt()!=4)throw std::runtime_error("Portal returned a physical display; extended hosting requires a virtual display");
     const auto size=properties.value("logical_size",properties.value("size"));
     if(size.canConvert<QDBusArgument>()){auto pair=size.value<QDBusArgument>();int w=0,h=0;pair.beginStructure();pair>>w>>h;pair.endStructure();if(w>0&&h>0){width=w;height=h;}}
     QDBusReply<QDBusUnixFileDescriptor> fd(call(path,cast,"OpenPipeWireRemote",{QVariant::fromValue(session_),QVariantMap{}}));
-    if(!fd.isValid() || !fd.value().isValid())throw std::runtime_error("Cannot open portal PipeWire connection");pipewire=fd.value();
+    if(!fd.isValid() || !fd.value().isValid())throw std::runtime_error("Cannot open portal PipeWire connection");
+    pipewire=fd.value();
 }
 void Portal::notify(const QString& method,QVariantList arguments){
     if(closed_)throw std::runtime_error("Desktop sharing permission was revoked");
@@ -90,9 +93,12 @@ void Portal::notify(const QString& method,QVariantList arguments){
 }
 void Portal::release(){
     // Only release inputs actually pressed by this session.
-    for(auto key:keys_)notify("NotifyKeyboardKeycode",{static_cast<int>(key),0u});keys_.clear();
-    for(auto button:buttons_)notify("NotifyPointerButton",{static_cast<int>(button),0u});buttons_.clear();
-    for(auto touch:touches_)notify("NotifyTouchUp",{touch});touches_.clear();
+    for(auto key:keys_)notify("NotifyKeyboardKeycode",{static_cast<int>(key),0u});
+    keys_.clear();
+    for(auto button:buttons_)notify("NotifyPointerButton",{static_cast<int>(button),0u});
+    buttons_.clear();
+    for(auto touch:touches_)notify("NotifyTouchUp",{touch});
+    touches_.clear();
 }
 void Portal::inject(const dm::input::Event& e){
     using namespace dm::input;validate(e);
