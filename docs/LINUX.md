@@ -14,107 +14,53 @@ Hosting additionally requires Qt DBus and `gst-plugin-pipewire`; OpenH264 is sup
 
 Build optional synthetic checks with `cmake --preset linux-release -DEXTRAPANE_LINUX_TESTS=ON`, build with two jobs, then run `QT_QPA_PLATFORM=offscreen out/build/linux-release/platform/linux/extrapane-linux-input-check` when testing is authorized.
 
-AppImage generation succeeded. Validation found launcher/plugin deployment defects, which are being repaired before the portable artifact is handed off. Public Linux releases remain disabled pending packaged runtime checks, a clean distribution baseline and dependency/source-license review. An Arch AppImage does not establish compatibility with older distributions.
+AppImage `2026.11.03-pre.0.1` launches outside the build tree, loads its bundled Qt/GStreamer libraries, and passed Linux-host to Windows-client video and input with user confirmation. The generated launcher and missing Wayland integration were repaired. Disconnect returned the packaged server to listening. The SHA-256 check passes. This development artifact is in the VM's `/home/user/Applications/` directory. Public Linux releases remain disabled pending packaged receiver validation, a clean distribution baseline and dependency/source-license review. An Arch AppImage does not establish compatibility with older distributions.
 
 For portable use, place the AppImage in a stable directory, mark it executable and run it. FUSE 2 is needed for normal mounting; `--appimage-extract-and-run` is the fallback. Delete the artifact to uninstall. Delete `~/.config/ExtraPane/ExtraPane.conf` separately to clear the saved server address. No Linux driver is installed.
 
-## Earlier receiver milestone notes (historical)
+## Setup and controls
 
-Status: **source build succeeded on an Arch Linux x86_64 Hyper-V VM** on 2026-11-03. The user authorized dependency installation and a two-job Linux compilation. The user confirmed startup, Windows-to-Linux video, mouse and keyboard forwarding, disconnect/reconnect and fullscreen in the VM. GPU acceleration and AppImage packaging remain unverified. The user subsequently authorized a connection test using the installed Windows server. There is no downloadable Linux release yet; published downloads remain Windows-only.
+Use matching protocol-9 builds. On the host, select a connected IPv4 interface and start the server. On the client, enter that address and connect. DHCP, DNS and discovery are not required. Linux hosting requires a Wayland portal advertising virtual outputs; other desktops are not assumed compatible. Automatic LAN connections use TLS 1.3 without peer identity verification. Use a trusted network. The app does not alter firewall or security settings.
 
-The first target is Linux x86_64, with KDE Plasma on Wayland as the first intended acceptance environment. Windows hosts the extended desktop; Linux receives its video and returns input. Linux hosting is a later milestone. macOS is deferred.
+F10 pauses forwarding and keeps the toolbar visible; F8 resumes/pauses input, F11 toggles fullscreen, and Ctrl+Shift+Q disconnects. Forwarding pauses while toolbar/menu controls are active. Statistics are off by default under toolbar Settings and report compressed-frame reception, not end-to-end latency. The optional 75%/50% stream-size choices apply to the next connection and are not saved.
 
-## Source implementation
+Keyboard forwarding uses physical scan codes and the host layout. IME text, Pause, Print Screen and multimedia keys are not implemented. In a VM console running on the same Windows machine receiving injected input, mouse movement can feed back into the console; use F10 to pause. This setup does not measure physical-client latency reliably.
 
-- A Qt 6 / Qt Quick app with Server, Client, Settings and About pages. Server is disabled with an explanation. Closing the app exits; this receiver does not create a tray service.
-- Direct numeric IPv4 over TCP port 43824, with optional source-address binding and `IP_UNICAST_IF` selection of a connected adapter. Static-IP Ethernet is supported by the connection design; DHCP, DNS and discovery are not used. The address list filters for active Ethernet/Wi-Fi interfaces and excludes loopback and interfaces classified as virtual by Qt. Routing behavior with competing VPN/Wi-Fi routes still needs validation.
-- OpenSSL TLS 1.3, interoperating with the Windows automatic-LAN mode. This mode encrypts the connection but does not authenticate peer identity. No saved pairing, shared secret or diagnostic PSK mode is introduced.
-- The existing `core/protocol` serialization and bounds checks, unchanged. Requests, offers, frame headers, input epochs, input packets and ready/completion acknowledgements use the same protocol 9 format as Windows.
-- The client sends its current screen's pixel dimensions and refresh preference (capped at the existing 60 FPS protocol limit). Windows still chooses from its driver-supported display modes; the client cannot invent new driver modes.
-- A worker thread handles connection, TLS and compressed-frame transfer. Network waits check cancellation every 50 ms. GStreamer presents OpenGL textures in Qt using `qml6glsink`; raw frames are not sent through Qt UI messages.
-- GStreamer H.264 decoding through `h264parse` and `decodebin`. The installed decoder is reported in optional statistics. Software fallback is possible; hardware decoding, GPU interoperability, copy counts and latency are **not verified**. This is not a zero-copy or performance claim.
-- Bounded compressed-data queues and bounded native mouse/keyboard event queues. Consecutive pointer moves can coalesce; key/button transitions are not silently dropped. Queue overflow or a stalled decoder ends the connection so Windows can release session-owned input.
-- One input packet per compressed video frame, including empty packets, sent before decoding to match the Windows host's ordering. Focus loss and lost pointer grabs clear locally owned input and enqueue a reset. Disconnect closes the session; Windows owns remote watchdog cleanup.
-- Mouse move, buttons, wheel and drag source paths. Keyboard mapping translates common Qt Wayland/XKB physical codes to Windows set-1 scan codes. The host's layout applies. IME text, Pause, Print Screen and multimedia keys are not implemented. Native touch/pen capabilities are not advertised, and synthesized pointer input is suppressed.
-- Display renegotiation preserves the TCP/TLS session, clears old input, rebuilds the video pipeline, acknowledges the new offer and continues with the replacement input epoch. Live rotation/resolution/layout behavior still needs hardware validation.
-- Resizable/windowed/fullscreen presentation, a top-center toolbar, F10 to pause forwarded input and reveal controls, F8 to pause/resume input, F11 for fullscreen, and Ctrl+Shift+Q to disconnect. Forwarding is suspended while the toolbar is visible; pausing keeps it open. Statistics are off by default and only shown through the toolbar Settings menu. They measure compressed-frame reception, not decoded/presented FPS or end-to-end latency.
-- Native resolution by default. Optional 75%/50% stream-size choices apply once on the next connection and are not saved. There is no adaptive quality controller.
+## Reproduce the Arch build
 
-## Build boundary
-
-The root CMake configuration now branches to `platform/linux` before including any Windows libraries, compiler flags, RC resources or native dependencies. The Windows source targets retain their existing build path. No Windows renderer, capture path, driver or wire format was changed.
-
-Proposed build baseline: Ubuntu 24.04 x86_64, GCC or Clang with C++20, CMake 3.28+, Ninja, Python 3.11+, Qt 6.4+ (Core, Gui, Network, Qml, Quick and QuickControls2), OpenSSL 3, GStreamer 1.24+ development libraries, and the Qt 6 GStreamer plugin. This baseline and its actual package versions must be validated before publication. Ubuntu 24.04 provides `gstreamer1.0-qt6`; a working GPU/Wayland runtime must still come from the destination PC.
-
-When builds are authorized, the source build entry point is:
-
-```sh
-bash scripts/build-linux.sh
-```
-
-It configures `linux-release` with `BUILD_TESTING=OFF` and builds the `ExtraPane` executable in `out/build/linux-release/platform/linux`. It does not launch the app or run tests. No Linux test preset or automatic release workflow has been enabled.
-
-## Arch VM build evidence
-
-The initial build completed on KDE Plasma/Wayland with GCC 16.2.1, CMake 4.4.5, Ninja 1.13.2, Qt 6.12.0, OpenSSL 3.6.5 and GStreamer 1.28.8. The VM has 12 virtual CPUs and 15 GiB RAM; compilation was limited to two jobs. This proves compilation/linking only, not runtime or cross-distribution compatibility.
-
-Arch dependencies (synchronize and upgrade together to avoid partial upgrades):
+Verified dependencies: GCC 16.2.1, CMake 4.4.5, Ninja 1.13.2, Qt 6.12.0, OpenSSL 3.6.5 and GStreamer 1.28.8. Synchronize and upgrade Arch together to avoid partial upgrades:
 
 ```sh
 sudo pacman -Syu --needed base-devel cmake ninja pkgconf git python \
-  qt6-base qt6-declarative qt6-wayland openssl gstreamer \
-  gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav gst-plugin-qml6
+  qt6-base qt6-declarative qt6-wayland qt6-tools openssl gstreamer \
+  gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugin-qml6 gst-plugin-pipewire
 EXTRAPANE_BUILD_JOBS=2 bash scripts/build-linux.sh
 ```
 
-`gst-plugin-qml6` supplies the required Qt 6 integration. `gst-plugin-qmlgl` is the Qt 5 plugin and is not a substitute. Optional Qt Vulkan-header discovery is not required by this OpenGL client. An AppImage built against rolling Arch libraries is not evidence of compatibility with older distributions; the proposed Ubuntu baseline still needs its own build and packaging verification.
+Output: `out/build/linux-release/platform/linux/ExtraPane`. The build script does not launch the app or run tests. The Qt 5 `gst-plugin-qmlgl` package is not a substitute for `gst-plugin-qml6`.
 
-The VM checkout is `/home/user/ExtraPane`; the native executable is `out/build/linux-release/platform/linux/ExtraPane`. No AppImage was produced.
+## Package a development AppImage
 
-## AppImage packaging draft
-
-`scripts/package_linux.py` packages an already-built executable. It does not build, test, launch or publish ExtraPane. The planned output name is `ExtraPane-<version>-linux-x86_64.AppImage`, with a separate SHA-256 file.
-
-The packager requires locally supplied linuxdeploy, its Qt plugin, and its GStreamer plugin. Copy `packaging/linux/tools.example.json` to an ignored local file, replace its paths and placeholder hashes with reviewed exact tool identities, and keep that lock with the packaging inputs. Placeholders deliberately fail. No packaging tools or dependencies are downloaded by the script. Build/runtime dependencies were installed separately in the development VM.
-
-The GStreamer plugin input is restricted to the application, parser, playback, OpenGL/Qt integration and selected decoder plugins. The scanner is included; system GPU drivers are not bundled. Qt's Wayland platform plugins are requested explicitly. The package also requires reviewed license notices and any applicable source-offer materials for its actual dependency set; a nonempty directory is only an input requirement, not an automated compliance audit.
-
-Example invocation, **not executed**:
+Install packaging prerequisites `patchelf`, `fuse2` and `squashfs-tools`. Supply the three locally downloaded tools and reviewed SHA-256 identities using `packaging/linux/tools.example.json` as the schema. Placeholder hashes are rejected. Supply license notices and any applicable source materials for the actual dependencies; a nonempty directory is not an automated compliance review.
 
 ```sh
 python3 scripts/package_linux.py \
-  --tools-lock out/linux-tools.json \
-  --licenses-dir out/linux-dependency-notices \
+  --tools-lock out/linux-tools/tools.lock.json \
+  --licenses-dir out/linux-notices \
   --qmake /usr/bin/qmake6 \
-  --plugins-dir /usr/lib/x86_64-linux-gnu/gstreamer-1.0 \
-  --helpers-dir /usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0
+  --plugins-dir /usr/lib/gstreamer-1.0 \
+  --helpers-dir /usr/lib/gstreamer-1.0
 ```
 
-AppImage packaging does not make every distribution, compositor or GPU compatible. The generated bundle's minimum libc, plugin loading, Qt/OpenSSL deployment, FUSE/extraction behavior and driver interoperability need validation. The tool locks, distro package versions and dependency notices must be finalized before adding Linux artifacts to releases. Do not advertise or publish this draft as a working Linux download.
+Set the same `EXTRAPANE_VERSION` for configure/build and packaging. Artifacts and SHA-256 files go to `out/dist-linux`. The packager refuses to overwrite an existing version and does not launch or publish it. The bundle includes selected Qt modules, GStreamer plugins and scanner, OpenH264 and supplied notices. System graphics drivers and the desktop's PipeWire runtime remain host dependencies. Package inputs are recorded inside the image.
 
-## Next acceptance gates — require permission before running
+Before public Linux releases: validate packaged hosting/receiving, an older distribution baseline and dependency/source-license materials. Physical touch/pen, real GPUs, fractional scaling, live layout changes and direct static-IP cabling remain separate validation gates. Audio and reverse microphone remain unimplemented across this Linux slice.
 
-1. Build and inspect the Linux target on the selected Linux machine/container. Resolve compiler, QML resource/import and GStreamer context issues before connecting to a host.
-2. Verify the AppImage launches outside its build environment on the intended KDE Plasma/Wayland machine, including a clear missing-dependency path.
-3. Connect to the Windows release over Wi-Fi and direct/static-IP Ethernet. Confirm real extended display behavior, native dimensions, mouse/keyboard delivery, reconnect, session cleanup, and server survival after disconnect.
-4. Validate resize/fullscreen, fractional scaling, monitor rearrangement/rotation, decoder failure, bounded queues, held input on focus loss/disconnect, and concurrent Windows clients.
-5. Measure actual decoder choice, GPU memory transfer and responsiveness before making performance claims. Then implement native Linux receiver touch/pen and prove delivery to Windows applications.
-6. Start Linux hosting: inspect the KDE portal's advertised virtual-monitor, PipeWire capture and remote-input capabilities; implement a session-owned virtual display and H.264 encoder feeding the existing Windows receiver protocol. Do not substitute mirroring for a true extended monitor or assume every Wayland desktop supports the same APIs.
+## Integration references
 
-## Primary integration references
-
-- [GStreamer qml6glsink and Qt GL context sharing](https://gstreamer.freedesktop.org/documentation/qml6/qml6glsink.html)
-- [Qt Quick native item input](https://doc.qt.io/qt-6/qquickitem.html)
-- [linuxdeploy Qt deployment](https://github.com/linuxdeploy/linuxdeploy-plugin-qt)
-- [linuxdeploy GStreamer deployment](https://github.com/linuxdeploy/linuxdeploy-plugin-gstreamer)
-- [AppImage runtime dependency boundary](https://docs.appimage.org/introduction/concepts.html)
-- [ScreenCast portal and advertised virtual-monitor support](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
+- [Qt 6 GStreamer presentation](https://gstreamer.freedesktop.org/documentation/qml6/qml6glsink.html)
+- [ScreenCast portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
 - [RemoteDesktop portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
+- [linuxdeploy Qt](https://github.com/linuxdeploy/linuxdeploy-plugin-qt)
+- [AppImage runtime boundary](https://docs.appimage.org/introduction/concepts.html)
 
-## VM manual checks and toolbar repair
-
-On 2026-11-03 the user confirmed video, mouse/keyboard forwarding, disconnect/reconnect and fullscreen from the Arch Hyper-V VM to the installed Windows 2026.11.03 server. F10 revealed the toolbar, but its controls were not readable. Screenshots also showed dark text on dark surfaces and light backgrounds on some pages. The Linux client now selects Qt Quick Controls Fusion explicitly and uses explicit high-contrast toolbar button text/backgrounds. Development builds are labeled as such in About.
-
-When the VM console is on the same Windows machine that receives forwarded input, injected mouse movement can affect the console itself. This is a feedback loop, not a reliable physical-client latency/input test. F10 pauses forwarding and keeps the controls visible; F8 or Resume input resumes it after the toolbar hides. Input stays paused while interacting with the toolbar/menu, and held remote keys/buttons are released when forwarding is disabled. The new styling and pause/resume behavior still need visual verification.
-
-Native touch/pen forwarding is not implemented. Future synthetic event checks can validate serialization, capability gating and cleanup, but cannot establish physical touchscreen/pen behavior, pressure, tilt, eraser or compositor/device compatibility.
