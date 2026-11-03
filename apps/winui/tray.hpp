@@ -8,7 +8,7 @@
 class Tray {
 public:
     static constexpr UINT show_message=WM_APP+17;
-    static const wchar_t* class_name(){return L"SideScreen.Tray";}
+    static const wchar_t* class_name(){return L"ExtraPane.Tray";}
     HWND window=nullptr;
     bool ready=false,active=false,receiving=false;
     std::function<void(bool)> show;std::function<void()> toggle,disconnect,quit,restore;
@@ -16,20 +16,20 @@ public:
         :show(std::move(show_action)),toggle(std::move(toggle_action)),disconnect(std::move(disconnect_action)),quit(std::move(quit_action)),restore(std::move(restore_action)) {
         WNDCLASSW cls{};cls.hInstance=GetModuleHandleW(nullptr);cls.lpfnWndProc=procedure;cls.lpszClassName=class_name();
         RegisterClassW(&cls);
-        window=CreateWindowExW(WS_EX_TOOLWINDOW,cls.lpszClassName,L"SideScreen tray",WS_POPUP,0,0,0,0,nullptr,nullptr,cls.hInstance,this);
+        window=CreateWindowExW(WS_EX_TOOLWINDOW,cls.lpszClassName,L"ExtraPane tray",WS_POPUP,0,0,0,0,nullptr,nullptr,cls.hInstance,this);
         if(!window)throw std::runtime_error("Cannot create tray window");
         data_.cbSize=sizeof(data_);data_.hWnd=window;data_.uID=1;data_.uFlags=NIF_MESSAGE|NIF_ICON|NIF_TIP|NIF_SHOWTIP;
         data_.uCallbackMessage=WM_APP+18;data_.hIcon=LoadIconW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101));
         update(false,false);
     }
     ~Tray(){remove();if(window)DestroyWindow(window);}
-    void remove(){if(ready)Shell_NotifyIconW(NIM_DELETE,&data_);ready=false;if(window)RemovePropW(window,L"SideScreen.TrayReady");}
-    void update(bool running,bool connected){active=running;receiving=connected;if(window){SetPropW(window,L"SideScreen.Running",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(running?1:0)));SetPropW(window,L"SideScreen.Receiving",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(connected?1:0)));}std::wstring label=L"SideScreen";if(running)label+=L" - Server running";if(connected)label+=L" - Client connected";wcsncpy_s(data_.szTip,label.c_str(),_TRUNCATE);if(running&&!ready)add();else if(!running)remove();if(ready)Shell_NotifyIconW(NIM_MODIFY,&data_);}
+    void remove(){if(ready)Shell_NotifyIconW(NIM_DELETE,&data_);ready=false;if(window)RemovePropW(window,L"ExtraPane.TrayReady");}
+    void update(bool running,bool connected){active=running;receiving=connected;if(window){SetPropW(window,L"ExtraPane.Running",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(running?1:0)));SetPropW(window,L"ExtraPane.Receiving",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(connected?1:0)));}std::wstring label=L"ExtraPane";if(running)label+=L" - Server running";if(connected)label+=L" - Client connected";wcsncpy_s(data_.szTip,label.c_str(),_TRUNCATE);if(running&&!ready)add();else if(!running)remove();if(ready)Shell_NotifyIconW(NIM_MODIFY,&data_);}
 
 private:
     NOTIFYICONDATAW data_{};
     UINT restart_=RegisterWindowMessageW(L"TaskbarCreated");
-    void add(){ready=Shell_NotifyIconW(NIM_ADD,&data_)!=FALSE;if(ready){SetPropW(window,L"SideScreen.TrayReady",reinterpret_cast<HANDLE>(1));data_.uVersion=NOTIFYICON_VERSION_4;Shell_NotifyIconW(NIM_SETVERSION,&data_);}}
+    void add(){ready=Shell_NotifyIconW(NIM_ADD,&data_)!=FALSE;if(ready){SetPropW(window,L"ExtraPane.TrayReady",reinterpret_cast<HANDLE>(1));data_.uVersion=NOTIFYICON_VERSION_4;Shell_NotifyIconW(NIM_SETVERSION,&data_);}}
     void menu(){
         HMENU menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING,1,L"Open Server");AppendMenuW(menu,MF_STRING,4,L"Open Client");
         AppendMenuW(menu,MF_STRING,2,active?L"Stop Driver":L"Start Driver");AppendMenuW(menu,MF_STRING|(receiving?0:MF_GRAYED),5,L"Disconnect Client");

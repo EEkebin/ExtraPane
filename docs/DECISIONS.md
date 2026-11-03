@@ -79,9 +79,9 @@ Client and Server are now C++/WinRT WinUI 3 setup apps. Keep D3D11 video/native 
 
 The authenticated client supplies its screen size and refresh at connection time. Use that as the initial extended-display preference; preserve later Windows layout changes for the same client size. Bound and select supported driver/codec modes with a visible fallback rather than claim arbitrary native resolutions/refresh. Window resizing scales video and never resets the host layout.
 
-## SideScreen, client initiation and persistent driver (0.11)
+## ExtraPane, client initiation and persistent driver (0.11)
 
-The user chose SideScreen and requested a private repository under EEkebin. Client enters the server address only; automatic discovery is explicitly deferred. Both apps enumerate their local addresses instead of asking users to configure local binds. Server listens on active IPv4 interfaces; Client follows Windows routing, including static Ethernet paths. The firewall permits scoped LAN ranges rather than requiring a client address.
+The user chose ExtraPane and requested a private repository under EEkebin. Client enters the server address only; automatic discovery is explicitly deferred. Both apps enumerate their local addresses instead of asking users to configure local binds. Server listens on active IPv4 interfaces; Client follows Windows routing, including static Ethernet paths. The firewall permits scoped LAN ranges rather than requiring a client address.
 
 Start Driver owns a persistent virtual monitor across sequential authenticated clients. Preserve the current geometry between clients and remember it on stop; client mode negotiation remains the initial preference. Keep the COM apartment alive across media pipeline recreation. Close hides setup windows to notification-area icons; tray Exit is the explicit shutdown action. Existing DM driver names, registry locations, pairing names and installation folders remain compatible.
 
@@ -152,3 +152,11 @@ The user requested driver installation through Setup and clarified that the driv
 Development certificate trust requires explicit consent. Keep the app per-user and the driver manager machine-wide in Program Files, with a separate Windows Apps uninstall entry and protected package/ownership records. Remove only packages and certificate entries added by that manager; preserve older manual installations and other users/portable copies when uninstalling the app. Never change Secure Boot, Memory Integrity or test-signing policy to make installation pass. Staging is not proof of runtime loading. See DRIVER-INSTALLATION.md.
 
 Rewrite the README as straightforward, accurate usage and installation documentation. Publish a prerelease for the user to verify this change. Retain all existing prereleases until the user explicitly gives the green light to delete them and publish a date-tagged stable release. No stable publication or prerelease deletion is authorized before that approval.
+
+## ExtraPane rename (2026-11-03)
+
+The user selected ExtraPane to distinguish this project from another display application named SideScreen. Rename app branding, executable/artifact names, build metadata, packaging, documentation and the repository without changing the wire protocol or driver device identity.
+
+Keep the legacy installer AppIds, cross-version exclusion mutexes, Windows settings keys and fixed privileged `Program Files\SideScreen Driver` directory. These are compatibility identifiers, not visible product names. This retains existing install locations and driver package/certificate ownership backups, avoiding a second independently registered driver manager. The new manager accepts original certificate filenames in verified ownership backups. Installers close both old and new app window classes, remove known obsolete app filenames/shortcuts and install the new names. Fresh per-user app installations default to ExtraPane; upgrades reuse their existing directory.
+
+Published releases, tags, checksums and signed packages remain historical artifacts; do not relabel old binaries as rebuilt ExtraPane versions. The rename and Linux source have not been built or tested. No app launches, GPU probes, driver operations or CI runs are authorized during the user's current no-testing period.

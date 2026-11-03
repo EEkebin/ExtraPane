@@ -30,7 +30,7 @@ struct Current {
 }
 struct OpenGLRenderer::State {
     using Clock=std::chrono::steady_clock;
-    bool profile=GetEnvironmentVariableW(L"SIDESCREEN_GL_PROFILE",nullptr,0)>0;
+    bool profile=GetEnvironmentVariableW(L"EXTRAPANE_GL_PROFILE",nullptr,0)>0;
     unsigned profile_frames=0;double timings[6]{};
     void elapsed(unsigned index,Clock::time_point& start){const auto now=Clock::now();if(profile)timings[index]+=std::chrono::duration<double,std::milli>(now-start).count();start=now;}
     HWND attached_window=nullptr;HDC attached_dc=nullptr;HDC saved_dc=nullptr;HGLRC saved_context=nullptr;bool saved_current=false;
@@ -78,7 +78,7 @@ struct OpenGLRenderer::State {
     }
     void initialize(ID3D11Device* device,unsigned width,unsigned height){
         decoder=device;processor=std::make_unique<GpuProcessor>(device);
-        probe=CreateWindowExW(WS_EX_TOOLWINDOW,L"STATIC",L"SideScreen OpenGL support check",WS_POPUP,0,0,64,64,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+        probe=CreateWindowExW(WS_EX_TOOLWINDOW,L"STATIC",L"ExtraPane OpenGL support check",WS_POPUP,0,0,64,64,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
         require(probe!=nullptr,"Create hidden OpenGL support window");probe_dc=GetDC(probe);require(probe_dc!=nullptr,"Get OpenGL support DC");
         PIXELFORMATDESCRIPTOR desc{};desc.nSize=sizeof(desc);desc.nVersion=1;desc.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;desc.iPixelType=PFD_TYPE_RGBA;desc.cColorBits=32;desc.cAlphaBits=8;
         pixel_format=ChoosePixelFormat(probe_dc,&desc);require(pixel_format!=0,"No OpenGL window pixel format available");format(probe_dc);

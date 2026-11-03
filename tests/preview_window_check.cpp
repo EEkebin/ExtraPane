@@ -4,7 +4,7 @@
 #include <thread>
 #include <chrono>
 struct Search{DWORD pid;HWND window=nullptr,bar=nullptr,stats=nullptr;};
-BOOL CALLBACK collect(HWND h,LPARAM p){auto& s=*reinterpret_cast<Search*>(p);DWORD pid=0;GetWindowThreadProcessId(h,&pid);if(pid!=s.pid)return TRUE;wchar_t cls[100]{};GetClassNameW(h,cls,100);if(wcscmp(cls,L"DMVideoFeasibilityPreview")==0)s.window=h;if(wcscmp(cls,L"DMDisplayToolbar")==0)s.bar=h;if(wcscmp(cls,L"SideScreenStatistics")==0)s.stats=h;return TRUE;}
+BOOL CALLBACK collect(HWND h,LPARAM p){auto& s=*reinterpret_cast<Search*>(p);DWORD pid=0;GetWindowThreadProcessId(h,&pid);if(pid!=s.pid)return TRUE;wchar_t cls[100]{};GetClassNameW(h,cls,100);if(wcscmp(cls,L"DMVideoFeasibilityPreview")==0)s.window=h;if(wcscmp(cls,L"DMDisplayToolbar")==0)s.bar=h;if(wcscmp(cls,L"ExtraPaneStatistics")==0)s.stats=h;return TRUE;}
 void need(bool value,const char* message){if(!value)throw std::runtime_error(message);}
 void pause(){std::this_thread::sleep_for(std::chrono::milliseconds(400));}
 int main(int argc,char** argv){try{

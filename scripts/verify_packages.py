@@ -9,18 +9,18 @@ ctypes.windll.user32.DestroyIcon.argtypes=[wintypes.HICON]
 root=Path(__file__).resolve().parent.parent
 from release_version import current
 version=current();dist=root/'out/dist'
-for role in ['SideScreen']:
- archive=dist/f'SideScreen-{version}-win-x64.zip'
+for role in ['ExtraPane']:
+ archive=dist/f'ExtraPane-{version}-win-x64.zip'
  with zipfile.ZipFile(archive) as z:
   names=z.namelist();prefix=role+'/'
   assert z.read(prefix+'version.txt').decode().strip()==version
-  for required in [role+'.exe','dm-view.exe','SideScreen.Service.exe','SideScreen.DriverSetup.exe','dm-display.exe','SideScreen.ico','README.txt','manifest.json']:
+  for required in [role+'.exe','dm-view.exe','ExtraPane.Service.exe','ExtraPane.DriverSetup.exe','dm-display.exe','ExtraPane.ico','README.txt','manifest.json']:
    assert prefix+required in names,required
   for notice in ['LICENSE.md','LICENSES/Apache-2.0.txt','LICENSES/MIT.txt']:
    assert prefix+'Licenses/vulkan-headers/'+notice in names,'Missing Vulkan-Headers notice'
   assert not any(n.lower().endswith(('.pfx','.key','.pem','.log','.bmp','.pdb')) for n in names)
   manifest=json.loads(z.read(prefix+'manifest.json'))
-  for exe,level in [('SideScreen.exe',b'asInvoker'),('SideScreen.Service.exe',b'requireAdministrator')]:
+  for exe,level in [('ExtraPane.exe',b'asInvoker'),('ExtraPane.Service.exe',b'requireAdministrator')]:
    assert version.encode('utf-16-le') in z.read(prefix+exe), f'Wrong embedded version: {exe}'
    manifests=re.findall(rb'<requestedExecutionLevel[^>]+>',z.read(prefix+exe))
    assert any(level in entry for entry in manifests),f'Wrong elevation manifest: {exe}'
@@ -29,15 +29,15 @@ for role in ['SideScreen']:
    assert hashlib.sha256(z.read(prefix+entry['path'])).hexdigest()==entry['sha256'],entry['path']
   with tempfile.TemporaryDirectory() as folder:
    z.extractall(folder)
-   for exe in [role+'.exe','dm-view.exe','SideScreen.Service.exe']:
+   for exe in [role+'.exe','dm-view.exe','ExtraPane.Service.exe']:
     icon=ctypes.windll.shell32.ExtractIconW(None,str(Path(folder)/role/exe),0)
     assert icon not in (0,1),f'Missing icon: {exe}'
     ctypes.windll.user32.DestroyIcon(icon)
- installer=dist/f'SideScreen-{version}-Setup-win-x64.exe'
+ installer=dist/f'ExtraPane-{version}-Setup-win-x64.exe'
  assert installer.stat().st_size>1_000_000
- with tempfile.TemporaryDirectory(prefix='SideScreen-installer-') as folder:
+ with tempfile.TemporaryDirectory(prefix='ExtraPane-installer-') as folder:
   target=Path(folder)/role
-  subprocess.run([str(installer),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',f'/DIR={target}',f'/GROUP=SideScreen Validation {role}','/TASKS='],check=True,timeout=90)
+  subprocess.run([str(installer),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',f'/DIR={target}',f'/GROUP=ExtraPane Validation {role}','/TASKS='],check=True,timeout=90)
   for entry in manifest['files']:
    assert hashlib.sha256((target/entry['path']).read_bytes()).hexdigest()==entry['sha256'],entry['path']
   subprocess.run([str(registered_uninstaller(target)),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'],check=True,timeout=90)

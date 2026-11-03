@@ -40,7 +40,7 @@ powershell -File scripts/test_renderer_settings.ps1 -RendererName OpenGL
 powershell -File scripts/test_renderer_unavailable.ps1 -RendererName OpenGL
 ```
 
-For opt-in stage timing, set `SIDESCREEN_GL_PROFILE=1` in the diagnostic process environment. It prints average conversion, interop lock/unlock, draw, context and swap costs at exit. Normal runs do not print these timings.
+For opt-in stage timing, set `EXTRAPANE_GL_PROFILE=1` in the diagnostic process environment. It prints average conversion, interop lock/unlock, draw, context and swap costs at exit. Normal runs do not print these timings.
 
 The pixel diagnostic deliberately uploads known input and reads back the result. Neither operation belongs to production streaming. Physical pen/touch, perceived responsiveness and visual acceptance remain the user's handoff.
 

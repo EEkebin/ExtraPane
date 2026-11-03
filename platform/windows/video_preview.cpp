@@ -113,7 +113,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     const DWORD corners=2;DwmSetWindowAttribute(state.bar,33,&corners,sizeof(corners));
     const wchar_t* labels[]={L"Minimize",L"Maximize",L"Fullscreen",L"Close",L"Settings"};
     for(int i=0;i<5;++i){auto button=CreateWindowW(L"BUTTON",labels[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,state.scale(i*90),0,state.scale(90),state.scale(40),state.bar,reinterpret_cast<HMENU>(static_cast<INT_PTR>(i+1)),cls.hInstance,nullptr);SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);}
-    WNDCLASSW statistics_class{};statistics_class.lpfnWndProc=stats_proc;statistics_class.hInstance=cls.hInstance;statistics_class.lpszClassName=L"SideScreenStatistics";RegisterClassW(&statistics_class);
+    WNDCLASSW statistics_class{};statistics_class.lpfnWndProc=stats_proc;statistics_class.hInstance=cls.hInstance;statistics_class.lpszClassName=L"ExtraPaneStatistics";RegisterClassW(&statistics_class);
     state.stats=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_LAYERED|WS_EX_TRANSPARENT,statistics_class.lpszClassName,L"Waiting for stream statistics...",WS_POPUP,0,0,state.scale(440),state.scale(150),hwnd,nullptr,cls.hInstance,nullptr);
     SetLayeredWindowAttributes(state.stats,0,235,LWA_ALPHA);SendMessageW(state.stats,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);
     SetTimer(hwnd,1,250,nullptr);
@@ -191,7 +191,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                     }
                 }
                 if(state.requested!=active_renderer){reset_d3d11();if(d3d12)d3d12->detach();active_renderer=state.requested;std::cout<<"RENDERER_CHANGED "<<renderer_name(active_renderer)<<std::endl;}
-                SetPropW(hwnd,L"SideScreen.Renderer",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(active_renderer)+1));
+                SetPropW(hwnd,L"ExtraPane.Renderer",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(active_renderer)+1));
                 if(active_renderer!=Renderer::d3d11){
                     try{if(opengl){if(!opengl->present(hwnd,*frame))continue;++opengl_presented;}else if(vulkan){if(!vulkan->present(hwnd,*frame))continue;++vulkan_presented;}else{d3d12->present(hwnd,*frame);++d3d12_presented;}++gpu_presented;}
                     catch(const std::exception& e){unavailable(e.what());d3d12.reset();vulkan.reset();opengl.reset();active_renderer=Renderer::d3d11;std::cout<<"RENDERER_FALLBACK D3D11"<<std::endl;continue;}

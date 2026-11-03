@@ -10,13 +10,13 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
     try {
         int argc=0;auto argv=CommandLineToArgvW(GetCommandLineW(),&argc);std::wstring name;DWORD pid=0;bool input=false,debug=false;
         for(int i=1;i<argc;++i){std::wstring arg=argv[i];if(arg==L"--pipe"&&i+1<argc)name=argv[++i];else if(arg==L"--parent-pid"&&i+1<argc)pid=std::stoul(argv[++i]);else if(arg==L"--input")input=true;else if(arg==L"--debug")debug=true;else throw std::runtime_error("Invalid service option");}LocalFree(argv);
-        if(!pid||!name.starts_with(L"\\\\.\\pipe\\SideScreen-")||name.size()>100)throw std::runtime_error("Invalid service channel");
+        if(!pid||!name.starts_with(L"\\\\.\\pipe\\ExtraPane-")||name.size()>100)throw std::runtime_error("Invalid service channel");
         parent=OpenProcess(SYNCHRONIZE|PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid);if(!parent)throw std::runtime_error("Launcher is unavailable");
         wchar_t path[32768]{};DWORD length=32768;
-        if(!QueryFullProcessImageNameW(parent,0,path,&length)||_wcsicmp(path,(directory()/L"SideScreen.exe").c_str())!=0)throw std::runtime_error("Unexpected launcher executable");
+        if(!QueryFullProcessImageNameW(parent,0,path,&length)||_wcsicmp(path,(directory()/L"ExtraPane.exe").c_str())!=0)throw std::runtime_error("Unexpected launcher executable");
         pipe=CreateFileW(name.c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_EXISTING,0,nullptr);if(pipe==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot open launcher channel");
         ULONG server=0;if(!GetNamedPipeServerProcessId(pipe,&server)||server!=pid)throw std::runtime_error("Launcher channel identity mismatch");
-        instance=CreateMutexW(nullptr,FALSE,L"Local\\SideScreen.DriverRuntime");if(!instance||GetLastError()==ERROR_ALREADY_EXISTS)throw std::runtime_error("SideScreen driver is already running");
+        instance=CreateMutexW(nullptr,FALSE,L"Local\\SideScreen.DriverRuntime");if(!instance||GetLastError()==ERROR_ALREADY_EXISTS)throw std::runtime_error("ExtraPane driver is already running");
         firewall(true);rule=true;
         std::vector<std::wstring> args{L"host",L"--lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--allow-screen",L"--extend",L"--serve",L"--keep-layout",L"--client-mode",L"--frames",debug?L"3600":L"0",L"--timeout-ms",L"0"};if(input)args.push_back(L"--allow-input");
         engine.start((directory()/L"dm-view.exe").wstring(),args);

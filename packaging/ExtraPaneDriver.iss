@@ -1,13 +1,14 @@
-#define Package GetEnv("SIDESCREEN_DRIVER_PACKAGE")
-#define Version GetEnv("SIDESCREEN_VERSION")
+#define Package GetEnv("EXTRAPANE_DRIVER_PACKAGE")
+#define Version GetEnv("EXTRAPANE_VERSION")
 [Setup]
+; Stable identity preserves driver ownership and its existing uninstaller.
 AppId=SideScreen.VirtualDisplayDriver
-AppName=SideScreen Virtual Display Driver
+AppName=ExtraPane Virtual Display Driver
 AppVersion={#Version}
-VersionInfoVersion={#GetEnv("SIDESCREEN_NUMERIC_VERSION")}
+VersionInfoVersion={#GetEnv("EXTRAPANE_NUMERIC_VERSION")}
 VersionInfoProductTextVersion={#Version}
 AppPublisher=EEkebin
-AppPublisherURL=https://github.com/EEkebin/SideScreen
+AppPublisherURL=https://github.com/EEkebin/ExtraPane
 DefaultDirName={autopf}\SideScreen Driver
 UsePreviousAppDir=no
 DisableDirPage=yes
@@ -16,10 +17,10 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.22000
-OutputDir={#GetEnv("SIDESCREEN_DRIVER_DIST")}
-OutputBaseFilename=SideScreen.DriverSetup
-SetupIconFile=..\assets\branding\SideScreen.ico
-UninstallDisplayIcon={app}\SideScreen.ico
+OutputDir={#GetEnv("EXTRAPANE_DRIVER_DIST")}
+OutputBaseFilename=ExtraPane.DriverSetup
+SetupIconFile=..\assets\branding\ExtraPane.ico
+UninstallDisplayIcon={app}\ExtraPane.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -28,7 +29,7 @@ RestartApplications=no
 [Files]
 Source: "{#Package}\*"; DestDir: "{app}\package"; Flags: ignoreversion
 Source: "manage-driver.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\assets\branding\SideScreen.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\branding\ExtraPane.ico"; DestDir: "{app}"; Flags: ignoreversion
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\state"
 Type: files; Name: "{app}\driver-setup.log"
@@ -72,8 +73,8 @@ begin
     Result := 'The driver manager must be installed in Program Files\SideScreen Driver.'
   else if not Consent.Values[0] then
     Result := 'Development certificate consent is required.'
-  else if not StopRunningSideScreen then
-    Result := 'SideScreen could not stop its sessions. Close the app and retry.';
+  else if not StopRunningExtraPane then
+    Result := 'ExtraPane could not stop its sessions. Close the app and retry.';
 end;
 
 function RunManager(Action: String): Boolean;
@@ -112,7 +113,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   { This runs after confirmation, before any files or registry entries are removed. }
   if CurUninstallStep = usUninstall then begin
-    if not StopRunningSideScreen then RaiseException('Close SideScreen sessions before removing the driver.');
+    if not StopRunningExtraPane then RaiseException('Close ExtraPane sessions before removing the driver.');
     if not RunManager('Remove') then
       RaiseException('The driver could not be removed. The uninstaller and ownership records have been kept so you can retry. Check driver-setup.log. If Windows requested a restart, restart manually before retrying.');
   end;

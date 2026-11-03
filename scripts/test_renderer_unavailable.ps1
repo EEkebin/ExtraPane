@@ -5,7 +5,7 @@ Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
 $reg='HKCU:\Software\DM\Receiver';$saved=Get-ItemProperty $reg
 $stage=Join-Path (Resolve-Path out) ('renderer-fixture-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
-Copy-Item out/winui/SideScreen/* -Destination $stage -Recurse
+Copy-Item out/winui/ExtraPane/* -Destination $stage -Recurse
 # Replace only this isolated copy's engine with a synthetic capability report.
 Remove-Item -LiteralPath (Join-Path $stage 'dm-view.exe')
 Add-Type -Path tests/renderer_probe_fixture.cs -OutputAssembly (Join-Path $stage 'dm-view.exe') -OutputType ConsoleApplication
@@ -18,7 +18,7 @@ function Element($name){
 }
 try {
  Set-ItemProperty $reg Renderer $RendererName.ToLowerInvariant()
- $app=Start-Process (Join-Path $stage 'SideScreen.exe') -ArgumentList '--client --test-report --test-duration 45' -PassThru
+ $app=Start-Process (Join-Path $stage 'ExtraPane.exe') -ArgumentList '--client --test-report --test-duration 45' -PassThru
  Start-Sleep -Seconds 2
  (Element 'Settings').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
  Start-Sleep -Seconds 2
@@ -34,7 +34,7 @@ try {
  (Element 'Renderer').GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
  & out/build/windows-release/dm-tray-check.exe $app.Id client
  if($LASTEXITCODE){throw 'Settings app did not exit'}
- $app=Start-Process (Join-Path $stage 'SideScreen.exe') -ArgumentList '--smoke-test --settings' -PassThru
+ $app=Start-Process (Join-Path $stage 'ExtraPane.exe') -ArgumentList '--smoke-test --settings' -PassThru
  if(!$app.WaitForExit(15000) -or $app.ExitCode){throw 'Unavailable Settings screenshot failed'}
  Copy-Item (Join-Path $stage 'ui-check.bmp') out/settings-unavailable.bmp
  'UNAVAILABLE_RENDERER passed: visible disabled option, specific explanation, saved preference fallback, normal exit'

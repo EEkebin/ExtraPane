@@ -1,26 +1,28 @@
-#define Role GetEnv("SIDESCREEN_ROLE")
-#define ReleaseVersion GetEnv("SIDESCREEN_VERSION")
-#define SourceDir GetEnv("SIDESCREEN_STAGE")
-#define OutputPath GetEnv("SIDESCREEN_DIST")
-#define HasDriver FileExists(SourceDir + "\SideScreen.DriverSetup.exe")
+#define Role GetEnv("EXTRAPANE_ROLE")
+#define ReleaseVersion GetEnv("EXTRAPANE_VERSION")
+#define SourceDir GetEnv("EXTRAPANE_STAGE")
+#define OutputPath GetEnv("EXTRAPANE_DIST")
+#define HasDriver FileExists(SourceDir + "\ExtraPane.DriverSetup.exe")
 [Setup]
+; Stable identity recognizes installations made under the previous name.
 AppId=SideScreen
-AppName=SideScreen
+AppName=ExtraPane
 AppVersion={#ReleaseVersion}
-VersionInfoVersion={#GetEnv("SIDESCREEN_NUMERIC_VERSION")}
+VersionInfoVersion={#GetEnv("EXTRAPANE_NUMERIC_VERSION")}
 VersionInfoProductTextVersion={#ReleaseVersion}
 AppPublisher=EEkebin
-AppPublisherURL=https://github.com/EEkebin/SideScreen
-AppSupportURL=https://github.com/EEkebin/SideScreen/issues
-DefaultDirName={localappdata}\Programs\SideScreen
-DefaultGroupName=SideScreen
+AppPublisherURL=https://github.com/EEkebin/ExtraPane
+AppSupportURL=https://github.com/EEkebin/ExtraPane/issues
+DefaultDirName={localappdata}\Programs\ExtraPane
+DefaultGroupName=ExtraPane
+UsePreviousGroup=no
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.22000
 OutputDir={#OutputPath}
-OutputBaseFilename=SideScreen-{#ReleaseVersion}-Setup-win-x64
-SetupIconFile=..\assets\branding\SideScreen.ico
+OutputBaseFilename=ExtraPane-{#ReleaseVersion}-Setup-win-x64
+SetupIconFile=..\assets\branding\ExtraPane.ico
 UninstallDisplayIcon={app}\{#Role}.exe
 Compression=lzma2
 SolidCompression=yes
@@ -35,16 +37,28 @@ InfoBeforeFile={#SourceDir}\README.txt
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 #if HasDriver
-Source: "{#SourceDir}\SideScreen.DriverSetup.exe"; Flags: dontcopy
+Source: "{#SourceDir}\ExtraPane.DriverSetup.exe"; Flags: dontcopy
 #endif
+; Remove only known legacy app files after graceful shutdown; preserve data.
+[InstallDelete]
+Type: files; Name: "{app}\SideScreen.exe"
+Type: files; Name: "{app}\SideScreen.Service.exe"
+Type: files; Name: "{app}\SideScreen.Update.exe"
+Type: files; Name: "{app}\SideScreen.DriverSetup.exe"
+Type: files; Name: "{app}\SideScreen.ico"
+Type: files; Name: "{app}\SideScreen.png"
+Type: files; Name: "{app}\SideScreen.pri"
+Type: files; Name: "{app}\SideScreen.winmd"
+Type: files; Name: "{autodesktop}\SideScreen.lnk"
+Type: files; Name: "{userprograms}\SideScreen\SideScreen.lnk"
 [Tasks]
 Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 [Icons]
-Name: "{group}\SideScreen"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\SideScreen"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"
+Name: "{autodesktop}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch SideScreen"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch ExtraPane"; Flags: postinstall nowait skipifsilent
 
 [Code]
 var
@@ -56,15 +70,15 @@ var
 
 function InitializeSetup: Boolean;
 begin
-  Result := StopRunningSideScreen;
+  Result := StopRunningExtraPane;
   if not Result then
-    SuppressibleMsgBox('SideScreen could not finish shutting down. Close SideScreen and stop its driver, then run Setup again.', mbError, MB_OK, IDOK);
+    SuppressibleMsgBox('ExtraPane could not finish shutting down. Close ExtraPane and stop its driver, then run Setup again.', mbError, MB_OK, IDOK);
 end;
 
 procedure InitializeWizard;
 begin
   RoleChoice := CreateInputOptionPage(wpWelcome, 'How will you use this PC?',
-    'Both choices install the same SideScreen app.',
+    'Both choices install the same ExtraPane app.',
     'Client only receives another PC''s display and needs no virtual-display driver. Server + Client can also host displays and requires the driver on this PC.', True, False);
   RoleChoice.Add('Client only');
   RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
@@ -111,8 +125,8 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer;
 begin
   Result := '';
-  if not StopRunningSideScreen then begin
-    Result := 'SideScreen is still running. Close it and stop its driver before continuing.';
+  if not StopRunningExtraPane then begin
+    Result := 'ExtraPane is still running. Close it and stop its driver before continuing.';
     Exit;
   end;
   if (RoleChoice.SelectedValueIndex = 1) and not DriverInstalled then begin
@@ -121,8 +135,8 @@ begin
       Exit;
     end;
 #if HasDriver
-    ExtractTemporaryFile('SideScreen.DriverSetup.exe');
-    if not ShellExec('runas', ExpandConstant('{tmp}\SideScreen.DriverSetup.exe'),
+    ExtractTemporaryFile('ExtraPane.DriverSetup.exe');
+    if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.DriverSetup.exe'),
       '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /ACCEPTDEVELOPMENTCERT=1', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'The driver installer could not start or administrator permission was canceled. Server setup cannot continue.'
     else if Code <> 0 then
@@ -147,7 +161,7 @@ begin
   RemoveUserData := ExpandConstant('{param:REMOVEUSERDATA|0}') = '1';
   Result := True;
   if UninstallSilent then begin
-    Result := StopRunningSideScreen;
+    Result := StopRunningExtraPane;
     Exit;
   end;
 #if Ver < EncodeVer(6, 6, 0)
@@ -158,13 +172,13 @@ begin
   Dialog := CreateCustomForm(460, 180, True, True);
 #endif
   try
-    Dialog.Caption := 'Uninstall SideScreen';
+    Dialog.Caption := 'Uninstall ExtraPane';
     Description := TNewStaticText.Create(Dialog);
     Description.Parent := Dialog;
     Description.SetBounds(ScaleX(20), ScaleY(20), ScaleX(420), ScaleY(65));
     Description.AutoSize := False;
     Description.WordWrap := True;
-    Description.Caption := 'Remove SideScreen from this PC. The machine-wide driver stays installed. Remove it separately using the SideScreen Virtual Display Driver entry in Windows Apps.';
+    Description.Caption := 'Remove ExtraPane from this PC. The machine-wide driver stays installed. Remove it separately using the ExtraPane Virtual Display Driver entry in Windows Apps.';
     Choice := TNewCheckBox.Create(Dialog);
     Choice.Parent := Dialog;
     Choice.SetBounds(ScaleX(20), ScaleY(90), ScaleX(420), ScaleY(25));
@@ -188,9 +202,9 @@ begin
     Dialog.Free;
   end;
   if Result then begin
-    Result := StopRunningSideScreen;
+    Result := StopRunningExtraPane;
     if not Result then
-      SuppressibleMsgBox('SideScreen could not finish shutting down. Close it and stop its driver before uninstalling.', mbError, MB_OK, IDOK);
+      SuppressibleMsgBox('ExtraPane could not finish shutting down. Close it and stop its driver before uninstalling.', mbError, MB_OK, IDOK);
   end;
 end;
 
@@ -198,7 +212,7 @@ procedure DeleteSettingsKey(Key: String);
 begin
   if RegKeyExists(HKCU, Key) then
     if not RegDeleteKeyIncludingSubkeys(HKCU, Key) then
-      RaiseException('Unable to remove SideScreen settings: ' + Key);
+      RaiseException('Unable to remove ExtraPane settings: ' + Key);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -211,11 +225,11 @@ begin
     if not CredDelete('DM/peers/dm-lan', 1, 0) then begin
       ErrorCode := DLLGetLastError;
       if ErrorCode <> 1168 then
-        RaiseException('Unable to remove SideScreen pairing: ' + SysErrorMessage(ErrorCode));
+        RaiseException('Unable to remove ExtraPane pairing: ' + SysErrorMessage(ErrorCode));
     end;
     DeleteSettingsKey('Software\DM\Host');
     DeleteSettingsKey('Software\DM\Receiver');
     DeleteSettingsKey('Software\DM\Display');
-    Log('Removed SideScreen pairing, server address and saved app/display settings.');
+    Log('Removed ExtraPane pairing, server address and saved app/display settings.');
   end;
 end;

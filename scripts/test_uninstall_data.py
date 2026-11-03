@@ -23,13 +23,13 @@ api.CredReadW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, ctypes.POINTER(ctypes.c_v
 api.CredDeleteW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD]
 api.CredFree.argtypes = [ctypes.c_void_p]
 PAIR = 'DM/peers/dm-lan'
-OTHER = 'SideScreen-uninstall-test-unrelated'
+OTHER = 'ExtraPane-uninstall-test-unrelated'
 KEYS = ['Software\\DM\\' + role for role in ('Host', 'Receiver', 'Display')]
 UNINSTALL = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen_is1'
 
 def registered_uninstaller(target):
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, UNINSTALL) as key:
-        assert winreg.QueryValueEx(key, 'DisplayName')[0].startswith('SideScreen')
+        assert winreg.QueryValueEx(key, 'DisplayName')[0].startswith('ExtraPane')
         location = winreg.QueryValueEx(key, 'InstallLocation')[0]
         assert Path(location).resolve() == target.resolve()
         command = winreg.QueryValueEx(key, 'UninstallString')[0]
@@ -71,7 +71,7 @@ def verify(installer):
                 winreg.SetValueEx(handle, 'InstallerFixture', 0, winreg.REG_SZ, 'preserve-me')
         save(PAIR)
         save(OTHER)
-        with tempfile.TemporaryDirectory(prefix='SideScreen-data-check-') as folder:
+        with tempfile.TemporaryDirectory(prefix='ExtraPane-data-check-') as folder:
             target = Path(folder) / 'app'
             for reset in (False, True, True):
                 fixtures = []
@@ -87,7 +87,7 @@ def verify(installer):
                         time.sleep(.1)
                     assert all(Path(m + '.ready').exists() for m in markers)
                     subprocess.run([str(installer), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
-                                    f'/DIR={target}', '/GROUP=SideScreen Data Validation', '/TASKS='], check=True, timeout=90)
+                                    f'/DIR={target}', '/GROUP=ExtraPane Data Validation', '/TASKS='], check=True, timeout=90)
                     assert all(Path(m + '.stopped').exists() for m in markers), 'Installer did not wait for every app/helper'
                     assert all(p.wait(timeout=5) == 0 for p in fixtures)
                 finally:

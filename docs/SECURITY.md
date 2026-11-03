@@ -70,7 +70,7 @@ Stop Driver or tray Exit removes the owned rule and virtual monitor. Closing the
 
 ## Unified app privilege boundary (0.13)
 
-SideScreen.exe is asInvoker. Server startup elevates SideScreen.Service.exe with fixed options; that helper manages the firewall and launches the fixed sibling media engine. The randomized named pipe is restricted to the launching user and SYSTEM, rejects remote clients, and both endpoints verify peer process IDs. The helper additionally checks the launcher executable path. The only inbound control is stop; media/input never flow through this IPC. The helper monitors launcher death and removes its owned firewall rule after stopping the engine. Pairing remains in the interactive user's credential store; elevation must use that same Windows account. Apps remain unsigned development builds.
+ExtraPane.exe is asInvoker. Server startup elevates ExtraPane.Service.exe with fixed options; that helper manages the firewall and launches the fixed sibling media engine. The randomized named pipe is restricted to the launching user and SYSTEM, rejects remote clients, and both endpoints verify peer process IDs. The helper additionally checks the launcher executable path. The only inbound control is stop; media/input never flow through this IPC. The helper monitors launcher death and removes its owned firewall rule after stopping the engine. Pairing remains in the interactive user's credential store; elevation must use that same Windows account. Apps remain unsigned development builds.
 
 ## Development driver installation
 

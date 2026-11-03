@@ -204,7 +204,7 @@ VirtualMonitor::VirtualMonitor(unsigned slot):state_(std::make_unique<State>()) 
     auto& s=*state_;s.slot=slot;if(slot)s.baseline=active_monitors();
     if(!s.event) throw std::runtime_error("Cannot create device completion event");
     // Slot zero retains the diagnostic identity; server slots are independent adapters.
-    const auto instance=slot?L"SideScreen-LAN-"+std::to_wstring(slot):L"DM-LAN-1";
+    const auto instance=slot?L"ExtraPane-LAN-"+std::to_wstring(slot):L"DM-LAN-1";
     SW_DEVICE_CREATE_INFO info{}; info.cbSize=sizeof(info);
     info.pszInstanceId=instance.c_str();
     info.pszzHardwareIds=L"DMIndirectDisplay\0";

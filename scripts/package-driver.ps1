@@ -10,7 +10,7 @@ foreach($name in @('DMIndirectDisplay.dll','DMIndirectDisplay.inf','DMIndirectDi
 foreach($name in @('LICENSE','UPSTREAM.md')){Copy-Item -LiteralPath (Join-Path $root "drivers/idd/$name") -Destination $Destination}
 $rsa=[Security.Cryptography.RSA]::Create(3072)
 try {
- $request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=SideScreen Development Driver',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
+ $request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=ExtraPane Development Driver',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
  $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false,$false,0,$true))
  $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature,$true))
  $usage=[Security.Cryptography.OidCollection]::new();$null=$usage.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
@@ -21,7 +21,7 @@ try {
   $null=Set-AuthenticodeSignature -LiteralPath $cat -Certificate $cert -HashAlgorithm SHA256
   $signature=Get-AuthenticodeSignature -LiteralPath $cat
   if(!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint){throw 'Driver catalog signing failed'}
-  [IO.File]::WriteAllBytes((Join-Path $Destination 'SideScreen-Driver.cer'),$cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+  [IO.File]::WriteAllBytes((Join-Path $Destination 'ExtraPane-Driver.cer'),$cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
   $inf=Get-Content -LiteralPath (Join-Path $Destination 'DMIndirectDisplay.inf') -Raw
   if($inf -notmatch '(?im)^DriverVer\s*=\s*([^,\r\n]+),\s*([0-9.]+)'){throw 'Missing stamped driver version'}
   $manifest=[ordered]@{schema=1;driverVersion=$Matches[2];driverDate=$Matches[1];certificateThumbprint=$cert.Thumbprint;certificateExpires=$cert.NotAfter.ToUniversalTime().ToString('o');signing='Development certificate; not Microsoft release signed';files=@()}

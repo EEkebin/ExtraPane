@@ -1,4 +1,4 @@
-"""SideScreen calendar versions and shared Windows/build metadata."""
+"""ExtraPane calendar versions and shared Windows/build metadata."""
 from datetime import date
 from pathlib import Path
 import argparse
@@ -20,7 +20,7 @@ def parse(value):
     return f'{year}.{month}.{day}.{revision}'
 
 def current():
-    value = os.environ.get('SIDESCREEN_VERSION') or (ROOT / 'VERSION').read_text().strip()
+    value = os.environ.get('EXTRAPANE_VERSION') or (ROOT / 'VERSION').read_text().strip()
     parse(value)
     return value
 
@@ -48,9 +48,9 @@ def metadata(day, channel, run, attempt, revision=0, title='', explanation=''):
 def header(path):
     value = current()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('#pragma once\n#define SIDESCREEN_VERSION "' + value + '"\n'
-                    '#define SIDESCREEN_VERSION_W L"' + value + '"\n'
-                    '#define SIDESCREEN_VERSION_NUM ' + parse(value).replace('.', ',') + '\n')
+    path.write_text('#pragma once\n#define EXTRAPANE_VERSION "' + value + '"\n'
+                    '#define EXTRAPANE_VERSION_W L"' + value + '"\n'
+                    '#define EXTRAPANE_VERSION_NUM ' + parse(value).replace('.', ',') + '\n')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -68,5 +68,5 @@ if __name__ == '__main__':
         with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
             for key in ('version', 'numeric', 'tag'): f.write(f'{key}={result[key]}\n')
         with open(os.environ['GITHUB_ENV'], 'a') as f:
-            f.write(f"SIDESCREEN_VERSION={result['version']}\nSIDESCREEN_NUMERIC_VERSION={result['numeric']}\n")
+            f.write(f"EXTRAPANE_VERSION={result['version']}\nEXTRAPANE_NUMERIC_VERSION={result['numeric']}\n")
     else: print(parse(current()) if args.numeric else current())

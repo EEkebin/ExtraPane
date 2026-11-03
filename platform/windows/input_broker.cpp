@@ -20,7 +20,7 @@ struct Injector {
         ~Timer(){if(handle)CloseHandle(handle);}
     } pacing;
     struct InputLease {
-        HANDLE handle=CreateMutexW(nullptr,FALSE,L"Local\\SideScreen.RemoteInput");bool held=false;
+        HANDLE handle=CreateMutexW(nullptr,FALSE,L"Local\\ExtraPane.RemoteInput");bool held=false;
         bool acquire(){if(held)return true;const auto result=WaitForSingleObject(handle,0);return held=(result==WAIT_OBJECT_0 || result==WAIT_ABANDONED);}
         void release(){if(held){ReleaseMutex(handle);held=false;}}
         ~InputLease(){release();if(handle)CloseHandle(handle);}
