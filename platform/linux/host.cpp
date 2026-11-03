@@ -55,6 +55,7 @@ void Host::run(){
             // Discard queued clients: each client must explicitly retry after the
             // active session ends, rather than unexpectedly opening a monitor.
             while((peer=accept4(listener,nullptr,nullptr,SOCK_NONBLOCK|SOCK_CLOEXEC))>=0)close(peer);
+            if(!isInterruptionRequested())emit state("Listening on "+address_+":43824 ? waiting for a client");
         }
         emit state("Server stopped");
     }catch(const std::exception& e){emit state("Server error: "+QString::fromUtf8(e.what()));}
@@ -80,10 +81,12 @@ void Host::serve(int socket){
     const unsigned fps=std::clamp(display.hz?display.hz:60,1u,60u);
     std::uint64_t epoch=0;if(granted){if(RAND_bytes(reinterpret_cast<unsigned char*>(&epoch),sizeof(epoch))!=1)throw std::runtime_error("Cannot generate input epoch");if(!epoch)epoch=1;}
     Pipeline media;GError* error=nullptr;
-    const auto description=QString("pipewiresrc name=capture do-timestamp=true ! queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! videorate ! video/x-raw,format=I420,width=%1,height=%2,framerate=%3/1 ! openh264enc complexity=low bitrate=12000000 gop-size=%3 rate-control=bitrate enable-frame-skip=true ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au ! appsink name=encoded sync=false max-buffers=2 drop=false").arg(width).arg(height).arg(fps);
+    const auto description=QString("pipewiresrc name=capture do-timestamp=true ! queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! videorate drop-only=true max-rate=%3 ! video/x-raw,format=I420,width=%1,height=%2,framerate=%3/1 ! openh264enc complexity=low bitrate=12000000 gop-size=%3 rate-control=bitrate enable-frame-skip=false ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au ! appsink name=encoded sync=false max-buffers=2 drop=false").arg(width).arg(height).arg(fps);
     media.pipeline=gst_parse_launch(description.toUtf8().constData(),&error);
     if(error || !media.pipeline){std::string reason=error?error->message:"Cannot create capture encoder";if(error)g_error_free(error);throw std::runtime_error(reason);}
     auto* source=gst_bin_get_by_name(GST_BIN(media.pipeline),"capture");
+    if(!g_object_class_find_property(G_OBJECT_GET_CLASS(source),"keepalive-time")){gst_object_unref(source);throw std::runtime_error("Update the PipeWire GStreamer plugin: keepalive-time support is required");}
+    g_object_set(source,"keepalive-time",static_cast<int>(std::max(1u,1000/fps)),nullptr);
     const auto node=std::to_string(portal.node);g_object_set(source,"fd",portal.pipewire.fileDescriptor(),"path",node.c_str(),nullptr);gst_object_unref(source);
     media.sink=gst_bin_get_by_name(GST_BIN(media.pipeline),"encoded");
     stream.write(wire::encode_offer({width,height,fps,0,wire::Codec::h264,static_cast<uint8_t>(granted),epoch}),deadline());

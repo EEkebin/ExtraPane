@@ -93,7 +93,7 @@ def main():
         env = dict(os.environ)
         env.update(PATH=str(tools)+os.pathsep+env.get('PATH', ''), ARCH='x86_64',
                    QMAKE=str(args.qmake.resolve()), QML_SOURCES_PATHS=str(ROOT/'apps/linux'),
-                   EXTRA_PLATFORM_PLUGINS='libqwayland-egl.so;libqwayland-generic.so',
+                   EXTRA_PLATFORM_PLUGINS=';'.join(p.name for p in (Path(subprocess.check_output([str(args.qmake), '-query', 'QT_INSTALL_PLUGINS'], text=True).strip())/'platforms').glob('*wayland*.so')),
                    GSTREAMER_PLUGINS_DIR=str(bundled_plugins), GSTREAMER_HELPERS_DIR=str(helpers),
                    APPIMAGE_EXTRACT_AND_RUN='1', OUTPUT=str(stage/output.name), VERSION=version)
         subprocess.run([str(tools/'linuxdeploy'), '--appdir', str(appdir),
