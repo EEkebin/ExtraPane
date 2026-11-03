@@ -14,13 +14,13 @@ The client requests its current screen's backing-pixel dimensions and a 60 FPS t
 
 | Action | Control |
 | --- | --- |
-| Show controls and pause remote input | F10 or move the pointer to the top-center strip |
+| Show controls | F10, View > Show Controls, or move the pointer to the top-center strip |
 | Pause/resume remote input | F8 |
 | Fullscreen | Control+Command+F, View > Toggle Full Screen, or the green window button |
 | Disconnect | Ctrl+Shift+Q or Disconnect |
 | Reception statistics | Settings > Show statistics |
 
-Depending on keyboard settings, use Fn with F8/F10. macOS may reserve F11/Fn+F11 for Show Desktop, so use Control+Command+F for fullscreen. Showing controls pauses input; choose Settings > Resume or F8 to return to the remote display. Controls hide after connection. Closing the window quits the client; there is no idle tray process.
+Depending on keyboard settings, use Fn with F8/F10. macOS may reserve F11/Fn+F11 for Show Desktop, so use Control+Command+F for fullscreen. Revealing controls does not pause remote input. They hide automatically after the pointer leaves them. Only F8 explicitly toggles input pause. Settings/About dialogs temporarily suspend input and restore its previous state when closed. Controls also hide after connection. Closing the window quits the client; there is no idle tray process.
 
 Mouse movement, buttons, dragging and scrolling are forwarded. Physical keyboard positions map to Windows set-1 scan codes, using the host layout. Command maps to the Windows key; Option maps to Alt. macOS-reserved shortcuts remain local. IME composition, arbitrary vendor/media keys and text injection are not implemented. Trackpad scrolling is mouse input, not native multi-touch. Tablet pressure, tilt, eraser and native pen forwarding are not implemented; devices presenting as ordinary mouse pointers can only provide pointer input.
 
@@ -53,7 +53,7 @@ The reusable `macos.yml` workflow builds Universal binaries and runs native chec
 
 ## Verification status
 
-The Universal app compiled and protocol/input/framing checks passed on hosted Apple Silicon and Intel runners. ZIP/DMG generation passed on Apple Silicon after correcting the architecture-check invocation. The native H.264 encode/conversion/decode color check also passed on both runners. AppKit startup/shutdown also passed on both hosted architectures. [Verified build and packages](https://github.com/EEkebin/ExtraPane/actions/runs/41729302343). Hosted checks are not evidence of physical Mac video presentation, user input delivery, display reconfiguration, network permissions or latency. On 2026-11-03 the user's M3 Pro MacBook Pro running macOS 27.2 passed the native codec check and connected to the Windows host at 3000x2000. The user confirmed the picture and mouse/keyboard work. The first connection exposed Apple TLS error -9808; explicitly disabling per-connection peer authentication, consistent with automatic LAN policy, fixed it. Global trust/network settings were unchanged. Physical Intel playback, Linux-host interoperability, reconnect/layout transitions and latency measurement remain pending. macOS 12 compatibility is a deployment target, not a completed physical-OS test matrix.
+The Universal app compiled and protocol/input/framing checks passed on hosted Apple Silicon and Intel runners. ZIP/DMG generation passed on Apple Silicon after correcting the architecture-check invocation. The native H.264 encode/conversion/decode color check also passed on both runners. AppKit startup/shutdown also passed on both hosted architectures. [Verified build and packages](https://github.com/EEkebin/ExtraPane/actions/runs/41729302343). Hosted checks are not evidence of physical Mac video presentation, user input delivery, display reconfiguration, network permissions or latency. On 2026-11-03 the user's M3 Pro MacBook Pro running macOS 27.2 passed the native codec check and connected to the Windows host at 3000x2000. The user confirmed the picture and mouse/keyboard work. The first connection exposed Apple TLS error -9808; explicitly disabling per-connection peer authentication, consistent with automatic LAN policy, fixed it. Global trust/network settings were unchanged. Control+Command+F fullscreen and continued input after revealing the top controls were also verified by the user. Repeated reconnect negotiations succeeded during testing. Physical Intel playback, Linux-host interoperability, live host layout transitions and latency measurement remain pending. macOS 12 compatibility is a deployment target, not a completed physical-OS test matrix.
 
 ## Apple references
 
