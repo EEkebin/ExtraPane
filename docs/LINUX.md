@@ -14,7 +14,7 @@ Hosting additionally requires Qt DBus and `gst-plugin-pipewire`; OpenH264 is sup
 
 Build optional synthetic checks with `cmake --preset linux-release -DEXTRAPANE_LINUX_TESTS=ON`, build with two jobs, then run `QT_QPA_PLATFORM=offscreen out/build/linux-release/platform/linux/extrapane-linux-input-check` when testing is authorized.
 
-AppImage `2026.11.03-pre.0.1` launches outside the build tree, loads its bundled Qt/GStreamer libraries, and passed Linux-host to Windows-client video and input with user confirmation. The generated launcher and missing Wayland integration were repaired. Disconnect returned the packaged server to listening. The SHA-256 check passes. This development artifact is in the VM's `/home/user/Applications/` directory. Public Linux releases remain disabled pending packaged receiver validation, a clean distribution baseline and dependency/source-license review. An Arch AppImage does not establish compatibility with older distributions.
+AppImage `2026.11.03-pre.0.1` launches outside the build tree, loads its bundled Qt/GStreamer libraries, and passed Linux-host to Windows-client video and input with user confirmation. The generated launcher and missing Wayland integration were repaired. Disconnect returned the packaged server to listening. The SHA-256 check passes. This development artifact is in the VM's `/home/user/Applications/` directory. At the user's request, release workflows now build and include the AppImage and dependency notices for both channels, gated on a successful Linux job; the first hosted run is being verified. An Arch AppImage does not establish compatibility with older distributions.
 
 For portable use, place the AppImage in a stable directory, mark it executable and run it. FUSE 2 is needed for normal mounting; `--appimage-extract-and-run` is the fallback. Delete the artifact to uninstall. Delete `~/.config/ExtraPane/ExtraPane.conf` separately to clear the saved server address. No Linux driver is installed.
 
@@ -54,7 +54,7 @@ python3 scripts/package_linux.py \
 
 Set the same `EXTRAPANE_VERSION` for configure/build and packaging. Artifacts and SHA-256 files go to `out/dist-linux`. The packager refuses to overwrite an existing version and does not launch or publish it. The bundle includes selected Qt modules, GStreamer plugins and scanner, OpenH264 and supplied notices. System graphics drivers and the desktop's PipeWire runtime remain host dependencies. Package inputs are recorded inside the image.
 
-Before public Linux releases: validate packaged hosting/receiving, an older distribution baseline and dependency/source-license materials. Physical touch/pen, real GPUs, fractional scaling, live layout changes and direct static-IP cabling remain separate validation gates. Audio and reverse microphone remain unimplemented across this Linux slice.
+CI uses the pinned Arch snapshot described in RELEASING.md, records package versions/notices/source references, and checks portable startup under Xvfb. That does not validate streaming or older distributions. Packaged receiving, physical touch/pen, real GPUs, fractional scaling, live layout changes and direct static-IP cabling remain separate validation gates. Audio and reverse microphone remain unimplemented across this Linux slice.
 
 ## Integration references
 

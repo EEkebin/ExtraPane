@@ -13,3 +13,9 @@ __pycache__/
 *.pem
 *.dmp
 *.log
+/apps/android/.gradle/
+/apps/android/local.properties
+/apps/android/**/build/
+/apps/android/**/.cxx/
+*.jks
+*.keystore

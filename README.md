@@ -110,6 +110,8 @@ The driver uninstaller keeps its files and ownership records if removal fails so
 
 ## Build and verification
 
+An Android client is in development. Its first Pixel 8a test received a Windows extended desktop using hardware H.264 decoding; picture and physical touch were user-verified. Android hosting, pen, audio and on-screen keyboard forwarding are not implemented in this slice. See [Android build and validation](docs/ANDROID.md).
+
 Linux x64 development builds can receive a Windows desktop and host a Linux virtual monitor through KDE's Wayland desktop portal. Both directions, including mouse and keyboard input, have been verified in an Arch VM. Linux hosting currently supports one client and uses software H.264 encoding; the portal controls monitor dimensions. Native Linux client touch/pen capture has synthetic checks, but physical devices remain unverified. Published downloads remain Windows-only while AppImage deployment is being validated. See [Linux setup, capabilities and validation](docs/LINUX.md).
 
 The implementation uses C++20, native Windows graphics/input APIs, and C++/WinRT with WinUI 3. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.

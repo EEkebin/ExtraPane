@@ -1,5 +1,11 @@
 # Decisions, assumptions, and evidence
 
+## Android receiver milestone (2026-11-03)
+
+The user accepted the Linux handoff and authorized installing/testing an Android client on their ADB-connected Pixel 8a. Keep C++20 shared protocol validation through JNI; use Android's platform UI, TLS sockets and MediaCodec Surface decoding for platform integration. First slice requests native touch, mouse and physical keyboard, with pen/audio/Android hosting explicitly unavailable. API 30 minimum, ARM64 and x86_64, Gradle 8.13/AGP 8.13.2 and NDK 27.2.12479018 are pinned. The first Wi-Fi Windows-host session negotiated 1080x1920 and the Pixel's hardware H.264 decoder at approximately 60 received FPS. The user confirmed the picture and physical touch work. Continue lifecycle and packaged build checks before claiming a release.
+
+The user also requested the missing Linux release automation. Both prerelease and stable publication must include the AppImage and dependency notices, with combined checksums, and depend on successful Windows and Linux builds.
+
 ## Current Linux milestone (2026-11-03)
 
 Later user authorization supersedes the historical source-only restrictions below: complete Linux hosting, native input and deployment before Android. Arch KDE/Wayland builds and Windows interoperability have been exercised in both directions. The user confirmed Linux-host to Windows-client video and mouse/keyboard. Native Linux touch/pen capture passes synthetic checks; physical devices remain unverified.
