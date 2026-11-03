@@ -137,8 +137,36 @@ def main():
                    GSTREAMER_PLUGINS_DIR=str(bundled_plugins), GSTREAMER_HELPERS_DIR=str(helpers),
                    APPIMAGE_EXTRACT_AND_RUN='1', OUTPUT=str(stage/output.name), VERSION=version)
         subprocess.run([str(tools/'linuxdeploy'), '--appdir', str(appdir),
-                        '--plugin', 'gstreamer', '--plugin', 'qt', '--output', 'appimage'],
+                        '--plugin', 'gstreamer', '--plugin', 'qt'],
                        cwd=stage, env=env, check=True)
+        # New Qt versions use a plugin name older deployment tools do not
+        # recognize. Copy the selected Wayland integrations and deploy their deps.
+        for category in ('wayland-graphics-integration-client',
+                         'wayland-decoration-client', 'wayland-shell-integration'):
+            if (selected_qt/category).is_dir():
+                shutil.copytree(selected_qt/category, appdir/'usr/plugins'/category, dirs_exist_ok=True)
+        # Own the launch environment: plugin-generated hooks may fail under
+        # set -e when an optional PTP helper is absent. Resolve the executable
+        # directly, so Qt does not derive its prefix from an AppRun symlink.
+        launcher = appdir/'AppRun'
+        launcher.unlink(missing_ok=True)
+        launcher.write_text('''#!/usr/bin/env bash
+set -e
+APPDIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+export APPDIR
+export QT_PLUGIN_PATH="$APPDIR/usr/plugins"
+export QML_IMPORT_PATH="$APPDIR/usr/qml"
+export QML2_IMPORT_PATH="$APPDIR/usr/qml"
+export GST_PLUGIN_SYSTEM_PATH_1_0="$APPDIR/usr/lib/gstreamer-1.0"
+export GST_PLUGIN_PATH_1_0="$GST_PLUGIN_SYSTEM_PATH_1_0"
+export GST_PLUGIN_SCANNER_1_0="$APPDIR/usr/lib/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner"
+export GST_REGISTRY_REUSE_PLUGIN_SCANNER=no
+exec "$APPDIR/usr/bin/ExtraPane" "$@"
+''')
+        launcher.chmod(0o755)
+        subprocess.run([str(tools/'linuxdeploy'), '--appdir', str(appdir),
+                        '--deploy-deps-only', str(appdir/'usr/plugins'),
+                        '--output', 'appimage'], cwd=stage, env=env, check=True)
         built = stage/output.name
         if not built.is_file():
             raise SystemExit('linuxdeploy did not produce the expected AppImage.')
