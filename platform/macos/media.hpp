@@ -10,6 +10,6 @@ class Media {
 public:
     ~Media(){reset();}
     void reset();
-    CMSampleBufferRef sample(std::span<const uint8_t> packet,uint64_t micros);
+    CMSampleBufferRef sample(std::span<const uint8_t> packet,uint64_t micros,unsigned width,unsigned height);
 };
 }

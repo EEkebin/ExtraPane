@@ -12,6 +12,7 @@
 #include <set>
 #include <thread>
 #include <stdexcept>
+#include <cstring>
 using namespace std::chrono_literals;
 namespace wire=dm::video::wire;
 namespace input=dm::input;
@@ -25,7 +26,7 @@ static Key mapKey(unsigned code){
     static const Entry other[]={
         {18,'1',2,0},{19,'2',3,0},{20,'3',4,0},{21,'4',5,0},{23,'5',6,0},{22,'6',7,0},{26,'7',8,0},{28,'8',9,0},{25,'9',10,0},{29,'0',11,0},
         {27,0xbd,12,0},{24,0xbb,13,0},{51,8,14,0},{48,9,15,0},{33,0xdb,26,0},{30,0xdd,27,0},{36,13,28,0},{41,0xba,39,0},{39,0xde,40,0},{50,0xc0,41,0},{42,0xdc,43,0},{43,0xbc,51,0},{47,0xbe,52,0},{44,0xbf,53,0},{49,32,57,0},{53,27,1,0},
-        {56,0xa0,42,0},{60,0xa1,54,0},{59,0xa2,29,0},{62,0xa3,29,1},{58,0xa4,56,0},{61,0xa5,56,1},{55,0x5b,91,1},{54,0x5c,92,1},
+        {57,0x14,58,0},{56,0xa0,42,0},{60,0xa1,54,0},{59,0xa2,29,0},{62,0xa3,29,1},{58,0xa4,56,0},{61,0xa5,56,1},{55,0x5b,91,1},{54,0x5c,92,1},
         {123,0x25,75,1},{124,0x27,77,1},{125,0x28,80,1},{126,0x26,72,1},{115,0x24,71,1},{119,0x23,79,1},{116,0x21,73,1},{121,0x22,81,1},{117,0x2e,83,1},{114,0x2d,82,1},
         {122,0x70,59,0},{120,0x71,60,0},{99,0x72,61,0},{118,0x73,62,0},{96,0x74,63,0},{97,0x75,64,0},{98,0x76,65,0},{100,0x77,66,0},{101,0x78,67,0},{109,0x79,68,0},{103,0x7a,87,0},{111,0x7b,88,0},
         {82,0x60,82,0},{83,0x61,79,0},{84,0x62,80,0},{85,0x63,81,0},{86,0x64,75,0},{87,0x65,76,0},{88,0x66,77,0},{89,0x67,71,0},{91,0x68,72,0},{92,0x69,73,0},{65,0x6e,83,0},{67,0x6a,55,0},{69,0x6b,78,0},{75,0x6f,53,1},{78,0x6d,74,0},{76,13,28,1}};
@@ -90,6 +91,7 @@ struct Session {std::atomic_bool stopped=false;std::shared_ptr<dm::mac::Transpor
 - (void)keyDown:(NSEvent*)e{[self.owner key:e down:YES];}
 - (void)keyUp:(NSEvent*)e{[self.owner key:e down:NO];}
 - (void)flagsChanged:(NSEvent*)e{
+    if(e.keyCode==57){[self.owner key:e down:YES];[self.owner key:e down:NO];return;}
     // Device-specific left/right bits retain both modifiers held together.
     unsigned mask=0;switch(e.keyCode){case 56:mask=2;break;case 60:mask=4;break;case 59:mask=1;break;case 62:mask=0x2000;break;case 58:mask=0x20;break;case 61:mask=0x40;break;case 55:mask=8;break;case 54:mask=0x10;break;default:return;}
     [self.owner key:e down:(e.modifierFlags&mask)!=0];
@@ -133,7 +135,7 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
             auto header=wire::decode_header(transport.read(24));if(header.sequence!=sequence || header.micros<previous)throw std::runtime_error("Out-of-order frame");previous=header.micros;
             if(!header.bytes){auto next=wire::decode_offer(transport.read(32));if(next.frames!=offer.frames || next.codec!=offer.codec || next.input_caps!=offer.input_caps || (next.input_caps && next.input_epoch==offer.input_epoch))throw std::runtime_error("Invalid display reconfiguration");offer=next;prepare();continue;}
             auto bytes=transport.read(header.bytes);if(offer.input_caps)transport.write(current->input.take(offer.input_epoch,sequence));
-            auto sample=media.sample(bytes,header.micros);if(sample){bool delivered=false;auto deadline=std::chrono::steady_clock::now()+500ms;
+            auto sample=media.sample(bytes,header.micros,offer.width,offer.height);if(sample){bool delivered=false;auto deadline=std::chrono::steady_clock::now()+500ms;
                 while(!current->stopped && !delivered){__block bool ready=false,failed=false;dispatch_sync(dispatch_get_main_queue(),^{failed=self.video.display.status==AVQueuedSampleBufferRenderingStatusFailed;ready=self.video.display.readyForMoreMediaData;if(ready && !failed)[self.video.display enqueueSampleBuffer:sample];});
                     if(failed){CFRelease(sample);throw std::runtime_error("Apple H.264 renderer failed");}delivered=ready;if(!delivered){if(std::chrono::steady_clock::now()>deadline){CFRelease(sample);throw std::runtime_error("Decoder stalled; disconnected to bound latency");}std::this_thread::sleep_for(2ms);}}
                 CFRelease(sample);
@@ -147,10 +149,10 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 - (void)settings:(id)sender{(void)sender;[self showControls];NSAlert* a=[NSAlert new];a.messageText=@"Client settings";a.informativeText=@"Mouse and physical keyboard use the host layout. Command maps to the Windows key. macOS-reserved shortcuts remain local. Trackpad gestures are mouse/scroll input, not remote multi-touch. Pen, audio, microphone and Mac hosting are not implemented.\n\nTLS encrypts the connection but does not verify peer identity. Use a trusted LAN. Statistics measure reception, not end-to-end latency.";[a addButtonWithTitle:self.showStats?@"Hide statistics":@"Show statistics"];[a addButtonWithTitle:@"Resume"];if([a runModal]==NSAlertFirstButtonReturn)self.showStats=!self.showStats;self.statistics.hidden=!self.showStats;self.paused=NO;[self hideControls];}
 - (void)about:(id)sender{(void)sender;[self showControls];NSAlert* a=[NSAlert new];a.messageText=@"ExtraPane";a.informativeText=@"Another screen for your desktop.\nRunning version: " EXTRAPANE_MAC_VERSION @"\nmacOS client preview · Apple Silicon and Intel\nA project-wide license has not been selected.";[a addButtonWithTitle:@"GitHub / README"];[a addButtonWithTitle:@"Close"];if([a runModal]==NSAlertFirstButtonReturn)[[NSWorkspace sharedWorkspace]openURL:[NSURL URLWithString:@"https://github.com/EEkebin/ExtraPane"]];}
 - (void)key:(NSEvent*)event down:(BOOL)down{
-    if(!session)return;unsigned code=event.keyCode;BOOL quit=code==12 && (event.modifierFlags&NSEventModifierFlagControl) && (event.modifierFlags&NSEventModifierFlagShift);
-    if(code==109 || code==103 || code==100 || quit){if(down && !event.isARepeat){[self resetInput];if(quit)[self disconnect:nil];else if(code==103)[self.window toggleFullScreen:nil];else if(code==100){self.paused=!self.paused;self.video.remoteEnabled=!self.paused;if(self.paused)[self showControls];else [self hideControls];}else [self showControls];}return;}
+    if(!session)return;unsigned code=event.keyCode;BOOL repeat=event.type==NSEventTypeKeyDown && event.isARepeat;BOOL quit=code==12 && (event.modifierFlags&NSEventModifierFlagControl) && (event.modifierFlags&NSEventModifierFlagShift);
+    if(code==109 || code==103 || code==100 || quit){if(down && !repeat){[self resetInput];if(quit)[self disconnect:nil];else if(code==103)[self.window toggleFullScreen:nil];else if(code==100){self.paused=!self.paused;self.video.remoteEnabled=!self.paused;if(self.paused)[self showControls];else [self hideControls];}else [self showControls];}return;}
     if(!self.video.remoteEnabled)return;auto key=mapKey(code);if(!key.vk)return;
-    if(down){if(event.isARepeat && !heldKeys.contains(code))return;heldKeys.insert(code);}else if(!heldKeys.erase(code))return;
+    if(down){if(repeat && !heldKeys.contains(code))return;heldKeys.insert(code);}else if(!heldKeys.erase(code))return;
     input::Event e;e.kind=input::Kind::key;e.action=down?input::Action::down:input::Action::up;e.id=key.vk;e.code=key.scan;e.value=key.ext;session->input.add(e);
 }
 - (void)mouse:(NSEvent*)event action:(input::Action)action{

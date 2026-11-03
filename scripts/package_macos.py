@@ -11,7 +11,7 @@ version=os.environ['EXTRAPANE_VERSION']
 if not re.fullmatch(r'\d{4}\.\d{2}\.\d{2}(?:[.-][A-Za-z0-9]+)*',version): raise ValueError('Invalid version')
 app=root/'out/build/macos/platform/macos/ExtraPane.app'
 binary=app/'Contents/MacOS/ExtraPane'
-subprocess.run(['lipo','-verify_arch','arm64','x86_64',str(binary)],check=True)
+subprocess.run(['lipo',str(binary),'-verify_arch','arm64','x86_64'],check=True)
 resources=app/'Contents/Resources';resources.mkdir(exist_ok=True)
 icons=root/'out/macos-icons/ExtraPane.iconset';icons.mkdir(parents=True,exist_ok=True)
 for size in (16,32,128,256,512):

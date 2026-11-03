@@ -11,7 +11,7 @@ std::vector<std::vector<uint8_t>> annexb(std::span<const uint8_t> b){
     }if(result.empty())throw std::runtime_error("Missing H.264 units");return result;
 }
 void Media::reset(){if(format_)CFRelease(format_);format_=nullptr;sps_.clear();pps_.clear();}
-CMSampleBufferRef Media::sample(std::span<const uint8_t> packet,uint64_t micros){
+CMSampleBufferRef Media::sample(std::span<const uint8_t> packet,uint64_t micros,unsigned width,unsigned height){
     auto units=annexb(packet);bool changed=false;std::vector<uint8_t> payload;
     for(const auto& unit:units){auto type=unit[0]&31;
         if(type==7){changed|=sps_!=unit;sps_=unit;continue;}if(type==8){changed|=pps_!=unit;pps_=unit;continue;}
@@ -22,6 +22,8 @@ CMSampleBufferRef Media::sample(std::span<const uint8_t> packet,uint64_t micros)
         if(CMVideoFormatDescriptionCreateFromH264ParameterSets(kCFAllocatorDefault,2,sets,sizes,4,&next))throw std::runtime_error("Unsupported H.264 format");
         if(format_)CFRelease(format_);format_=next;
     }
+    auto dimensions=CMVideoFormatDescriptionGetDimensions(format_);
+    if(dimensions.width!=int(width) || dimensions.height!=int(height))throw std::runtime_error("H.264 dimensions do not match the negotiated display");
     if(payload.empty())return nullptr;
     CMBlockBufferRef block=nullptr;CMSampleBufferRef sample=nullptr;
     if(CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault,nullptr,payload.size(),kCFAllocatorDefault,nullptr,0,payload.size(),0,&block))throw std::runtime_error("Cannot allocate compressed sample");
