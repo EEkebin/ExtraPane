@@ -1,5 +1,11 @@
 # Decisions, assumptions, and evidence
 
+## Current Linux milestone (2026-11-03)
+
+Later user authorization supersedes the historical source-only restrictions below: complete Linux hosting, native input and deployment before Android. Arch KDE/Wayland builds and Windows interoperability have been exercised in both directions. The user confirmed Linux-host to Windows-client video and mouse/keyboard. Native Linux touch/pen capture passes synthetic checks; physical devices remain unverified.
+
+Use the standard ScreenCast/RemoteDesktop portal for a session-owned virtual output and PipeWire capture. Linux hosting currently supports one client, portal-controlled dimensions (1920x1080 on tested KDE) and software OpenH264. Portal mouse/keyboard/touch injection is implemented; pen injection is not exposed and is not granted. Closing the app ends the Linux host; tray hosting and hardware encoding remain future work. Keep these limits visible instead of claiming Windows feature parity. AppImage generation succeeded; packaged runtime and broader distribution validation remain deployment gates. See LINUX.md for current evidence; earlier entries are chronological decisions, not current capability claims.
+
 Initialized 2026-11-01. Direct-IP, paired TLS, and GPU-resident raw-pixel H264 at 720p30 pass on both Surface Book 2 GPUs. Current GPU runs decoded 300 frames each and presented 295 Intel / 296 GTX, with no application raw-pixel readbacks/uploads. Local interruption/restart and GPU color/geometry checks pass. The latest human visual check is pending; the user confirmed the earlier JPEG image. Local virtual-display installation and session-lifetime tests pass; Native mouse/keyboard/touch/pen forwarding passes generated laptop-to-host tests; the repaired physical pen session is user-confirmed. Native 3000x2000 nominal60 now delivers about 59 fps in the measured diagnostic workload (see NATIVE-DISPLAY.md); individual pen/touch features, drawing-app acceptance, audio and production driver distribution remain pending. See GPU.md and the development/security notes.
 
 ## Confirmed user requirements

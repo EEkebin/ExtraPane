@@ -1,4 +1,24 @@
-# Linux client and AppImage work
+# Linux hosting, client and AppImage work
+
+## Current implementation and validation (2026-11-03)
+
+This section supersedes the earlier receiver-only milestone notes below. The user authorized Linux hosting, native input and packaging work, and confirmed Linux-host to Windows-client **video and mouse/keyboard delivery**. Windows-host to Linux-client video, input, reconnect, fullscreen and repaired toolbar contrast were also confirmed.
+
+Linux hosting now creates a real session-owned virtual output through KDE's Wayland desktop portal, captures through PipeWire and encodes with software OpenH264. Start server binds TCP 43824 to the selected IPv4 address; the output is created only after connection and KDE desktop-sharing consent. Disconnect returns the server to listening. Shutdown removed the session output while preserving the VM's original monitor.
+
+Current host limits: one client at a time; portal-owned dimensions (1920x1080 on tested KDE); client refresh target capped at 60 FPS; software encoding. Native-resolution control, multiple Linux-host clients, hardware encoding and Linux tray hosting are not implemented. Closing the Linux app exits and stops its host. The observed VM session received roughly 54-60 FPS, including idle streaming; this is not a physical hardware performance claim.
+
+Linux client native touch and pen capture are implemented. Synthetic Qt checks pass for distinct/stable contact IDs, contact cancellation, pressure, tilt, rotation, eraser/barrel flags, capability gating, wire bounds, focus cleanup and overflow reset. Physical touchscreen/pen delivery remains unverified. The Linux host grants portal mouse, keyboard and touch capabilities; the portal has no pen injection API, so pen is not granted. No mouse emulation is counted as native input evidence.
+
+Hosting additionally requires Qt DBus and `gst-plugin-pipewire`; OpenH264 is supplied by the tested Arch `gst-plugins-bad`. The PipeWire source must expose `keepalive-time`. Tested runtime: KDE/KWin 6.8.2, PipeWire 1.6.10. Optional x264/libav are not bundled. The source executable and AppImage use the same host/client UI.
+
+Build optional synthetic checks with `cmake --preset linux-release -DEXTRAPANE_LINUX_TESTS=ON`, build with two jobs, then run `QT_QPA_PLATFORM=offscreen out/build/linux-release/platform/linux/extrapane-linux-input-check` when testing is authorized.
+
+AppImage generation succeeded. Validation found launcher/plugin deployment defects, which are being repaired before the portable artifact is handed off. Public Linux releases remain disabled pending packaged runtime checks, a clean distribution baseline and dependency/source-license review. An Arch AppImage does not establish compatibility with older distributions.
+
+For portable use, place the AppImage in a stable directory, mark it executable and run it. FUSE 2 is needed for normal mounting; `--appimage-extract-and-run` is the fallback. Delete the artifact to uninstall. Delete `~/.config/ExtraPane/ExtraPane.conf` separately to clear the saved server address. No Linux driver is installed.
+
+## Earlier receiver milestone notes (historical)
 
 Status: **source build succeeded on an Arch Linux x86_64 Hyper-V VM** on 2026-11-03. The user authorized dependency installation and a two-job Linux compilation. The user confirmed startup, Windows-to-Linux video, mouse and keyboard forwarding, disconnect/reconnect and fullscreen in the VM. GPU acceleration and AppImage packaging remain unverified. The user subsequently authorized a connection test using the installed Windows server. There is no downloadable Linux release yet; published downloads remain Windows-only.
 

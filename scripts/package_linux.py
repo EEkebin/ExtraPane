@@ -148,8 +148,8 @@ def main():
         # Own the launch environment: plugin-generated hooks may fail under
         # set -e when an optional PTP helper is absent. Resolve the executable
         # directly, so Qt does not derive its prefix from an AppRun symlink.
-        launcher = appdir/'AppRun'
-        launcher.unlink(missing_ok=True)
+        (appdir/'apprun-hooks/linuxdeploy-plugin-gstreamer.sh').unlink(missing_ok=True)
+        launcher = stage/'AppRun-custom'
         launcher.write_text('''#!/usr/bin/env bash
 set -e
 APPDIR="$(cd -- "$(dirname -- "$0")" && pwd)"
@@ -166,6 +166,7 @@ exec "$APPDIR/usr/bin/ExtraPane" "$@"
         launcher.chmod(0o755)
         subprocess.run([str(tools/'linuxdeploy'), '--appdir', str(appdir),
                         '--deploy-deps-only', str(appdir/'usr/plugins'),
+                        '--custom-apprun', str(launcher),
                         '--output', 'appimage'], cwd=stage, env=env, check=True)
         built = stage/output.name
         if not built.is_file():
