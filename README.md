@@ -4,7 +4,7 @@
 
 <img src="assets/branding/icon.png" alt="ExtraPane icon" width="96" align="right">
 
-ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Windows and Linux can host; Windows, Linux and Android clients are implemented, with a macOS Universal client preview undergoing device validation. Mouse, keyboard, touch and pen availability depends on the client and host; see the platform guides below.
+ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Windows and Linux can host; Windows, Linux and Android clients are implemented, with a macOS Universal client preview verified for Windows-host video and mouse/keyboard on an M3 Pro. Mouse, keyboard, touch and pen availability depends on the client and host; see the platform guides below.
 
 [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 

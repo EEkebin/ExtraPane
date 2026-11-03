@@ -200,3 +200,8 @@ Build and release adds a persistently signed Android APK with pinned toolchain, 
 The user approved macOS after the Android input/packaging checkpoint and specified Apple Silicon plus Intel. Use Objective-C++20/AppKit, Network.framework TLS 1.3 and Apple's CoreMedia/AVSampleBufferDisplayLayer H.264 path, retaining the shared C++ wire protocol. Build Universal arm64/x86_64 for macOS 12+ and validate natively on both hosted architectures. First implement receiving with mouse/keyboard; Mac hosting and iOS remain separate milestones. Trackpad gestures are not evidence of native remote touch, and tablet mouse events are not native pen support.
 
 Package a ZIP and drag-to-Applications DMG. Ad-hoc signing is a preview packaging measure, not Developer ID signing/notarization. Do not change Gatekeeper settings or imply notarization. Real M3 Pro connection, presentation and input validation require the user's Mac access; hosted build/codec tests do not replace them. Stop at this receiver checkpoint for user verification before hosting or iOS.
+
+
+## Physical Mac automatic-LAN TLS compatibility (2026-11-03)
+
+The M3 Pro test reached TCP but Network.framework rejected the Windows ephemeral certificate with TLS -9808 before the custom verification callback. Set peer authentication explicitly off for this connection, matching product automatic-LAN semantics; preserve TLS 1.3 and do not alter Keychain/system trust. This completed TLS and negotiated 3000x2000. The user confirmed picture and mouse/keyboard input. Surface the underlying Network.framework error for waiting/failed connections instead of reporting a misleading timeout. Keep paired/authenticated modes separate.
