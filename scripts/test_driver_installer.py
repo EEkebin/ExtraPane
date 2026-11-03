@@ -85,7 +85,9 @@ def main():
         kernel.CreateMutexW.restype = wintypes.HANDLE
         kernel.ReleaseMutex.argtypes = [wintypes.HANDLE]
         kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-        lock = kernel.CreateMutexW(None, True, r'Global\ExtraPane.DriverSetup')
+        # This compatibility mutex intentionally retains the pre-rename name,
+        # matching packaging/manage-driver.ps1 and existing installations.
+        lock = kernel.CreateMutexW(None, True, r'Global\SideScreen.DriverSetup')
         assert lock
         try:
             run(driver_setup, '/ACCEPTDEVELOPMENTCERT=1', success=False)
