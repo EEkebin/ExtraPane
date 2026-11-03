@@ -22,7 +22,8 @@ DRIVER_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen.Vi
 
 def ps(script, check=True):
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
-                           "$ErrorActionPreference='Stop'; " + script],
+                           "$ErrorActionPreference='Stop'; $env:PSModulePath=Join-Path $PSHOME 'Modules'; "
+                           "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; " + script],
                           text=True, capture_output=True, timeout=180)
     if check and result.returncode:
         raise RuntimeError(f'PowerShell failed ({result.returncode}): {result.stdout}\n{result.stderr}')
@@ -65,6 +66,9 @@ def main():
     manifest = json.loads((root/'out/driver-package/manifest.json').read_text(encoding='utf-8-sig'))
     thumb = manifest['certificateThumbprint']
     cert = root/'out/driver-package/SideScreen-Driver.cer'
+    # A missing Cert provider makes Test-Path silently return false. Verify the
+    # stores themselves exist before using it to assert certificate presence.
+    assert ps("(Test-Path Cert:\\LocalMachine\\Root) -and (Test-Path Cert:\\LocalMachine\\TrustedPublisher)").stdout.strip() == 'True'
     trust_count = f"@('Root','TrustedPublisher' | Where-Object {{Test-Path ('Cert:\\LocalMachine\\'+$_+'\\{thumb}')}}).Count"
     assert ps(trust_count).stdout.strip() == '0'
     # No implicit trust consent, including silent installs.

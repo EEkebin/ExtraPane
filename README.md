@@ -76,7 +76,7 @@ Connections use TLS encryption, but the automatic LAN mode does not authenticate
 
 The preview is resizable and supports maximize, minimize and fullscreen. Top-right taps go to the remote application. Pen events do not open the toolbar.
 
-Closing the setup window keeps the app in the tray only while its server is running. Client-only and idle windows exit normally. Normal sessions have no test pattern or timeout; Debug is off by default and enables bounded diagnostic sessions.
+Closing the main app window keeps the app in the tray only while its server is running. Client-only and idle windows exit normally. Normal sessions have no test pattern or timeout; Debug is off by default and enables bounded diagnostic sessions.
 
 ## Settings
 
