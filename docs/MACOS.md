@@ -1,6 +1,6 @@
-# macOS client preview
+# macOS preview
 
-The macOS app receives a Windows or Linux host's display using the same protocol 9 and automatic LAN mode. It targets macOS 12 or newer and contains both Apple Silicon (arm64) and Intel (x86_64) code in one Universal app. macOS hosting and iOS are separate milestones; this package does not create a Mac virtual monitor.
+The macOS app receives a Windows or Linux host's display using the same protocol 9 and automatic LAN mode. It targets macOS 12 or newer and contains both Apple Silicon (arm64) and Intel (x86_64) code in one Universal app. The development host also creates a real extended Mac monitor on macOS 13 or newer; iOS remains a separate milestone. Host packaging validation is still pending.
 
 ## Install and connect
 
@@ -25,6 +25,16 @@ Depending on keyboard settings, use Fn with F8/F10. macOS may reserve F11/Fn+F11
 Mouse movement, buttons, dragging and scrolling are forwarded. Physical keyboard positions map to Windows set-1 scan codes, using the host layout. Command maps to the Windows key; Option maps to Alt. macOS-reserved shortcuts remain local. IME composition, arbitrary vendor/media keys and text injection are not implemented. Trackpad scrolling is mouse input, not native multi-touch. Tablet pressure, tilt, eraser and native pen forwarding are not implemented; devices presenting as ordinary mouse pointers can only provide pointer input.
 
 Focus loss, local controls, disconnect and reconfiguration reset session-owned input. Queue overflow closes the session rather than silently dropping key/button releases. Input permissions are granted by the host and unavailable families are not requested. Audio and microphone forwarding are not implemented.
+
+## Host a Mac desktop
+
+Leave **Automatic route** selected to listen on all currently connected Ethernet/Wi-Fi IPv4 addresses, or select one address to restrict hosting to that interface, then choose **Start Server**. Loopback and VPN/tunnel interfaces are excluded. Automatic hosting does not require a default gateway or internet access. Restart the server after network-address changes to refresh its listeners. Allow Screen Recording for capture and Accessibility for remote mouse/keyboard in macOS Privacy & Security. Restart the app if macOS requests it. Without Accessibility, clients are view-only.
+
+A client connection creates its own virtual monitor; starting the listener alone creates none. The implementation has four client slots and removes each session's monitor on disconnect while keeping the listener running. While hosting, closing the window keeps the server in the menu bar; Stop Server or Quit ends hosting.
+
+Remote keyboard shortcuts use **Ctrl ? Command**, **Windows/Super ? Control**, **Alt ? Option**, and unchanged Shift, preserving left/right modifiers. For example, Ctrl+C/V/Z invokes Mac copy/paste/undo. The host performs this conversion before tracking pressed keys, including cleanup on disconnect. The Mac client still sends its documented physical-key mapping; this policy applies to incoming input at a Mac host.
+
+Virtual monitors use the undocumented CGVirtualDisplay interface, checked at runtime. Future macOS versions may break it. ScreenCaptureKit captures that monitor and VideoToolbox encodes H.264; no driver installation is needed. Native touch/pen injection, audio and microphone forwarding are unavailable. The user reported the initial host session working on the M3 Pro; the new modifier mapping, multiple simultaneous clients and host release packages still require verification.
 
 ## Native implementation
 

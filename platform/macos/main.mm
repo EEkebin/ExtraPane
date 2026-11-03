@@ -1,6 +1,10 @@
 #import <AppKit/AppKit.h>
 #include "transport.hpp"
 #include "media.hpp"
+#include "host.hpp"
+#include "network.hpp"
+#include "display.hpp"
+#import <ApplicationServices/ApplicationServices.h>
 #include <dm/video_protocol.hpp>
 #include <dm/input_protocol.hpp>
 #include <ifaddrs.h>
@@ -13,25 +17,11 @@
 #include <thread>
 #include <stdexcept>
 #include <cstring>
+#include <signal.h>
 using namespace std::chrono_literals;
 namespace wire=dm::video::wire;
 namespace input=dm::input;
-struct Key {unsigned vk=0,scan=0,ext=0;};
-static Key mapKey(unsigned code){
-    // macOS hardware positions -> Windows set-1. Host layout determines text.
-    static const unsigned mac[]={0,11,8,2,14,3,5,4,34,38,40,37,46,45,31,35,12,15,1,17,32,9,13,7,16,6};
-    static const unsigned scans[]={30,48,46,32,18,33,34,35,23,36,37,38,50,49,24,25,16,19,31,20,22,47,17,45,21,44};
-    for(unsigned i=0;i<26;++i)if(code==mac[i])return {'A'+i,scans[i],0};
-    struct Entry{unsigned mac,vk,scan,ext;};
-    static const Entry other[]={
-        {18,'1',2,0},{19,'2',3,0},{20,'3',4,0},{21,'4',5,0},{23,'5',6,0},{22,'6',7,0},{26,'7',8,0},{28,'8',9,0},{25,'9',10,0},{29,'0',11,0},
-        {27,0xbd,12,0},{24,0xbb,13,0},{51,8,14,0},{48,9,15,0},{33,0xdb,26,0},{30,0xdd,27,0},{36,13,28,0},{41,0xba,39,0},{39,0xde,40,0},{50,0xc0,41,0},{42,0xdc,43,0},{43,0xbc,51,0},{47,0xbe,52,0},{44,0xbf,53,0},{49,32,57,0},{53,27,1,0},
-        {57,0x14,58,0},{56,0xa0,42,0},{60,0xa1,54,0},{59,0xa2,29,0},{62,0xa3,29,1},{58,0xa4,56,0},{61,0xa5,56,1},{55,0x5b,91,1},{54,0x5c,92,1},
-        {123,0x25,75,1},{124,0x27,77,1},{125,0x28,80,1},{126,0x26,72,1},{115,0x24,71,1},{119,0x23,79,1},{116,0x21,73,1},{121,0x22,81,1},{117,0x2e,83,1},{114,0x2d,82,1},
-        {122,0x70,59,0},{120,0x71,60,0},{99,0x72,61,0},{118,0x73,62,0},{96,0x74,63,0},{97,0x75,64,0},{98,0x76,65,0},{100,0x77,66,0},{101,0x78,67,0},{109,0x79,68,0},{103,0x7a,87,0},{111,0x7b,88,0},
-        {82,0x60,82,0},{83,0x61,79,0},{84,0x62,80,0},{85,0x63,81,0},{86,0x64,75,0},{87,0x65,76,0},{88,0x66,77,0},{89,0x67,71,0},{91,0x68,72,0},{92,0x69,73,0},{65,0x6e,83,0},{67,0x6a,55,0},{69,0x6b,78,0},{75,0x6f,53,1},{78,0x6d,74,0},{76,13,28,1}};
-    for(auto e:other)if(e.mac==code)return {e.vk,e.scan,e.ext};return {};
-}
+#include "keys.hpp"
 struct InputQueue {
     std::mutex mutex;std::vector<input::Event> events;unsigned caps=0;bool overflow=false;
     void grant(unsigned value){std::lock_guard lock(mutex);caps=value;events.clear();overflow=false;}
@@ -53,6 +43,7 @@ struct Session {std::atomic_bool stopped=false;std::shared_ptr<dm::mac::Transpor
 @end
 @interface App:NSObject<NSApplicationDelegate,NSWindowDelegate> {
 @public std::shared_ptr<Session> session;
+    std::unique_ptr<dm::mac::Host> host;
     std::set<unsigned> heldKeys,heldButtons;
 }
 @property(nonatomic,strong) NSWindow* window;
@@ -63,6 +54,11 @@ struct Session {std::atomic_bool stopped=false;std::shared_ptr<dm::mac::Transpor
 @property(nonatomic,strong) NSTextField* statistics;
 @property(nonatomic,strong) NSPopUpButton* routes;
 @property(nonatomic,strong) NSButton* connectButton;
+@property(nonatomic,strong) NSButton* serverButton;
+@property(nonatomic,strong) NSTextField* serverStatus;
+@property(nonatomic,strong) NSStatusItem* tray;
+@property(nonatomic) BOOL quitting;
+@property(nonatomic,strong) dispatch_source_t quitSignal;
 @property(nonatomic) BOOL paused;
 @property(nonatomic) BOOL showStats;
 - (void)resetInput;
@@ -107,7 +103,7 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
     self.routes=[[NSPopUpButton alloc]initWithFrame:NSZeroRect pullsDown:NO];[self refresh:nil];
     self.connectButton=button(@"Connect",self,@selector(connect:));
     self.controls=[NSStackView stackViewWithViews:@[self.address,self.routes,button(@"Refresh",self,@selector(refresh:)),self.connectButton,button(@"Disconnect",self,@selector(disconnect:)),button(@"Settings",self,@selector(settings:)),button(@"About",self,@selector(about:))]];self.controls.spacing=8;
-    [root addArrangedSubview:self.controls];self.status=label(@"Client ready. macOS hosting is not available in this preview.");[root addArrangedSubview:self.status];
+    [root addArrangedSubview:self.controls];self.serverButton=button(@"Start Server",self,@selector(toggleServer:));self.serverStatus=label(@"Server stopped. Automatic listens on connected Ethernet/Wi-Fi addresses.");NSStackView* serverRow=[NSStackView stackViewWithViews:@[self.serverButton,self.serverStatus]];serverRow.spacing=12;[root addArrangedSubview:serverRow];self.status=label(@"Client ready");[root addArrangedSubview:self.status];
     self.video=[[VideoView alloc]initWithFrame:NSMakeRect(0,0,960,550)];self.video.owner=self;[root addArrangedSubview:self.video];[self.video.widthAnchor constraintEqualToAnchor:root.widthAnchor constant:-24].active=YES;[self.video.heightAnchor constraintGreaterThanOrEqualToConstant:240].active=YES;
     self.statistics=label(@"");self.statistics.hidden=YES;[root addArrangedSubview:self.statistics];[root addArrangedSubview:label(@"F10 controls · Control+Command+F fullscreen · F8 pause input · Ctrl+Shift+Q disconnect")];
     NSMenu* menu=[NSMenu new];NSMenuItem* appItem=[NSMenuItem new];[menu addItem:appItem];NSMenu* appMenu=[NSMenu new];[appMenu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@"q"];appItem.submenu=appMenu;
@@ -115,13 +111,33 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
     NSMenuItem* fullscreen=[viewMenu addItemWithTitle:@"Toggle Full Screen" action:@selector(fullscreen:) keyEquivalent:@"f"];fullscreen.target=self;fullscreen.keyEquivalentModifierMask=NSEventModifierFlagControl|NSEventModifierFlagCommand;
     NSMenuItem* controls=[viewMenu addItemWithTitle:@"Show Controls" action:@selector(showControls) keyEquivalent:@""];controls.target=self;NSApp.mainMenu=menu;
     [self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];
+    signal(SIGTERM,SIG_IGN);self.quitSignal=dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL,SIGTERM,0,dispatch_get_main_queue());dispatch_source_set_event_handler(self.quitSignal,^{[NSApp performSelector:@selector(terminate:) withObject:nil afterDelay:0];});dispatch_resume(self.quitSignal);
+    NSString* hostAddress=[[NSUserDefaults standardUserDefaults]stringForKey:@"hostAddress"];for(NSMenuItem* item in self.routes.itemArray)if([item.representedObject isEqual:hostAddress]){[self.routes selectItem:item];break;}
+    if([[NSUserDefaults standardUserDefaults]boolForKey:@"startServerOnLaunch"])[self performSelector:@selector(toggleServer:) withObject:nil afterDelay:1];
     if([[NSUserDefaults standardUserDefaults]boolForKey:@"connectOnLaunch"])[self performSelector:@selector(connect:) withObject:nil afterDelay:1];
 }
-- (void)refresh:(id)sender{(void)sender;[self.routes removeAllItems];[self.routes addItemWithTitle:@"Automatic route"];self.routes.lastItem.representedObject=@"";
-    ifaddrs* list=nullptr;if(getifaddrs(&list))return;for(auto a=list;a;a=a->ifa_next){if(!a->ifa_addr || a->ifa_addr->sa_family!=AF_INET || !(a->ifa_flags&IFF_UP) || !(a->ifa_flags&IFF_RUNNING) || a->ifa_flags&IFF_LOOPBACK || strncmp(a->ifa_name,"en",2))continue;
-        char ip[INET_ADDRSTRLEN];inet_ntop(AF_INET,&((sockaddr_in*)a->ifa_addr)->sin_addr,ip,sizeof(ip));if(!dm::mac::ipv4(ip))continue;[self.routes addItemWithTitle:[NSString stringWithFormat:@"%s — %s",a->ifa_name,ip]];self.routes.lastItem.representedObject=[NSString stringWithUTF8String:ip];}freeifaddrs(list);
+- (void)refresh:(id)sender{(void)sender;NSString* selected=self.routes.selectedItem.representedObject;[self.routes removeAllItems];[self.routes addItemWithTitle:@"Automatic route"];self.routes.lastItem.representedObject=@"";
+    self.routes.toolTip=@"Client: automatic routing. Server: listen on all connected Ethernet/Wi-Fi addresses. Select an address to restrict either role to that interface.";
+    try{for(const auto& entry:dm::mac::localAddresses()){
+        [self.routes addItemWithTitle:[NSString stringWithFormat:@"%s ? %s",entry.interface.c_str(),entry.address.c_str()]];
+        self.routes.lastItem.representedObject=[NSString stringWithUTF8String:entry.address.c_str()];
+        if([self.routes.lastItem.representedObject isEqual:selected])[self.routes selectItem:self.routes.lastItem];
+    }}catch(const std::exception& e){self.serverStatus.stringValue=[NSString stringWithUTF8String:e.what()];}
 }
 - (void)resetInput{heldKeys.clear();heldButtons.clear();if(session)session->input.reset();}
+- (void)finishQuit{[NSApp replyToApplicationShouldTerminate:YES];}
+- (void)showWindow:(id)sender{(void)sender;[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];}
+- (void)toggleServer:(id)sender{(void)sender;if(host && host->running()){host->stop();self.serverButton.enabled=NO;self.serverStatus.stringValue=@"Stopping server and removing its monitors…";return;}
+    if(@available(macOS 13.0,*)){}else{self.serverStatus.stringValue=@"Hosting requires macOS 13 or newer";return;}
+    if(!dm::mac::VirtualDisplay::available()){self.serverStatus.stringValue=@"This macOS version does not support the virtual-monitor API";return;}
+    NSString* address=self.routes.selectedItem.representedObject?:@"";
+    if(!CGPreflightScreenCaptureAccess()){CGRequestScreenCaptureAccess();self.serverStatus.stringValue=@"Allow ExtraPane in Privacy & Security > Screen Recording, then retry (macOS may require reopening the app)";return;}
+    if(!AXIsProcessTrusted()){NSDictionary* options=@{(__bridge id)kAXTrustedCheckOptionPrompt:@YES};AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);}
+    __weak App* weak=self;host=std::make_unique<dm::mac::Host>(address.UTF8String,[weak](std::string message){NSString* text=[NSString stringWithUTF8String:message.c_str()];NSLog(@"ExtraPane host: %@",text);dispatch_async(dispatch_get_main_queue(),^{App* app=weak;if(!app)return;app.serverStatus.stringValue=text;
+        if([text isEqualToString:@"Server stopped"]){app.serverButton.title=@"Start Server";app.serverButton.enabled=YES;if(app.tray){[[NSStatusBar systemStatusBar]removeStatusItem:app.tray];app.tray=nil;}if(app.quitting)[app performSelector:@selector(finishQuit) withObject:nil afterDelay:0];else if(!app.window.visible)[NSApp terminate:nil];}
+    });});self.serverButton.title=@"Stop Server";self.serverStatus.stringValue=@"Starting listener…";
+    self.tray=[[NSStatusBar systemStatusBar]statusItemWithLength:NSVariableStatusItemLength];self.tray.button.title=@"ExtraPane";NSMenu* menu=[NSMenu new];NSMenuItem* show=[menu addItemWithTitle:@"Open ExtraPane" action:@selector(showWindow:) keyEquivalent:@""];show.target=self;NSMenuItem* stop=[menu addItemWithTitle:@"Stop Server" action:@selector(toggleServer:) keyEquivalent:@""];stop.target=self;[menu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@""];self.tray.menu=menu;
+}
 - (void)fullscreen:(id)sender{(void)sender;[self resetInput];[self.window toggleFullScreen:nil];}
 - (void)showControls{BOOL wasHidden=self.controls.hidden;self.controls.hidden=NO;if(wasHidden)[self resetInput];self.video.remoteEnabled=session && !self.paused;[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideControls) object:nil];if(session && !self.paused)[self performSelector:@selector(hideControls) withObject:nil afterDelay:5];}
 - (void)hideControls {if(session && !self.paused){NSPoint p=[self.controls convertPoint:self.window.mouseLocationOutsideOfEventStream fromView:nil];if(!self.controls.hidden && NSPointInRect(p,self.controls.bounds)){[self performSelector:@selector(hideControls) withObject:nil afterDelay:1];return;}self.controls.hidden=YES;self.video.remoteEnabled=YES;[self.window makeFirstResponder:self.video];}}
@@ -151,7 +167,7 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
     }catch(const std::exception& e){if(!current->stopped)ending=[NSString stringWithUTF8String:e.what()];}NSLog(@"ExtraPane: session ended: %@",ending);
     current->cancel();dispatch_async(dispatch_get_main_queue(),^{if(self->session!=current)return;[NSObject cancelPreviousPerformRequestsWithTarget:self];self->session.reset();[self resetInput];self.video.remoteEnabled=NO;[self.video.display flushAndRemoveImage];self.controls.hidden=NO;self.connectButton.enabled=YES;self.address.enabled=YES;self.routes.enabled=YES;self.status.stringValue=ending;});}}).detach();
     }catch(const std::exception& e){self.status.stringValue=[NSString stringWithUTF8String:e.what()];session.reset();}}
-- (void)settings:(id)sender{(void)sender;BOOL wasPaused=self.paused;self.paused=YES;[self resetInput];[self showControls];NSAlert* a=[NSAlert new];a.messageText=@"Client settings";a.informativeText=@"Mouse and physical keyboard use the host layout. Command maps to the Windows key. macOS-reserved shortcuts remain local. Trackpad gestures are mouse/scroll input, not remote multi-touch. Pen, audio, microphone and Mac hosting are not implemented.\n\nTLS encrypts the connection but does not verify peer identity. Use a trusted LAN. Statistics measure reception, not end-to-end latency.";[a addButtonWithTitle:self.showStats?@"Hide statistics":@"Show statistics"];[a addButtonWithTitle:@"Close"];if([a runModal]==NSAlertFirstButtonReturn)self.showStats=!self.showStats;self.statistics.hidden=!self.showStats;self.paused=wasPaused;[self showControls];}
+- (void)settings:(id)sender{(void)sender;BOOL wasPaused=self.paused;self.paused=YES;[self resetInput];[self showControls];NSAlert* a=[NSAlert new];a.messageText=@"Client settings";a.informativeText=@"Mouse and physical keyboard use the host layout. Command maps to the Windows key. macOS-reserved shortcuts remain local. Trackpad gestures are mouse/scroll input, not remote multi-touch. Native pen/touch, audio and microphone are not implemented. Mac server shortcuts: Ctrl becomes Command, Windows/Super becomes Control, and Alt becomes Option (left/right preserved). Hosting requires Screen Recording permission; remote mouse/keyboard also requires Accessibility.\n\nTLS encrypts the connection but does not verify peer identity. Use a trusted LAN. Statistics measure reception, not end-to-end latency.";[a addButtonWithTitle:self.showStats?@"Hide statistics":@"Show statistics"];[a addButtonWithTitle:@"Close"];if([a runModal]==NSAlertFirstButtonReturn)self.showStats=!self.showStats;self.statistics.hidden=!self.showStats;self.paused=wasPaused;[self showControls];}
 - (void)about:(id)sender{(void)sender;BOOL wasPaused=self.paused;self.paused=YES;[self resetInput];[self showControls];NSAlert* a=[NSAlert new];a.messageText=@"ExtraPane";a.informativeText=@"Another screen for your desktop.\nRunning version: " EXTRAPANE_MAC_VERSION @"\nmacOS client preview · Apple Silicon and Intel\nA project-wide license has not been selected.";[a addButtonWithTitle:@"GitHub / README"];[a addButtonWithTitle:@"Close"];if([a runModal]==NSAlertFirstButtonReturn)[[NSWorkspace sharedWorkspace]openURL:[NSURL URLWithString:@"https://github.com/EEkebin/ExtraPane"]];self.paused=wasPaused;[self showControls];}
 - (void)key:(NSEvent*)event down:(BOOL)down{
     if(!session)return;unsigned code=event.keyCode;BOOL repeat=event.type==NSEventTypeKeyDown && event.isARepeat;BOOL quit=code==12 && (event.modifierFlags&NSEventModifierFlagControl) && (event.modifierFlags&NSEventModifierFlagShift);
@@ -171,20 +187,26 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 }
 - (void)windowDidResignKey:(NSNotification*)note{(void)note;[self resetInput];self.video.remoteEnabled=NO;}
 - (void)windowDidBecomeKey:(NSNotification*)note{(void)note;self.video.remoteEnabled=session && !self.paused;}
-- (BOOL)windowShouldClose:(NSWindow*)window{(void)window;[self disconnect:nil];return YES;}
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)app{(void)app;return YES;}
-- (void)applicationWillTerminate:(NSNotification*)note{(void)note;[self disconnect:nil];}
+- (BOOL)windowShouldClose:(NSWindow*)window{[self disconnect:nil];if(host && host->running()){[window orderOut:nil];return NO;}return YES;}
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)app{(void)app;return !host || !host->running();}
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)app{(void)app;[self disconnect:nil];if(host && host->running()){self.quitting=YES;host->stop();return NSTerminateLater;}return NSTerminateNow;}
+- (void)applicationWillTerminate:(NSNotification*)note{(void)note;[self disconnect:nil];host.reset();}
 @end
 void mediaCheck();
 static int checks(){try{
     auto require=[](bool condition){if(!condition)throw std::runtime_error("macOS input/media check failed");};
     require(mapKey(0).vk=='A' && mapKey(62).ext==1 && mapKey(126).scan==72 && !mapKey(255).vk);
+    require(mapHostKey(29,0)==55 && mapHostKey(29,1)==54);
+    require(mapHostKey(91,1)==59 && mapHostKey(92,1)==62);
+    require(mapHostKey(56,0)==58 && mapHostKey(56,1)==61);
+    require(mapHostKey(42,0)==56 && mapHostKey(54,0)==60);
+    require(mapHostKey(30,0)==0 && mapHostKey(28,1)==76 && mapHostKey(255,0)==256 && mapHostKey(29,2)==256);
     InputQueue queue;queue.grant(3);input::Event e;e.kind=input::Kind::key;e.action=input::Action::down;e.id='A';e.code=30;queue.add(e);auto batch=queue.take(1,0);require(batch.size()==96);queue.reset();require(queue.take(1,1).size()==96);
     const uint8_t packet[]={0,0,0,1,0x67,1,2,0,0,1,0x68,3,4};auto units=dm::mac::annexb(packet);require(units.size()==2 && units[0].size()==3 && units[1][0]==0x68);
     bool rejected=false;try{const uint8_t bad[]={4,5,6};dm::mac::annexb(bad);}catch(...){rejected=true;}require(rejected);
     require(dm::mac::ipv4("10.0.0.1") && !dm::mac::ipv4("127.0.0.1") && !dm::mac::ipv4("hostname"));
     mediaCheck();puts("macOS protocol, input cleanup and native H.264 color round-trip checks passed");return 0;
 }catch(const std::exception& e){fprintf(stderr,"%s\n",e.what());return 1;}}
-int main(int argc,const char* argv[]){@autoreleasepool{if(argc>1 && !strcmp(argv[1],"--self-test"))return checks();[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];App* app=[App new];NSApp.delegate=app;
+int main(int argc,const char* argv[]){@autoreleasepool{if(argc==6 && !strcmp(argv[1],"--virtual-display-owner"))return dm::mac::displayOwner(unsigned(strtoul(argv[2],nullptr,10)),unsigned(strtoul(argv[3],nullptr,10)),unsigned(strtoul(argv[4],nullptr,10)),unsigned(strtoul(argv[5],nullptr,10)));if(argc>1 && !strcmp(argv[1],"--display-list"))return dm::mac::displayList();if(argc>1 && !strcmp(argv[1],"--virtual-display-check"))return dm::mac::displayCheck();if(argc>1 && !strcmp(argv[1],"--self-test"))return checks();[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];App* app=[App new];NSApp.delegate=app;
     if(argc>1 && !strcmp(argv[1],"--ui-smoke"))dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(!app.window || !app.video || !app.address || !app.connectButton.enabled)exit(1);puts("macOS AppKit startup/shutdown passed");[NSApp terminate:nil];});
     [NSApp run];return 0;}}

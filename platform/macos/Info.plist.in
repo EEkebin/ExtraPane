@@ -10,6 +10,6 @@
 <key>CFBundleIconFile</key><string>ExtraPane</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSLocalNetworkUsageDescription</key><string>Connect to your ExtraPane server to use this Mac as another display.</string>
+<key>NSLocalNetworkUsageDescription</key><string>Connect to ExtraPane devices on your local network to receive a desktop or share an extended Mac display.</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>

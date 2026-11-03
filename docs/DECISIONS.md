@@ -209,3 +209,18 @@ The M3 Pro test reached TCP but Network.framework rejected the Windows ephemeral
 The physical Mac test also exposed the F11 Show Desktop conflict. Use the native Control+Command+F menu equivalent and a View > Toggle Full Screen action; preserve the user's system keyboard settings. F11 remains a fallback only when delivered to the app.
 
 The user confirmed native Mac fullscreen works, then identified that hovering to reveal controls appeared to freeze the stream. The reveal handler was setting the persistent input-pause flag. Reveal must not pause input; F8 is the explicit pause control, dialogs suspend input only while open, and hover keeps the toolbar visible. The user confirmed continued mouse/keyboard input after this fix.
+
+
+## macOS virtual-monitor host (2026-11-03, implementation in progress)
+
+The user explicitly requested a real extended Mac desktop, matching the other hosts. Use runtime-checked CGVirtualDisplay for monitor creation, with a separate same-bundle owner process per connection so process/pipe lifetime bounds ownership. This undocumented interface is isolated and may break on future macOS versions; no App Store or long-term private-API compatibility claim is made. A physical M3 Pro probe created an independent non-primary 1280x720 display and returned the online display list to its original count afterward. Probe cleanup must enumerate displays: CGDisplayIsOnline returned -1 for a retired ID and initially caused a false failure.
+
+The host requires macOS 13+, Screen Recording permission, and optional Accessibility permission for mouse/keyboard. ScreenCaptureKit supplies GPU-backed pixels to VideoToolbox H.264. Reuse the pinned Mbed TLS dependency for an ephemeral TLS 1.3 listener without Keychain trust or saved pairings. Bind to a selected connected LAN address and create no monitor until a valid client request. Support four client slots, each with independent display/capture/input cleanup. Keep the listener alive when clients leave. Reconfiguration changes the offer/epoch on the same connection; coordinate mapping follows the current display arrangement. Native Mac touch/pen injection and audio remain unsupported.
+
+Physical capture/input, simultaneous clients, reconnect and packaging gates remain open until tested. Do not substitute mirroring of the built-in screen for a virtual-monitor failure.
+
+The user enabled both Mac permissions and reported the host session working, then requested natural shortcut modifiers. Incoming Mac-host keys now map Ctrl to Command, Windows/Super to Control, and Alt to Option, preserving sides. Apply the mapping before session ownership tracking so key-up/reset uses the same native key as key-down. Client wire encoding stays unchanged. Physical shortcut verification remains pending.
+
+The modifier build passed native protocol/input/media checks on the M3 Pro. During replacement, SIGTERM stopped the listener and removed the session monitor (online display count returned to one), but AppKit termination waited inside the dispatch-source callback. Schedule termination through the run loop instead of entering the termination wait from a main-dispatch callback.
+
+Automatic route now works for Mac hosting: enumerate the same connected physical IPv4 addresses shown in the UI, then bind a separate listener to each, sharing four session slots. Explicit selection binds only that address. Never bind a wildcard address or require a default internet route. The listener snapshot updates on server restart; Refresh preserves a still-present explicit selection.

@@ -1,0 +1,86 @@
+#include "host.hpp"
+#include "host_tls.hpp"
+#include "host_media.hpp"
+#include "host_input.hpp"
+#include "display.hpp"
+#include "transport.hpp"
+#include "network.hpp"
+#include <dm/video_protocol.hpp>
+#include <dm/quality.hpp>
+#import <ApplicationServices/ApplicationServices.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <poll.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <atomic>
+#include <thread>
+#include <array>
+#include <chrono>
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+namespace dm::mac {
+namespace wire=video::wire;using Clock=std::chrono::steady_clock;using namespace std::chrono_literals;
+struct Host::State {
+    std::atomic_bool stop=false,running=true;std::string address;std::function<void(std::string)> report;std::thread listener;std::array<std::thread,4> workers;std::array<std::atomic_bool,4> occupied{};
+    State(std::string bind,std::function<void(std::string)> callback):address(std::move(bind)),report(std::move(callback)){}
+    void serve(int socket,unsigned slot){@autoreleasepool{if(@available(macOS 13.0,*)){
+        auto cancelled=[this]{return stop.load();};HostTls transport(socket,cancelled);auto bytes=transport.read(32,10);auto display=wire::take_client_display(bytes);unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7];bytes[7]=bytes[8]=bytes[9]=0;
+        if(!std::equal(bytes.begin(),bytes.end(),wire::request.begin()) || inputRequested>1 || wanted>15 || bool(inputRequested)!=bool(wanted) || scale>2)throw std::runtime_error("Invalid client request");
+        if(!CGPreflightScreenCaptureAccess())throw std::runtime_error("Screen Recording permission is required");
+        unsigned w=display.width?display.width:1920,h=display.height?display.height:1080,hz=std::clamp(display.hz?display.hz:60,1u,60u);
+        double reduction=std::min({1.0,4096.0/w,4096.0/h,std::sqrt(8847360.0/(double(w)*h))});w=std::max(640u,unsigned(w*reduction)&~1u);h=std::max(480u,unsigned(h*reduction)&~1u);
+        VirtualDisplay monitor(w,h,hz,slot);HostInput broker(slot,monitor.displayID());unsigned granted=wanted&(AXIsProcessTrusted()?3u:0u);std::unique_ptr<HostMedia> media;uint64_t epoch=0;unsigned outW=0,outH=0;
+        auto prepare=[&]{broker.reset();media.reset();auto rect=CGDisplayBounds(monitor.displayID());w=unsigned(rect.size.width);h=unsigned(rect.size.height);auto dimensions=video::stream_size(w,h,scale==1?75:scale==2?50:100);outW=dimensions.first;outH=dimensions.second;
+            if(outW>4096 || outH>4096 || uint64_t(outW)*outH>8847360)throw std::runtime_error("Display mode exceeds streaming limits");
+            media=std::make_unique<HostMedia>(monitor.displayID(),outW,outH,hz);if(granted){uint64_t next=0;do{arc4random_buf(&next,sizeof(next));}while(!next || next==epoch);epoch=next;}
+            transport.write(wire::encode_offer({outW,outH,hz,0,wire::Codec::h264,uint8_t(granted),epoch}),10);if(transport.read(4,20)!=std::vector<uint8_t>(wire::ready.begin(),wire::ready.end()))throw std::runtime_error("Invalid client ready marker");
+            report("Client "+std::to_string(slot+1)+": "+std::to_string(w)+"x"+std::to_string(h)+" virtual monitor, "+std::to_string(outW)+"x"+std::to_string(outH)+" stream"+(granted?", mouse/keyboard enabled":", view only (Accessibility permission required for input)"));
+        };prepare();uint32_t sequence=0;const auto start=Clock::now();auto tick=start;uint64_t lastMicros=0;
+        while(!stop){if(!displayOnline(monitor.displayID()))throw std::runtime_error("Virtual monitor removed");if(granted && !AXIsProcessTrusted())throw std::runtime_error("Accessibility permission was withdrawn");
+            auto now=Clock::now();uint64_t micros=std::max(lastMicros+1,uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(now-start).count()));lastMicros=micros;
+            auto rect=CGDisplayBounds(monitor.displayID());if(unsigned(rect.size.width)!=w || unsigned(rect.size.height)!=h){transport.write(wire::encode_header({sequence,0,micros}));prepare();continue;}
+            auto packet=media->frame(micros,cancelled);transport.write(wire::encode_header({sequence,uint32_t(packet.size()),micros}));transport.write(packet);
+            if(granted){auto header=input::decode_header(transport.read(input::header_size,1));if(header.epoch!=epoch || header.sequence!=sequence)throw std::runtime_error("Invalid input epoch or sequence");auto events=input::decode_events(transport.read(header.count*input::event_size,1),header.count);
+                for(const auto& event:events){if(input::capability(event.kind)&~granted)throw std::runtime_error("Ungrant​ed input family");broker.inject(event);}}
+            ++sequence;tick+=std::chrono::microseconds(1000000/hz);if(tick<Clock::now())tick=Clock::now();while(!stop && Clock::now()<tick)std::this_thread::sleep_for(1ms);
+        }
+    }else{close(socket);throw std::runtime_error("Hosting requires macOS 13 or newer");}}}
+    void run(){@autoreleasepool{std::vector<pollfd> listeners;try{
+        auto local=localAddresses();std::vector<std::string> addresses;
+        for(const auto& entry:local)if(address.empty() || entry.address==address)addresses.push_back(entry.address);
+        if(addresses.empty())throw std::runtime_error(address.empty()?"No connected Ethernet/Wi-Fi IPv4 address is available":"Selected local address is no longer connected; refresh addresses and retry");
+        std::string listening;
+        for(const auto& ip:addresses){
+            int fd=socket(AF_INET,SOCK_STREAM,0);if(fd<0)throw std::runtime_error("Cannot create listener");
+            listeners.push_back({fd,POLLIN,0});fcntl(fd,F_SETFD,FD_CLOEXEC);fcntl(fd,F_SETFL,O_NONBLOCK);
+            int yes=1;setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));sockaddr_in bind{};
+            bind.sin_family=AF_INET;bind.sin_len=sizeof(bind);bind.sin_port=htons(43824);inet_pton(AF_INET,ip.c_str(),&bind.sin_addr);
+            if(::bind(fd,reinterpret_cast<sockaddr*>(&bind),sizeof(bind)) || listen(fd,4))throw std::runtime_error("Cannot listen on "+ip+":43824 (address unavailable or port in use)");
+            if(!listening.empty())listening+=", ";listening+=ip+":43824";
+        }
+        // Freeze this address list for the listener lifetime; workers only read it.
+        address=listening;
+        report("Listening on "+address+" ? waiting for clients; no virtual monitors until connection");
+        while(!stop){if(poll(listeners.data(),listeners.size(),100)<=0)continue;
+            for(const auto& listener:listeners){if(stop)break;if(!(listener.revents&POLLIN))continue;
+                int peer=accept(listener.fd,nullptr,nullptr);if(peer<0)continue;fcntl(peer,F_SETFD,FD_CLOEXEC);
+                unsigned slot=0;while(slot<4 && occupied[slot])++slot;
+                if(slot==4){close(peer);report("Four clients already connected; additional client rejected");continue;}
+                if(workers[slot].joinable())workers[slot].join();occupied[slot]=true;
+                workers[slot]=std::thread([this,peer,slot]{@autoreleasepool{try{serve(peer,slot);}catch(const std::exception& e){report("Client "+std::to_string(slot+1)+" ended: "+e.what());}catch(...){report("Client ended unexpectedly");}occupied[slot]=false;if(!stop)report("Listening on "+address+" ? client disconnected; other sessions remain active");}});
+            }
+        }
+    }catch(const std::exception& e){report(std::string("Server error: ")+e.what());}
+        for(const auto& listener:listeners)close(listener.fd);stop=true;
+        for(auto& worker:workers)if(worker.joinable())worker.join();running=false;report("Server stopped");
+    }}
+
+};
+Host::Host(std::string address,std::function<void(std::string)> report):state_(std::make_shared<State>(std::move(address),std::move(report))){auto state=state_;state_->listener=std::thread([state]{state->run();});}
+Host::~Host(){stop();if(state_->listener.joinable())state_->listener.join();}
+void Host::stop(){state_->stop=true;}
+bool Host::running()const{return state_->running;}
+}

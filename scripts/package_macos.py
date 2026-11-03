@@ -13,6 +13,10 @@ app=root/'out/build/macos/platform/macos/ExtraPane.app'
 binary=app/'Contents/MacOS/ExtraPane'
 subprocess.run(['lipo',str(binary),'-verify_arch','arm64','x86_64'],check=True)
 resources=app/'Contents/Resources';resources.mkdir(exist_ok=True)
+for dependency,relative in [('mbedtls','mbedtls-src'),('tf-psa-crypto','mbedtls-src/tf-psa-crypto')]:
+    license_file=root/'out/build/macos/_deps'/relative/'LICENSE'
+    if not license_file.exists(): raise RuntimeError('Missing TLS dependency license: '+str(license_file))
+    target=resources/'Licenses'/dependency;target.mkdir(parents=True,exist_ok=True);shutil.copy2(license_file,target/'LICENSE')
 icons=root/'out/macos-icons/ExtraPane.iconset';icons.mkdir(parents=True,exist_ok=True)
 for size in (16,32,128,256,512):
     for density in (1,2):
@@ -28,7 +32,7 @@ stage=root/'out/macos-dmg';stage.mkdir(parents=True,exist_ok=True)
 shutil.copytree(app,stage/'ExtraPane.app',dirs_exist_ok=True)
 link=stage/'Applications'
 if not link.exists(): link.symlink_to('/Applications')
-(stage/'READ ME.txt').write_text('ExtraPane macOS client preview\n\nDrag ExtraPane to Applications. macOS 12+; Intel or Apple Silicon.\nThis preview is ad-hoc signed, not Developer ID signed or notarized.\nGatekeeper can block downloaded copies. Use macOS Privacy & Security approval for an app you trust; do not disable Gatekeeper globally.\nNo Mac virtual-display driver or hosting is included. See https://github.com/EEkebin/ExtraPane/blob/main/docs/MACOS.md\n')
+(stage/'READ ME.txt').write_text('ExtraPane macOS preview\n\nDrag ExtraPane to Applications. macOS 12+; Intel or Apple Silicon.\nThis preview is ad-hoc signed, not Developer ID signed or notarized.\nGatekeeper can block downloaded copies. Use macOS Privacy & Security approval for an app you trust; do not disable Gatekeeper globally.\nHosting requires macOS 13+, Screen Recording and (for remote input) Accessibility permission. Virtual monitors use an undocumented macOS interface; compatibility may change. No driver install is needed. See https://github.com/EEkebin/ExtraPane/blob/main/docs/MACOS.md\n')
 subprocess.run(['hdiutil','create','-ov','-format','UDZO','-volname','ExtraPane','-srcfolder',str(stage),str(dist/(stem+'.dmg'))],check=True)
 for ext in ('.zip','.dmg'):
     artifact=dist/(stem+ext);artifact.with_suffix(ext+'.sha256').write_text(hashlib.sha256(artifact.read_bytes()).hexdigest()+'  '+artifact.name+'\n')
