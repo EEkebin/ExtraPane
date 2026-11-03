@@ -63,7 +63,7 @@ class Client:
 try:
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\DM\Display') as key:saved_layout=winreg.QueryValueEx(key,'Layout-127.0.0.1')
 except FileNotFoundError:saved_layout=None
-baseline=topology();assert 'dm_virtual=1' not in baseline,'Stop existing SideScreen server before this test'
+baseline=topology();assert 'dm_virtual=1' not in baseline,'Stop existing ExtraPane server before this test'
 with socket.socket() as port_probe:
     port_probe.bind(('127.0.0.1',0));port=port_probe.getsockname()[1]
 clients=[];logs=[]

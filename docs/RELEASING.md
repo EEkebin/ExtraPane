@@ -1,10 +1,10 @@
-# Releasing SideScreen
+# Releasing ExtraPane
 
 The `Build and release` workflow uses the GitHub-hosted `windows-2025` image. It builds the native engine, runs six CTest suites, builds the unified WinUI app, driver helper and virtual-display driver, creates a portable archive and an Inno Setup installer, and verifies payload hashes and embedded icons. GPU/driver/touch acceptance still needs real Windows hardware; hosted CI does not substitute for those checks.
 
 PRs receive build validation without release-write permissions. A push to main publishes only when GitHub associates its exact commit with a merged PR targeting main. Manual dispatch on main is the recovery/bootstrap path. The publish job alone has contents-write permission. Automatic prerelease versions are `YYYY.MM.DD-pre.<run>.<attempt>` with tags and titles such as `v2026.11.02-pre.14.1`; retries get new immutable tags. Releases contain two downloads and `SHA256SUMS.txt`.
 
-App installers remain per-user and offer Client only or Server + Client. Server + Client requires the bundled elevated driver installer and explicit development-certificate consent. Portable downloads also contain `SideScreen.DriverSetup.exe`. The driver installer is machine-wide and independently registered for uninstall. See [driver installation](DRIVER-INSTALLATION.md) for ownership tracking, failures and trust changes.
+App installers remain per-user and offer Client only or Server + Client. Server + Client requires the bundled elevated driver installer and explicit development-certificate consent. Portable downloads also contain `ExtraPane.DriverSetup.exe`. The driver installer is machine-wide and independently registered for uninstall. See [driver installation](DRIVER-INSTALLATION.md) for ownership tracking, failures and trust changes.
 
 App updates/uninstall request tray Exit from running instances and wait for app/helper shutdown. The Finish-page launch choice is checked by default and skipped in silent setup. App uninstall optionally removes saved settings and preserves the driver. Driver uninstall removes only recorded installer-owned packages/trust and preserves pre-existing installations. Silent app setup defaults to Client only; server deployment requires `/SERVER=1 /ACCEPTDEVELOPMENTCERT=1` and elevation for the dependency.
 
@@ -14,7 +14,7 @@ Sources: [Windows runner inventory](https://github.com/actions/runner-images/blo
 
 ## Calendar versions and release names
 
-SideScreen follows the date-tag / characterful-title style of [kebinImports releases](https://github.com/EEkebin/kebinImports/releases), with zero-padded month/day. This is calendar versioning (CalVer), not strict SemVer. The UTC workflow creation date supplies the date and stays fixed on retries. `VERSION` supplies the local development default; CI overrides it. The About page, executable product/file version strings, installer, manifest and ZIP filenames all use the same release version. Windows numeric fields use `year.month.day.revision`; prerelease identity remains in the full text version.
+ExtraPane follows the date-tag / characterful-title style of [kebinImports releases](https://github.com/EEkebin/kebinImports/releases), with zero-padded month/day. This is calendar versioning (CalVer), not strict SemVer. The UTC workflow creation date supplies the date and stays fixed on retries. `VERSION` supplies the local development default; CI overrides it. The About page, executable product/file version strings, installer, manifest and ZIP filenames all use the same release version. Windows numeric fields use `year.month.day.revision`; prerelease identity remains in the full text version.
 
 - **Automatic prerelease:** `v2026.11.02-pre.14.1`. The release title is exactly the tag, with GitHub's prerelease flag; it does not become Latest.
 - **Stable:** `v2026.11.02`, titled **The Elbow Room Update**. The title is the name alone. Example description: ?Elbow room means space to move: another screen gives your desktop a little more of it.?

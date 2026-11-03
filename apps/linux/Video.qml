@@ -1,6 +1,6 @@
 import QtQuick
 import org.freedesktop.gstreamer.Qt6GLVideoItem 1.0
-import SideScreen.Native 1.0
+import ExtraPane.Native 1.0
 
 Item {
     GstGLQt6VideoItem { id: video; anchors.fill: parent }

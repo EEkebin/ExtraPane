@@ -75,7 +75,7 @@ struct VulkanRenderer::State {
         UINT count=0;check(enumerate(nullptr,&count,nullptr),"Enumerate Vulkan instance extensions");std::vector<VkExtensionProperties> extensions(count);check(enumerate(nullptr,&count,extensions.data()),"Read Vulkan instance extensions");
         const char* instance_extensions[]={VK_KHR_SURFACE_EXTENSION_NAME,VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
         for(auto required:instance_extensions)if(std::none_of(extensions.begin(),extensions.end(),[&](const auto& e){return std::strcmp(e.extensionName,required)==0;}))throw std::runtime_error(std::string("Vulkan driver is missing ")+required);
-        VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};app.pApplicationName="SideScreen";app.apiVersion=VK_API_VERSION_1_1;
+        VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};app.pApplicationName="ExtraPane";app.apiVersion=VK_API_VERSION_1_1;
         VkInstanceCreateInfo info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};info.pApplicationInfo=&app;info.enabledExtensionCount=2;info.ppEnabledExtensionNames=instance_extensions;
         check(create(&info,nullptr,&instance),"Vulkan 1.1 initialization unavailable; update the graphics driver");
 #define LOAD_INSTANCE(name) vk##name=reinterpret_cast<PFN_vk##name>(get_instance(instance,"vk" #name));if(!vk##name)throw std::runtime_error("Vulkan driver is missing vk" #name);
@@ -89,7 +89,7 @@ struct VulkanRenderer::State {
         check(vkEnumerateDeviceExtensionProperties(physical,nullptr,&count,nullptr),"Enumerate Vulkan GPU extensions");extensions.resize(count);check(vkEnumerateDeviceExtensionProperties(physical,nullptr,&count,extensions.data()),"Read Vulkan GPU extensions");
         const char* device_extensions[]={VK_KHR_SWAPCHAIN_EXTENSION_NAME,VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,VK_KHR_WIN32_KEYED_MUTEX_EXTENSION_NAME};
         for(auto required:device_extensions)if(std::none_of(extensions.begin(),extensions.end(),[&](const auto& e){return std::strcmp(e.extensionName,required)==0;}))throw std::runtime_error(std::string("Decoder GPU is missing ")+required);
-        probe_window=CreateWindowExW(WS_EX_TOOLWINDOW,L"STATIC",L"SideScreen Vulkan support check",WS_POPUP,0,0,64,64,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+        probe_window=CreateWindowExW(WS_EX_TOOLWINDOW,L"STATIC",L"ExtraPane Vulkan support check",WS_POPUP,0,0,64,64,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
         if(!probe_window)throw std::runtime_error("Cannot create a hidden Vulkan presentation probe");make_surface(probe_window);
         vkGetPhysicalDeviceQueueFamilyProperties(physical,&count,nullptr);std::vector<VkQueueFamilyProperties> families(count);vkGetPhysicalDeviceQueueFamilyProperties(physical,&count,families.data());bool found=false;
         for(UINT i=0;i<count;++i){VkBool32 present=VK_FALSE;check(vkGetPhysicalDeviceSurfaceSupportKHR(physical,i,surface,&present),"Check Vulkan Windows presentation");if((families[i].queueFlags&VK_QUEUE_GRAPHICS_BIT)&&present){family=i;found=true;break;}}

@@ -32,11 +32,11 @@ When builds are authorized, the source build entry point is:
 bash scripts/build-linux.sh
 ```
 
-It configures `linux-release` with `BUILD_TESTING=OFF` and builds the `SideScreen` executable in `out/build/linux-release/platform/linux`. It does not launch the app or run tests. No Linux test preset or automatic release workflow has been enabled.
+It configures `linux-release` with `BUILD_TESTING=OFF` and builds the `ExtraPane` executable in `out/build/linux-release/platform/linux`. It does not launch the app or run tests. No Linux test preset or automatic release workflow has been enabled.
 
 ## AppImage packaging draft
 
-`scripts/package_linux.py` packages an already-built executable. It does not build, test, launch or publish SideScreen. The planned output name is `SideScreen-<version>-linux-x86_64.AppImage`, with a separate SHA-256 file.
+`scripts/package_linux.py` packages an already-built executable. It does not build, test, launch or publish ExtraPane. The planned output name is `ExtraPane-<version>-linux-x86_64.AppImage`, with a separate SHA-256 file.
 
 The packager requires locally supplied linuxdeploy, its Qt plugin, and its GStreamer plugin. Copy `packaging/linux/tools.example.json` to an ignored local file, replace its paths and placeholder hashes with reviewed exact tool identities, and keep that lock with the packaging inputs. Placeholders deliberately fail. No packaging tools or dependencies are downloaded by the script, and no dependency has been installed for this work.
 

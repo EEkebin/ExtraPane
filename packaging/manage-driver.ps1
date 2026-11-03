@@ -14,7 +14,8 @@ function Write-Log([string]$text){Add-Content -LiteralPath $log -Value ((Get-Dat
 function Verify-Package([string]$directory){
  $manifest=Get-Content -LiteralPath (Join-Path $directory 'manifest.json') -Raw | ConvertFrom-Json
  if($manifest.schema -ne 1 -or $manifest.certificateThumbprint -notmatch '^[A-Fa-f0-9]{40}$'){throw 'Invalid driver manifest'}
- $expected=@('DMIndirectDisplay.dll','DMIndirectDisplay.inf','DMIndirectDisplay.cat','SideScreen-Driver.cer','LICENSE','UPSTREAM.md')
+ $certificateName=if(@($manifest.files.name) -contains 'ExtraPane-Driver.cer'){'ExtraPane-Driver.cer'}else{'SideScreen-Driver.cer'}
+ $expected=@('DMIndirectDisplay.dll','DMIndirectDisplay.inf','DMIndirectDisplay.cat',$certificateName,'LICENSE','UPSTREAM.md')
  if(@($manifest.files).Count -ne $expected.Count){throw 'Unexpected driver package contents'}
  $seen=@{}
  foreach($file in $manifest.files){
@@ -22,7 +23,7 @@ function Verify-Package([string]$directory){
   $seen[$file.name]=$true
   if((Get-FileHash -LiteralPath (Join-Path $directory $file.name) -Algorithm SHA256).Hash -ne $file.sha256){throw "Driver package hash mismatch: $($file.name)"}
  }
- $cert=[Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $directory 'SideScreen-Driver.cer'))
+ $cert=[Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $directory $certificateName))
  try {
   if($cert.Thumbprint -ne $manifest.certificateThumbprint -or $cert.HasPrivateKey){throw 'Driver certificate identity mismatch'}
   if($Action -ne 'Remove' -and ($cert.NotAfter -lt (Get-Date) -or $cert.NotBefore -gt (Get-Date))){throw 'Driver certificate is expired or not valid yet'}
@@ -60,8 +61,8 @@ try {
   if((Test-Path -LiteralPath $dir) -and ((Get-Item -LiteralPath $dir).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Driver management directory cannot be a reparse point'}
  }
  $mutex=[Threading.Mutex]::new($false,'Global\SideScreen.DriverSetup');$held=$mutex.WaitOne(0)
- if(!$held){throw 'Another SideScreen driver installation is running'}
- if(Get-Process dm-view,dm-display,SideScreen.Service -ErrorAction SilentlyContinue){throw 'Close SideScreen sessions and stop the server before changing the driver'}
+ if(!$held){throw 'Another ExtraPane driver installation is running'}
+ if(Get-Process dm-view,dm-display,ExtraPane.Service,SideScreen.Service -ErrorAction SilentlyContinue){throw 'Close ExtraPane sessions and stop the server before changing the driver'}
  New-Item -ItemType Directory -Path $state -Force | Out-Null
  if($Action -eq 'Install'){
   $manifest=Verify-Package $package
@@ -85,7 +86,7 @@ try {
     if(!(Test-Path -LiteralPath $entry)){
      # Record ownership first so an interrupted import is recoverable.
      if($store -eq 'Root'){$record.addedRoot=$true}else{$record.addedTrustedPublisher=$true};Save-Record $record $recordPath
-     Import-Certificate -FilePath (Join-Path $package 'SideScreen-Driver.cer') -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
+     Import-Certificate -FilePath (Join-Path $package 'ExtraPane-Driver.cer') -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
     }
    }
    $signature=Get-AuthenticodeSignature -LiteralPath (Join-Path $package 'DMIndirectDisplay.cat')
@@ -96,7 +97,7 @@ try {
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
-public static class SideScreenDriverStore {
+public static class ExtraPaneDriverStore {
  [DllImport("setupapi.dll", CharSet=CharSet.Unicode, SetLastError=true)]
  [return: MarshalAs(UnmanagedType.Bool)]
  public static extern bool SetupCopyOEMInf(string source,string media,uint type,uint flags,StringBuilder destination,uint size,out uint required,IntPtr component);
@@ -104,7 +105,7 @@ public static class SideScreenDriverStore {
 '@
    $destination=[Text.StringBuilder]::new(1024);$required=[uint32]0
    $record.ownedDriver=$record.ownedDriver -or $before.Count -eq 0;Save-Record $record $recordPath
-   if(![SideScreenDriverStore]::SetupCopyOEMInf((Join-Path $package 'DMIndirectDisplay.inf'),$package,1,0,$destination,1024,[ref]$required,[IntPtr]::Zero)){throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())}
+   if(![ExtraPaneDriverStore]::SetupCopyOEMInf((Join-Path $package 'DMIndirectDisplay.inf'),$package,1,0,$destination,1024,[ref]$required,[IntPtr]::Zero)){throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())}
    $installed=@(Find-ExactDriver $infHash $catHash)
    if($installed.Count -ne 1){throw 'Driver staging returned without an exact package match'}
    $record.publishedInf=$installed[0].Driver;$record.status='installed';Save-Record $record $recordPath

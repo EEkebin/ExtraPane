@@ -7,5 +7,5 @@ fi
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd -- "$project_dir"
 cmake --preset linux-release
-cmake --build --preset linux-release --parallel "${SIDESCREEN_BUILD_JOBS:-2}"
+cmake --build --preset linux-release --parallel "${EXTRAPANE_BUILD_JOBS:-2}"
 echo 'Built source target only. No tests, app launch, driver, or system configuration changes were requested by this script.'

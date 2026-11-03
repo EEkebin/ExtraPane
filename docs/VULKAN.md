@@ -12,7 +12,7 @@ This path adds a GPU color-conversion surface and a Vulkan blit. It is not an al
 
 ## Availability and packaging
 
-The loader is loaded dynamically from System32. Missing Vulkan does not prevent the app, server or other renderers from starting. Install/update the GPU manufacturer's driver if the Vulkan runtime is missing; the Vulkan SDK is a development tool and is not required to run SideScreen.
+The loader is loaded dynamically from System32. Missing Vulkan does not prevent the app, server or other renderers from starting. Install/update the GPU manufacturer's driver if the Vulkan runtime is missing; the Vulkan SDK is a development tool and is not required to run ExtraPane.
 
 The support probe requires Vulkan 1.1 and matches the decoder's adapter LUID. It checks Win32 surface/swapchain support, BGRA scaling, D3D11 texture import and actual keyed-mutex execution. Required device extensions are `VK_KHR_swapchain`, `VK_KHR_external_memory_win32` and `VK_KHR_win32_keyed_mutex`. It creates a hidden presentation surface to check actual formats and usage. A different, unsupported decoder GPU is never silently substituted.
 

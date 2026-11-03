@@ -61,11 +61,11 @@ def main():
     assert not folder.exists(), 'Refusing to overwrite an existing driver installation'
     baseline = ps("@(Get-WindowsDriver -Online -All | Where-Object {$_.ProviderName -eq 'DM Project'}).Count").stdout.strip()
     assert baseline == '0', 'Refusing to touch pre-existing DM driver packages'
-    installer = root / 'out/dist' / f'SideScreen-{current()}-Setup-win-x64.exe'
-    driver_setup = root / 'out/driver-installer/SideScreen.DriverSetup.exe'
+    installer = root / 'out/dist' / f'ExtraPane-{current()}-Setup-win-x64.exe'
+    driver_setup = root / 'out/driver-installer/ExtraPane.DriverSetup.exe'
     manifest = json.loads((root/'out/driver-package/manifest.json').read_text(encoding='utf-8-sig'))
     thumb = manifest['certificateThumbprint']
-    cert = root/'out/driver-package/SideScreen-Driver.cer'
+    cert = root/'out/driver-package/ExtraPane-Driver.cer'
     # A missing Cert provider makes Test-Path silently return false. Verify the
     # stores themselves exist before using it to assert certificate presence.
     assert ps("(Test-Path Cert:\\LocalMachine\\Root) -and (Test-Path Cert:\\LocalMachine\\TrustedPublisher)").stdout.strip() == 'True'
@@ -74,10 +74,10 @@ def main():
     # No implicit trust consent, including silent installs.
     run(driver_setup, success=False)
     assert not folder.exists()
-    with tempfile.TemporaryDirectory(prefix='SideScreen-host-install-') as temp:
+    with tempfile.TemporaryDirectory(prefix='ExtraPane-host-install-') as temp:
         target = Path(temp)/'app'
         run(installer, '/SERVER=1', f'/DIR={target}', '/TASKS=', success=False)
-        assert not folder.exists() and not (target/'SideScreen.exe').exists()
+        assert not folder.exists() and not (target/'ExtraPane.exe').exists()
         # A real manager failure must propagate through both installer layers.
         # Hold the manager's mutex to reject installation before trust/store changes.
         kernel = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -85,18 +85,18 @@ def main():
         kernel.CreateMutexW.restype = wintypes.HANDLE
         kernel.ReleaseMutex.argtypes = [wintypes.HANDLE]
         kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-        lock = kernel.CreateMutexW(None, True, r'Global\SideScreen.DriverSetup')
+        lock = kernel.CreateMutexW(None, True, r'Global\ExtraPane.DriverSetup')
         assert lock
         try:
             run(driver_setup, '/ACCEPTDEVELOPMENTCERT=1', success=False)
             run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
-            assert not (target/'SideScreen.exe').exists()
+            assert not (target/'ExtraPane.exe').exists()
             assert ps(trust_count).stdout.strip() == '0'
         finally:
             kernel.ReleaseMutex(lock)
             kernel.CloseHandle(lock)
         run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=')
-        assert (target/'SideScreen.exe').is_file()
+        assert (target/'ExtraPane.exe').is_file()
         assert driver_uninstaller().is_file()
         records = list((folder/'state').glob('*.json')); assert len(records) == 1
         record = json.loads(records[0].read_text(encoding='utf-8-sig'))
@@ -117,7 +117,7 @@ def main():
             dll.write_bytes(original)
         app_uninstaller = registered_uninstaller(target)
         run(app_uninstaller)
-        wait_absent(target/'SideScreen.exe')
+        wait_absent(target/'ExtraPane.exe')
         assert driver_uninstaller().is_file() and ps(trust_count).stdout.strip() == '2'
         # Failed removal must preserve the manager, uninstaller and records.
         backup_dll = folder/'state'/record['catHash']/'DMIndirectDisplay.dll'

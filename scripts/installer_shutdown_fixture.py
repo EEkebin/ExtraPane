@@ -47,7 +47,7 @@ def run(marker):
                (r'Local\SideScreen.App', r'Local\SideScreen.DriverRuntime')]
     assert all(handles)
     instance = kernel.GetModuleHandleW(None)
-    wc = WindowClass(proc=procedure, instance=instance, name='SideScreen.Tray')
+    wc = WindowClass(proc=procedure, instance=instance, name='ExtraPane.Tray')
     assert user.RegisterClassW(c.byref(wc))
     window = user.CreateWindowExW(0, wc.name, '', 0, 0, 0, 0, 0, None, None, instance, None)
     assert window

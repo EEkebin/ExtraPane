@@ -40,10 +40,10 @@ def main():
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise SystemExit('Package on Linux x86_64; Windows/WSL is not launched by this script.')
     build = ROOT/'out/build/linux-release'
-    if not (build/'platform/linux/SideScreen').is_file():
+    if not (build/'platform/linux/ExtraPane').is_file():
         raise SystemExit('Build the Linux target first; packaging does not run a build.')
     version = current()
-    output = ROOT/'out/dist-linux'/f'SideScreen-{version}-linux-x86_64.AppImage'
+    output = ROOT/'out/dist-linux'/f'ExtraPane-{version}-linux-x86_64.AppImage'
     if output.exists():
         raise SystemExit('Refusing to overwrite an existing AppImage. Use a new release version.')
     lock = json.loads(args.tools_lock.read_text())
@@ -78,19 +78,19 @@ def main():
         for name, tool in lock['tools'].items():
             shutil.copy2(tool['path'], tools/name)
             (tools/name).chmod(0o755)
-        appdir = stage/'SideScreen.AppDir'
+        appdir = stage/'ExtraPane.AppDir'
         subprocess.run(['cmake', '--install', str(build), '--prefix', str(appdir/'usr')], check=True)
         bundled_plugins = stage/'plugins'; bundled_plugins.mkdir()
         for plugin in plugins:
             shutil.copy2(plugin, bundled_plugins/plugin.name)
         helpers = stage/'helpers'; helpers.mkdir()
         shutil.copy2(args.helpers_dir/'gst-plugin-scanner', helpers/'gst-plugin-scanner')
-        notices = appdir/'usr/share/licenses/sidescreen'
+        notices = appdir/'usr/share/licenses/extrapane'
         shutil.copytree(args.licenses_dir, notices)
         # This records the build inputs; it is not a runtime validation claim.
         record = {'version': version, 'tools': lock['tools'],
                   'plugins': {p.name: digest(p) for p in plugins}, 'validation': 'not performed by packaging'}
-        (appdir/'usr/share/doc/sidescreen/package-inputs.json').write_text(json.dumps(record, indent=2)+'\n')
+        (appdir/'usr/share/doc/extrapane/package-inputs.json').write_text(json.dumps(record, indent=2)+'\n')
         env = dict(os.environ)
         env.update(PATH=str(tools)+os.pathsep+env.get('PATH', ''), ARCH='x86_64',
                    QMAKE=str(args.qmake.resolve()), QML_SOURCES_PATHS=str(ROOT/'apps/linux'),

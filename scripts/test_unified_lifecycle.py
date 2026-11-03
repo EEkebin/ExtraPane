@@ -2,12 +2,12 @@
 from pathlib import Path
 import subprocess,time,json
 root=Path(__file__).resolve().parent.parent
-app=root/'out/winui/SideScreen/SideScreen.exe'
-helper=app.parent/'SideScreen.Service.exe'
+app=root/'out/winui/ExtraPane/ExtraPane.exe'
+helper=app.parent/'ExtraPane.Service.exe'
 ps=lambda command: subprocess.check_output(['powershell','-NoProfile','-Command',command],text=True).strip()
 # A helper must refuse an unrelated launcher before creating a firewall rule.
 import os
-bad=subprocess.run([str(helper),'--pipe',r'\\.\pipe\SideScreen-invalid-test','--parent-pid',str(os.getpid())],timeout=10)
+bad=subprocess.run([str(helper),'--pipe',r'\\.\pipe\ExtraPane-invalid-test','--parent-pid',str(os.getpid())],timeout=10)
 assert bad.returncode!=0
 (app.parent/'server-session-check.log').unlink(missing_ok=True)
 p=subprocess.Popen([str(app),'--server','--start','--test-report','--test-duration','30'])
@@ -19,7 +19,7 @@ try:
   time.sleep(.1)
  else:raise RuntimeError('Server did not start')
  time.sleep(.5)
- service=ps("Get-CimInstance Win32_Process -Filter \"Name='SideScreen.Service.exe'\" | Select-Object -ExpandProperty ProcessId")
+ service=ps("Get-CimInstance Win32_Process -Filter \"Name='ExtraPane.Service.exe'\" | Select-Object -ExpandProperty ProcessId")
  assert service
  p.terminate();p.wait(timeout=5)
  until=time.monotonic()+15

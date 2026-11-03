@@ -233,7 +233,7 @@ struct Child
         stop();
         std::array<unsigned char,16> random{};
         if(BCryptGenRandom(nullptr,random.data(),static_cast<ULONG>(random.size()),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0)throw std::runtime_error("Cannot create driver channel");
-        std::wstring pipe=L"\\\\.\\pipe\\SideScreen-";for(auto b:random){pipe+=L"0123456789abcdef"[b>>4];pipe+=L"0123456789abcdef"[b&15];}
+        std::wstring pipe=L"\\\\.\\pipe\\ExtraPane-";for(auto b:random){pipe+=L"0123456789abcdef"[b>>4];pipe+=L"0123456789abcdef"[b&15];}
         HANDLE token=nullptr;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token))throw std::runtime_error("Cannot identify user");
         DWORD bytes=0;GetTokenInformation(token,TokenUser,nullptr,0,&bytes);std::vector<unsigned char> user(bytes);
         const bool token_ok=GetTokenInformation(token,TokenUser,user.data(),bytes,&bytes)!=FALSE;CloseHandle(token);
@@ -244,7 +244,7 @@ struct Child
         SECURITY_ATTRIBUTES security{sizeof(security),descriptor,FALSE};
         read=CreateNamedPipeW(pipe.c_str(),PIPE_ACCESS_DUPLEX|FILE_FLAG_FIRST_PIPE_INSTANCE,PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_NOWAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,4096,0,&security);LocalFree(descriptor);
         if(read==INVALID_HANDLE_VALUE){read=nullptr;throw std::runtime_error("Cannot create driver channel");}
-        const auto exe=(directory()/L"SideScreen.Service.exe").wstring();
+        const auto exe=(directory()/L"ExtraPane.Service.exe").wstring();
         std::wstring args=L"--pipe "+command_quote(pipe)+L" --parent-pid "+std::to_wstring(GetCurrentProcessId());if(input)args+=L" --input";if(debug)args+=L" --debug";
         SHELLEXECUTEINFOW launch{sizeof(launch)};launch.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;launch.lpVerb=L"runas";launch.lpFile=exe.c_str();launch.lpParameters=args.c_str();launch.nShow=SW_HIDE;
         if(!ShellExecuteExW(&launch)){const auto error=GetLastError();stop();throw std::runtime_error(error==ERROR_CANCELLED?"Driver start cancelled.":"Cannot elevate driver helper (Windows error "+std::to_string(error)+").");}

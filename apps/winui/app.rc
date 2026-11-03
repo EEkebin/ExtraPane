@@ -1,9 +1,9 @@
-101 ICON "SideScreen.ico"
+101 ICON "ExtraPane.ico"
 #include <windows.h>
-#include "SideScreenVersion.h"
+#include "ExtraPaneVersion.h"
 1 VERSIONINFO
-FILEVERSION SIDESCREEN_VERSION_NUM
-PRODUCTVERSION SIDESCREEN_VERSION_NUM
+FILEVERSION EXTRAPANE_VERSION_NUM
+PRODUCTVERSION EXTRAPANE_VERSION_NUM
 FILEOS VOS_NT_WINDOWS32
 FILETYPE VFT_APP
 BEGIN
@@ -11,10 +11,10 @@ BEGIN
   BEGIN
     BLOCK "040904B0"
     BEGIN
-      VALUE "ProductName", "SideScreen"
-      VALUE "FileDescription", "SideScreen"
-      VALUE "FileVersion", SIDESCREEN_VERSION
-      VALUE "ProductVersion", SIDESCREEN_VERSION
+      VALUE "ProductName", "ExtraPane"
+      VALUE "FileDescription", "ExtraPane"
+      VALUE "FileVersion", EXTRAPANE_VERSION
+      VALUE "ProductVersion", EXTRAPANE_VERSION
     END
   END
   BLOCK "VarFileInfo"

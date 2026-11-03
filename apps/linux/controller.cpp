@@ -1,5 +1,5 @@
 #include "controller.hpp"
-#include <SideScreenVersion.h>
+#include <ExtraPaneVersion.h>
 #include <QGuiApplication>
 #include <QHostAddress>
 #include <QNetworkInterface>
@@ -19,7 +19,7 @@ Controller::Controller(QString availability,QObject* parent):QObject(parent),ava
     });
 }
 Controller::~Controller(){shutdown();}
-QString Controller::version()const{return QString::fromUtf8(SIDESCREEN_VERSION);}
+QString Controller::version()const{return QString::fromUtf8(EXTRAPANE_VERSION);}
 QString Controller::savedAddress()const{return QSettings().value("serverAddress").toString();}
 void Controller::refreshAddresses(){
     addresses_.clear();

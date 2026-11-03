@@ -79,9 +79,9 @@ Client and Server are now C++/WinRT WinUI 3 setup apps. Keep D3D11 video/native 
 
 The authenticated client supplies its screen size and refresh at connection time. Use that as the initial extended-display preference; preserve later Windows layout changes for the same client size. Bound and select supported driver/codec modes with a visible fallback rather than claim arbitrary native resolutions/refresh. Window resizing scales video and never resets the host layout.
 
-## SideScreen, client initiation and persistent driver (0.11)
+## ExtraPane, client initiation and persistent driver (0.11)
 
-The user chose SideScreen and requested a private repository under EEkebin. Client enters the server address only; automatic discovery is explicitly deferred. Both apps enumerate their local addresses instead of asking users to configure local binds. Server listens on active IPv4 interfaces; Client follows Windows routing, including static Ethernet paths. The firewall permits scoped LAN ranges rather than requiring a client address.
+The user chose ExtraPane and requested a private repository under EEkebin. Client enters the server address only; automatic discovery is explicitly deferred. Both apps enumerate their local addresses instead of asking users to configure local binds. Server listens on active IPv4 interfaces; Client follows Windows routing, including static Ethernet paths. The firewall permits scoped LAN ranges rather than requiring a client address.
 
 Start Driver owns a persistent virtual monitor across sequential authenticated clients. Preserve the current geometry between clients and remember it on stop; client mode negotiation remains the initial preference. Keep the COM apartment alive across media pipeline recreation. Close hides setup windows to notification-area icons; tray Exit is the explicit shutdown action. Existing DM driver names, registry locations, pairing names and installation folders remain compatible.
 
@@ -158,3 +158,11 @@ Rewrite the README as straightforward, accurate usage and installation documenta
 After the Windows stable release, the user selected Linux AppImage development and explicitly prohibited testing while playing a game. Start with a Windows host and Linux receiver, targeting KDE Plasma/Wayland first; Linux hosting follows as a separate milestone. Do source work only until testing is authorized: no builds, execution, GPU/connection tests, display changes, driver operations or CI dispatches. macOS remains deferred.
 
 Retain C++20 and the shared protocol 9 serializer. Use Qt 6/Qt Quick for the Linux app, OpenSSL TLS 1.3 for Windows automatic-LAN interoperability, and GStreamer H.264 decoding/OpenGL presentation through qml6glsink. Keep the media/network path off the UI thread and queues bounded. Mouse/keyboard are the initial return-input families; do not advertise touch/pen before native implementation. The Linux Server page stays disabled until real virtual-monitor hosting exists. See LINUX.md for the source-only status, packaging draft and acceptance gates. Do not publish an AppImage before those gates and dependency packaging are validated.
+
+## ExtraPane rename (2026-11-03)
+
+The user selected ExtraPane to distinguish this project from another display application named SideScreen. Rename app branding, executable/artifact names, build metadata, packaging, documentation and the repository without changing the wire protocol or driver device identity.
+
+Keep the legacy installer AppIds, cross-version exclusion mutexes, Windows settings keys and fixed privileged `Program Files\SideScreen Driver` directory. These are compatibility identifiers, not visible product names. This retains existing install locations and driver package/certificate ownership backups, avoiding a second independently registered driver manager. The new manager accepts original certificate filenames in verified ownership backups. Installers close both old and new app window classes, remove known obsolete app filenames/shortcuts and install the new names. Fresh per-user app installations default to ExtraPane; upgrades reuse their existing directory.
+
+Published releases, tags, checksums and signed packages remain historical artifacts; do not relabel old binaries as rebuilt ExtraPane versions. The rename and Linux source have not been built or tested. No app launches, GPU probes, driver operations or CI runs are authorized during the user's current no-testing period.

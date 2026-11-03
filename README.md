@@ -1,10 +1,12 @@
-# SideScreen
+# ExtraPane
 
-<img src="assets/branding/icon.png" alt="SideScreen icon" width="96" align="right">
+![ExtraPane ? extend your desktop over your local network](assets/branding/banner.svg)
 
-SideScreen uses another Windows PC as an extended monitor over Wi-Fi or Ethernet. The receiving PC can send mouse, keyboard, touch and pen input back to the host.
+<img src="assets/branding/icon.png" alt="ExtraPane icon" width="96" align="right">
 
-[Download latest release](https://github.com/EEkebin/SideScreen/releases/latest) | [Report an issue](https://github.com/EEkebin/SideScreen/issues) | [Build status](https://github.com/EEkebin/SideScreen/actions/workflows/prerelease.yml)
+ExtraPane uses another Windows PC as an extended monitor over Wi-Fi or Ethernet. The receiving PC can send mouse, keyboard, touch and pen input back to the host.
+
+[Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
 The same app contains Server, Client, Settings and About pages. A PC can perform either role. Up to four clients can connect to one server.
 
@@ -13,33 +15,35 @@ The same app contains Server, Client, Settings and About pages. A PC can perform
 - Windows 11 x64 on each PC.
 - A reachable IPv4 connection over Wi-Fi, Ethernet or a direct cable with static addresses. DHCP and internet access are not required for a connection.
 - Compatible D3D11 graphics hardware and H.264 encoding/decoding support.
-- The SideScreen virtual-display driver on each PC that will act as a server. Driver setup and starting the server require administrator permission.
+- The ExtraPane virtual-display driver on each PC that will act as a server. Driver setup and starting the server require administrator permission.
 - A touchscreen or compatible pen on the client to use those input features.
 
 The downloads include the app's WinUI runtime. Users do not need Python, SSH, Visual Studio or a Vulkan SDK.
 
 ## Install
 
+ExtraPane was previously named SideScreen. Existing published binaries still carry that name until the next release. The repository and download links now use ExtraPane.
+
 Each release provides an installer, a portable ZIP and `SHA256SUMS.txt`. Use matching releases on both PCs.
 
 ### Installer
 
-Run `SideScreen-<version>-Setup-win-x64.exe` and select how this PC will be used:
+Run `ExtraPane-<version>-Setup-win-x64.exe` and select how this PC will be used:
 
 | Setup choice | What it installs |
 | --- | --- |
-| **Client only** | The per-user SideScreen app. No driver or certificate changes. |
+| **Client only** | The per-user ExtraPane app. No driver or certificate changes. |
 | **Server + Client** | The same app, plus the required machine-wide virtual-display driver. Driver installation asks for explicit certificate consent and administrator permission. |
 
-Server + Client setup stops if the required driver installation fails or administrator permission is canceled. You can retry or return to Client only. Client only does not hide the Server page; to host later, rerun setup as Server + Client or run the bundled `SideScreen.DriverSetup.exe`.
+Server + Client setup stops if the required driver installation fails or administrator permission is canceled. You can retry or return to Client only. Client only does not hide the Server page; to host later, rerun setup as Server + Client or run the bundled `ExtraPane.DriverSetup.exe`.
 
-The app is registered in Windows **Settings > Apps > Installed apps**. Setup offers a desktop shortcut and a checked **Launch SideScreen** option on its Finish page. Silent setup does not launch the app. Updating requests that running SideScreen instances shut down and waits for their server helpers to stop before replacing files.
+The app is registered in Windows **Settings > Apps > Installed apps**. Setup offers a desktop shortcut and a checked **Launch ExtraPane** option on its Finish page. Silent setup does not launch the app. Updating requests that running ExtraPane instances shut down and waits for their server helpers to stop before replacing files.
 
 ### Portable ZIP
 
-Extract the entire ZIP and run `SideScreen.exe`. Keep the accompanying files together.
+Extract the entire ZIP and run `ExtraPane.exe`. Keep the accompanying files together.
 
-A portable **server** must first run the included `SideScreen.DriverSetup.exe` and complete the driver setup. A portable **client** does not need it. The driver is installed on Windows; it does not become portable just because the app runs from a ZIP.
+A portable **server** must first run the included `ExtraPane.DriverSetup.exe` and complete the driver setup. A portable **client** does not need it. The driver is installed on Windows; it does not become portable just because the app runs from a ZIP.
 
 ### Driver signing and Windows policy
 
@@ -98,8 +102,8 @@ Not implemented: system audio, microphone forwarding, Windows+K/Miracast, IPv6 t
 
 ## Uninstall
 
-- Uninstall **SideScreen** to remove the per-user app. Its uninstaller offers **Remove saved settings on this PC**, unchecked by default. Settings are also used by portable copies.
-- Uninstall **SideScreen Virtual Display Driver** separately to remove driver packages and certificate entries that its installer added. Administrator permission is required. Stop sessions first; other users and portable servers on this PC also depend on this driver.
+- Uninstall **ExtraPane** to remove the per-user app. Its uninstaller offers **Remove saved settings on this PC**, unchecked by default. Settings are also used by portable copies.
+- Uninstall **ExtraPane Virtual Display Driver** separately to remove driver packages and certificate entries that its installer added. Administrator permission is required. Stop sessions first; other users and portable servers on this PC also depend on this driver.
 - Pre-existing driver packages and certificate trust are preserved. Development drivers installed with older manual scripts are not automatically adopted or removed.
 
 The driver uninstaller keeps its files and ownership records if removal fails so you can retry. See [driver installation](docs/DRIVER-INSTALLATION.md) for logs, silent options and recovery.
@@ -139,4 +143,4 @@ Tags use UTC calendar dates, for example `v2026.11.03-pre.31.1`. Stable releases
 
 Created by [EEkebin](https://github.com/EEkebin). Third-party dependencies and notices are listed in [third_party](third_party/README.md) and included in the downloads. The driver derives from Microsoft's indirect-display sample and includes its license and attribution.
 
-A project-wide open-source license has not been selected. Third-party components retain their own licenses. SideScreen is independent of Microsoft.
+A project-wide open-source license has not been selected. Third-party components retain their own licenses. ExtraPane is independent of Microsoft.

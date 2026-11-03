@@ -69,8 +69,8 @@ struct TlsStream::State {
         mbedtls_x509write_crt_set_md_alg(&writer,MBEDTLS_MD_SHA256);
         mbedtls_x509write_crt_set_subject_key(&writer,&certificate_key);
         mbedtls_x509write_crt_set_issuer_key(&writer,&certificate_key);
-        check(mbedtls_x509write_crt_set_subject_name(&writer,"CN=SideScreen LAN"));
-        check(mbedtls_x509write_crt_set_issuer_name(&writer,"CN=SideScreen LAN"));
+        check(mbedtls_x509write_crt_set_subject_name(&writer,"CN=ExtraPane LAN"));
+        check(mbedtls_x509write_crt_set_issuer_name(&writer,"CN=ExtraPane LAN"));
         check(mbedtls_x509write_crt_set_validity(&writer,"20260101000000","99991231235959"));
         std::array<unsigned char,16> serial{};
         if(psa_generate_random(serial.data(),serial.size())!=PSA_SUCCESS)throw std::runtime_error("Cannot generate certificate serial");

@@ -13,9 +13,9 @@ int main(int argc,char** argv){
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents,false);
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTabletEvents,false);
     QGuiApplication app(argc,argv);
-    QCoreApplication::setOrganizationName("SideScreen");QCoreApplication::setApplicationName("SideScreen");
-    QGuiApplication::setDesktopFileName("io.github.EEkebin.SideScreen");
-    QGuiApplication::setWindowIcon(QIcon(":/sidescreen.png"));
+    QCoreApplication::setOrganizationName("ExtraPane");QCoreApplication::setApplicationName("ExtraPane");
+    QGuiApplication::setDesktopFileName("io.github.EEkebin.ExtraPane");
+    QGuiApplication::setWindowIcon(QIcon(":/extrapane.png"));
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
     QString unavailable;GError* error=nullptr;
     if(!gst_init_check(nullptr,nullptr,&error)){
@@ -34,7 +34,7 @@ int main(int argc,char** argv){
     }
     const auto platform=QGuiApplication::platformName();
     if(platform!="xcb" && !platform.startsWith("wayland"))unavailable="This client requires Qt's Wayland or X11 platform backend.";
-    qmlRegisterType<dm::linux_client::InputSurface>("SideScreen.Native",1,0,"InputSurface");
+    qmlRegisterType<dm::linux_client::InputSurface>("ExtraPane.Native",1,0,"InputSurface");
     Controller controller(unavailable);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("receiver",&controller);

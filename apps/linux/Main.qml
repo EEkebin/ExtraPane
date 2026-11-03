@@ -8,7 +8,7 @@ ApplicationWindow {
     width: 1120; height: 760
     minimumWidth: 760; minimumHeight: 480
     visible: true
-    title: "SideScreen"
+    title: "ExtraPane"
     color: "#10151f"
     palette.window: "#10151f"
     palette.windowText: "#edf1f8"
@@ -45,7 +45,7 @@ ApplicationWindow {
             color: "#161e2b"
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 18; spacing: 10
-                Label { text: "SideScreen"; font.pixelSize: 23; font.bold: true; topPadding: 14; bottomPadding: 20 }
+                Label { text: "ExtraPane"; font.pixelSize: 23; font.bold: true; topPadding: 14; bottomPadding: 20 }
                 Repeater {
                     model: ["Server", "Client", "Settings"]
                     Button {
@@ -134,7 +134,7 @@ ApplicationWindow {
                             HoverHandler { id: toolbarHover; acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad }
                             RowLayout {
                                 anchors.fill: parent; anchors.margins: 6
-                                Label { text: "SideScreen"; leftPadding: 8; Layout.fillWidth: true }
+                                Label { text: "ExtraPane"; leftPadding: 8; Layout.fillWidth: true }
                                 ToolButton {
                                     text: "Settings"
                                     onClicked: { receiver.releaseInput(); settingsMenu.popup() }
@@ -182,12 +182,12 @@ ApplicationWindow {
             Pane {
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 24; spacing: 16
-                    Label { text: "SideScreen"; font.pixelSize: 32; font.bold: true }
+                    Label { text: "ExtraPane"; font.pixelSize: 32; font.bold: true }
                     Label { text: "Another screen for your desktop." }
                     Label { text: "Running version: " + receiver.version }
-                    Button { text: "README"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/SideScreen#readme") }
-                    Button { text: "Releases and changelog"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/SideScreen/releases") }
-                    Button { text: "GitHub repository"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/SideScreen") }
+                    Button { text: "README"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane#readme") }
+                    Button { text: "Releases and changelog"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane/releases") }
+                    Button { text: "GitHub repository"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane") }
                     Label { text: "Third-party libraries retain their own licenses. A project-wide license has not been selected."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Item { Layout.fillHeight: true }
                 }

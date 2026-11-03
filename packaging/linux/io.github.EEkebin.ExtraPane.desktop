@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=SideScreen
+Name=ExtraPane
 Comment=Use this computer as an extended display over your local network
-Exec=SideScreen
-Icon=sidescreen
+Exec=ExtraPane
+Icon=extrapane
 Terminal=false
 Categories=Network;RemoteAccess;
-StartupWMClass=SideScreen
+StartupWMClass=ExtraPane
