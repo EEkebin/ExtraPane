@@ -170,6 +170,7 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)app{(void)app;return YES;}
 - (void)applicationWillTerminate:(NSNotification*)note{(void)note;[self disconnect:nil];}
 @end
+void mediaCheck();
 static int checks(){try{
     auto require=[](bool condition){if(!condition)throw std::runtime_error("macOS input/media check failed");};
     require(mapKey(0).vk=='A' && mapKey(62).ext==1 && mapKey(126).scan==72 && !mapKey(255).vk);
@@ -177,6 +178,6 @@ static int checks(){try{
     const uint8_t packet[]={0,0,0,1,0x67,1,2,0,0,1,0x68,3,4};auto units=dm::mac::annexb(packet);require(units.size()==2 && units[0].size()==3 && units[1][0]==0x68);
     bool rejected=false;try{const uint8_t bad[]={4,5,6};dm::mac::annexb(bad);}catch(...){rejected=true;}require(rejected);
     require(dm::mac::ipv4("10.0.0.1") && !dm::mac::ipv4("127.0.0.1") && !dm::mac::ipv4("hostname"));
-    puts("macOS protocol, input mapping/cleanup and H.264 framing checks passed");return 0;
+    mediaCheck();puts("macOS protocol, input cleanup and native H.264 color round-trip checks passed");return 0;
 }catch(const std::exception& e){fprintf(stderr,"%s\n",e.what());return 1;}}
 int main(int argc,const char* argv[]){@autoreleasepool{if(argc>1 && !strcmp(argv[1],"--self-test"))return checks();[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];App* app=[App new];NSApp.delegate=app;[NSApp run];return 0;}}
