@@ -4,7 +4,7 @@
 
 SideScreen uses another Windows PC as an extended monitor over Wi-Fi or Ethernet. The receiving PC can send mouse, keyboard, touch and pen input back to the host.
 
-[Download prereleases](https://github.com/EEkebin/SideScreen/releases) | [Report an issue](https://github.com/EEkebin/SideScreen/issues) | [Build status](https://github.com/EEkebin/SideScreen/actions/workflows/prerelease.yml)
+[Download latest release](https://github.com/EEkebin/SideScreen/releases/latest) | [Report an issue](https://github.com/EEkebin/SideScreen/issues) | [Build status](https://github.com/EEkebin/SideScreen/actions/workflows/prerelease.yml)
 
 The same app contains Server, Client, Settings and About pages. A PC can perform either role. Up to four clients can connect to one server.
 
@@ -20,7 +20,7 @@ The downloads include the app's WinUI runtime. Users do not need Python, SSH, Vi
 
 ## Install
 
-Each prerelease provides an installer, a portable ZIP and `SHA256SUMS.txt`. Use matching releases on both PCs.
+Each release provides an installer, a portable ZIP and `SHA256SUMS.txt`. Use matching releases on both PCs.
 
 ### Installer
 
@@ -47,7 +47,7 @@ The current driver uses a development code-signing certificate. It is **not Micr
 
 Setup does not disable Secure Boot or Memory Integrity, enable test-signing mode, or restart Windows automatically. Windows policy may still reject the driver when it loads. Successful package installation does not prove that every Windows configuration can load it. If setup or hosting fails, see [driver installation and troubleshooting](docs/DRIVER-INSTALLATION.md).
 
-Apps and installers are currently unsigned. These are development prereleases intended for testing, not a guarantee of compatibility on a new PC.
+Apps and installers are currently unsigned. The bundled driver is development-signed; compatibility on a new PC depends on Windows policy and the hardware in use.
 
 ## Connect
 
