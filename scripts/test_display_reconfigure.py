@@ -3,7 +3,7 @@ import subprocess,threading,queue,time,secrets,uuid,json,winreg,argparse
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 BIN=ROOT/'out/build/windows-release'
-parser=argparse.ArgumentParser();parser.add_argument('--renderer',choices=('d3d11','d3d12','vulkan'),default='d3d11');renderer=parser.parse_args().renderer
+parser=argparse.ArgumentParser();parser.add_argument('--renderer',choices=('d3d11','d3d12','vulkan','opengl'),default='d3d11');renderer=parser.parse_args().renderer
 name='reconfigure-'+uuid.uuid4().hex
 baseline=subprocess.check_output([str(BIN/'dm-display.exe'),'list'],text=True)
 assert 'dm_virtual=1' not in baseline,'Disconnect existing virtual displays before this test'

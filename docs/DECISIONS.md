@@ -138,3 +138,9 @@ The user requested Vulkan after the D3D12 handoff. Add it to the same saved, pre
 Reuse D3D11 GPU decode/color conversion into a shared BGRA texture, then use native Vulkan blit/scaling and swapchain presentation. This avoids a CPU bridge and permits explicit import/synchronization checks across the tested Intel/NVIDIA adapters. Do not call this an all-Vulkan decoder or promise faster performance. Vulkan-Headers is pinned and header-only; no SDK/loader/driver is shipped. See VULKAN.md for the synchronization contract, tests and measurements.
 
 GPU validation passed on desktop RTX 4090 and both Surface GPUs. Native Surface streaming, shared Settings persistence/locking, unavailable-option handling, window controls and saved-layout reconfiguration passed. Stop for user verification after this Vulkan release before OpenGL.
+
+## OpenGL Windows client renderer
+
+The user requested OpenGL after the Vulkan handoff. Add it to the same saved pre-connection selector and retain D3D11 as the default/fallback. Use D3D11 GPU decode/color conversion with WGL_NV_DX_interop2 texture registration and lock/unlock synchronization, followed by native OpenGL framebuffer scaling and Windows presentation. Do not add a CPU pixel bridge or promise improved performance. Probe real device sharing and framebuffer completeness, not only the OpenGL version or extension list.
+
+Desktop RTX 4090 and Surface Intel UHD 620 passed GPU pixel validation. The Surface GTX 1050 decoder was rejected because its shared framebuffer was incomplete with the Windows-selected OpenGL context; this hybrid-adapter limitation must remain visible. Settings persistence/locking, synthetic unavailable-driver handling, window controls, live display reconfiguration and saved-layout reconnect passed on the desktop. See OPENGL.md for evidence and limits. Stop for user verification after this feature.

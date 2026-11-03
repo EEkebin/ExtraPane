@@ -42,11 +42,11 @@ Deliver signed virtual display integration with supported resolution/refresh neg
 
 Installer/uninstaller, per-component driver lifecycle, accessible setup, keyboard navigation, session status, pairing revocation, redacted diagnostic export, recovery, and measured performance. Resolve licenses and distribution obligations before shipping dependencies/drivers.
 
-### Current renderer work: Vulkan handoff
+### Current renderer work: OpenGL handoff
 
-D3D12 and Vulkan client backends and shared app Settings are implemented. Renderer selection is configured before connecting and saved on this PC; live toolbar switching was removed at the user's request. D3D11 remains the default. Shared Settings, unavailable-option handling, GPU presentation, window controls and display reconfiguration checks passed. Hand off Vulkan for user acceptance before OpenGL.
+D3D12, Vulkan and OpenGL client backends and shared app Settings are implemented. Renderer selection is configured before connecting and saved on this PC; live toolbar switching was removed at the user's request. D3D11 remains the default. Shared Settings, unavailable-option handling, GPU presentation, window controls and display reconfiguration checks passed. Hand off OpenGL for user acceptance. OpenGL requires working D3D11 interop on the selected GPU; unsupported hybrid-adapter combinations fall back to D3D11.
 
-See [D3D12 evidence and limits](D3D12.md) and [Vulkan evidence and limits](VULKAN.md).
+See [D3D12 evidence and limits](D3D12.md) and [Vulkan evidence and limits](VULKAN.md), and [OpenGL evidence and limits](OPENGL.md).
 
 ### Launch after installation
 

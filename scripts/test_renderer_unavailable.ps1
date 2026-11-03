@@ -1,4 +1,4 @@
-param([ValidateSet('D3D12','Vulkan')][string]$RendererName='D3D12')
+param([ValidateSet('D3D12','Vulkan','OpenGL')][string]$RendererName='D3D12')
 $ErrorActionPreference='Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
@@ -24,10 +24,12 @@ try {
  Start-Sleep -Seconds 2
  if((Get-ItemProperty $reg).Renderer -ne 'd3d11'){throw 'Unsupported saved preference did not fall back'}
  $null=Element 'D3D12 unavailable: The graphics driver cannot share decoder textures with D3D12.'
+ $null=Element 'OpenGL unavailable: The graphics driver lacks WGL_NV_DX_interop2 for D3D11 texture sharing.'
  $null=Element 'Vulkan unavailable: Vulkan runtime is missing. Install or update the graphics driver.'
  (Element 'Renderer').GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
  Start-Sleep -Milliseconds 300
  if((Element 'D3D12').Current.IsEnabled){throw 'Unsupported renderer must remain visible but disabled'}
+ if((Element 'OpenGL').Current.IsEnabled){throw 'Unsupported OpenGL must remain visible but disabled'}
  if((Element 'Vulkan').Current.IsEnabled){throw 'Unsupported Vulkan must remain visible but disabled'}
  (Element 'Renderer').GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
  & out/build/windows-release/dm-tray-check.exe $app.Id client

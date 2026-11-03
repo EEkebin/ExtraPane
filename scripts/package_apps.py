@@ -72,10 +72,12 @@ together. Apps/installers are unsigned development builds; protocol version 9.
 Toolbar Settings offers 75%/50% stream resolution for the next connection only;
 it is not saved and subsequent connections default to Native.
 Main-app Settings contains client/server input and debug options. Select the
-client renderer before connecting: D3D11 (default), D3D12 or Vulkan when supported.
+client renderer before connecting: D3D11 (default), D3D12, Vulkan or OpenGL when supported.
 The renderer preference is saved locally and locked while connected.
 Unavailable choices stay visible with an explanation. Server capture is D3D11.
 Vulkan uses the graphics driver's runtime; no Vulkan SDK installation is needed.
+OpenGL requires WGL_NV_DX_interop2 for D3D11 GPU texture sharing. Support is
+checked on this PC; hybrid-GPU configurations may reject an adapter and fall back.
 '''
 
   z.writestr(role+'/README.txt',readme)

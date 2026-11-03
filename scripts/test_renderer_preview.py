@@ -10,8 +10,8 @@ b=ROOT/'out/build/windows-release'
 baseline=subprocess.check_output([str(b/'dm-display.exe'),'list'],text=True)
 assert 'dm_virtual=1' not in baseline,'Disconnect existing virtual displays before this test'
 reports=[]
-parser=argparse.ArgumentParser();parser.add_argument('--renderer',choices=('d3d11','d3d12','vulkan'));selected=parser.parse_args().renderer
-for initial in ((selected,) if selected else ('d3d11','d3d12','vulkan')):
+parser=argparse.ArgumentParser();parser.add_argument('--renderer',choices=('d3d11','d3d12','vulkan','opengl'));selected=parser.parse_args().renderer
+for initial in ((selected,) if selected else ('d3d11','d3d12','vulkan','opengl')):
     with open(f'out/renderer-{initial}-host.log','w') as ho,open(f'out/renderer-{initial}-client.log','w') as co:
         host=subprocess.Popen([str(b/'dm-view.exe'),'host','--lan','--bind','127.0.0.1','--port','43832','--allow-screen','--extend','--frames','0','--fps','60'],stdout=ho,stderr=subprocess.STDOUT)
         client=None

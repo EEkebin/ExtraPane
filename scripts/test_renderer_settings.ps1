@@ -1,6 +1,6 @@
 # Live UI/session test. Requires the installed driver and an idle desktop.
 # Restores the user's renderer/address/page preferences when it finishes.
-param([ValidateSet('D3D12','Vulkan')][string]$RendererName='D3D12')
+param([ValidateSet('D3D12','Vulkan','OpenGL')][string]$RendererName='D3D12')
 $ErrorActionPreference='Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
