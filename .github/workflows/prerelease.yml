@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      linux_only:
+        description: Validate Linux only (never publishes a release)
+        type: boolean
+        default: false
       channel:
         description: Release channel (merged PRs always create prereleases)
         type: choice
@@ -78,6 +82,7 @@ jobs:
           if-no-files-found: error
   build:
     needs: metadata
+    if: inputs.linux_only != true
     runs-on: windows-2025
     timeout-minutes: 45
     env:
@@ -161,7 +166,7 @@ jobs:
       version: ${{ needs.metadata.outputs.version }}
   publish:
     needs: [metadata, build, linux]
-    if: needs.metadata.outputs.publish == 'true'
+    if: needs.metadata.outputs.publish == 'true' && inputs.linux_only != true
     runs-on: ubuntu-latest
     permissions:
       contents: write

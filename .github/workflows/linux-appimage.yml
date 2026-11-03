@@ -27,10 +27,13 @@ jobs:
       - name: Install snapshot dependencies
         run: |
           printf 'Server = https://archive.archlinux.org/repos/2026/11/03/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist
+          # Container images omit documentation; restore license-link targets.
+          sed -i '/^NoExtract/d' /etc/pacman.conf
           pacman -Syyuu --noconfirm --needed base-devel cmake ninja pkgconf git python \
             qt6-base qt6-declarative qt6-wayland qt6-tools openssl gstreamer \
             gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugin-qml6 gst-plugin-pipewire \
-            patchelf fuse2 squashfs-tools xorg-server-xvfb xorg-xauth mesa
+            patchelf fuse2 squashfs-tools xorg-server-xvfb xorg-xauth mesa licenses
+          pacman -S --noconfirm systemd xz licenses
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
