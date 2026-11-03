@@ -69,7 +69,7 @@ Both pages show addresses from connected physical adapters. The Server never nee
 |:---|:---|
 | **Multiple extended monitors** | Connect up to four clients at once, each with its own Windows monitor, resolution, orientation and position. |
 | **Connection quality** | Native-resolution streaming by default, with optional fixed 75% or 50% stream resolution for lower bandwidth. Statistics are opt-in. |
-| **GPU video** | D3D11 capture, H.264 encoding, GPU decoding and presentation. Native 3000×2000 with a 60 fps target is tested on a Surface Book 2; delivered frame rate depends on the hardware and network. |
+| **GPU video** | D3D11 capture, H.264 encoding and GPU decoding, with D3D11 or optional D3D12 presentation. Native 3000×2000 with a 60 fps target is tested on a Surface Book 2; delivered frame rate depends on the hardware and network. |
 | **Touch and pen** | Native multi-touch and exposed pen pressure, tilt, buttons, inversion and eraser semantics. Support depends on the device and receiving app. |
 | **Mouse and keyboard** | Click, drag, scroll and type; pause remote input without closing the display. |
 | **Windowed or fullscreen** | Resize freely, maximize, or use the small disappearing local toolbar. |
@@ -77,7 +77,7 @@ Both pages show addresses from connected physical adapters. The Server never nee
 | **Tray controls** | A running Server stays in the tray when closed. Client-only and idle windows exit normally. |
 | **Persistent server** | Disconnect the Client and reconnect later. The Server keeps listening. Only the disconnected client?s monitor is removed; other clients keep working. |
 
-The left sidebar keeps **Server** and **Client** separate, with **About** at the bottom. Switching pages does not disconnect either role. The main app and receiving client run without administrator rights; only the server helper is elevated.
+The left sidebar keeps **Server** and **Client** separate, with shared **Settings** and **About** pages at the bottom. Switching pages does not disconnect either role. The main app and receiving client run without administrator rights; only the server helper is elevated.
 
 ## **Controls**
 
@@ -96,6 +96,8 @@ Top-right taps reach the remote app instead of opening the toolbar. Pen events d
 Windows has one shared mouse cursor and keyboard focus. Remote input gestures are serialized across clients so disconnecting one cannot release another client?s held keys or drag.
 
 **Connection settings:** reveal the client toolbar with **F10**, then choose **Settings**. **Show statistics** is off by default. Native-resolution streaming is the default, using the original fixed bitrate and frame-pacing policy. Optional **75%** and **50%** stream resolutions reduce bandwidth without changing the Windows monitor dimensions. A selection applies to the **next connection only**, is never saved, and then returns to Native for later connections. Closing the app discards the selection; a failed connection resets it to Native. Streaming does not automatically switch tiers or restart the codecs/input handler under load. Old saved quality preferences are ignored. Update both PCs together: this release uses protocol 9, without per-frame quality-feedback waits.
+
+**Renderer and role settings:** open **Settings** in the main app before connecting. Under **Client**, choose **D3D11 (default)** or **D3D12**. This preference is saved on this PC and applies on Connect; disconnect before changing it. Unsupported choices stay visible but disabled, with a yellow explanation based on actual GPU and texture-sharing checks. A failed D3D12 startup or presentation falls back to D3D11 with a visible reason. Server capture remains D3D11. Client/server input permissions and debug options are also on this shared page; stop the corresponding role to edit its options. See [D3D12 validation and limits](docs/D3D12.md).
 
 Normal sessions have no test pattern or time limit. **Debug** is off by default and enables bounded diagnostic sessions when selected.
 

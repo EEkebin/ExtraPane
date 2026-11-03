@@ -37,7 +37,7 @@ for role in ['SideScreen']:
 
 Extract the entire folder and run SideScreen.exe on either PC. No Python, SSH or
 separate WinUI runtime installation is required. The sidebar has Server, Client
-and About pages. Switching pages does not interrupt either role.
+Settings and About pages. Switching pages does not interrupt either role.
 
 On the desktop PC, open Server and choose Start Driver. Administrator approval
 is requested only for the separate driver helper. On the second PC, open Client,
@@ -66,6 +66,10 @@ Windows+K and automatic client reconnect are not implemented. Update both PCs
 together. Apps/installers are unsigned development builds; protocol version 9.
 Toolbar Settings offers 75%/50% stream resolution for the next connection only;
 it is not saved and subsequent connections default to Native.
+Main-app Settings contains client/server input and debug options. Select the
+client renderer before connecting: D3D11 (default) or D3D12 when supported.
+The renderer preference is saved locally and locked while connected.
+Unavailable choices stay visible with an explanation. Server capture is D3D11.
 '''
 
   z.writestr(role+'/README.txt',readme)

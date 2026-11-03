@@ -8,6 +8,7 @@
 #include <wrl/client.h>
 #include <dm/video.hpp>
 #include <dm/video_gpu.hpp>
+#include <dm/video_d3d12.hpp>
 #include <dm/input.hpp>
 #include <atomic>
 #include <mutex>
@@ -21,6 +22,7 @@
 namespace dm::video {
 namespace {
 struct PreviewWindow {
+    Renderer requested=Renderer::d3d11;
     input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr,stats=nullptr;bool show_statistics=false;std::atomic<Quality> quality{Quality::native};std::atomic<bool> menu_open{false},minimized{false};bool fullscreen=false,edge_gesture=false;
     UINT32 gesture_id=0;POINT gesture_start{};ULONGLONG edge_hover=0;
     WINDOWPLACEMENT saved{sizeof(saved)};ULONGLONG last_reveal=0;
@@ -86,10 +88,10 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
 void check(HRESULT hr, const char* message) { if (FAILED(hr)) throw std::runtime_error(message); }
 struct DestroyWindowOnExit { HWND hwnd; ~DestroyWindowOnExit() { if (IsWindow(hwnd)) DestroyWindow(hwnd); } };
 }
-void preview_video(const net::Options& options, const std::string& pair,std::optional<unsigned> decoder_adapter,bool control,bool fullscreen,Quality quality) {
+void preview_video(const net::Options& options, const std::string& pair,std::optional<unsigned> decoder_adapter,bool control,bool fullscreen,Quality quality,Renderer renderer) {
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     input::ReceiverInput input_capture(control);
-    PreviewWindow state;state.input=&input_capture;state.quality.store(quality);
+    PreviewWindow state;state.input=&input_capture;state.quality.store(quality);state.requested=renderer;
     WNDCLASSW cls{};
     cls.lpfnWndProc = window_proc;
     cls.hInstance = GetModuleHandleW(nullptr);
@@ -128,6 +130,11 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     Microsoft::WRL::ComPtr<IDXGISwapChain> swap;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> backbuffer;
     std::unique_ptr<GpuProcessor> gpu_processor;
+    std::unique_ptr<D3D12Renderer> d3d12;
+    Microsoft::WRL::ComPtr<ID3D11Device> probed_device;
+    Renderer active_renderer=Renderer::d3d11;
+    auto reset_d3d11=[&]{backbuffer.Reset();gpu_processor.reset();if(context){context->ClearState();context->Flush();}swap.Reset();context.Reset();device.Reset();};
+    auto unavailable=[&](const std::string& reason){state.requested=Renderer::d3d11;std::cout<<"RENDERER_UNAVAILABLE D3D12 "<<reason<<std::endl;};
     std::mutex mutex;
     std::optional<Frame> latest;
     StreamStats stream_stats;std::uint64_t dropped_total=0;
@@ -147,7 +154,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     });
     unsigned surface_width=0,surface_height=0,buffer_width=0,buffer_height=0;
     std::uint64_t presented = 0;
-    std::uint64_t gpu_presented=0,cpu_uploads=0;
+    std::uint64_t gpu_presented=0,cpu_uploads=0,d3d12_presented=0;
     try {
         for (;;) {
             input_capture.pump();
@@ -170,8 +177,22 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 if(client.right<2 || client.bottom<2)continue;
                 const auto target_width=frame->gpu?static_cast<unsigned>(client.right):frame->width;
                 const auto target_height=frame->gpu?static_cast<unsigned>(client.bottom):frame->height;
+                if(state.requested==Renderer::d3d12){
+                    if(!frame->gpu)unavailable("D3D12 requires GPU-decoded H.264; this stream uses CPU frames");
+                    else if(probed_device.Get()!=frame->gpu->device.Get()){
+                        d3d12.reset();probed_device=frame->gpu->device;
+                        try{D3D11_TEXTURE2D_DESC desc{};frame->gpu->texture->GetDesc(&desc);d3d12=std::make_unique<D3D12Renderer>(probed_device.Get(),desc.Width,desc.Height);std::cout<<"RENDERER_AVAILABLE D3D12 adapter="<<d3d12->adapter_name()<<std::endl;}
+                        catch(const std::exception& e){unavailable(e.what());}
+                    }
+                }
+                if(state.requested!=active_renderer){reset_d3d11();if(d3d12)d3d12->detach();active_renderer=state.requested;std::cout<<"RENDERER_CHANGED "<<(active_renderer==Renderer::d3d12?"D3D12":"D3D11")<<std::endl;}
+                SetPropW(hwnd,L"SideScreen.Renderer",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(active_renderer==Renderer::d3d12?2:1)));
+                if(active_renderer==Renderer::d3d12){
+                    try{d3d12->present(hwnd,*frame);++gpu_presented;++d3d12_presented;}
+                    catch(const std::exception& e){unavailable(e.what());d3d12.reset();active_renderer=Renderer::d3d11;std::cout<<"RENDERER_FALLBACK D3D11"<<std::endl;continue;}
+                }else{
                 if(swap && (buffer_width!=target_width || buffer_height!=target_height || surface_width!=frame->width || surface_height!=frame->height || (frame->gpu && frame->gpu->device.Get()!=device.Get()))) {
-                    backbuffer.Reset();gpu_processor.reset();context->ClearState();context->Flush();swap.Reset();context.Reset();device.Reset();
+                    reset_d3d11();
                 }
                 if (!swap) {
                     surface_width=frame->width;surface_height=frame->height;buffer_width=target_width;buffer_height=target_height;
@@ -201,7 +222,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                     DXGI_ADAPTER_DESC gpu{}; check(adapter->GetDesc(&gpu),"Preview GPU name failed");
                     std::string name;
                     for(const wchar_t c:gpu.Description){if(!c)break;name.push_back(c<128 ? static_cast<char>(c) : '?');}
-                    std::cout << "PREVIEW_RENDERER adapter=" << name << std::endl;
+                    std::cout << "PREVIEW_RENDERER api=D3D11 adapter=" << name << std::endl;
                 }
                 check(swap->GetBuffer(0, IID_PPV_ARGS(&backbuffer)), "Get preview backbuffer failed");
                 if(frame->gpu) {
@@ -217,13 +238,14 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 }
                 check(swap->Present(1, 0), "Present preview failed");
                 backbuffer.Reset();
+                }
                 ++presented;++interval_presented;
                 const auto cost=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-render_start).count();render_total+=cost;
             }
             const auto now=std::chrono::steady_clock::now();const auto elapsed=std::chrono::duration<double>(now-stats_time).count();
             if(elapsed>=1){
                 StreamStats stats;std::uint64_t skipped;{std::lock_guard guard(mutex);stats=stream_stats;skipped=dropped_total;}
-                std::wostringstream text;text<<std::fixed<<std::setprecision(1)<<L"  "<<quality_name(quality)<<L" | "<<stats.width<<L" x "<<stats.height<<L" | target "<<stats.target_fps<<L" FPS\n  Received "<<stats.received_fps<<L" FPS | presented "<<interval_presented/elapsed<<L" FPS\n  Video "<<stats.mbps<<L" Mbps | skipped in preview "<<skipped<<L"\n  Decode "<<stats.decode_ms<<L" ms | render/present "<<(interval_presented?render_total/interval_presented:0)<<L" ms\n  Local timings; not end-to-end latency.";
+                std::wostringstream text;text<<std::fixed<<std::setprecision(1)<<L"  "<<(active_renderer==Renderer::d3d12?L"D3D12":L"D3D11")<<L" | "<<stats.width<<L" x "<<stats.height<<L" | target "<<stats.target_fps<<L" FPS\n  Received "<<stats.received_fps<<L" FPS | presented "<<interval_presented/elapsed<<L" FPS\n  Video "<<stats.mbps<<L" Mbps | skipped in preview "<<skipped<<L"\n  Decode "<<stats.decode_ms<<L" ms | render/present "<<(interval_presented?render_total/interval_presented:0)<<L" ms\n  Local timings; not end-to-end latency.";
                 SetWindowTextW(state.stats,text.str().c_str());stats_time=now;interval_presented=0;render_total=0;
                 std::cout<<"QUALITY_STATS received_fps="<<stats.received_fps<<" mbps="<<stats.mbps<<" decode_ms="<<stats.decode_ms<<" skipped="<<skipped<<" stream="<<stats.width<<'x'<<stats.height<<std::endl;
             }
@@ -238,6 +260,6 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     }
     worker.join();
     if (error && !cancel.load()) std::rethrow_exception(error);
-    std::cout << "PREVIEW_PRESENTED frames=" << presented << " renderer=D3D11-test gpu_converted_frames=" << gpu_presented << " cpu_pixel_uploads=" << cpu_uploads << std::endl;
+    std::cout << "PREVIEW_PRESENTED frames=" << presented << " renderer="<<(active_renderer==Renderer::d3d12?"D3D12":"D3D11")<<" d3d12_frames="<<d3d12_presented<<" gpu_converted_frames=" << gpu_presented << " cpu_pixel_uploads=" << cpu_uploads << std::endl;
 }
 }
