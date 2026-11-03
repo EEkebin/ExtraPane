@@ -75,14 +75,14 @@ void Portal::start(bool input){
     request(cast,"SelectSources",{QVariant::fromValue(session_)},{{"types",4u},{"multiple",false},{"cursor_mode",2u}});
     result=request(remote,"Start",{QVariant::fromValue(session_),QString{}},{});
     devices=input?result.value("devices").toUInt():0;
-    auto streams=result.value("streams").value<QDBusArgument>();streams.beginArray();
+    const auto streams=result.value("streams").value<QDBusArgument>();streams.beginArray();
     if(streams.atEnd())throw std::runtime_error("Portal did not create a virtual display");
     QVariantMap properties;streams.beginStructure();streams>>node>>properties;streams.endStructure();
     if(!streams.atEnd())throw std::runtime_error("Expected one session-owned virtual display");
     streams.endArray();
     if(properties.value("source_type").toUInt()!=4)throw std::runtime_error("Portal returned a physical display; extended hosting requires a virtual display");
     const auto size=properties.value("logical_size",properties.value("size"));
-    if(size.canConvert<QDBusArgument>()){auto pair=size.value<QDBusArgument>();int w=0,h=0;pair.beginStructure();pair>>w>>h;pair.endStructure();if(w>0&&h>0){width=w;height=h;}}
+    if(size.canConvert<QDBusArgument>()){const auto pair=size.value<QDBusArgument>();int w=0,h=0;pair.beginStructure();pair>>w>>h;pair.endStructure();if(w>0&&h>0){width=w;height=h;}}
     QDBusReply<QDBusUnixFileDescriptor> fd(call(path,cast,"OpenPipeWireRemote",{QVariant::fromValue(session_),QVariantMap{}}));
     if(!fd.isValid() || !fd.value().isValid())throw std::runtime_error("Cannot open portal PipeWire connection");
     pipewire=fd.value();

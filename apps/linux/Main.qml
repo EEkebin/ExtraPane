@@ -38,7 +38,7 @@ ApplicationWindow {
     }
     function pauseInput() { receiver.releaseInput(); inputPaused = true; revealToolbar() }
     function toggleInput() { receiver.releaseInput(); inputPaused = !inputPaused; revealToolbar() }
-    property int page: 1
+    property int page: Qt.application.arguments.indexOf("--host") >= 0 ? 0 : 1
     property int nextScale: 0
     property bool toolbarVisible: true
     property bool fullscreen: visibility === Window.FullScreen

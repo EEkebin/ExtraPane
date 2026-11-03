@@ -9,6 +9,7 @@
 #include <gst/gst.h>
 #include <csignal>
 #include <QTimer>
+#include <QDebug>
 namespace { volatile std::sig_atomic_t quitRequested=0; }
 
 int main(int argc,char** argv){
@@ -49,6 +50,9 @@ int main(int argc,char** argv){
     engine.load(QUrl("qrc:/Main.qml"));
     if(engine.rootObjects().isEmpty())return 1;
     controller.setWindow(qobject_cast<QQuickWindow*>(engine.rootObjects().first()));
+    QObject::connect(&controller,&Controller::hostChanged,&controller,[&controller]{qInfo().noquote()<<controller.hostStatus();});
+    const auto hostOption=app.arguments().indexOf("--host");
+    if(hostOption>=0 && hostOption+1<app.arguments().size())QTimer::singleShot(0,&controller,[&controller,&app,hostOption]{controller.startHost(app.arguments().at(hostOption+1));});
     QObject::connect(&app,&QCoreApplication::aboutToQuit,&controller,&Controller::shutdown);
     return app.exec();
 }
