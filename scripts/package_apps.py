@@ -9,6 +9,7 @@ reports=[]
 for role in ['SideScreen']:
  source=ROOT/'out/winui'/role
  if not (source/(role+'.exe')).exists():raise RuntimeError('Run scripts/build-apps.ps1 first')
+ if not (source/'SideScreen.DriverSetup.exe').is_file():raise RuntimeError('Run scripts/build-driver-installer.ps1 before packaging')
  if (source/'version.txt').read_text().strip()!=VERSION:raise RuntimeError('Rebuild apps with the requested release version')
  archive=out/f'SideScreen-{VERSION}-win-x64.zip'
  with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
@@ -50,9 +51,14 @@ enter the server IPv4 address and Connect. No pairing or approval is needed.
 The app normally runs unelevated. Use automatic connections on a trusted LAN: TLS
 encrypts traffic but does not verify the identity of the other computer.
 
-The Server requires the separately installed DM virtual-display driver. This
-installer/ZIP does not install a driver or change signing/security settings.
-The current driver is a development test-signed component. Receiving needs no driver.
+In Setup, choose Client only or Server + Client. Server + Client requires the
+bundled driver installation, certificate consent and administrator permission.
+For a portable server, run SideScreen.DriverSetup.exe once before Start Driver.
+The driver is development signed. Setup trusts its public code-signing certificate
+in machine Root and TrustedPublisher and stages the driver. Windows policy can
+still reject loading. Secure Boot, Memory Integrity and test-signing mode are
+not changed. Receiving needs no driver. The driver has a separate Windows Apps
+uninstall entry; removing SideScreen alone preserves it for other users/copies.
 
 Start Driver waits for a valid client before creating its display. Each client
 supplies resolution/refresh preferences (currently capped at 60 fps). Windows

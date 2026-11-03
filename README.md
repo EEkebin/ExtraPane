@@ -1,153 +1,140 @@
-<div align="center">
+# SideScreen
 
-<img src="assets/branding/banner.png" alt="SideScreen — Your desktop. More room." width="100%">
+<img src="assets/branding/icon.png" alt="SideScreen icon" width="96" align="right">
 
-***Turn another Windows PC into an interactive extension of your desktop.***
+SideScreen uses another Windows PC as an extended monitor over Wi-Fi or Ethernet. The receiving PC can send mouse, keyboard, touch and pen input back to the host.
 
-[![Windows](https://img.shields.io/badge/Windows_11-x64-0078D4?style=for-the-badge)](#requirements)
-[![Status](https://img.shields.io/badge/Status-Prerelease-00A6D6?style=for-the-badge)](#current-status)
-[![Build](https://img.shields.io/badge/Build-Windows_CI-1F6FEB?style=for-the-badge)](https://github.com/EEkebin/SideScreen/actions/workflows/prerelease.yml)
+[Download prereleases](https://github.com/EEkebin/SideScreen/releases) | [Report an issue](https://github.com/EEkebin/SideScreen/issues) | [Build status](https://github.com/EEkebin/SideScreen/actions/workflows/prerelease.yml)
 
-**[Downloads](https://github.com/EEkebin/SideScreen/releases)** · **[Quick start](#installation)** · **[Controls](#controls)** · **[Documentation](#development)**
+The same app contains Server, Client, Settings and About pages. A PC can perform either role. Up to four clients can connect to one server.
 
-</div>
+## Requirements
 
----
+- Windows 11 x64 on each PC.
+- A reachable IPv4 connection over Wi-Fi, Ethernet or a direct cable with static addresses. DHCP and internet access are not required for a connection.
+- Compatible D3D11 graphics hardware and H.264 encoding/decoding support.
+- The SideScreen virtual-display driver on each PC that will act as a server. Driver setup and starting the server require administrator permission.
+- A touchscreen or compatible pen on the client to use those input features.
 
-More space for your work. A touchscreen for your desktop. A pen surface for the apps you already use.
+The downloads include the app's WinUI runtime. Users do not need Python, SSH, Visual Studio or a Vulkan SDK.
 
-SideScreen extends your Windows desktop onto a second PC over Wi-Fi or Ethernet, with encrypted video and native mouse, keyboard, touch and pen input. Use a normal LAN or a direct cable with static IPs. There is no cloud account, relay or internet service in the connection path.
+## Install
 
-## **Downloads**
+Each prerelease provides an installer, a portable ZIP and `SHA256SUMS.txt`. Use matching releases on both PCs.
 
-**[Open the newest prerelease →](https://github.com/EEkebin/SideScreen/releases)**
+### Installer
 
-One download works on either PC. Choose how you want to run it; every prerelease includes both formats and `SHA256SUMS.txt`.
+Run `SideScreen-<version>-Setup-win-x64.exe` and select how this PC will be used:
 
-| Platform | Portable | Installer |
-|:---|:---|:---|
-| **Windows 11 x64** ? Server + Client + About | `SideScreen-<version>-win-x64.zip` | `SideScreen-<version>-Setup-win-x64.exe` |
+| Setup choice | What it installs |
+| --- | --- |
+| **Client only** | The per-user SideScreen app. No driver or certificate changes. |
+| **Server + Client** | The same app, plus the required machine-wide virtual-display driver. Driver installation asks for explicit certificate consent and administrator permission. |
 
-> **Server driver required.** The Server needs the separately installed SideScreen/DM virtual-display driver. The current driver is a development test-signed component. Neither the portable apps nor the installers install it or change Windows signing policy. The Client does not need a display driver. See [driver setup and status](docs/EXTENDED-DISPLAY.md).
->
-> These are unsigned development prereleases, not a signed, turnkey driver installation for a new PC.
+Server + Client setup stops if the required driver installation fails or administrator permission is canceled. You can retry or return to Client only. Client only does not hide the Server page; to host later, rerun setup as Server + Client or run the bundled `SideScreen.DriverSetup.exe`.
 
-## **Requirements**
+The app is registered in Windows **Settings > Apps > Installed apps**. Setup offers a desktop shortcut and a checked **Launch SideScreen** option on its Finish page. Silent setup does not launch the app. Updating requests that running SideScreen instances shut down and waits for their server helpers to stop before replacing files.
 
-- **Windows 11 x64** on both PCs.
-- A reachable IPv4 connection over Wi-Fi or Ethernet. Static addresses work; DHCP is optional.
-- A compatible D3D11 GPU and H.264 encoding/decoding support.
-- The virtual-display driver and administrator elevation on the Server.
-- A touchscreen or compatible pen on the Client to use those input features.
+### Portable ZIP
 
-The apps include their WinUI runtime. Running them does not require Python, SSH, Visual Studio or a separate WinUI installation.
+Extract the entire ZIP and run `SideScreen.exe`. Keep the accompanying files together.
 
-## **Installation**
+A portable **server** must first run the included `SideScreen.DriverSetup.exe` and complete the driver setup. A portable **client** does not need it. The driver is installed on Windows; it does not become portable just because the app runs from a ZIP.
 
-### Choose your format
+### Driver signing and Windows policy
 
-**Installer:** run the SideScreen Setup executable. It installs for your Windows user, adds a Start menu shortcut, and offers a desktop shortcut. The same installation includes Server and Client pages. It appears in Windows **Settings > Apps > Installed apps**. During uninstall, check **Remove saved settings on this PC** for a fresh start, or leave it unchecked to keep your setup. The separately installed display driver stays installed.
+The current driver uses a development code-signing certificate. It is **not Microsoft release signed**. With your consent, driver setup adds the package's public certificate to the machine's Trusted Root and Trusted Publishers stores and installs the verified package in the Windows Driver Store. The signing private key is discarded during packaging and is never included in downloads.
 
-**Portable:** extract the entire ZIP and run `SideScreen.exe`. Keep the DLLs, resources and icon beside the executable.
+Setup does not disable Secure Boot or Memory Integrity, enable test-signing mode, or restart Windows automatically. Windows policy may still reject the driver when it loads. Successful package installation does not prove that every Windows configuration can load it. If setup or hosting fails, see [driver installation and troubleshooting](docs/DRIVER-INSTALLATION.md).
 
-### Connect your screens
+Apps and installers are currently unsigned. These are development prereleases intended for testing, not a guarantee of compatibility on a new PC.
 
-1. Open **SideScreen** on the desktop PC and select **Server** in the left sidebar.
-2. Click **Start Driver** and approve the separate helper's administrator prompt. The Server waits for a connection; it does not create an empty extra screen yet.
-3. Open the same **SideScreen** app on the second PC and select **Client**. Enter the Server's IPv4 address from its address list and click **Connect**.
-4. Move an application onto the new display. Arrange it in **Windows Settings → System → Display**, just like a physical monitor.
+## Connect
 
-The Client supplies its display resolution and refresh preference. SideScreen selects a supported mode, targeting up to 60 fps. Later Windows resolution, orientation and arrangement changes take precedence. Layout preferences are remembered by client IPv4 address and resolution profile.
+1. On the PC whose desktop you want to extend, open **Server** and select **Start Driver**. Approve the helper's administrator prompt.
+2. On the second PC, open **Client**, enter one of the server's listed IPv4 addresses, and select **Connect**.
+3. Move a window to the new display. Use Windows **Settings > System > Display** to arrange monitors or change resolution and orientation.
 
-No codes, pairing, accounts or per-connection approval are required. While **Start Driver** is active, reachable LAN clients can receive a display and, if enabled on the Server, control input. Connections are encrypted but do not verify peer identity; use this mode on a trusted LAN.
+Start Driver begins listening. It creates an extended monitor only after a valid client connects. The client supplies its preferred resolution and refresh rate; the current driver offers 720p, 1080p and 3000x2000 modes, with streaming capped at a 60 FPS target. Actual delivered frame rate depends on hardware and network conditions.
 
-Both pages show addresses from connected physical adapters. The Server never needs the Client's address. No automatic discovery is required.
+Windows layout changes are retained. Disconnecting a client removes only that client's monitor; the server continues listening and other clients stay connected. Stop Driver or the server tray's Exit command ends its sessions and removes their monitors.
 
-## **Features**
+The address lists show connected physical network adapters, excluding loopback addresses. The server does not need the client's address. There is no automatic discovery or pairing step.
 
-| | What you can do |
-|:---|:---|
-| **Multiple extended monitors** | Connect up to four clients at once, each with its own Windows monitor, resolution, orientation and position. |
-| **Connection quality** | Native-resolution streaming by default, with optional fixed 75% or 50% stream resolution for lower bandwidth. Statistics are opt-in. |
-| **GPU video** | D3D11 capture, H.264 encoding and GPU decoding, with D3D11, D3D12, Vulkan or OpenGL presentation. Native 3000×2000 with a 60 fps target is tested on a Surface Book 2; delivered frame rate depends on the hardware and network. |
-| **Touch and pen** | Native multi-touch and exposed pen pressure, tilt, buttons, inversion and eraser semantics. Support depends on the device and receiving app. |
-| **Mouse and keyboard** | Click, drag, scroll and type; pause remote input without closing the display. |
-| **Windowed or fullscreen** | Resize freely, maximize, or use the small disappearing local toolbar. |
-| **Direct LAN** | Wi-Fi, Ethernet and reachable static-IP connections, with TLS 1.3 encryption and automatic connections. |
-| **Tray controls** | A running Server stays in the tray when closed. Client-only and idle windows exit normally. |
-| **Persistent server** | Disconnect the Client and reconnect later. The Server keeps listening. Only the disconnected client?s monitor is removed; other clients keep working. |
+Connections use TLS encryption, but the automatic LAN mode does not authenticate the other PC's identity. While the server is running, reachable clients are accepted without approval and can send input if the server permits it. Use it on a trusted LAN.
 
-The left sidebar keeps **Server** and **Client** separate, with shared **Settings** and **About** pages at the bottom. Switching pages does not disconnect either role. The main app and receiving client run without administrator rights; only the server helper is elevated.
-
-## **Controls**
+## Controls
 
 | Action | Control |
-|:---|:---|
-| Disconnect the Client | **Ctrl+Shift+Q** or **F9** |
-| Toggle fullscreen | **F11** |
-| Reveal the toolbar | **F10** |
-| Pause/resume remote input | **F8** |
-| Reveal with a mouse | Hover briefly at the **top center** |
-| Reveal with touch | Swipe down from the small **top-center** strip |
-| Stop the Server and remove its monitors | **Stop Driver**, or Server tray **Exit** |
+| --- | --- |
+| Disconnect the client | Ctrl+Shift+Q or F9 |
+| Toggle fullscreen | F11 or the toolbar's Fullscreen control |
+| Show the toolbar | F10, hover briefly at the top center, or swipe down from the small top-center strip |
+| Pause or resume remote input | F8 |
+| Show connection statistics | Toolbar > Settings > Show statistics |
+| Stop hosting | Server > Stop Driver, or tray > Exit |
 
-Top-right taps reach the remote app instead of opening the toolbar. Pen events do not trigger the reveal gesture. The display window's close control disconnects reception. Closing the setup window exits unless the Server driver is running; a running Server stays available in the tray.
+The preview is resizable and supports maximize, minimize and fullscreen. Top-right taps go to the remote application. Pen events do not open the toolbar.
 
-Windows has one shared mouse cursor and keyboard focus. Remote input gestures are serialized across clients so disconnecting one cannot release another client?s held keys or drag.
+Closing the setup window keeps the app in the tray only while its server is running. Client-only and idle windows exit normally. Normal sessions have no test pattern or timeout; Debug is off by default and enables bounded diagnostic sessions.
 
-**Connection settings:** reveal the client toolbar with **F10**, then choose **Settings**. **Show statistics** is off by default. Native-resolution streaming is the default, using the original fixed bitrate and frame-pacing policy. Optional **75%** and **50%** stream resolutions reduce bandwidth without changing the Windows monitor dimensions. A selection applies to the **next connection only**, is never saved, and then returns to Native for later connections. Closing the app discards the selection; a failed connection resets it to Native. Streaming does not automatically switch tiers or restart the codecs/input handler under load. Old saved quality preferences are ignored. Update both PCs together: this release uses protocol 9, without per-frame quality-feedback waits.
+## Settings
 
-**Renderer and role settings:** open **Settings** in the main app before connecting. Under **Client**, choose **D3D11 (default)**, **D3D12**, **Vulkan**, or **OpenGL**. This preference is saved on this PC and applies on Connect; disconnect before changing it. Unsupported choices stay visible but disabled, with a yellow explanation based on actual GPU, texture-sharing and presentation checks. A failed optional renderer falls back to D3D11 with a visible reason. Vulkan uses the graphics driver's runtime; no Vulkan SDK is required. OpenGL requires driver support for D3D11 GPU texture sharing (`WGL_NV_DX_interop2`); OpenGL availability alone is not enough. Server capture remains D3D11. Client/server input permissions and debug options are also on this shared page; stop the corresponding role to edit its options. See [D3D12](docs/D3D12.md) and [Vulkan validation and limits](docs/VULKAN.md), and [OpenGL validation and limits](docs/OPENGL.md).
+Select the client renderer in the main app's **Settings** page before connecting: **D3D11**, **D3D12**, **Vulkan**, or **OpenGL**. The choice is saved on that PC and locked during reception. D3D11 is the default and fallback. Unsupported options remain visible and disabled with a yellow explanation. A renderer failure reports its reason and falls back to D3D11.
 
-Normal sessions have no test pattern or time limit. **Debug** is off by default and enables bounded diagnostic sessions when selected.
+All renderers use D3D11 H.264 decoding. Server capture also remains D3D11. Vulkan uses the installed graphics driver's runtime. OpenGL requires working D3D11 texture sharing through `WGL_NV_DX_interop2`; GPU assignment matters on hybrid laptops. Additional renderers are choices, not promises of improved performance. See the [D3D12](docs/D3D12.md), [Vulkan](docs/VULKAN.md) and [OpenGL](docs/OPENGL.md) notes.
 
-## **Current Status**
+Native stream resolution is the default. The preview toolbar's Settings menu offers **75%** and **50%** stream resolution for the next connection only. These reduce transmitted resolution without changing Windows monitor dimensions. The choice is not saved and resets to Native after use, failure or app exit. There is no automatic quality switching under load.
 
-SideScreen is actively developed and tested on a Windows desktop and Surface Book 2. Automated checks cover protocol bounds, authentication, input transport, display reconfiguration, reconnects, window controls, tray behavior and packaged apps. Physical pen use has also been tested; individual hardware/app combinations still need acceptance testing.
+Client/server input permissions and debug options are in the shared Settings page. Stop the corresponding role to change its options. Statistics are off by default and report local receive/decode/presentation measurements, not end-to-end latency.
 
-**Not implemented yet:** system audio, microphone passthrough, Windows+K/Miracast, IPv6 transport, automatic Client reconnection, ARM64 packages and production driver signing/distribution. The driver currently offers 720p, 1080p and 3000×2000 modes with rotation; arbitrary panel modes are not guaranteed.
+## Input and current limits
 
-## **Troubleshooting**
+Mouse, keyboard, multi-touch and exposed pen pressure, tilt, buttons, inversion and eraser data are supported. Actual behavior depends on the input device, Windows APIs and the host application. Arbitrary vendor pen features and legacy WinTab support are not guaranteed.
 
-- **No connection:** use the Server's IPv4 address and verify the PCs can reach each other. The Server opens a scoped TCP 43824 rule when started. Restart Driver after changing local addresses or adapters.
-- **Driver startup fails after connecting:** verify the development virtual-display driver is installed. App installation alone does not install the driver.
-- **A blank desktop:** move a window onto the new monitor; SideScreen extends the desktop rather than mirroring the primary screen.
-- **A window seems gone after closing setup:** a running Server stays in the notification area. Reopen it there, or use **Exit** to stop everything. Client-only and idle windows close fully.
-- **Updating:** the installer closes SideScreen and waits for its driver runtime and sessions to stop before replacing files. The Finish page offers **Launch SideScreen**, checked by default; silent installs do not launch it. For portable updates, exit SideScreen first. Update both endpoints together.
+Windows has one shared cursor and keyboard focus. Multiple clients extend the same desktop; they are not independent user sessions. Input cleanup releases session-owned keys, buttons and contacts on disconnect.
 
-## **Building**
+Not implemented: system audio, microphone forwarding, Windows+K/Miracast, IPv6 transport, automatic client reconnection, ARM64/Linux/macOS builds, and DLSS/upscaling/frame generation. Custom LAN connections do not appear in Windows Cast.
 
-Install Visual Studio C++ desktop tools with CMake, Windows SDK 10.0.26100, and Python 3. Build from PowerShell:
+## Uninstall
+
+- Uninstall **SideScreen** to remove the per-user app. Its uninstaller offers **Remove saved settings on this PC**, unchecked by default. Settings are also used by portable copies.
+- Uninstall **SideScreen Virtual Display Driver** separately to remove driver packages and certificate entries that its installer added. Administrator permission is required. Stop sessions first; other users and portable servers on this PC also depend on this driver.
+- Pre-existing driver packages and certificate trust are preserved. Development drivers installed with older manual scripts are not automatically adopted or removed.
+
+The driver uninstaller keeps its files and ownership records if removal fails so you can retry. See [driver installation](docs/DRIVER-INSTALLATION.md) for logs, silent options and recovery.
+
+## Build and verification
+
+The implementation uses C++20, native Windows graphics/input APIs, and C++/WinRT with WinUI 3. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.
 
 ```powershell
 ./scripts/build-apps.ps1
+./scripts/build-driver.ps1
+./scripts/package-driver.ps1
+./scripts/build-driver-installer.ps1
 python scripts/package_apps.py
-./scripts/package-installers.ps1  # requires Inno Setup 6
-python scripts/verify_packages.py
+./scripts/package-installers.ps1
 ```
 
-Outputs go to `out/dist`. NuGet dependencies are locked; the native engine uses C++20 and D3D11, and the setup windows use C++/WinRT with WinUI 3. See [the development guide](docs/DEVELOPMENT.md) for detailed requirements and tests.
+Outputs go to `out/dist`. Driver packaging creates a new development signing identity and refuses to overwrite an existing frozen package. Build scripts do not install the driver or trust its certificate.
 
-## **Prereleases**
+CI builds the app and driver, checks packages and installer behavior, and publishes a prerelease after a PR merges into `main`. Driver-store/trust integration tests run only on disposable CI machines. GPU rendering, runtime driver loading, physical input and responsiveness require real hardware checks. See [development](docs/DEVELOPMENT.md), [release maintenance](docs/RELEASING.md), and [driver installation](docs/DRIVER-INSTALLATION.md).
 
-Pull requests build and test the unified app. After a PR merges into `main`, GitHub Actions builds the merge commit and publishes a new prerelease with one portable ZIP, one installer and SHA-256 checksums. A direct push to `main` builds but does not publish; maintainers can also run the workflow manually on `main`.
+Tags use UTC calendar dates, for example `v2026.11.03-pre.31.1`. Stable releases use date tags and a descriptive release title. Prereleases remain available until explicitly approved for removal.
 
-Prereleases use date tags such as `v2026.11.02-pre.14.1`, which also serve as their release titles. Stable releases use a date tag such as `v2026.11.02` and a friendly name such as **The Elbow Room Update**, explained in the release notes. A failed build never publishes a partial release. See [release maintenance](docs/RELEASING.md).
+## Documentation
 
-## **Development**
+- [Driver installation and troubleshooting](docs/DRIVER-INSTALLATION.md)
+- [Extended display implementation and development history](docs/EXTENDED-DISPLAY.md)
+- [Direct-IP networking](docs/NETWORKING.md)
+- [Security model](docs/SECURITY.md)
+- [Touch, pen and input](docs/INPUT.md)
+- [Native-resolution measurements](docs/NATIVE-DISPLAY.md)
+- [Roadmap](docs/ROADMAP.md)
 
-| Guide | Contents |
-|:---|:---|
-| [Desktop apps](docs/DESKTOP-APPS.md) | Pairing, lifecycle, window controls and validation |
-| [Networking](docs/NETWORKING.md) | Direct IP, static Ethernet and routing |
-| [Security](docs/SECURITY.md) | Authentication, permissions and firewall scope |
-| [Extended display](docs/EXTENDED-DISPLAY.md) | Driver status, setup and rollback |
-| [Native display](docs/NATIVE-DISPLAY.md) | Native-resolution measurements and limits |
-| [Input](docs/INPUT.md) | Touch, pen and input cleanup |
-| [Roadmap](docs/ROADMAP.md) | Remaining features and feasibility gates |
+## Credits and licensing
 
-## **Credits & Licensing**
+Created by [EEkebin](https://github.com/EEkebin). Third-party dependencies and notices are listed in [third_party](third_party/README.md) and included in the downloads. The driver derives from Microsoft's indirect-display sample and includes its license and attribution.
 
-Created by **[EEkebin](https://github.com/EEkebin)**. Built with Microsoft's Windows graphics and UI platforms, Mbed TLS, and the dependencies listed in [third_party](third_party/README.md). Bundles include dependency license notices.
-
-A project-wide open-source license has not been selected. Third-party components retain their own licenses. SideScreen is an independent project and is not affiliated with Microsoft.
+A project-wide open-source license has not been selected. Third-party components retain their own licenses. SideScreen is independent of Microsoft.

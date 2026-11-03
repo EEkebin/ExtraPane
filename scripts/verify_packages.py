@@ -14,7 +14,7 @@ for role in ['SideScreen']:
  with zipfile.ZipFile(archive) as z:
   names=z.namelist();prefix=role+'/'
   assert z.read(prefix+'version.txt').decode().strip()==version
-  for required in [role+'.exe','dm-view.exe','SideScreen.Service.exe','dm-display.exe','SideScreen.ico','README.txt','manifest.json']:
+  for required in [role+'.exe','dm-view.exe','SideScreen.Service.exe','SideScreen.DriverSetup.exe','dm-display.exe','SideScreen.ico','README.txt','manifest.json']:
    assert prefix+required in names,required
   for notice in ['LICENSE.md','LICENSES/Apache-2.0.txt','LICENSES/MIT.txt']:
    assert prefix+'Licenses/vulkan-headers/'+notice in names,'Missing Vulkan-Headers notice'

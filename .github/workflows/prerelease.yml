@@ -85,6 +85,12 @@ jobs:
       - name: Build apps and run engine tests
         shell: pwsh
         run: ./scripts/build-apps.ps1
+      - name: Build and package server driver
+        shell: pwsh
+        run: |
+          ./scripts/build-driver.ps1
+          ./scripts/package-driver.ps1
+          ./scripts/build-driver-installer.ps1
       - name: Package portable apps
         run: python scripts/package_apps.py
       - name: Build installers
@@ -92,6 +98,8 @@ jobs:
         run: ./scripts/package-installers.ps1
       - name: Verify release artifacts
         run: python scripts/verify_packages.py
+      - name: Verify server install and driver ownership
+        run: python scripts/test_driver_installer.py
       - name: Include release metadata
         shell: pwsh
         run: Copy-Item release-metadata.json out/dist/release-metadata.json
