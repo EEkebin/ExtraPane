@@ -18,6 +18,11 @@ add_library(dm_probe_protocol STATIC core/protocol/probe.cpp core/protocol/video
 target_include_directories(dm_probe_protocol PUBLIC core/protocol/include)
 target_compile_features(dm_probe_protocol PUBLIC cxx_std_20)
 
+if(APPLE)
+  enable_testing()
+  add_subdirectory(platform/macos)
+  return()
+endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   option(BUILD_TESTING "Build tests (currently available on Windows only)" OFF)
   if(BUILD_TESTING)

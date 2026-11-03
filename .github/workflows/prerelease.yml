@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      macos_only:
+        description: Validate macOS only (never publishes a release)
+        type: boolean
+        default: false
       android_only:
         description: Validate Android only (never publishes a release)
         type: boolean
@@ -86,7 +90,7 @@ jobs:
           if-no-files-found: error
   build:
     needs: metadata
-    if: inputs.linux_only != true && inputs.android_only != true
+    if: inputs.linux_only != true && inputs.android_only != true && inputs.macos_only != true
     runs-on: windows-2025
     timeout-minutes: 45
     env:
@@ -165,13 +169,13 @@ jobs:
           if-no-files-found: error
   linux:
     needs: metadata
-    if: inputs.android_only != true
+    if: inputs.android_only != true && inputs.macos_only != true
     uses: ./.github/workflows/linux-appimage.yml
     with:
       version: ${{ needs.metadata.outputs.version }}
   android:
     needs: metadata
-    if: inputs.linux_only != true
+    if: inputs.linux_only != true && inputs.macos_only != true
     uses: ./.github/workflows/android.yml
     with:
       version: ${{ needs.metadata.outputs.version }}
@@ -179,9 +183,15 @@ jobs:
     secrets:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  macos:
+    needs: metadata
+    if: inputs.linux_only != true && inputs.android_only != true
+    uses: ./.github/workflows/macos.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
   publish:
-    needs: [metadata, build, linux, android]
-    if: needs.metadata.outputs.publish == 'true' && inputs.linux_only != true && inputs.android_only != true
+    needs: [metadata, build, linux, android, macos]
+    if: needs.metadata.outputs.publish == 'true' && inputs.linux_only != true && inputs.android_only != true && inputs.macos_only != true
     runs-on: ubuntu-latest
     permissions:
       contents: write
