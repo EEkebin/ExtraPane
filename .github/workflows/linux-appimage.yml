@@ -1,0 +1,66 @@
+name: Linux AppImage
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Development artifact version (does not publish a release)
+        required: true
+        default: '2026.11.03-pre.0'
+        type: string
+permissions:
+  contents: read
+jobs:
+  appimage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: archlinux:base@sha256:ece6c971fec3c532fd508bce299a446deaf469feecbfe7c353e995bc1a5e7bba
+    env:
+      EXTRAPANE_VERSION: ${{ inputs.version }}
+      EXTRAPANE_BUILD_JOBS: '2'
+    steps:
+      - name: Install snapshot dependencies
+        run: |
+          printf 'Server = https://archive.archlinux.org/repos/2026/11/03/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist
+          pacman -Syyuu --noconfirm --needed base-devel cmake ninja pkgconf git python \
+            qt6-base qt6-declarative qt6-wayland qt6-tools openssl gstreamer \
+            gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugin-qml6 gst-plugin-pipewire \
+            patchelf fuse2 squashfs-tools xorg-server-xvfb xorg-xauth mesa
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate version and build
+        run: |
+          python scripts/release_version.py
+          cmake --preset linux-release -DEXTRAPANE_LINUX_TESTS=ON
+          cmake --build --preset linux-release --parallel 2
+          QT_QPA_PLATFORM=offscreen out/build/linux-release/platform/linux/extrapane-linux-input-check
+      - name: Prepare tools and dependency notices
+        run: python scripts/prepare_linux_ci.py
+      - name: Package AppImage
+        run: |
+          python scripts/package_linux.py --tools-lock out/linux-tools/tools.lock.json \
+            --licenses-dir out/linux-notices --qmake /usr/bin/qmake6 \
+            --plugins-dir /usr/lib/gstreamer-1.0 --helpers-dir /usr/lib/gstreamer-1.0
+          tar -czf "out/dist-linux/ExtraPane-${EXTRAPANE_VERSION}-linux-dependencies.tar.gz" -C out/linux-notices .
+      - name: Check portable startup outside build tree
+        run: xvfb-run -a python scripts/check_linux_appimage.py "out/dist-linux/ExtraPane-${EXTRAPANE_VERSION}-linux-x86_64.AppImage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ExtraPane-Linux-${{ inputs.version }}
+          path: |
+            out/dist-linux/*.AppImage
+            out/dist-linux/*.sha256
+            out/dist-linux/*-linux-dependencies.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: linux-build-diagnostics
+          path: out/dist-linux/*.log
+          if-no-files-found: ignore
