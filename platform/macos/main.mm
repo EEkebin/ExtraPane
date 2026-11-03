@@ -109,8 +109,11 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
     self.controls=[NSStackView stackViewWithViews:@[self.address,self.routes,button(@"Refresh",self,@selector(refresh:)),self.connectButton,button(@"Disconnect",self,@selector(disconnect:)),button(@"Settings",self,@selector(settings:)),button(@"About",self,@selector(about:))]];self.controls.spacing=8;
     [root addArrangedSubview:self.controls];self.status=label(@"Client ready. macOS hosting is not available in this preview.");[root addArrangedSubview:self.status];
     self.video=[[VideoView alloc]initWithFrame:NSMakeRect(0,0,960,550)];self.video.owner=self;[root addArrangedSubview:self.video];[self.video.widthAnchor constraintEqualToAnchor:root.widthAnchor constant:-24].active=YES;[self.video.heightAnchor constraintGreaterThanOrEqualToConstant:240].active=YES;
-    self.statistics=label(@"");self.statistics.hidden=YES;[root addArrangedSubview:self.statistics];[root addArrangedSubview:label(@"F10 controls · F11 fullscreen · F8 pause input · Ctrl+Shift+Q disconnect")];
-    NSMenu* menu=[NSMenu new];NSMenuItem* appItem=[NSMenuItem new];[menu addItem:appItem];NSMenu* appMenu=[NSMenu new];[appMenu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@"q"];appItem.submenu=appMenu;NSApp.mainMenu=menu;
+    self.statistics=label(@"");self.statistics.hidden=YES;[root addArrangedSubview:self.statistics];[root addArrangedSubview:label(@"F10 controls · Control+Command+F fullscreen · F8 pause input · Ctrl+Shift+Q disconnect")];
+    NSMenu* menu=[NSMenu new];NSMenuItem* appItem=[NSMenuItem new];[menu addItem:appItem];NSMenu* appMenu=[NSMenu new];[appMenu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@"q"];appItem.submenu=appMenu;
+    NSMenuItem* viewItem=[[NSMenuItem alloc]initWithTitle:@"View" action:nil keyEquivalent:@""];[menu addItem:viewItem];NSMenu* viewMenu=[[NSMenu alloc]initWithTitle:@"View"];viewItem.submenu=viewMenu;
+    NSMenuItem* fullscreen=[viewMenu addItemWithTitle:@"Toggle Full Screen" action:@selector(fullscreen:) keyEquivalent:@"f"];fullscreen.target=self;fullscreen.keyEquivalentModifierMask=NSEventModifierFlagControl|NSEventModifierFlagCommand;
+    NSMenuItem* controls=[viewMenu addItemWithTitle:@"Show Controls" action:@selector(showControls) keyEquivalent:@""];controls.target=self;NSApp.mainMenu=menu;
     [self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];
     if([[NSUserDefaults standardUserDefaults]boolForKey:@"connectOnLaunch"])[self performSelector:@selector(connect:) withObject:nil afterDelay:1];
 }
@@ -119,6 +122,7 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
         char ip[INET_ADDRSTRLEN];inet_ntop(AF_INET,&((sockaddr_in*)a->ifa_addr)->sin_addr,ip,sizeof(ip));if(!dm::mac::ipv4(ip))continue;[self.routes addItemWithTitle:[NSString stringWithFormat:@"%s — %s",a->ifa_name,ip]];self.routes.lastItem.representedObject=[NSString stringWithUTF8String:ip];}freeifaddrs(list);
 }
 - (void)resetInput{heldKeys.clear();heldButtons.clear();if(session)session->input.reset();}
+- (void)fullscreen:(id)sender{(void)sender;[self resetInput];[self.window toggleFullScreen:nil];}
 - (void)showControls{self.controls.hidden=NO;self.paused=YES;self.video.remoteEnabled=NO;[self resetInput];}
 - (void)hideControls {if(session && !self.paused){self.controls.hidden=YES;self.video.remoteEnabled=YES;[self.window makeFirstResponder:self.video];}}
 - (void)disconnect:(id)sender{(void)sender;[NSObject cancelPreviousPerformRequestsWithTarget:self];[self resetInput];self.video.remoteEnabled=NO;if(session){session->cancel();self.status.stringValue=@"Disconnecting…";}}

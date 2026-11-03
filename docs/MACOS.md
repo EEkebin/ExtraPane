@@ -16,11 +16,11 @@ The client requests its current screen's backing-pixel dimensions and a 60 FPS t
 | --- | --- |
 | Show controls and pause remote input | F10 or move the pointer to the top-center strip |
 | Pause/resume remote input | F8 |
-| Fullscreen | F11 or the macOS green window button |
+| Fullscreen | Control+Command+F, View > Toggle Full Screen, or the green window button |
 | Disconnect | Ctrl+Shift+Q or Disconnect |
 | Reception statistics | Settings > Show statistics |
 
-Depending on keyboard settings, use Fn with the function keys. Showing controls pauses input; choose Settings > Resume or F8 to return to the remote display. Controls hide after connection. Closing the window quits the client; there is no idle tray process.
+Depending on keyboard settings, use Fn with F8/F10. macOS may reserve F11/Fn+F11 for Show Desktop, so use Control+Command+F for fullscreen. Showing controls pauses input; choose Settings > Resume or F8 to return to the remote display. Controls hide after connection. Closing the window quits the client; there is no idle tray process.
 
 Mouse movement, buttons, dragging and scrolling are forwarded. Physical keyboard positions map to Windows set-1 scan codes, using the host layout. Command maps to the Windows key; Option maps to Alt. macOS-reserved shortcuts remain local. IME composition, arbitrary vendor/media keys and text injection are not implemented. Trackpad scrolling is mouse input, not native multi-touch. Tablet pressure, tilt, eraser and native pen forwarding are not implemented; devices presenting as ordinary mouse pointers can only provide pointer input.
 

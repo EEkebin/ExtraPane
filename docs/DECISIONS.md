@@ -205,3 +205,5 @@ Package a ZIP and drag-to-Applications DMG. Ad-hoc signing is a preview packagin
 ## Physical Mac automatic-LAN TLS compatibility (2026-11-03)
 
 The M3 Pro test reached TCP but Network.framework rejected the Windows ephemeral certificate with TLS -9808 before the custom verification callback. Set peer authentication explicitly off for this connection, matching product automatic-LAN semantics; preserve TLS 1.3 and do not alter Keychain/system trust. This completed TLS and negotiated 3000x2000. The user confirmed picture and mouse/keyboard input. Surface the underlying Network.framework error for waiting/failed connections instead of reporting a misleading timeout. Keep paired/authenticated modes separate.
+
+The physical Mac test also exposed the F11 Show Desktop conflict. Use the native Control+Command+F menu equivalent and a View > Toggle Full Screen action; preserve the user's system keyboard settings. F11 remains a fallback only when delivered to the app.
