@@ -8,9 +8,11 @@ ExtraPane uses another Windows PC as an extended monitor over Wi-Fi or Ethernet.
 
 [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
-The same app contains Server, Client, Settings and About pages. A PC can perform either role. Up to four clients can connect to one server.
+The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers support up to four clients; the Linux host currently supports one. The Android preview is a client only.
 
 ## Requirements
+
+The following requirements apply to Windows. See [Linux setup](docs/LINUX.md) and [Android setup](docs/ANDROID.md) for those platforms.
 
 - Windows 11 x64 on each PC.
 - A reachable IPv4 connection over Wi-Fi, Ethernet or a direct cable with static addresses. DHCP and internet access are not required for a connection.
@@ -24,7 +26,7 @@ The downloads include the app's WinUI runtime. Users do not need Python, SSH, Vi
 
 ExtraPane was previously named SideScreen. Existing published binaries still carry that name until the next release. The repository and download links now use ExtraPane.
 
-Each release provides an installer, a portable ZIP and `SHA256SUMS.txt`. Use matching releases on both PCs.
+The release workflow produces a Windows installer and portable ZIP, a Linux x86_64 AppImage with dependency notices, and combined `SHA256SUMS.txt`. Use matching releases on both endpoints. Android APKs are development builds for now.
 
 ### Installer
 
