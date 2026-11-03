@@ -4,13 +4,15 @@
 
 <img src="assets/branding/icon.png" alt="ExtraPane icon" width="96" align="right">
 
-ExtraPane uses another Windows PC as an extended monitor over Wi-Fi or Ethernet. The receiving PC can send mouse, keyboard, touch and pen input back to the host.
+ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Windows and Linux can host; a macOS host preview is in development with an initial M3 Pro session reported working. Windows, Linux and Android clients are implemented, with a macOS Universal client preview verified for Windows-host video and mouse/keyboard on an M3 Pro. Mouse, keyboard, touch and pen availability depends on the client and host; see the platform guides below.
 
 [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
-The same app contains Server, Client, Settings and About pages. A PC can perform either role. Up to four clients can connect to one server.
+The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers support up to four clients; the Linux host currently supports one. Android is currently a client only. The macOS development preview adds hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
 
 ## Requirements
+
+The following requirements apply to Windows. See [Linux setup](docs/LINUX.md), [Android setup](docs/ANDROID.md) and [macOS setup](docs/MACOS.md) for those platforms.
 
 - Windows 11 x64 on each PC.
 - A reachable IPv4 connection over Wi-Fi, Ethernet or a direct cable with static addresses. DHCP and internet access are not required for a connection.
@@ -22,9 +24,9 @@ The downloads include the app's WinUI runtime. Users do not need Python, SSH, Vi
 
 ## Install
 
-ExtraPane was previously named SideScreen. Existing published binaries still carry that name until the next release. The repository and download links now use ExtraPane.
+ExtraPane was previously named SideScreen. Older releases retain that name; current packages use ExtraPane. Windows upgrades preserve the existing installation identity and driver ownership.
 
-Each release provides an installer, a portable ZIP and `SHA256SUMS.txt`. Use matching releases on both PCs.
+The release workflow produces a Windows installer and portable ZIP, a Linux x86_64 AppImage with dependency notices, a signed Android client APK, a macOS Universal ZIP/DMG preview, and combined `SHA256SUMS.txt`. Use matching releases on both endpoints. See [Android installation and input support](docs/ANDROID.md).
 
 ### Installer
 
@@ -51,7 +53,7 @@ The current driver uses a development code-signing certificate. It is **not Micr
 
 Setup does not disable Secure Boot or Memory Integrity, enable test-signing mode, or restart Windows automatically. Windows policy may still reject the driver when it loads. Successful package installation does not prove that every Windows configuration can load it. If setup or hosting fails, see [driver installation and troubleshooting](docs/DRIVER-INSTALLATION.md).
 
-Apps and installers are currently unsigned. The bundled driver is development-signed; compatibility on a new PC depends on Windows policy and the hardware in use.
+Windows apps and installers are currently unsigned. The macOS preview is ad-hoc signed, not notarized. The bundled driver is development-signed; compatibility on a new PC depends on Windows policy and the hardware in use.
 
 ## Connect
 
@@ -98,7 +100,7 @@ Mouse, keyboard, multi-touch and exposed pen pressure, tilt, buttons, inversion 
 
 Windows has one shared cursor and keyboard focus. Multiple clients extend the same desktop; they are not independent user sessions. Input cleanup releases session-owned keys, buttons and contacts on disconnect.
 
-Not implemented: system audio, microphone forwarding, Windows+K/Miracast, IPv6 transport, automatic client reconnection, ARM64/Linux/macOS builds, and DLSS/upscaling/frame generation. Custom LAN connections do not appear in Windows Cast.
+Not implemented: system audio, microphone forwarding, Windows+K/Miracast, IPv6 transport, automatic client reconnection, ARM64/macOS builds, and DLSS/upscaling/frame generation. Custom LAN connections do not appear in Windows Cast.
 
 ## Uninstall
 
@@ -109,6 +111,10 @@ Not implemented: system audio, microphone forwarding, Windows+K/Miracast, IPv6 t
 The driver uninstaller keeps its files and ownership records if removal fails so you can retry. See [driver installation](docs/DRIVER-INSTALLATION.md) for logs, silent options and recovery.
 
 ## Build and verification
+
+An Android client is in development. Its first Pixel 8a test received a Windows extended desktop using hardware H.264 decoding; picture and physical touch were user-verified. Android hosting, pen, audio and on-screen keyboard forwarding are not implemented in this slice. See [Android build and validation](docs/ANDROID.md).
+
+Linux x64 development builds can receive a Windows desktop and host a Linux virtual monitor through KDE's Wayland desktop portal. Both directions, including mouse and keyboard input, have been verified in an Arch VM. Linux hosting currently supports one client and uses software H.264 encoding; the portal controls monitor dimensions. Native Linux client touch/pen capture has synthetic checks, but physical devices remain unverified. Published downloads remain Windows-only while AppImage deployment is being validated. See [Linux setup, capabilities and validation](docs/LINUX.md).
 
 The implementation uses C++20, native Windows graphics/input APIs, and C++/WinRT with WinUI 3. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.
 

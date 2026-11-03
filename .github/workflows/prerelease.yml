@@ -7,6 +7,18 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      macos_only:
+        description: Validate macOS only (never publishes a release)
+        type: boolean
+        default: false
+      android_only:
+        description: Validate Android only (never publishes a release)
+        type: boolean
+        default: false
+      linux_only:
+        description: Validate Linux only (never publishes a release)
+        type: boolean
+        default: false
       channel:
         description: Release channel (merged PRs always create prereleases)
         type: choice
@@ -27,14 +39,15 @@ permissions:
   contents: read
   pull-requests: read
 concurrency:
-  group: release-${{ github.ref }}-${{ github.event_name }}
+  group: release-${{ github.ref }}-${{ github.event_name }}-${{ inputs.linux_only && 'linux' || 'all' }}
   cancel-in-progress: false
 jobs:
-  build:
+  metadata:
     runs-on: windows-2025
-    timeout-minutes: 45
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.metadata.outputs.version }}
+      numeric: ${{ steps.metadata.outputs.numeric }}
       publish: ${{ steps.metadata.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +68,8 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_release_version.py
           if($LASTEXITCODE -ne 0){throw 'Release version tests failed'}
+          python -m unittest discover -s tests -p test_publish_release.py
+          if($LASTEXITCODE -ne 0){throw 'Release artifact tests failed'}
           $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID" | ConvertFrom-Json
           if($LASTEXITCODE -ne 0){throw 'Cannot read workflow creation date'}
           $env:RELEASE_DATE=([DateTimeOffset]::Parse($run.created_at)).UtcDateTime.ToString('yyyy-MM-dd')
@@ -68,6 +83,30 @@ jobs:
             $publish=@($prs | Where-Object {$_.merged_at -and $_.base.ref -eq 'main' -and $_.merge_commit_sha -eq $env:GITHUB_SHA}).Count -gt 0
           }
           "publish=$($publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata.json
+          if-no-files-found: error
+  build:
+    needs: metadata
+    if: inputs.linux_only != true && inputs.android_only != true && inputs.macos_only != true
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      EXTRAPANE_VERSION: ${{ needs.metadata.outputs.version }}
+      EXTRAPANE_NUMERIC_VERSION: ${{ needs.metadata.outputs.numeric }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: .
       - name: Check installer behavior before building apps
         shell: pwsh
         run: |
@@ -121,16 +160,38 @@ jobs:
         run: Copy-Item release-metadata.json out/dist/release-metadata.json
       - uses: actions/upload-artifact@v4
         with:
-          name: ExtraPane-${{ steps.metadata.outputs.version }}
+          name: ExtraPane-${{ needs.metadata.outputs.version }}
           path: |
             out/dist/release-metadata.json
-            out/dist/ExtraPane-${{ steps.metadata.outputs.version }}-*.zip
-            out/dist/ExtraPane-${{ steps.metadata.outputs.version }}-*.exe
+            out/dist/ExtraPane-${{ needs.metadata.outputs.version }}-*.zip
+            out/dist/ExtraPane-${{ needs.metadata.outputs.version }}-*.exe
             out/dist/SHA256SUMS.txt
           if-no-files-found: error
+  linux:
+    needs: metadata
+    if: inputs.android_only != true && inputs.macos_only != true
+    uses: ./.github/workflows/linux-appimage.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
+  android:
+    needs: metadata
+    if: inputs.linux_only != true && inputs.macos_only != true
+    uses: ./.github/workflows/android.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
+      sign: ${{ github.event_name != 'pull_request' }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  macos:
+    needs: metadata
+    if: inputs.linux_only != true && inputs.android_only != true
+    uses: ./.github/workflows/macos.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
   publish:
-    needs: build
-    if: needs.build.outputs.publish == 'true'
+    needs: [metadata, build, linux, android, macos]
+    if: needs.metadata.outputs.publish == 'true' && inputs.linux_only != true && inputs.android_only != true && inputs.macos_only != true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -140,9 +201,22 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: ExtraPane-${{ needs.build.outputs.version }}
+          name: ExtraPane-${{ needs.metadata.outputs.version }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: ExtraPane-Linux-${{ needs.metadata.outputs.version }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: ExtraPane-Android-${{ needs.metadata.outputs.version }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: ExtraPane-macOS-${{ needs.metadata.outputs.version }}
           path: dist
       - name: Publish release
+        # All platform artifacts must be present before publication.
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

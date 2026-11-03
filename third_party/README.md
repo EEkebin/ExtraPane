@@ -1,5 +1,9 @@
 # Native TLS dependency
 
+## Linux source dependencies (not shipped yet)
+
+The Linux client source links dynamically to Qt 6, OpenSSL 3 and GStreamer. Its AppImage packaging draft requires exact hash-locked packaging tools and reviewed notices for the selected Qt/GStreamer/OpenSSL and codec dependency set. No Linux artifact has been built, audited or published. See [Linux packaging status](../docs/LINUX.md). These additions do not change the Windows Mbed TLS dependency described below.
+
 The secure prototypes statically link the official **Mbed TLS 4.1.1** release, which includes **TF-PSA-Crypto 1.1.1**. CMake downloads the complete upstream release tarball with SHA256 verification; see `cmake/Dependencies.cmake`. No upstream source is edited.
 
 - Source: https://github.com/Mbed-TLS/mbedtls/releases/tag/mbedtls-4.1.1

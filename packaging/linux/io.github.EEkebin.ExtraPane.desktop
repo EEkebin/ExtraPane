@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ExtraPane
+Comment=Use this computer as an extended display over your local network
+Exec=ExtraPane
+Icon=extrapane
+Terminal=false
+Categories=Network;RemoteAccess;
+StartupWMClass=ExtraPane

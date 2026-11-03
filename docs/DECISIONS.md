@@ -1,5 +1,17 @@
 # Decisions, assumptions, and evidence
 
+## Android receiver milestone (2026-11-03)
+
+The user accepted the Linux handoff and authorized installing/testing an Android client on their ADB-connected Pixel 8a. Keep C++20 shared protocol validation through JNI; use Android's platform UI, TLS sockets and MediaCodec Surface decoding for platform integration. First slice requests native touch, mouse and physical keyboard, with pen/audio/Android hosting explicitly unavailable. API 30 minimum, ARM64 and x86_64, Gradle 8.13/AGP 8.13.2 and NDK 27.2.12479018 are pinned. The first Wi-Fi Windows-host session negotiated 1080x1920 and the Pixel's hardware H.264 decoder at approximately 60 received FPS. The user confirmed the picture and physical touch work. Continue lifecycle and packaged build checks before claiming a release.
+
+The user also requested the missing Linux release automation. Both prerelease and stable publication must include the AppImage and dependency notices, with combined checksums, and depend on successful Windows and Linux builds.
+
+## Current Linux milestone (2026-11-03)
+
+Later user authorization supersedes the historical source-only restrictions below: complete Linux hosting, native input and deployment before Android. Arch KDE/Wayland builds and Windows interoperability have been exercised in both directions. The user confirmed Linux-host to Windows-client video and mouse/keyboard. Native Linux touch/pen capture passes synthetic checks; physical devices remain unverified.
+
+Use the standard ScreenCast/RemoteDesktop portal for a session-owned virtual output and PipeWire capture. Linux hosting currently supports one client, portal-controlled dimensions (1920x1080 on tested KDE) and software OpenH264. Portal mouse/keyboard/touch injection is implemented; pen injection is not exposed and is not granted. Closing the app ends the Linux host; tray hosting and hardware encoding remain future work. Keep these limits visible instead of claiming Windows feature parity. AppImage generation succeeded; packaged runtime and broader distribution validation remain deployment gates. See LINUX.md for current evidence; earlier entries are chronological decisions, not current capability claims.
+
 Initialized 2026-11-01. Direct-IP, paired TLS, and GPU-resident raw-pixel H264 at 720p30 pass on both Surface Book 2 GPUs. Current GPU runs decoded 300 frames each and presented 295 Intel / 296 GTX, with no application raw-pixel readbacks/uploads. Local interruption/restart and GPU color/geometry checks pass. The latest human visual check is pending; the user confirmed the earlier JPEG image. Local virtual-display installation and session-lifetime tests pass; Native mouse/keyboard/touch/pen forwarding passes generated laptop-to-host tests; the repaired physical pen session is user-confirmed. Native 3000x2000 nominal60 now delivers about 59 fps in the measured diagnostic workload (see NATIVE-DISPLAY.md); individual pen/touch features, drawing-app acceptance, audio and production driver distribution remain pending. See GPU.md and the development/security notes.
 
 ## Confirmed user requirements
@@ -153,6 +165,12 @@ Development certificate trust requires explicit consent. Keep the app per-user a
 
 Rewrite the README as straightforward, accurate usage and installation documentation. Publish a prerelease for the user to verify this change. Retain all existing prereleases until the user explicitly gives the green light to delete them and publish a date-tagged stable release. No stable publication or prerelease deletion is authorized before that approval.
 
+## Linux x64 AppImage client
+
+After the Windows stable release, the user selected Linux AppImage development and explicitly prohibited testing while playing a game. Start with a Windows host and Linux receiver, targeting KDE Plasma/Wayland first; Linux hosting follows as a separate milestone. Do source work only until testing is authorized: no builds, execution, GPU/connection tests, display changes, driver operations or CI dispatches. macOS remains deferred.
+
+Retain C++20 and the shared protocol 9 serializer. Use Qt 6/Qt Quick for the Linux app, OpenSSL TLS 1.3 for Windows automatic-LAN interoperability, and GStreamer H.264 decoding/OpenGL presentation through qml6glsink. Keep the media/network path off the UI thread and queues bounded. Mouse/keyboard are the initial return-input families; do not advertise touch/pen before native implementation. The Linux Server page stays disabled until real virtual-monitor hosting exists. See LINUX.md for the source-only status, packaging draft and acceptance gates. Do not publish an AppImage before those gates and dependency packaging are validated.
+
 ## ExtraPane rename (2026-11-03)
 
 The user selected ExtraPane to distinguish this project from another display application named SideScreen. Rename app branding, executable/artifact names, build metadata, packaging, documentation and the repository without changing the wire protocol or driver device identity.
@@ -160,3 +178,55 @@ The user selected ExtraPane to distinguish this project from another display app
 Keep the legacy installer AppIds, cross-version exclusion mutexes, Windows settings keys and fixed privileged `Program Files\SideScreen Driver` directory. These are compatibility identifiers, not visible product names. This retains existing install locations and driver package/certificate ownership backups, avoiding a second independently registered driver manager. The new manager accepts original certificate filenames in verified ownership backups. Installers close both old and new app window classes, remove known obsolete app filenames/shortcuts and install the new names. Fresh per-user app installations default to ExtraPane; upgrades reuse their existing directory.
 
 Published releases, tags, checksums and signed packages remain historical artifacts; do not relabel old binaries as rebuilt ExtraPane versions. The rename and Linux source have not been built or tested. No app launches, GPU probes, driver operations or CI runs are authorized during the user's current no-testing period.
+
+## Linux VM build authorization (2026-11-03)
+
+The user supplied an Arch Linux KDE/Wayland Hyper-V VM and explicitly approved installing dependencies and building the Linux client with two jobs. This supersedes the source-only restriction for that VM build. Compilation and linking succeeded; fix the compiler formatting warnings and record actual dependencies in LINUX.md. App launches, streaming/input tests, Windows builds, driver operations, display changes and release publication are outside this authorization. AppImage packaging and real-hardware performance remain unverified.
+
+## Linux connection verification and toolbar fixes (2026-11-03)
+
+The user authorized a Windows-to-Arch VM connection test and confirmed video, mouse/keyboard, reconnect and fullscreen. Screenshots and feedback identified mixed theme contrast and unreadable toolbar controls. Fix the Linux UI using a consistent Qt Controls style, explicit toolbar contrast and local F10/F8 input suspension. Do not interpret VM mouse feedback as proof of a transport fault or claim Linux touch/pen support based on synthetic events. Rebuild on the VM, preserving the current session until the user restarts the client.
+
+
+## Android stylus, keyboards and distribution (2026-11-03)
+
+Implement native Android stylus forwarding and USB/Bluetooth keyboard handling before macOS. Preserve actual reported pressure, tilt, hover, primary barrel and eraser semantics; do not manufacture barrel rotation from Android direction. Reset owned input on input-device removal/change. Keep unsupported axes/buttons and host grants visible. Android hosting remains deferred: MediaProjection screen sharing is distinct from an extended desktop and remote control needs separate platform permission/integration.
+
+Build and release adds a persistently signed Android APK with pinned toolchain, certificate verification and numeric upgrade versioning. Fork PRs never receive release signing secrets. macOS (Apple Silicon and Intel) follows Android user verification. Physical Android stylus verification remains pending; synthetic event tests are not hardware evidence.
+
+
+## macOS receiver milestone (2026-11-03)
+
+The user approved macOS after the Android input/packaging checkpoint and specified Apple Silicon plus Intel. Use Objective-C++20/AppKit, Network.framework TLS 1.3 and Apple's CoreMedia/AVSampleBufferDisplayLayer H.264 path, retaining the shared C++ wire protocol. Build Universal arm64/x86_64 for macOS 12+ and validate natively on both hosted architectures. First implement receiving with mouse/keyboard; Mac hosting and iOS remain separate milestones. Trackpad gestures are not evidence of native remote touch, and tablet mouse events are not native pen support.
+
+Package a ZIP and drag-to-Applications DMG. Ad-hoc signing is a preview packaging measure, not Developer ID signing/notarization. Do not change Gatekeeper settings or imply notarization. Real M3 Pro connection, presentation and input validation require the user's Mac access; hosted build/codec tests do not replace them. Stop at this receiver checkpoint for user verification before hosting or iOS.
+
+
+## Physical Mac automatic-LAN TLS compatibility (2026-11-03)
+
+The M3 Pro test reached TCP but Network.framework rejected the Windows ephemeral certificate with TLS -9808 before the custom verification callback. Set peer authentication explicitly off for this connection, matching product automatic-LAN semantics; preserve TLS 1.3 and do not alter Keychain/system trust. This completed TLS and negotiated 3000x2000. The user confirmed picture and mouse/keyboard input. Surface the underlying Network.framework error for waiting/failed connections instead of reporting a misleading timeout. Keep paired/authenticated modes separate.
+
+The physical Mac test also exposed the F11 Show Desktop conflict. Use the native Control+Command+F menu equivalent and a View > Toggle Full Screen action; preserve the user's system keyboard settings. F11 remains a fallback only when delivered to the app.
+
+The user confirmed native Mac fullscreen works, then identified that hovering to reveal controls appeared to freeze the stream. The reveal handler was setting the persistent input-pause flag. Reveal must not pause input; F8 is the explicit pause control, dialogs suspend input only while open, and hover keeps the toolbar visible. The user confirmed continued mouse/keyboard input after this fix.
+
+
+## macOS virtual-monitor host (2026-11-03, implementation in progress)
+
+The user explicitly requested a real extended Mac desktop, matching the other hosts. Use runtime-checked CGVirtualDisplay for monitor creation, with a separate same-bundle owner process per connection so process/pipe lifetime bounds ownership. This undocumented interface is isolated and may break on future macOS versions; no App Store or long-term private-API compatibility claim is made. A physical M3 Pro probe created an independent non-primary 1280x720 display and returned the online display list to its original count afterward. Probe cleanup must enumerate displays: CGDisplayIsOnline returned -1 for a retired ID and initially caused a false failure.
+
+The host requires macOS 13+, Screen Recording permission, and optional Accessibility permission for mouse/keyboard. ScreenCaptureKit supplies GPU-backed pixels to VideoToolbox H.264. Reuse the pinned Mbed TLS dependency for an ephemeral TLS 1.3 listener without Keychain trust or saved pairings. Bind to a selected connected LAN address and create no monitor until a valid client request. Support four client slots, each with independent display/capture/input cleanup. Keep the listener alive when clients leave. Reconfiguration changes the offer/epoch on the same connection; coordinate mapping follows the current display arrangement. Native Mac touch/pen injection and audio remain unsupported.
+
+Physical capture/input, simultaneous clients, reconnect and packaging gates remain open until tested. Do not substitute mirroring of the built-in screen for a virtual-monitor failure.
+
+The user enabled both Mac permissions and reported the host session working, then requested natural shortcut modifiers. Incoming Mac-host keys now map Ctrl to Command, Windows/Super to Control, and Alt to Option, preserving sides. Apply the mapping before session ownership tracking so key-up/reset uses the same native key as key-down. Client wire encoding stays unchanged. Physical shortcut verification remains pending.
+
+The modifier build passed native protocol/input/media checks on the M3 Pro. During replacement, SIGTERM stopped the listener and removed the session monitor (online display count returned to one), but AppKit termination waited inside the dispatch-source callback. Schedule termination through the run loop instead of entering the termination wait from a main-dispatch callback.
+
+Automatic route now works for Mac hosting: enumerate the same connected physical IPv4 addresses shown in the UI, then bind a separate listener to each, sharing four session slots. Explicit selection binds only that address. Never bind a wildcard address or require a default internet route. The listener snapshot updates on server restart; Refresh preserves a still-present explicit selection.
+
+Host/client Universal deployment validation passed in run 41738412800 on both hosted Mac architectures, including extracted ZIP app checks and DMG integrity. This validates packaging, not a physical Intel host. At the user's request, ExtraPane was stopped and removed from the M3 Pro, along with its entire preview workspace, settings/logs and app-scoped privacy permissions. No app process, listener or virtual monitor remained; do not reinstall there without new authorization.
+
+## Four-platform release authorization (2026-11-03)
+
+The user deferred iOS before implementation and explicitly requested merging the completed Windows, Linux, Android and macOS work and publishing a release. Consolidate the platform branches, keep all four package jobs required for publication, preserve the existing Android signing identity and Windows upgrade identifiers, and retain the documented preview limitations. No installation on the user's Mac is authorized.

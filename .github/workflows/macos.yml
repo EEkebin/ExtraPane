@@ -1,0 +1,41 @@
+name: macOS Universal app
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      EXTRAPANE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build both architectures
+        run: |
+          cmake -S . -B out/build/macos -DCMAKE_BUILD_TYPE=Release '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+          cmake --build out/build/macos --parallel 3
+      - name: Native protocol and media checks
+        run: ctest --test-dir out/build/macos --output-on-failure
+      - name: Package Universal app
+        if: matrix.runner == 'macos-15'
+        run: python3 scripts/package_macos.py
+      - name: Verify packaged app outside build directory
+        if: matrix.runner == 'macos-15'
+        run: python3 scripts/verify_macos_package.py
+      - uses: actions/upload-artifact@v4
+        if: matrix.runner == 'macos-15'
+        with:
+          name: ExtraPane-macOS-${{ inputs.version }}
+          path: out/dist-macos/*
+          if-no-files-found: error
