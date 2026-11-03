@@ -21,6 +21,9 @@ public final class ProtocolChecks extends Instrumentation {
         InputQueue q=new InputQueue();q.grant(15);RemoteInput r=new RemoteInput(q,(e,a)->true);r.enable(true);q.take();
         MotionEvent e=pen(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_STYLUS,0);r.motion(view,e);e.recycle();int[] p=q.take();
         require(p.length==15 && p[0]==4 && p[1]==1 && p[2]==3 && p[8]==512 && p[9]==45 && p[10]==0 && p[12]==13 && p[6]==1,"Native pen axes and barrel");Protocol.input(1,1,p);
+        e=pen(MotionEvent.ACTION_MOVE,MotionEvent.TOOL_TYPE_STYLUS,0);
+        MotionEvent.PointerCoords history=new MotionEvent.PointerCoords();e.getPointerCoords(0,history);history.x=70;history.pressure=.75f;e.addBatch(3,new MotionEvent.PointerCoords[]{history},0);
+        r.motion(view,e);e.recycle();p=q.take();require(p.length==30 && p[8]==512 && p[23]==768 && p[4]<p[19],"Pen history retains pressure and ordering");Protocol.input(1,2,p);
         e=pen(MotionEvent.ACTION_UP,MotionEvent.TOOL_TYPE_STYLUS,MotionEvent.FLAG_CANCELED);r.motion(view,e);e.recycle();p=q.take();require(p[1]==3 && p[2]==0 && p[8]==0,"Palm cancellation");Protocol.input(1,2,p);
         e=pen(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_ERASER,0);r.motion(view,e);e.recycle();p=q.take();require(p[6]==7,"Eraser semantics");Protocol.input(1,3,p);
         r.reset();q.take();e=pen(MotionEvent.ACTION_MOVE,MotionEvent.TOOL_TYPE_STYLUS,0);r.motion(view,e);e.recycle();require(q.take().length==0,"No orphan pen contact");
