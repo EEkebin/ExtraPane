@@ -18,6 +18,26 @@ ApplicationWindow {
     palette.buttonText: "#edf1f8"
     palette.highlight: "#6a9dff"
     palette.highlightedText: "#10151f"
+    palette.toolTipBase: "#253349"
+    palette.toolTipText: "#edf1f8"
+    palette.placeholderText: "#aab8cc"
+    property bool inputPaused: false
+    component ToolbarButton: ToolButton {
+        id: control
+        font.pixelSize: 12
+        padding: 8
+        contentItem: Text {
+            text: control.text; font: control.font; color: "#edf1f8"
+            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle {
+            radius: 6
+            color: control.down ? "#45638d" : control.hovered ? "#354b69" : "#253349"
+            border.color: "#516681"
+        }
+    }
+    function pauseInput() { receiver.releaseInput(); inputPaused = true; revealToolbar() }
+    function toggleInput() { receiver.releaseInput(); inputPaused = !inputPaused; revealToolbar() }
     property int page: 1
     property int nextScale: 0
     property bool toolbarVisible: true
@@ -30,12 +50,13 @@ ApplicationWindow {
     function revealToolbar() { toolbarVisible = true; hideToolbar.restart() }
     Shortcut { sequence: "Ctrl+Shift+Q"; onActivated: receiver.disconnectFromServer() }
     Shortcut { sequence: "F11"; onActivated: root.toggleFullscreen() }
-    Shortcut { sequence: "F10"; onActivated: root.revealToolbar() }
+    Shortcut { sequence: "F10"; onActivated: root.pauseInput() }
+    Shortcut { sequence: "F8"; onActivated: root.toggleInput() }
     onActiveChanged: { if (!active) receiver.releaseInput() }
     Timer {
         id: hideToolbar
         interval: 3000
-        onTriggered: { if (!settingsMenu.opened && !toolbarHover.hovered) root.toolbarVisible = false; else restart() }
+        onTriggered: { if (!root.inputPaused && !settingsMenu.opened && !toolbarHover.hovered) root.toolbarVisible = false; else restart() }
     }
     RowLayout {
         anchors.fill: parent; spacing: 0
@@ -119,7 +140,10 @@ ApplicationWindow {
                     }
                     Rectangle {
                         id: viewport; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
-                        Loader { anchors.fill: parent; active: receiver.availability.length === 0; source: "qrc:/Video.qml" }
+                        Loader {
+                            anchors.fill: parent; active: receiver.availability.length === 0; source: "qrc:/Video.qml"
+                            onLoaded: item.inputPaused = Qt.binding(function() { return root.inputPaused || root.toolbarVisible || settingsMenu.opened })
+                        }
                         Label { anchors.centerIn: parent; visible: !receiver.active; text: "Connect to a Windows server to extend its desktop."; color: "#9eacc2"; width: parent.width - 48; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
                         Item {
                             anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter
@@ -128,14 +152,16 @@ ApplicationWindow {
                         }
                         Rectangle {
                             id: toolbar
+                            z: 20
                             visible: root.toolbarVisible && receiver.active
                             anchors.top: parent.top; anchors.topMargin: 8; anchors.horizontalCenter: parent.horizontalCenter
-                            width: Math.min(parent.width - 24, 540); height: 48; radius: 12; color: "#ee253349"
+                            width: Math.min(parent.width - 24, 680); height: 48; radius: 12; color: "#ee253349"
                             HoverHandler { id: toolbarHover; acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad }
                             RowLayout {
                                 anchors.fill: parent; anchors.margins: 6
-                                Label { text: "ExtraPane"; leftPadding: 8; Layout.fillWidth: true }
-                                ToolButton {
+                                Label { text: "ExtraPane"; color: "#edf1f8"; visible: viewport.width >= 660; leftPadding: 8; Layout.fillWidth: true }
+                                ToolbarButton { text: root.inputPaused ? "Resume input" : "Pause input"; onClicked: root.toggleInput() }
+                                ToolbarButton {
                                     text: "Settings"
                                     onClicked: { receiver.releaseInput(); settingsMenu.popup() }
                                     Menu {
@@ -147,9 +173,9 @@ ApplicationWindow {
                                         MenuItem { text: "50% on next connection"; checkable: true; checked: root.nextScale === 2; onTriggered: root.nextScale = 2 }
                                     }
                                 }
-                                ToolButton { text: root.fullscreen ? "Windowed" : "Fullscreen"; onClicked: root.toggleFullscreen() }
-                                ToolButton { text: "Minimize"; onClicked: { receiver.releaseInput(); root.showMinimized() } }
-                                ToolButton { text: "Disconnect"; onClicked: receiver.disconnectFromServer() }
+                                ToolbarButton { text: root.fullscreen ? "Windowed" : "Fullscreen"; onClicked: root.toggleFullscreen() }
+                                ToolbarButton { text: "Minimize"; onClicked: { receiver.releaseInput(); root.showMinimized() } }
+                                ToolbarButton { text: "Disconnect"; onClicked: receiver.disconnectFromServer() }
                             }
                         }
                         Rectangle {
@@ -164,7 +190,7 @@ ApplicationWindow {
                         }
                     }
                     Label { visible: !root.fullscreen; text: receiver.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { visible: !root.fullscreen; text: "Ctrl+Shift+Q disconnects · F11 toggles fullscreen · F10 shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { visible: !root.fullscreen; text: "F8 pauses input | Ctrl+Shift+Q disconnects · F11 toggles fullscreen · F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
             Pane {
@@ -184,7 +210,7 @@ ApplicationWindow {
                     anchors.fill: parent; anchors.margins: 24; spacing: 16
                     Label { text: "ExtraPane"; font.pixelSize: 32; font.bold: true }
                     Label { text: "Another screen for your desktop." }
-                    Label { text: "Running version: " + receiver.version }
+                    Label { text: "Development build: " + receiver.version }
                     Button { text: "README"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane#readme") }
                     Button { text: "Releases and changelog"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane/releases") }
                     Button { text: "GitHub repository"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane") }

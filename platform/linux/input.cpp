@@ -92,7 +92,7 @@ Key physicalKey(quint32 native){
 void InputSurface::key(QKeyEvent* e,bool down){
     if(!queue || !(queue->capabilities()&keyboard_cap)){e->ignore();return;}
     // Reserved shortcuts are handled locally and must never leave held modifiers remotely.
-    if(e->key()==Qt::Key_F11 || (e->key()==Qt::Key_Q && e->modifiers().testFlag(Qt::ControlModifier) && e->modifiers().testFlag(Qt::ShiftModifier))){resetInput();e->ignore();return;}
+    if(e->key()==Qt::Key_F8 || e->key()==Qt::Key_F10 || e->key()==Qt::Key_F11 || (e->key()==Qt::Key_Q && e->modifiers().testFlag(Qt::ControlModifier) && e->modifiers().testFlag(Qt::ShiftModifier))){resetInput();e->ignore();return;}
     const Key code=physicalKey(e->nativeScanCode());
     if(!code.vk || (e->isAutoRepeat() && (!down || !keys_.contains(code.vk)))){e->accept();return;}
     if(down)keys_.insert(code.vk);else if(!keys_.erase(code.vk)){e->accept();return;}

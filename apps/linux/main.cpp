@@ -4,6 +4,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
+#include <QQuickStyle>
 #include <QSGRendererInterface>
 #include <gst/gst.h>
 #include <csignal>
@@ -12,6 +13,8 @@ int main(int argc,char** argv){
     std::signal(SIGPIPE,SIG_IGN);
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents,false);
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTabletEvents,false);
+    // A consistent Controls style honors our palette on KDE light and dark desktops.
+    QQuickStyle::setStyle("Fusion");
     QGuiApplication app(argc,argv);
     QCoreApplication::setOrganizationName("ExtraPane");QCoreApplication::setApplicationName("ExtraPane");
     QGuiApplication::setDesktopFileName("io.github.EEkebin.ExtraPane");

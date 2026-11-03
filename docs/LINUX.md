@@ -1,6 +1,6 @@
 # Linux client and AppImage work
 
-Status: **source build succeeded on an Arch Linux x86_64 Hyper-V VM** on 2026-11-03. The user authorized dependency installation and a two-job Linux compilation. App launch, QML/runtime behavior, streaming, input, GPU acceleration and AppImage packaging remain untested. No Windows app, driver operation or display change was run. There is no downloadable Linux release yet; published downloads remain Windows-only.
+Status: **source build succeeded on an Arch Linux x86_64 Hyper-V VM** on 2026-11-03. The user authorized dependency installation and a two-job Linux compilation. The user confirmed startup, Windows-to-Linux video, mouse and keyboard forwarding, disconnect/reconnect and fullscreen in the VM. GPU acceleration and AppImage packaging remain unverified. The user subsequently authorized a connection test using the installed Windows server. There is no downloadable Linux release yet; published downloads remain Windows-only.
 
 The first target is Linux x86_64, with KDE Plasma on Wayland as the first intended acceptance environment. Windows hosts the extended desktop; Linux receives its video and returns input. Linux hosting is a later milestone. macOS is deferred.
 
@@ -17,7 +17,7 @@ The first target is Linux x86_64, with KDE Plasma on Wayland as the first intend
 - One input packet per compressed video frame, including empty packets, sent before decoding to match the Windows host's ordering. Focus loss and lost pointer grabs clear locally owned input and enqueue a reset. Disconnect closes the session; Windows owns remote watchdog cleanup.
 - Mouse move, buttons, wheel and drag source paths. Keyboard mapping translates common Qt Wayland/XKB physical codes to Windows set-1 scan codes. The host's layout applies. IME text, Pause, Print Screen and multimedia keys are not implemented. Native touch/pen capabilities are not advertised, and synthesized pointer input is suppressed.
 - Display renegotiation preserves the TCP/TLS session, clears old input, rebuilds the video pipeline, acknowledges the new offer and continues with the replacement input epoch. Live rotation/resolution/layout behavior still needs hardware validation.
-- Resizable/windowed/fullscreen presentation, a top-center toolbar, F10 to reveal controls, F11 for fullscreen, and Ctrl+Shift+Q to disconnect. Statistics are off by default and only shown through the toolbar Settings menu. They measure compressed-frame reception, not decoded/presented FPS or end-to-end latency.
+- Resizable/windowed/fullscreen presentation, a top-center toolbar, F10 to pause forwarded input and reveal controls, F8 to pause/resume input, F11 for fullscreen, and Ctrl+Shift+Q to disconnect. Forwarding is suspended while the toolbar is visible; pausing keeps it open. Statistics are off by default and only shown through the toolbar Settings menu. They measure compressed-frame reception, not decoded/presented FPS or end-to-end latency.
 - Native resolution by default. Optional 75%/50% stream-size choices apply once on the next connection and are not saved. There is no adaptive quality controller.
 
 ## Build boundary
@@ -90,3 +90,11 @@ AppImage packaging does not make every distribution, compositor or GPU compatibl
 - [AppImage runtime dependency boundary](https://docs.appimage.org/introduction/concepts.html)
 - [ScreenCast portal and advertised virtual-monitor support](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
 - [RemoteDesktop portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
+
+## VM manual checks and toolbar repair
+
+On 2026-11-03 the user confirmed video, mouse/keyboard forwarding, disconnect/reconnect and fullscreen from the Arch Hyper-V VM to the installed Windows 2026.11.03 server. F10 revealed the toolbar, but its controls were not readable. Screenshots also showed dark text on dark surfaces and light backgrounds on some pages. The Linux client now selects Qt Quick Controls Fusion explicitly and uses explicit high-contrast toolbar button text/backgrounds. Development builds are labeled as such in About.
+
+When the VM console is on the same Windows machine that receives forwarded input, injected mouse movement can affect the console itself. This is a feedback loop, not a reliable physical-client latency/input test. F10 pauses forwarding and keeps the controls visible; F8 or Resume input resumes it after the toolbar hides. Input stays paused while interacting with the toolbar/menu, and held remote keys/buttons are released when forwarding is disabled. The new styling and pause/resume behavior still need visual verification.
+
+Native touch/pen forwarding is not implemented. Future synthetic event checks can validate serialization, capability gating and cleanup, but cannot establish physical touchscreen/pen behavior, pressure, tilt, eraser or compositor/device compatibility.

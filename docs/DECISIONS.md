@@ -170,3 +170,7 @@ Published releases, tags, checksums and signed packages remain historical artifa
 ## Linux VM build authorization (2026-11-03)
 
 The user supplied an Arch Linux KDE/Wayland Hyper-V VM and explicitly approved installing dependencies and building the Linux client with two jobs. This supersedes the source-only restriction for that VM build. Compilation and linking succeeded; fix the compiler formatting warnings and record actual dependencies in LINUX.md. App launches, streaming/input tests, Windows builds, driver operations, display changes and release publication are outside this authorization. AppImage packaging and real-hardware performance remain unverified.
+
+## Linux connection verification and toolbar fixes (2026-11-03)
+
+The user authorized a Windows-to-Arch VM connection test and confirmed video, mouse/keyboard, reconnect and fullscreen. Screenshots and feedback identified mixed theme contrast and unreadable toolbar controls. Fix the Linux UI using a consistent Qt Controls style, explicit toolbar contrast and local F10/F8 input suspension. Do not interpret VM mouse feedback as proof of a transport fault or claim Linux touch/pen support based on synthetic events. Rebuild on the VM, preserving the current session until the user restarts the client.
