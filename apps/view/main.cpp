@@ -4,6 +4,7 @@
 #include <dm/h264.hpp>
 #include <dm/video_d3d12.hpp>
 #include <dm/video_vulkan.hpp>
+#include <dm/video_opengl.hpp>
 #include <dm/input.hpp>
 #include <charconv>
 #include <iostream>
@@ -28,9 +29,10 @@ int main(int argc, char** argv) {
                          "  dm-view gpu-check\n"
                          "  dm-view d3d12-check [adapter-index]\n"
                          "  dm-view vulkan-check [adapter-index]\n"
+                         "  dm-view opengl-check [adapter-index]\n"
                          "  dm-view renderer-info\n"
                          "  dm-view host --lan --bind <local-ipv4> --allow-screen [--extend | --display <GDI-name>] [--allow-input] [--frames 0] [--fps 30] [--width 1280 --height 720] [--codec h264|jpeg]\n"
-                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality native|75|50] [--renderer d3d11|d3d12|vulkan]\n"
+                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality native|75|50] [--renderer d3d11|d3d12|vulkan|opengl]\n"
                          "  Common options: --port 43824 --timeout-ms 15000\n"
                          "Pairs: dm-session. Displays: dm-display list. Default source: primary output.\n"
                          "--extend requires separately installed signed DM driver and an administrator token.\n";
@@ -39,6 +41,7 @@ int main(int argc, char** argv) {
         const std::string_view command(argv[1]);
         if(command=="renderer-info"){if(argc!=2)throw std::invalid_argument("renderer-info takes no options");dm::video::renderer_info();return 0;}
         if(command=="d3d12-check") {if(argc>3)throw std::invalid_argument("d3d12-check takes an optional adapter index");dm::video::d3d12_renderer_check(argc==3?number(argv[2],255,true):0);return 0;}
+        if(command=="opengl-check") {if(argc>3)throw std::invalid_argument("opengl-check takes an optional adapter index");dm::video::opengl_renderer_check(argc==3?number(argv[2],255,true):0);return 0;}
         if(command=="vulkan-check") {if(argc>3)throw std::invalid_argument("vulkan-check takes an optional adapter index");dm::video::vulkan_renderer_check(argc==3?number(argv[2],255,true):0);return 0;}
         if(command=="input-broker") {
             if(argc!=4 || std::string_view(argv[2])!="--display")throw std::invalid_argument("Invalid input watchdog invocation");
@@ -114,7 +117,7 @@ int main(int argc, char** argv) {
             if (args.contains("--decoder-adapter")) adapter=number(args.at("--decoder-adapter"),255,true);
             dm::video::Quality quality=dm::video::Quality::native;
             auto renderer=dm::video::Renderer::d3d11;
-            if(args.contains("--renderer")){if(headless)throw std::invalid_argument("Headless receive has no renderer");const auto& value=args.at("--renderer");if(value=="d3d12")renderer=dm::video::Renderer::d3d12;else if(value=="vulkan")renderer=dm::video::Renderer::vulkan;else if(value!="d3d11")throw std::invalid_argument("Renderer must be d3d11, d3d12 or vulkan");}
+            if(args.contains("--renderer")){if(headless)throw std::invalid_argument("Headless receive has no renderer");const auto& value=args.at("--renderer");if(value=="d3d12")renderer=dm::video::Renderer::d3d12;else if(value=="vulkan")renderer=dm::video::Renderer::vulkan;else if(value=="opengl")renderer=dm::video::Renderer::opengl;else if(value!="d3d11")throw std::invalid_argument("Renderer must be d3d11, d3d12, vulkan or opengl");}
             if(args.contains("--quality")){const auto& value=args.at("--quality");if(value=="75")quality=dm::video::Quality::reduced;else if(value=="50")quality=dm::video::Quality::low_bandwidth;else if(value!="native")throw std::invalid_argument("Stream quality must be native, 75 or 50");}
             if (headless) dm::video::receive_video(options,args.at("--name"),[](dm::video::Frame){},adapter,{},{},{},quality);
             else dm::video::preview_video(options,args.at("--name"),adapter,control,fullscreen,quality,renderer);

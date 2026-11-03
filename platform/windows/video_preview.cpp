@@ -10,6 +10,7 @@
 #include <dm/video_gpu.hpp>
 #include <dm/video_d3d12.hpp>
 #include <dm/video_vulkan.hpp>
+#include <dm/video_opengl.hpp>
 #include <dm/input.hpp>
 #include <atomic>
 #include <mutex>
@@ -94,6 +95,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     input::ReceiverInput input_capture(control);
     PreviewWindow state;state.input=&input_capture;state.quality.store(quality);state.requested=renderer;
     WNDCLASSW cls{};
+    cls.style=renderer==Renderer::opengl?CS_OWNDC:0;
     cls.lpfnWndProc = window_proc;
     cls.hInstance = GetModuleHandleW(nullptr);
     cls.lpszClassName = L"DMVideoFeasibilityPreview";
@@ -133,6 +135,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     std::unique_ptr<GpuProcessor> gpu_processor;
     std::unique_ptr<D3D12Renderer> d3d12;
     std::unique_ptr<VulkanRenderer> vulkan;
+    std::unique_ptr<OpenGLRenderer> opengl;
     Microsoft::WRL::ComPtr<ID3D11Device> probed_device;
     Renderer active_renderer=Renderer::d3d11;
     auto reset_d3d11=[&]{backbuffer.Reset();gpu_processor.reset();if(context){context->ClearState();context->Flush();}swap.Reset();context.Reset();device.Reset();};
@@ -156,7 +159,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     });
     unsigned surface_width=0,surface_height=0,buffer_width=0,buffer_height=0;
     std::uint64_t presented = 0;
-    std::uint64_t gpu_presented=0,cpu_uploads=0,d3d12_presented=0,vulkan_presented=0;
+    std::uint64_t gpu_presented=0,cpu_uploads=0,d3d12_presented=0,vulkan_presented=0,opengl_presented=0;
     try {
         for (;;) {
             input_capture.pump();
@@ -182,16 +185,16 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 if(state.requested!=Renderer::d3d11){
                     if(!frame->gpu)unavailable("This renderer requires GPU-decoded H.264; the stream uses CPU frames");
                     else if(probed_device.Get()!=frame->gpu->device.Get()){
-                        d3d12.reset();vulkan.reset();probed_device=frame->gpu->device;
-                        try{D3D11_TEXTURE2D_DESC desc{};frame->gpu->texture->GetDesc(&desc);if(state.requested==Renderer::vulkan)vulkan=std::make_unique<VulkanRenderer>(probed_device.Get(),frame->width,frame->height);else d3d12=std::make_unique<D3D12Renderer>(probed_device.Get(),desc.Width,desc.Height);std::cout<<"RENDERER_AVAILABLE "<<renderer_name(state.requested)<<" adapter="<<(vulkan?vulkan->adapter_name():d3d12->adapter_name())<<std::endl;}
+                        d3d12.reset();vulkan.reset();opengl.reset();probed_device=frame->gpu->device;
+                        try{D3D11_TEXTURE2D_DESC desc{};frame->gpu->texture->GetDesc(&desc);if(state.requested==Renderer::opengl)opengl=std::make_unique<OpenGLRenderer>(probed_device.Get(),frame->width,frame->height);else if(state.requested==Renderer::vulkan)vulkan=std::make_unique<VulkanRenderer>(probed_device.Get(),frame->width,frame->height);else d3d12=std::make_unique<D3D12Renderer>(probed_device.Get(),desc.Width,desc.Height);std::cout<<"RENDERER_AVAILABLE "<<renderer_name(state.requested)<<" adapter="<<(opengl?opengl->adapter_name():vulkan?vulkan->adapter_name():d3d12->adapter_name())<<std::endl;}
                         catch(const std::exception& e){unavailable(e.what());}
                     }
                 }
                 if(state.requested!=active_renderer){reset_d3d11();if(d3d12)d3d12->detach();active_renderer=state.requested;std::cout<<"RENDERER_CHANGED "<<renderer_name(active_renderer)<<std::endl;}
                 SetPropW(hwnd,L"SideScreen.Renderer",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(active_renderer)+1));
                 if(active_renderer!=Renderer::d3d11){
-                    try{if(vulkan){if(!vulkan->present(hwnd,*frame))continue;++vulkan_presented;}else{d3d12->present(hwnd,*frame);++d3d12_presented;}++gpu_presented;}
-                    catch(const std::exception& e){unavailable(e.what());d3d12.reset();vulkan.reset();active_renderer=Renderer::d3d11;std::cout<<"RENDERER_FALLBACK D3D11"<<std::endl;continue;}
+                    try{if(opengl){if(!opengl->present(hwnd,*frame))continue;++opengl_presented;}else if(vulkan){if(!vulkan->present(hwnd,*frame))continue;++vulkan_presented;}else{d3d12->present(hwnd,*frame);++d3d12_presented;}++gpu_presented;}
+                    catch(const std::exception& e){unavailable(e.what());d3d12.reset();vulkan.reset();opengl.reset();active_renderer=Renderer::d3d11;std::cout<<"RENDERER_FALLBACK D3D11"<<std::endl;continue;}
                 }else{
                 if(swap && (buffer_width!=target_width || buffer_height!=target_height || surface_width!=frame->width || surface_height!=frame->height || (frame->gpu && frame->gpu->device.Get()!=device.Get()))) {
                     reset_d3d11();
@@ -262,6 +265,6 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     }
     worker.join();
     if (error && !cancel.load()) std::rethrow_exception(error);
-    std::cout << "PREVIEW_PRESENTED frames=" << presented << " renderer="<<renderer_name(active_renderer)<<" d3d12_frames="<<d3d12_presented<<" vulkan_frames="<<vulkan_presented<<" gpu_converted_frames=" << gpu_presented << " cpu_pixel_uploads=" << cpu_uploads << std::endl;
+    std::cout << "PREVIEW_PRESENTED frames=" << presented << " renderer="<<renderer_name(active_renderer)<<" d3d12_frames="<<d3d12_presented<<" opengl_frames="<<opengl_presented<<" vulkan_frames="<<vulkan_presented<<" gpu_converted_frames=" << gpu_presented << " cpu_pixel_uploads=" << cpu_uploads << std::endl;
 }
 }
