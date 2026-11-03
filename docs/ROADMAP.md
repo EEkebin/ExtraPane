@@ -1,5 +1,7 @@
 # Milestones and verification
 
+Current platform work: Linux x64 AppImage receiver source, first targeting KDE Plasma on Wayland and a Windows host. No Linux build or runtime validation has run; tests are prohibited until the user permits them. Linux hosting and native Linux touch/pen forwarding follow the receiver milestone. See [LINUX.md](LINUX.md).
+
 Implementation is authorized. IPv4 diagnostics, paired TLS, GPU-resident raw-pixel H264 at 720p30 on both laptop GPUs, and local peer-loss/restart checks pass. The GPU runs decoded 300 frames each, presenting 295 on Intel and 296 on GTX, with no application raw-pixel readbacks or CPU pixel uploads. Debug/Release pass five CTest suites and separate GPU color/geometry/order checks. Compressed network buffers remain on CPU; Native input now passes generated integration tests; the repaired physical pen session is user-confirmed and native 3000x2000 nominal60 streaming is now tested (see NATIVE-DISPLAY.md). Individual pen/touch/application acceptance remains pending. See GPU.md, DEVELOPMENT.md, SECURITY.md, and H264.md.
 
 Current priority (user direction): independent extended desktop before more media optimization. The locally signed IddCx package is installed; independent third-monitor creation, virtual capture, unchanged physical topology, and session-loss removal pass. Selected secondary-monitor WGC streaming passes locally and on the laptop. See EXTENDED-DISPLAY.md.

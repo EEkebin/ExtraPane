@@ -106,6 +106,8 @@ The driver uninstaller keeps its files and ownership records if removal fails so
 
 ## Build and verification
 
+Linux x64 AppImage support is being developed, starting with a client for Windows hosts. The current Linux source is unbuilt and untested; published downloads remain Windows-only. See [Linux development status](docs/LINUX.md).
+
 The implementation uses C++20, native Windows graphics/input APIs, and C++/WinRT with WinUI 3. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.
 
 ```powershell

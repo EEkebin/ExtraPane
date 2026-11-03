@@ -119,6 +119,8 @@ The local test checks continuous sessions through left placement, resolution, al
 
 ## Current unified app and packages
 
+Linux client source and the draft AppImage packaging path are documented in [LINUX.md](LINUX.md). They have not been built or tested. The user's current instruction prohibits tests while gaming; do not run the Linux or Windows acceptance commands until authorized.
+
 Build the engine/app with `./scripts/build-apps.ps1`. For distributable packages, also run `./scripts/build-driver.ps1`, `./scripts/package-driver.ps1`, and `./scripts/build-driver-installer.ps1`, then `python scripts/package_apps.py` and `./scripts/package-installers.ps1`. Inno Setup 6 is required for the installers. The driver tools are pinned SDK/WDK NuGet packages restored under ignored `out/driver-tools`; build/package steps do not install or trust a driver.
 
 The app build selects the installed Visual Studio toolset and uses Windows SDK 10.0.26100.0 plus locked NuGet packages. The unified app output is `out/winui/SideScreen`, and downloads are in `out/dist`. They include SideScreen.DriverSetup.exe for server installation; no SDK, Python or SSH is required on destination PCs. See DRIVER-INSTALLATION.md for the explicit certificate-consent and elevation flow.

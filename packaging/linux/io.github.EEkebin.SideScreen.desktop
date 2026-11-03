@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SideScreen
+Comment=Use this computer as an extended display over your local network
+Exec=SideScreen
+Icon=sidescreen
+Terminal=false
+Categories=Network;RemoteAccess;
+StartupWMClass=SideScreen
