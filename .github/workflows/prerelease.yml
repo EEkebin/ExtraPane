@@ -30,11 +30,12 @@ concurrency:
   group: release-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: false
 jobs:
-  build:
+  metadata:
     runs-on: windows-2025
-    timeout-minutes: 45
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.metadata.outputs.version }}
+      numeric: ${{ steps.metadata.outputs.numeric }}
       publish: ${{ steps.metadata.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +71,29 @@ jobs:
             $publish=@($prs | Where-Object {$_.merged_at -and $_.base.ref -eq 'main' -and $_.merge_commit_sha -eq $env:GITHUB_SHA}).Count -gt 0
           }
           "publish=$($publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata.json
+          if-no-files-found: error
+  build:
+    needs: metadata
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      EXTRAPANE_VERSION: ${{ needs.metadata.outputs.version }}
+      EXTRAPANE_NUMERIC_VERSION: ${{ needs.metadata.outputs.numeric }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: .
       - name: Check installer behavior before building apps
         shell: pwsh
         run: |
@@ -123,21 +147,21 @@ jobs:
         run: Copy-Item release-metadata.json out/dist/release-metadata.json
       - uses: actions/upload-artifact@v4
         with:
-          name: ExtraPane-${{ steps.metadata.outputs.version }}
+          name: ExtraPane-${{ needs.metadata.outputs.version }}
           path: |
             out/dist/release-metadata.json
-            out/dist/ExtraPane-${{ steps.metadata.outputs.version }}-*.zip
-            out/dist/ExtraPane-${{ steps.metadata.outputs.version }}-*.exe
+            out/dist/ExtraPane-${{ needs.metadata.outputs.version }}-*.zip
+            out/dist/ExtraPane-${{ needs.metadata.outputs.version }}-*.exe
             out/dist/SHA256SUMS.txt
           if-no-files-found: error
   linux:
-    needs: build
+    needs: metadata
     uses: ./.github/workflows/linux-appimage.yml
     with:
-      version: ${{ needs.build.outputs.version }}
+      version: ${{ needs.metadata.outputs.version }}
   publish:
-    needs: [build, linux]
-    if: needs.build.outputs.publish == 'true'
+    needs: [metadata, build, linux]
+    if: needs.metadata.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -147,11 +171,11 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: ExtraPane-${{ needs.build.outputs.version }}
+          name: ExtraPane-${{ needs.metadata.outputs.version }}
           path: dist
       - uses: actions/download-artifact@v4
         with:
-          name: ExtraPane-Linux-${{ needs.build.outputs.version }}
+          name: ExtraPane-Linux-${{ needs.metadata.outputs.version }}
           path: dist
       - name: Publish release
         env:
