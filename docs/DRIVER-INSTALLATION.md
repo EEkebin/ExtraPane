@@ -15,6 +15,8 @@ For a portable server, extract the ZIP, run its `SideScreen.DriverSetup.exe` onc
 
 Canceling elevation or failing the driver step prevents Server + Client setup from continuing. Retry after resolving the error, or return to Client only. If the driver step succeeds but the app installation is later canceled or fails, the separately registered driver can remain installed; remove it through Windows Apps if it is no longer wanted.
 
+If driver installation fails after its manager has been copied, the manager and its Windows Apps entry remain available for repair or removal. Setup reports failure; it does not mark the PC ready to host.
+
 ## What changes on Windows
 
 The driver installer:

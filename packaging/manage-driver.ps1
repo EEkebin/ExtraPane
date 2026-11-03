@@ -2,6 +2,10 @@
 param([ValidateSet('Install','Remove','Validate')][string]$Action='Validate')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+# Use only this Windows PowerShell installation's built-in modules. Setup may
+# inherit PSModulePath from PowerShell 7 or another launching shell; those
+# modules are not necessarily loadable in Windows PowerShell 5.1.
+$env:PSModulePath=Join-Path $PSHOME 'Modules'
 $package=Join-Path $PSScriptRoot 'package'
 $state=Join-Path $PSScriptRoot 'state'
 $log=Join-Path $PSScriptRoot 'driver-setup.log'

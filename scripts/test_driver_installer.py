@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -36,7 +37,7 @@ def run(exe, *args, success=True):
     log = logs/(uuid.uuid4().hex+'.log')
     result = subprocess.run([str(exe), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', f'/LOG={log}', *args], timeout=240)
     if (result.returncode == 0) != success and log.exists():
-        print(log.read_text(encoding='utf-8', errors='replace')[-12000:], flush=True)
+        print(log.read_text(encoding='utf-8-sig', errors='replace')[-12000:], flush=True)
     assert (result.returncode == 0) == success, (exe, result.returncode, args)
 
 def driver_uninstaller():
@@ -150,6 +151,7 @@ def main():
     print('DRIVER_INSTALLER passed: consent, required host dependency, staging, idempotency, tamper rejection, separate uninstall, exact ownership preservation. Runtime loading is a separate hardware check.')
 
 if __name__ == '__main__':
+    sys.stdout.reconfigure(errors='backslashreplace')
     try:
         main()
     finally:
