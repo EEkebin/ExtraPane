@@ -3,14 +3,21 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 
 artifact = Path(sys.argv[1]).resolve()
-environment = dict(os.environ, APPIMAGE_EXTRACT_AND_RUN='1', QT_QPA_PLATFORM='xcb',
+environment = dict(os.environ, QT_QPA_PLATFORM='xcb',
                    LIBGL_ALWAYS_SOFTWARE='1')
+environment.pop('APPIMAGE_EXTRACT_AND_RUN', None)
 log = artifact.parent/'appimage-startup.log'
-with log.open('w') as output:
-    process = subprocess.Popen([str(artifact)], cwd='/tmp', env=environment,
+with log.open('w') as output, tempfile.TemporaryDirectory(prefix='extrapane-portable-') as temporary:
+    # FUSE is unavailable in the runner container. Extract explicitly so SIGTERM
+    # reaches ExtraPane rather than the AppImage runtime's extraction supervisor.
+    subprocess.run([str(artifact), '--appimage-extract'], cwd=temporary,
+                   env=environment, stdout=subprocess.DEVNULL, stderr=output, check=True)
+    launcher = Path(temporary)/'squashfs-root/AppRun'
+    process = subprocess.Popen([str(launcher)], cwd='/tmp', env=environment,
                                stdout=output, stderr=subprocess.STDOUT)
     try:
         time.sleep(12)
