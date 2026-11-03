@@ -33,7 +33,9 @@ Source: "..\assets\branding\SideScreen.ico"; DestDir: "{app}"; Flags: ignorevers
 Type: filesandordirs; Name: "{app}\state"
 Type: files; Name: "{app}\driver-setup.log"
 [Code]
-var Consent: TInputOptionWizardPage;
+var
+  Consent: TInputOptionWizardPage;
+  DriverInstallFailed: Boolean;
 #include "shutdown.iss"
 
 function InitializeSetup: Boolean;
@@ -86,8 +88,24 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if (CurStep = ssPostInstall) and not RunManager('Install') then
+  if (CurStep = ssPostInstall) and not RunManager('Install') then begin
+    DriverInstallFailed := True;
     RaiseException('The server driver could not be installed. See Program Files\SideScreen Driver\driver-setup.log and Windows\INF\setupapi.dev.log. No boot-security settings were changed.');
+  end;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  Result := 0;
+  if DriverInstallFailed then Result := 1;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and DriverInstallFailed then begin
+    WizardForm.FinishedHeadingLabel.Caption := 'Server driver installation failed';
+    WizardForm.FinishedLabel.Caption := 'The driver is not ready for hosting. Check Program Files\SideScreen Driver\driver-setup.log, correct the reported problem, and run driver setup again. The driver manager remains installed for repair or removal.';
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

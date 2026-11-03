@@ -3,6 +3,8 @@
 Never run this against either development PC. Does not create a virtual monitor,
 change boot/security policy, or claim that staging proves runtime loading.
 """
+import ctypes
+from ctypes import wintypes
 import json
 import os
 from pathlib import Path
@@ -71,6 +73,23 @@ def main():
         target = Path(temp)/'app'
         run(installer, '/SERVER=1', f'/DIR={target}', '/TASKS=', success=False)
         assert not folder.exists() and not (target/'SideScreen.exe').exists()
+        # A real manager failure must propagate through both installer layers.
+        # Hold the manager's mutex to reject installation before trust/store changes.
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+        kernel.CreateMutexW.restype = wintypes.HANDLE
+        kernel.ReleaseMutex.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        lock = kernel.CreateMutexW(None, True, r'Global\SideScreen.DriverSetup')
+        assert lock
+        try:
+            run(driver_setup, '/ACCEPTDEVELOPMENTCERT=1', success=False)
+            run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
+            assert not (target/'SideScreen.exe').exists()
+            assert ps(trust_count).stdout.strip() == '0'
+        finally:
+            kernel.ReleaseMutex(lock)
+            kernel.CloseHandle(lock)
         run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=')
         assert (target/'SideScreen.exe').is_file()
         assert driver_uninstaller().is_file()
@@ -131,4 +150,10 @@ def main():
     print('DRIVER_INSTALLER passed: consent, required host dependency, staging, idempotency, tamper rejection, separate uninstall, exact ownership preservation. Runtime loading is a separate hardware check.')
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    finally:
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            log = Path(os.environ['ProgramFiles'])/'SideScreen Driver/driver-setup.log'
+            if log.exists():
+                print(log.read_text(encoding='utf-8-sig', errors='replace')[-12000:], flush=True)

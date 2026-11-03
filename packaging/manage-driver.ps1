@@ -47,7 +47,10 @@ try {
  if($Action -eq 'Validate'){$null=Verify-Package $package;Write-Output 'DRIVER_PACKAGE_VALID';exit 0}
  if(-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Driver installation/removal requires administrator permission'}
  # State and elevated scripts must live in the fixed, administrator-controlled directory.
- $expected=[IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'SideScreen Driver'))
+ # Inno Setup is a 32-bit process; its child can inherit the x86 ProgramFiles
+ # value even when launching 64-bit PowerShell. ProgramW6432 identifies the
+ # native Program Files directory in both process environments.
+ $expected=[IO.Path]::GetFullPath((Join-Path $env:ProgramW6432 'SideScreen Driver'))
  if([IO.Path]::GetFullPath($PSScriptRoot) -ne $expected){throw 'Driver manager must run from Program Files\SideScreen Driver'}
  foreach($dir in @($PSScriptRoot,$state)){
   if((Test-Path -LiteralPath $dir) -and ((Get-Item -LiteralPath $dir).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Driver management directory cannot be a reparse point'}

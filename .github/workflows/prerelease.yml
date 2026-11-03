@@ -102,13 +102,19 @@ jobs:
         run: python scripts/test_driver_installer.py
       - name: Preserve driver installer diagnostics on failure
         if: failure()
+        shell: pwsh
+        run: |
+          $target='out/driver-installer-logs/manager'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          $source='C:/Program Files/SideScreen Driver'
+          if(Test-Path "$source/driver-setup.log") { Copy-Item "$source/driver-setup.log" $target }
+          if(Test-Path "$source/state") { Copy-Item "$source/state/*.json" $target -ErrorAction SilentlyContinue }
+      - name: Upload driver installer diagnostics
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: driver-installer-diagnostics
-          path: |
-            out/driver-installer-logs/*.log
-            C:/Program Files/SideScreen Driver/driver-setup.log
-            C:/Program Files/SideScreen Driver/state/*.json
+          path: out/driver-installer-logs/
           if-no-files-found: ignore
       - name: Include release metadata
         shell: pwsh
