@@ -89,6 +89,27 @@ Tls::Tls(const std::string& peer,const std::string& local,std::uint16_t port,std
     if(!s.ssl || SSL_set_fd(s.ssl,s.socket)!=1)failure("Create TLS connection");
     for(;;){s.check(deadline);ERR_clear_error();const int result=SSL_connect(s.ssl);if(result==1)break;s.retry(result,deadline,"TLS handshake");}
 }
+Tls::Tls(int acceptedSocket,std::function<bool()> cancelled):state_(std::make_unique<State>()){
+    auto& s=*state_;s.socket=acceptedSocket;s.cancelled=std::move(cancelled);
+    const int yes=1;setsockopt(s.socket,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof(yes));
+    s.context=SSL_CTX_new(TLS_server_method());
+    if(!s.context)failure("Create server TLS context");
+    if(SSL_CTX_set_min_proto_version(s.context,TLS1_3_VERSION)!=1 || SSL_CTX_set_max_proto_version(s.context,TLS1_3_VERSION)!=1)failure("Require TLS 1.3");
+    SSL_CTX_set_verify(s.context,SSL_VERIFY_NONE,nullptr);SSL_CTX_set_options(s.context,SSL_OP_NO_TICKET);
+    SSL_CTX_set_session_cache_mode(s.context,SSL_SESS_CACHE_OFF);
+    std::unique_ptr<EVP_PKEY,decltype(&EVP_PKEY_free)> key(EVP_EC_gen("prime256v1"),EVP_PKEY_free);
+    std::unique_ptr<X509,decltype(&X509_free)> cert(X509_new(),X509_free);
+    if(!key || !cert || X509_set_version(cert.get(),2)!=1 || ASN1_INTEGER_set(X509_get_serialNumber(cert.get()),1)!=1 ||
+       !X509_gmtime_adj(X509_getm_notBefore(cert.get()),-60) || !X509_gmtime_adj(X509_getm_notAfter(cert.get()),86400) ||
+       X509_set_pubkey(cert.get(),key.get())!=1)failure("Create ephemeral server identity");
+    auto* name=X509_get_subject_name(cert.get());
+    if(X509_NAME_add_entry_by_txt(name,"CN",MBSTRING_ASC,reinterpret_cast<const unsigned char*>("ExtraPane LAN"),-1,-1,0)!=1 ||
+       X509_set_issuer_name(cert.get(),name)!=1 || X509_sign(cert.get(),key.get(),EVP_sha256())<=0 ||
+       SSL_CTX_use_certificate(s.context,cert.get())!=1 || SSL_CTX_use_PrivateKey(s.context,key.get())!=1)failure("Sign ephemeral server identity");
+    s.ssl=SSL_new(s.context);if(!s.ssl || SSL_set_fd(s.ssl,s.socket)!=1)failure("Create TLS server connection");
+    const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);
+    for(;;){s.check(until);ERR_clear_error();int result=SSL_accept(s.ssl);if(result==1)break;s.retry(result,until,"Server TLS handshake");}
+}
 Tls::~Tls()=default;
 void Tls::read(std::span<std::uint8_t> bytes,Deadline deadline){
     while(!bytes.empty()){

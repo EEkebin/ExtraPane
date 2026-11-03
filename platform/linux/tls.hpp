@@ -14,6 +14,8 @@ public:
     using Deadline = std::chrono::steady_clock::time_point;
     Tls(const std::string& peer, const std::string& local, std::uint16_t port,
         std::function<bool()> cancelled,unsigned interfaceIndex=0);
+    // Takes ownership of an accepted nonblocking TCP socket.
+    Tls(int acceptedSocket, std::function<bool()> cancelled);
     ~Tls();
     Tls(const Tls&) = delete;
     Tls& operator=(const Tls&) = delete;

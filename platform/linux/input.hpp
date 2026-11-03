@@ -4,6 +4,7 @@
 #include <atomic>
 #include <mutex>
 #include <set>
+#include <map>
 
 namespace dm::linux_client {
 class InputQueue final {
@@ -33,6 +34,9 @@ public:
 signals:
     void geometryChanged();
 protected:
+    bool eventFilter(QObject*, QEvent*) override;
+    void touchEvent(QTouchEvent*) override;
+    void touchUngrabEvent() override;
     void mousePressEvent(QMouseEvent*) override;
     void mouseDoubleClickEvent(QMouseEvent*) override;
     void mouseReleaseEvent(QMouseEvent*) override;
@@ -45,6 +49,10 @@ protected:
     void mouseUngrabEvent() override;
 private:
     std::set<unsigned> keys_;
+    std::map<int,unsigned> touches_;
+    bool penContact_=false;
+    unsigned nextTouch_=1;
+    void tablet(QTabletEvent*);
     unsigned buttons_=0;
     bool point(QPointF position,dm::input::Event& event,bool clamp=false) const;
     void mouse(QMouseEvent*,dm::input::Action);

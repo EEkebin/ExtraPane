@@ -3,6 +3,10 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QTabletEvent>
+#include <QTouchEvent>
+#include <QQuickWindow>
+#include <QPointingDevice>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -27,12 +31,13 @@ void InputQueue::reset(){std::lock_guard lock(mutex_);events_.clear();if(caps_)e
 std::vector<Event> InputQueue::take(){std::lock_guard lock(mutex_);std::vector<Event> result;result.swap(events_);return result;}
 InputSurface::InputSurface(QQuickItem* parent):QQuickItem(parent){
     setAcceptedMouseButtons(Qt::AllButtons);setAcceptHoverEvents(true);
-    // Do not emulate touch or pen as mouse input. Native families are a separate milestone.
-    setAcceptTouchEvents(false);
+    setAcceptTouchEvents(true);
+    connect(this,&QQuickItem::windowChanged,this,[this](QQuickWindow* window){if(window)window->installEventFilter(this);});
+    qGuiApp->installEventFilter(this);
 }
-void InputSurface::resetInput(){keys_.clear();buttons_=0;if(queue)queue->reset();}
+void InputSurface::resetInput(){keys_.clear();touches_.clear();penContact_=false;buttons_=0;if(queue)queue->reset();}
 bool InputSurface::point(QPointF p,Event& event,bool clamp) const {
-    if(!queue || !(queue->capabilities()&mouse_cap) || width()<=0 || height()<=0 || sourceWidth<=0 || sourceHeight<=0)return false;
+    if(!queue || !(queue->capabilities()&capability(event.kind)) || width()<=0 || height()<=0 || sourceWidth<=0 || sourceHeight<=0)return false;
     const double scale=std::min(width()/sourceWidth,height()/sourceHeight);
     const double w=sourceWidth*scale,h=sourceHeight*scale,x=(width()-w)/2,y=(height()-h)/2;
     if(!clamp && (p.x()<x || p.y()<y || p.x()>=x+w || p.y()>=y+h))return false;
@@ -66,6 +71,65 @@ void InputSurface::wheelEvent(QWheelEvent* e){
         if(value){event.code=axis;event.value=std::clamp(value,-32767,32767);queue->append(event);}}
     e->accept();
 }
+
+void InputSurface::touchEvent(QTouchEvent* e){
+    if(e->type()==QEvent::TouchCancel){resetInput();e->accept();return;}
+    if(!queue || !(queue->capabilities()&touch_cap)){e->ignore();return;}
+    for(const auto& p:e->points()){
+        if(p.state()==QEventPoint::State::Stationary)continue;
+        Event out;out.kind=Kind::touch;
+        auto found=touches_.find(p.id());
+        if(p.state()==QEventPoint::State::Pressed){
+            if(found!=touches_.end() || touches_.size()>=10 || !point(p.position(),out))continue;
+            // A contact id remains stable until lift/cancel; never alias active ids.
+            while(std::any_of(touches_.begin(),touches_.end(),[this](const auto& x){return x.second==nextTouch_;}))nextTouch_=nextTouch_%65535+1;
+            out.id=nextTouch_;nextTouch_=nextTouch_%65535+1;touches_[p.id()]=out.id;
+            out.action=Action::down;forceActiveFocus();
+        }else{
+            if(found==touches_.end() || !point(p.position(),out,true))continue;
+            out.id=found->second;out.action=p.state()==QEventPoint::State::Released?Action::up:Action::move;
+            if(out.action==Action::up)touches_.erase(found);
+        }
+        out.flags=out.action==Action::up?0:3;
+        const auto caps=e->pointingDevice()->capabilities();
+        if(caps.testFlag(QInputDevice::Capability::Pressure)){out.mask|=4;out.pressure=std::lround(std::clamp(p.pressure(),0.0,1.0)*1024);}
+        if(caps.testFlag(QInputDevice::Capability::Area)){
+            const double scale=std::min(width()/sourceWidth,height()/sourceHeight);
+            if(scale>0){out.mask|=1;out.contact_x=std::clamp<long>(std::lround(p.ellipseDiameters().width()/scale/sourceWidth*65535),0,65535);out.contact_y=std::clamp<long>(std::lround(p.ellipseDiameters().height()/scale/sourceHeight*65535),0,65535);}
+        }
+        queue->append(out);
+    }
+    e->accept();
+}
+void InputSurface::touchUngrabEvent(){resetInput();}
+void InputSurface::tablet(QTabletEvent* e){
+    Event out;out.kind=Kind::pen;out.id=1;
+    const auto position=mapFromScene(e->position());
+    if(!point(position,out,penContact_)){e->ignore();return;}
+    if(e->type()==QEvent::TabletPress){out.action=Action::down;penContact_=true;forceActiveFocus();}
+    else if(e->type()==QEvent::TabletRelease){if(!penContact_){e->accept();return;}out.action=Action::up;penContact_=false;}
+    out.flags=penContact_?3:1;
+    const auto caps=e->pointingDevice()->capabilities();
+    if(caps.testFlag(QInputDevice::Capability::Pressure)){out.mask|=1;out.pressure=std::lround(std::clamp(e->pressure(),0.0,1.0)*1024);}
+    if(caps.testFlag(QInputDevice::Capability::XTilt)){out.mask|=4;out.tilt_x=std::clamp<int>(std::lround(e->xTilt()),-90,90);}
+    if(caps.testFlag(QInputDevice::Capability::YTilt)){out.mask|=8;out.tilt_y=std::clamp<int>(std::lround(e->yTilt()),-90,90);}
+    if(caps.testFlag(QInputDevice::Capability::Rotation)){out.mask|=2;out.rotation=(static_cast<int>(std::lround(e->rotation()))%360+360)%360;}
+    if(e->buttons().testFlag(Qt::RightButton) || e->buttons().testFlag(Qt::MiddleButton))out.code|=1;
+    if(e->pointerType()==QPointingDevice::PointerType::Eraser)out.code|=6;
+    queue->append(out);e->accept();
+}
+bool InputSurface::eventFilter(QObject* watched,QEvent* e){
+    if(!isEnabled() || !isVisible() || !queue)return false;
+    if(watched==qGuiApp && e->type()==QEvent::TabletLeaveProximity){
+        if(queue->capabilities()&pen_cap){Event out;out.kind=Kind::pen;out.id=1;out.action=Action::cancel;queue->append(out);penContact_=false;}
+        return false;
+    }
+    if(watched==window() && (e->type()==QEvent::TabletPress || e->type()==QEvent::TabletMove || e->type()==QEvent::TabletRelease)){
+        tablet(static_cast<QTabletEvent*>(e));return e->isAccepted();
+    }
+    return false;
+}
+
 namespace {
 struct Key {unsigned vk=0,scan=0;bool extended=false;};
 Key physicalKey(quint32 native){

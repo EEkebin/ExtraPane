@@ -22,13 +22,13 @@ void Receiver::run(){
         Tls stream(options_.server.toStdString(),options_.local.toStdString(),43824,cancelled,options_.interfaceIndex);
         auto request=wire::request;
         request[9]=static_cast<std::uint8_t>(options_.scale);
-        const unsigned requested=options_.input?(dm::input::mouse_cap|dm::input::keyboard_cap):0;
+        const unsigned requested=options_.input?dm::input::all_caps:0;
         request[7]=requested?1:0;request[8]=static_cast<std::uint8_t>(requested);
         wire::set_client_display(request,options_.display);stream.write(request,deadline());
         wire::OfferBytes bytes{};stream.read(bytes,deadline(45));
         auto offer=wire::decode_offer(bytes);
         if(offer.codec!=wire::Codec::h264)throw std::runtime_error("The Linux client requires an H.264 server stream");
-        if((offer.input_caps!=0)!=(requested!=0) || (offer.input_caps&~requested))throw std::runtime_error("Invalid server input grant");
+        if(offer.input_caps&~requested)throw std::runtime_error("Invalid server input grant");
         unsigned serial=0;
         Source source;
         auto prepare=[&]{

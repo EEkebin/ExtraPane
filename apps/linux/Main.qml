@@ -92,10 +92,19 @@ ApplicationWindow {
                     Label { text: "Server"; font.pixelSize: 30; font.bold: true }
                     Label { text: "Use this Linux desktop on another screen."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label {
-                        text: "Linux hosting is not available in this preview. You can use Client to receive a Windows display."
+                        text: receiver.hostAvailability.length ? receiver.hostAvailability : "KDE/Wayland hosting creates a virtual monitor after a client connects. Approve the desktop portal prompt. This backend supports one client; the portal controls monitor dimensions (currently 1920?1080 on KDE)."
                         color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
-                    Button { text: "Start server"; enabled: false }
+                    ComboBox {
+                        id: hostAddress; Layout.fillWidth: true; model: receiver.addresses; textRole: "label"
+                        currentIndex: receiver.addresses.length > 1 ? 1 : 0; enabled: !receiver.hosting
+                    }
+                    Button {
+                        text: receiver.hosting ? "Stop server" : "Start server"
+                        enabled: receiver.hostAvailability.length === 0
+                        onClicked: { if (receiver.hosting) receiver.stopHost(); else { const selected=receiver.addresses[hostAddress.currentIndex]; receiver.startHost(selected ? selected.address : "0.0.0.0") } }
+                    }
+                    Label { text: receiver.hostStatus; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { text: "Connected network addresses"; font.bold: true }
                     Repeater {
                         model: receiver.addresses
@@ -197,9 +206,9 @@ ApplicationWindow {
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 24; spacing: 16
                     Label { text: "Settings"; font.pixelSize: 30; font.bold: true }
-                    CheckBox { id: inputAllowed; text: "Send mouse and keyboard input"; checked: true; enabled: !receiver.active }
+                    CheckBox { id: inputAllowed; text: "Send mouse, keyboard, touch and pen input"; checked: true; enabled: !receiver.active }
                     Label { text: "Keyboard forwarding uses physical keys and the host's layout. IME text, Pause, Print Screen, and multimedia keys are not supported yet."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { text: "Touch and pen forwarding are not available in this Linux preview."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: "Touch and pen are forwarded when the device and host support them. Physical touch/pen validation is pending. Linux hosts support mouse, keyboard and touch through the portal; pen injection is unavailable."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { text: "Video presentation: OpenGL\nThe decoder is selected from the installed GStreamer plugins. Hardware acceleration is not guaranteed."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { text: "Use a trusted LAN. Connections are encrypted, but automatic LAN mode does not verify the other computer's identity."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Item { Layout.fillHeight: true }

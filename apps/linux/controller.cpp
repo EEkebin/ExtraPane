@@ -9,6 +9,7 @@
 #include <cmath>
 
 Controller::Controller(QString availability,QObject* parent):QObject(parent),availability_(std::move(availability)){
+    hostAvailability_=dm::linux_client::Host::unavailable();
     refreshAddresses();
     connect(&media_,&dm::linux_client::Media::failed,this,[this](const QString& reason){
         failed_=true;status_=reason;if(receiver_)receiver_->requestInterruption();emit changed();
@@ -80,7 +81,21 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
 }
 void Controller::disconnectFromServer(){releaseInput();if(receiver_)receiver_->requestInterruption();}
 void Controller::releaseInput(){if(inputSurface_)inputSurface_->resetInput();else input_.reset();}
+void Controller::startHost(QString address){
+    if(host_)return;
+    if(!hostAvailability_.isEmpty()){hostStatus_=hostAvailability_;emit hostChanged();return;}
+    bool valid=false;
+    for(const auto& entry:addresses_)if(entry.toMap().value("address").toString()==address && address!="0.0.0.0")valid=true;
+    if(!valid){hostStatus_="Select a connected server IPv4 address";emit hostChanged();return;}
+    host_=new dm::linux_client::Host(address,this);auto* worker=host_;
+    connect(worker,&dm::linux_client::Host::state,this,[this](const QString& status){hostStatus_=status;emit hostChanged();});
+    connect(worker,&QThread::finished,this,[this,worker]{if(host_!=worker)return;host_=nullptr;worker->deleteLater();emit hostChanged();});
+    hostStatus_="Starting listener...";worker->start();emit hostChanged();
+}
+void Controller::stopHost(){if(host_){host_->requestInterruption();hostStatus_="Stopping server...";emit hostChanged();}}
 void Controller::shutdown(){
+    if(host_){host_->requestInterruption();host_->wait();QObject::disconnect(host_,nullptr,this,nullptr);delete host_;host_=nullptr;}
+
     if(receiver_){receiver_->requestInterruption();receiver_->wait();QObject::disconnect(receiver_,nullptr,this,nullptr);delete receiver_;receiver_=nullptr;}
     media_.stop();
 }
