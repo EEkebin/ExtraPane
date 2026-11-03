@@ -46,8 +46,8 @@ void Host::run(){
         listener=socket(AF_INET,SOCK_STREAM|SOCK_NONBLOCK|SOCK_CLOEXEC,0);if(listener<0)throw std::runtime_error(std::strerror(errno));
         int yes=1;setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
         if(bind(listener,reinterpret_cast<sockaddr*>(&address),sizeof(address))<0 || listen(listener,4)<0)throw std::runtime_error(std::strerror(errno));
+        emit state("Listening on "+address_+":43824 — waiting for a client");
         while(!isInterruptionRequested()){
-            emit state("Listening on "+address_+":43824 — waiting for a client");
             pollfd fd{listener,POLLIN,0};int ready=poll(&fd,1,100);
             if(ready<0){if(errno==EINTR)continue;throw std::runtime_error(std::strerror(errno));}if(!ready)continue;
             int peer=accept4(listener,nullptr,nullptr,SOCK_NONBLOCK|SOCK_CLOEXEC);if(peer<0)continue;
@@ -55,7 +55,7 @@ void Host::run(){
             // Discard queued clients: each client must explicitly retry after the
             // active session ends, rather than unexpectedly opening a monitor.
             while((peer=accept4(listener,nullptr,nullptr,SOCK_NONBLOCK|SOCK_CLOEXEC))>=0)close(peer);
-            if(!isInterruptionRequested())emit state("Listening on "+address_+":43824 ? waiting for a client");
+            if(!isInterruptionRequested())emit state("Listening on "+address_+":43824 - waiting for a client");
         }
         emit state("Server stopped");
     }catch(const std::exception& e){emit state("Server error: "+QString::fromUtf8(e.what()));}

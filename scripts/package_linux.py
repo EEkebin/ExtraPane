@@ -86,13 +86,34 @@ def main():
         shutil.copy2(args.helpers_dir/'gst-plugin-scanner', helpers/'gst-plugin-scanner')
         notices = appdir/'usr/share/licenses/extrapane'
         shutil.copytree(args.licenses_dir, notices)
+        # Only ship Qt plugins used by this app. A developer's KDE installation
+        # may contain unrelated image importers with optional/missing dependencies.
+        qt_plugins = Path(subprocess.check_output(
+            [str(args.qmake), '-query', 'QT_INSTALL_PLUGINS'], text=True).strip())
+        selected_qt = stage/'qt-plugins'; selected_qt.mkdir()
+        for category in ('platforms', 'platforminputcontexts', 'xcbglintegrations',
+                         'wayland-decoration-client', 'wayland-graphics-integration-client',
+                         'wayland-shell-integration', 'tls', 'networkinformation'):
+            if (qt_plugins/category).is_dir():
+                shutil.copytree(qt_plugins/category, selected_qt/category)
+        (selected_qt/'imageformats').mkdir()
+        # The generated proxy preserves every qmake query except the plugin path.
+        qmake_proxy = tools/'qmake-selected'
+        qmake_proxy.write_text('#!/usr/bin/env python3\nimport subprocess,sys\n'
+            f'real={str(args.qmake.resolve())!r}\nselected={str(selected_qt)!r}\n'
+            'result=subprocess.run([real,*sys.argv[1:]],text=True,capture_output=True)\n'
+            'text=result.stdout\n'
+            'if sys.argv[1:]==["-query","QT_INSTALL_PLUGINS"]: text=selected+"\\n"\n'
+            'elif sys.argv[1:]==["-query"]: text="\\n".join("QT_INSTALL_PLUGINS:"+selected if line.startswith("QT_INSTALL_PLUGINS:") else line for line in text.splitlines())+"\\n"\n'
+            'sys.stdout.write(text);sys.stderr.write(result.stderr);sys.exit(result.returncode)\n')
+        qmake_proxy.chmod(0o755)
         # This records the build inputs; it is not a runtime validation claim.
         record = {'version': version, 'tools': lock['tools'],
                   'plugins': {p.name: digest(p) for p in plugins}, 'validation': 'not performed by packaging'}
         (appdir/'usr/share/doc/extrapane/package-inputs.json').write_text(json.dumps(record, indent=2)+'\n')
         env = dict(os.environ)
         env.update(PATH=str(tools)+os.pathsep+env.get('PATH', ''), ARCH='x86_64',
-                   QMAKE=str(args.qmake.resolve()), QML_SOURCES_PATHS=str(ROOT/'apps/linux'),
+                   QMAKE=str(qmake_proxy), QML_SOURCES_PATHS=str(ROOT/'apps/linux'),
                    EXTRA_PLATFORM_PLUGINS=';'.join(p.name for p in (Path(subprocess.check_output([str(args.qmake), '-query', 'QT_INSTALL_PLUGINS'], text=True).strip())/'platforms').glob('*wayland*.so')),
                    GSTREAMER_PLUGINS_DIR=str(bundled_plugins), GSTREAMER_HELPERS_DIR=str(helpers),
                    APPIMAGE_EXTRACT_AND_RUN='1', OUTPUT=str(stage/output.name), VERSION=version)
