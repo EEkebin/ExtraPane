@@ -91,20 +91,39 @@ def main():
         qt_plugins = Path(subprocess.check_output(
             [str(args.qmake), '-query', 'QT_INSTALL_PLUGINS'], text=True).strip())
         selected_qt = stage/'qt-plugins'; selected_qt.mkdir()
-        for category in ('platforms', 'platforminputcontexts', 'xcbglintegrations',
+        for category in ('platforms', 'xcbglintegrations',
                          'wayland-decoration-client', 'wayland-graphics-integration-client',
                          'wayland-shell-integration', 'tls', 'networkinformation'):
             if (qt_plugins/category).is_dir():
                 shutil.copytree(qt_plugins/category, selected_qt/category)
         (selected_qt/'imageformats').mkdir()
+        (selected_qt/'platforminputcontexts').mkdir()
+        # Avoid optional virtual-keyboard/platform integrations from the build PC.
+        # Only the Qt modules imported by the app and its Fusion controls are used.
+        qt_qml = Path(subprocess.check_output([str(args.qmake), '-query', 'QT_INSTALL_QML'], text=True).strip())
+        selected_qml = stage/'qt-qml'; selected_qml.mkdir()
+        for module in ('QtCore', 'QtQml', 'QtQuick'):
+            target = selected_qml/module; target.mkdir()
+            for file in (qt_qml/module).iterdir():
+                if file.is_file(): shutil.copy2(file, target/file.name)
+        for module in ('QtQml/Models', 'QtQml/WorkerScript', 'QtQuick/Window', 'QtQuick/Layouts',
+                       'QtQuick/Controls', 'QtQuick/Templates', 'QtQuick/Effects', 'QtQuick/Shapes'):
+            if (qt_qml/module).is_dir(): shutil.copytree(qt_qml/module, selected_qml/module)
+        qml_scan = stage/'qml-scan'; qml_scan.mkdir()
+        for file in (ROOT/'apps/linux').glob('*.qml'):
+            # These two modules are registered by our executable and GStreamer's
+            # native plugin at runtime; they have no deployable QML directory.
+            lines = file.read_text().splitlines()
+            (qml_scan/file.name).write_text('\n'.join(line for line in lines if not
+                line.startswith(('import ExtraPane.Native', 'import org.freedesktop.gstreamer.')))+'\n')
         # The generated proxy preserves every qmake query except the plugin path.
         qmake_proxy = tools/'qmake-selected'
         qmake_proxy.write_text('#!/usr/bin/env python3\nimport subprocess,sys\n'
-            f'real={str(args.qmake.resolve())!r}\nselected={str(selected_qt)!r}\n'
+            f'real={str(args.qmake.resolve())!r}\npaths={{"QT_INSTALL_PLUGINS":{str(selected_qt)!r},"QT_INSTALL_QML":{str(selected_qml)!r}}}\n'
             'result=subprocess.run([real,*sys.argv[1:]],text=True,capture_output=True)\n'
             'text=result.stdout\n'
-            'if sys.argv[1:]==["-query","QT_INSTALL_PLUGINS"]: text=selected+"\\n"\n'
-            'elif sys.argv[1:]==["-query"]: text="\\n".join("QT_INSTALL_PLUGINS:"+selected if line.startswith("QT_INSTALL_PLUGINS:") else line for line in text.splitlines())+"\\n"\n'
+            'if len(sys.argv)==3 and sys.argv[1]=="-query" and sys.argv[2] in paths: text=paths[sys.argv[2]]+"\\n"\n'
+            'elif sys.argv[1:]==["-query"]: text="\\n".join(line.split(":",1)[0]+":"+paths[line.split(":",1)[0]] if line.split(":",1)[0] in paths else line for line in text.splitlines())+"\\n"\n'
             'sys.stdout.write(text);sys.stderr.write(result.stderr);sys.exit(result.returncode)\n')
         qmake_proxy.chmod(0o755)
         # This records the build inputs; it is not a runtime validation claim.
@@ -113,7 +132,7 @@ def main():
         (appdir/'usr/share/doc/extrapane/package-inputs.json').write_text(json.dumps(record, indent=2)+'\n')
         env = dict(os.environ)
         env.update(PATH=str(tools)+os.pathsep+env.get('PATH', ''), ARCH='x86_64',
-                   QMAKE=str(qmake_proxy), QML_SOURCES_PATHS=str(ROOT/'apps/linux'),
+                   QMAKE=str(qmake_proxy), QML_SOURCES_PATHS=str(qml_scan), NO_STRIP='1',
                    EXTRA_PLATFORM_PLUGINS=';'.join(p.name for p in (Path(subprocess.check_output([str(args.qmake), '-query', 'QT_INSTALL_PLUGINS'], text=True).strip())/'platforms').glob('*wayland*.so')),
                    GSTREAMER_PLUGINS_DIR=str(bundled_plugins), GSTREAMER_HELPERS_DIR=str(helpers),
                    APPIMAGE_EXTRACT_AND_RUN='1', OUTPUT=str(stage/output.name), VERSION=version)
