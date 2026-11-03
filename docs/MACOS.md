@@ -53,7 +53,7 @@ The reusable `macos.yml` workflow builds Universal binaries and runs native chec
 
 ## Verification status
 
-The Universal app compiled and protocol/input/framing checks passed on hosted Apple Silicon and Intel runners. ZIP/DMG generation passed on Apple Silicon after correcting the architecture-check invocation. The native H.264 encode/conversion/decode color check also passed on both runners. A hosted AppKit startup/shutdown check is in progress. Hosted checks are not evidence of physical Mac video presentation, user input delivery, display reconfiguration, network permissions or latency. Those checks remain pending on the user's M3 Pro MacBook Pro. macOS 12 compatibility is a deployment target, not a completed physical-OS test matrix.
+The Universal app compiled and protocol/input/framing checks passed on hosted Apple Silicon and Intel runners. ZIP/DMG generation passed on Apple Silicon after correcting the architecture-check invocation. The native H.264 encode/conversion/decode color check also passed on both runners. AppKit startup/shutdown also passed on both hosted architectures. [Verified build and packages](https://github.com/EEkebin/ExtraPane/actions/runs/41729302343). Hosted checks are not evidence of physical Mac video presentation, user input delivery, display reconfiguration, network permissions or latency. Those checks remain pending on the user's M3 Pro MacBook Pro. macOS 12 compatibility is a deployment target, not a completed physical-OS test matrix.
 
 ## Apple references
 
