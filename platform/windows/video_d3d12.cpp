@@ -1,4 +1,5 @@
 #include <dm/video_d3d12.hpp>
+#include <dm/video_vulkan.hpp>
 #include <dm/video_layout.hpp>
 #include <d3d11_4.h>
 #include <d3d10_1.h>
@@ -173,15 +174,16 @@ Frame D3D12Renderer::diagnostic(const Frame& frame,unsigned width,unsigned heigh
     if(SUCCEEDED(s.device.As(&messages)))for(UINT64 index=0;index<messages->GetNumStoredMessages();++index){SIZE_T size=0;check(messages->GetMessage(index,nullptr,&size),"Read D3D12 validation length");std::vector<unsigned char> storage(size);auto* message=reinterpret_cast<D3D12_MESSAGE*>(storage.data());check(messages->GetMessage(index,message,&size),"Read D3D12 validation message");if(message->Severity<=D3D12_MESSAGE_SEVERITY_ERROR)throw std::runtime_error(std::string("D3D12 validation: ")+message->pDescription);}
     return result;
 }
-void d3d12_renderer_check(unsigned adapter_index){
+static void renderer_check(Renderer kind,unsigned adapter_index){
     // This command deliberately uploads test pixels and reads results back.
     // Neither operation is part of the production presentation path.
-    ComPtr<ID3D12Debug> debug;if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))debug->EnableDebugLayer();
+    ComPtr<ID3D12Debug> debug;if(kind==Renderer::d3d12&&SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))debug->EnableDebugLayer();
     ComPtr<IDXGIFactory1> factory;ComPtr<IDXGIAdapter1> adapter;ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
     check(CreateDXGIFactory1(IID_PPV_ARGS(&factory)),"Test DXGI factory");check(factory->EnumAdapters1(adapter_index,&adapter),"Test adapter index");
     check(D3D11CreateDevice(adapter.Get(),D3D_DRIVER_TYPE_UNKNOWN,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context),"Test D3D11 device");
     ComPtr<ID3D10Multithread> threading;check(context.As(&threading),"Test context synchronization");threading->SetMultithreadProtected(TRUE);
-    D3D12Renderer renderer(device.Get(),256,128);
+    std::unique_ptr<D3D12Renderer> d3d12;std::unique_ptr<VulkanRenderer> vulkan;
+    if(kind==Renderer::vulkan)vulkan=std::make_unique<VulkanRenderer>(device.Get(),256,128);else d3d12=std::make_unique<D3D12Renderer>(device.Get(),256,128);
     constexpr std::array<std::array<unsigned char,3>,4> colors{{{63,102,240},{173,42,26},{32,240,118},{235,128,128}}};
     unsigned checks=0;
     for(const auto size: {std::pair{256u,128u},std::pair{512u,256u},std::pair{256u,128u}}){
@@ -193,16 +195,18 @@ void d3d12_renderer_check(unsigned adapter_index){
         D3D11_SUBRESOURCE_DATA data{pixels.data(),width,0};ComPtr<ID3D11Texture2D> texture;check(device->CreateTexture2D(&desc,&data,&texture),"Test NV12 upload");
         Frame input{visible_width,visible_height,{}};input.gpu=std::make_shared<GpuFrame>();input.gpu->device=device;input.gpu->texture=texture;
         for(const auto output:{std::pair{320u,200u},std::pair{200u,320u}}){
-            const auto result=renderer.diagnostic(input,output.first,output.second);const auto rect=content_rect(visible_width,visible_height,output.first,output.second);
+            const auto result=vulkan?vulkan->diagnostic(input,output.first,output.second):d3d12->diagnostic(input,output.first,output.second);const auto rect=content_rect(visible_width,visible_height,output.first,output.second);
             for(unsigned quadrant=0;quadrant<4;++quadrant){const unsigned x=rect.x+rect.width*(quadrant%2?3:1)/4,y=rect.y+rect.height*(quadrant/2?3:1)/4;const auto offset=(static_cast<size_t>(y)*result.width+x)*4;
                 const auto c=colors[quadrant];const float luma=(c[0]/255.f-16.f/255.f)*1.16438356f,u=c[1]/255.f-128.f/255.f,v=c[2]/255.f-128.f/255.f;const float expected[]={luma+2.11240179f*u,luma-0.21324861f*u-0.53290933f*v,luma+1.79274107f*v};
-                for(unsigned channel=0;channel<3;++channel)if(std::abs(static_cast<int>(result.bgra[offset+channel])-static_cast<int>(std::round(std::clamp(expected[channel],0.f,1.f)*255)))>3)throw std::runtime_error("D3D12 color/orientation/crop mismatch");++checks;
+                for(unsigned channel=0;channel<3;++channel)if(std::abs(static_cast<int>(result.bgra[offset+channel])-static_cast<int>(std::round(std::clamp(expected[channel],0.f,1.f)*255)))>3)throw std::runtime_error("Renderer color/orientation/crop mismatch");++checks;
             }
-            if(rect.y>0||rect.x>0)for(unsigned channel=0;channel<3;++channel)if(result.bgra[channel]!=0)throw std::runtime_error("D3D12 letterbox must be black");
+            if(rect.y>0||rect.x>0)for(unsigned channel=0;channel<3;++channel)if(result.bgra[channel]!=0)throw std::runtime_error("Renderer letterbox must be black");
         }
     }
-    std::cout<<"D3D12_CHECK passed adapter="<<renderer.adapter_name()<<" quadrant_checks="<<checks<<" padded-NV12 crop color orientation aspect-fit resize shared-fences"<<std::endl;
+    std::cout<<renderer_name(kind)<<"_CHECK passed adapter="<<(vulkan?vulkan->adapter_name():d3d12->adapter_name())<<" quadrant_checks="<<checks<<" padded-NV12 crop color orientation aspect-fit resize GPU-interop"<<std::endl;
 }
+void d3d12_renderer_check(unsigned adapter_index){renderer_check(Renderer::d3d12,adapter_index);}
+void vulkan_renderer_check(unsigned adapter_index){renderer_check(Renderer::vulkan,adapter_index);}
 void renderer_info(){
     ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
     try{
@@ -210,8 +214,10 @@ void renderer_info(){
         ComPtr<ID3D10Multithread> threading;check(context.As(&threading),"Decoder context synchronization");threading->SetMultithreadProtected(TRUE);
         ComPtr<IDXGIDevice> dxgi;ComPtr<IDXGIAdapter> adapter;DXGI_ADAPTER_DESC desc{};check(device.As(&dxgi),"Decoder DXGI device");check(dxgi->GetAdapter(&adapter),"Decoder adapter");check(adapter->GetDesc(&desc),"Decoder adapter name");std::string name;for(auto c:desc.Description){if(!c)break;name.push_back(c<128?static_cast<char>(c):'?');}
         std::cout<<"RENDERER_INFO d3d11 available "<<name<<std::endl;
-    }catch(const std::exception& e){std::cout<<"RENDERER_INFO d3d11 unavailable "<<e.what()<<"\nRENDERER_INFO d3d12 unavailable Requires a working D3D11 decoder device: "<<e.what()<<std::endl;return;}
+    }catch(const std::exception& e){std::cout<<"RENDERER_INFO d3d11 unavailable "<<e.what()<<"\nRENDERER_INFO d3d12 unavailable Requires a working D3D11 decoder device: "<<e.what()<<"\nRENDERER_INFO vulkan unavailable Requires a working D3D11 decoder device: "<<e.what()<<std::endl;return;}
     try{D3D12Renderer renderer(device.Get(),1280,720);std::cout<<"RENDERER_INFO d3d12 available "<<renderer.adapter_name()<<"; shared NV12 textures and GPU fences checked"<<std::endl;}
     catch(const std::exception& e){std::cout<<"RENDERER_INFO d3d12 unavailable "<<e.what()<<std::endl;}
+    try{VulkanRenderer renderer(device.Get(),1280,720);std::cout<<"RENDERER_INFO vulkan available "<<renderer.adapter_name()<<"; GPU import, keyed mutex and Windows presentation checked"<<std::endl;}
+    catch(const std::exception& e){std::cout<<"RENDERER_INFO vulkan unavailable "<<e.what()<<std::endl;}
 }
 }

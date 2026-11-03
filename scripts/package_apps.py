@@ -33,6 +33,11 @@ for role in ['SideScreen']:
    file=ROOT/'out/build/windows-release/_deps'/relative/'LICENSE'
    if not file.exists():raise RuntimeError('Missing TLS dependency license: '+str(file))
    z.write(file,role+'/Licenses/'+dependency+'/LICENSE')
+  headers=ROOT/'out/build/windows-release/_deps/vulkan_headers-src'
+  for relative in ['LICENSE.md','LICENSES/Apache-2.0.txt','LICENSES/MIT.txt']:
+   file=headers/relative
+   if not file.is_file():raise RuntimeError('Missing Vulkan-Headers notice: '+relative)
+   z.write(file,role+'/Licenses/vulkan-headers/'+relative)
   readme=f'''SideScreen {VERSION} - Windows 11 x64
 
 Extract the entire folder and run SideScreen.exe on either PC. No Python, SSH or
@@ -67,9 +72,10 @@ together. Apps/installers are unsigned development builds; protocol version 9.
 Toolbar Settings offers 75%/50% stream resolution for the next connection only;
 it is not saved and subsequent connections default to Native.
 Main-app Settings contains client/server input and debug options. Select the
-client renderer before connecting: D3D11 (default) or D3D12 when supported.
+client renderer before connecting: D3D11 (default), D3D12 or Vulkan when supported.
 The renderer preference is saved locally and locked while connected.
 Unavailable choices stay visible with an explanation. Server capture is D3D11.
+Vulkan uses the graphics driver's runtime; no Vulkan SDK installation is needed.
 '''
 
   z.writestr(role+'/README.txt',readme)

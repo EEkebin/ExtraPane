@@ -15,7 +15,7 @@ struct RolePage {
     const bool host;std::function<void()> changed;
     FrameworkElement root{nullptr};
     TextBox peer{nullptr},details{nullptr};TextBlock status{nullptr},addresses{nullptr};
-    unsigned next_scale=0;std::wstring last_error,renderer_warning;
+    unsigned next_scale=0;std::wstring last_error,renderer_warning,renderer_failed;
     std::set<unsigned> connections;
     ULONGLONG last_addresses=0;
     CheckBox input{nullptr},debug{nullptr};Button start_button{nullptr},stop_button{nullptr};
@@ -39,10 +39,10 @@ struct RolePage {
     }
     void start(){
         const std::wstring remote(peer.Text());if(!host)ipv4(remote);
-        if(!host)save_setting(L"Peer",remote);pending.clear();log.clear();last_error.clear();renderer_warning.clear();details.Text(L"");pattern_started=false;
+        if(!host)save_setting(L"Peer",remote);pending.clear();log.clear();last_error.clear();renderer_warning.clear();renderer_failed.clear();details.Text(L"");pattern_started=false;
         std::vector<std::wstring> args{host?L"host":L"receive",L"--lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId())};
         if(host)engine.start_driver(input.IsChecked().Value(),debug.IsChecked().Value());
-        else {const auto quality=std::exchange(next_scale,0u);find<TextBlock>(L"Mode").Text(quality==0?L"This connection: Native resolution.":quality==1?L"This connection: 75% stream resolution. The next connection defaults to Native.":L"This connection: 50% stream resolution. The next connection defaults to Native.");args.insert(args.end(),{L"--quality",quality==1?L"75":quality==2?L"50":L"native",L"--renderer",setting(L"Renderer",L"d3d11")==L"d3d12"?L"d3d12":L"d3d11",L"--peer",remote});if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);}
+        else {const auto quality=std::exchange(next_scale,0u);find<TextBlock>(L"Mode").Text(quality==0?L"This connection: Native resolution.":quality==1?L"This connection: 75% stream resolution. The next connection defaults to Native.":L"This connection: 50% stream resolution. The next connection defaults to Native.");args.insert(args.end(),{L"--quality",quality==1?L"75":quality==2?L"50":L"native",L"--renderer",renderer_setting(),L"--peer",remote});if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);}
         enabled(true);status.Text(host?L"Starting driver...":L"Connecting securely to your server...");
     }
     void drain_output(){if(!engine.process)return;pending+=engine.drain();size_t end;
@@ -68,7 +68,7 @@ struct RolePage {
                 find<TextBlock>(L"Mode").Text(next_scale==0?L"Next connection: Native resolution.":next_scale==1?L"Next connection only: 75% stream resolution. Later connections return to Native.":L"Next connection only: 50% stream resolution. Later connections return to Native.");
             }
             if(line.starts_with("error:")){last_error=wide(line.substr(6));status.Text(last_error);}
-            if(!host&&line.starts_with("RENDERER_UNAVAILABLE D3D12 ")){renderer_warning=wide(line.substr(std::string_view("RENDERER_UNAVAILABLE D3D12 ").size()));status.Text(L"D3D12 could not run; using D3D11. "+renderer_warning);if(changed)changed();}
+            if(!host&&line.starts_with("RENDERER_UNAVAILABLE ")){const auto text=line.substr(std::string_view("RENDERER_UNAVAILABLE ").size());const auto split=text.find(' ');if(split!=std::string::npos){renderer_failed=wide(text.substr(0,split));renderer_warning=wide(text.substr(split+1));status.Text(renderer_failed+L" could not run; using D3D11. "+renderer_warning);if(changed)changed();}}
         }
         if(pending.size()>16384)pending.clear();if(debug.IsChecked().Value())details.Text(log);if(test_report){std::ofstream out(directory()/(host?L"server-session-check.log":L"client-session-check.log"));out<<ascii(log);}
     }

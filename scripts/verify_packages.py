@@ -16,6 +16,8 @@ for role in ['SideScreen']:
   assert z.read(prefix+'version.txt').decode().strip()==version
   for required in [role+'.exe','dm-view.exe','SideScreen.Service.exe','dm-display.exe','SideScreen.ico','README.txt','manifest.json']:
    assert prefix+required in names,required
+  for notice in ['LICENSE.md','LICENSES/Apache-2.0.txt','LICENSES/MIT.txt']:
+   assert prefix+'Licenses/vulkan-headers/'+notice in names,'Missing Vulkan-Headers notice'
   assert not any(n.lower().endswith(('.pfx','.key','.pem','.log','.bmp','.pdb')) for n in names)
   manifest=json.loads(z.read(prefix+'manifest.json'))
   for exe,level in [('SideScreen.exe',b'asInvoker'),('SideScreen.Service.exe',b'requireAdministrator')]:

@@ -3,7 +3,7 @@ import subprocess,threading,queue,time,secrets,uuid,json,winreg,argparse
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 BIN=ROOT/'out/build/windows-release'
-parser=argparse.ArgumentParser();parser.add_argument('--renderer',choices=('d3d11','d3d12'),default='d3d11');renderer=parser.parse_args().renderer
+parser=argparse.ArgumentParser();parser.add_argument('--renderer',choices=('d3d11','d3d12','vulkan'),default='d3d11');renderer=parser.parse_args().renderer
 name='reconfigure-'+uuid.uuid4().hex
 baseline=subprocess.check_output([str(BIN/'dm-display.exe'),'list'],text=True)
 assert 'dm_virtual=1' not in baseline,'Disconnect existing virtual displays before this test'
@@ -52,9 +52,9 @@ try:
  topology=subprocess.check_output([str(BIN/'dm-display.exe'),'list'],text=True)
  assert 'bounds=-1080,100,0,2020' in topology,topology
  print('Remembered portrait mode and negative placement restored after restart',flush=True)
- if renderer=='d3d12':
+ if renderer!='d3d11':
   assert not any('RENDERER_UNAVAILABLE' in line or 'RENDERER_FALLBACK' in line for log in logs for line in log),logs
-  assert all(any('RENDERER_CHANGED D3D12' in line for line in log) for log in logs[1::2]),logs
+  assert all(any(f'RENDERER_CHANGED {renderer}'.lower() in line.lower() for line in log) for log in logs[1::2]),logs
 finally:
  for p in processes:
   if p.poll() is None:p.terminate()

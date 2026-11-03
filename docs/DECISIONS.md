@@ -130,3 +130,11 @@ The user changed the interaction requirement during implementation: configure th
 Pixel/color/crop/aspect-fit checks passed on RTX 4090, Intel UHD 620 and GTX 1050. Surface D3D12 native 3000x2000 runs decoded 360 frames each, presenting 354 Intel / 349 GTX, with zero application raw-pixel readbacks/uploads. These were short functional runs, not measured latency improvements. Preview window controls and live display reconfiguration passed with D3D12 active. Shared Settings passed renderer persistence across restart, active-session locking, independent role options, and clean exit. Control reparenting uses the named owning panels rather than relying on a mounted visual-tree parent. A synthetic unavailable-device UI fixture verified the disabled choice, explanation and fallback. See D3D12.md.
 
 Stop for user verification after this D3D12 release before starting Vulkan or OpenGL.
+
+## Vulkan Windows client renderer
+
+The user requested Vulkan after the D3D12 handoff. Add it to the same saved, pre-connection Settings selector; retain D3D11 as the default. Dynamically load the system Vulkan runtime so its absence does not break other modes. Match the decoder adapter by LUID and require actual Win32 presentation, external-memory import and keyed-mutex support. Keep each optional renderer's availability/reason independent.
+
+Reuse D3D11 GPU decode/color conversion into a shared BGRA texture, then use native Vulkan blit/scaling and swapchain presentation. This avoids a CPU bridge and permits explicit import/synchronization checks across the tested Intel/NVIDIA adapters. Do not call this an all-Vulkan decoder or promise faster performance. Vulkan-Headers is pinned and header-only; no SDK/loader/driver is shipped. See VULKAN.md for the synchronization contract, tests and measurements.
+
+GPU validation passed on desktop RTX 4090 and both Surface GPUs. Native Surface streaming, shared Settings persistence/locking, unavailable-option handling, window controls and saved-layout reconfiguration passed. Stop for user verification after this Vulkan release before OpenGL.
