@@ -27,7 +27,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private SurfaceView video;
     private LinearLayout setup,toolbar;
     private TextView status,stats,capabilities;
-    private EditText server;
+    private EditText server,port,accessCode;
     private Spinner routes;
     private boolean surfaceReady,showStats,paused;
     private int streamWidth=16,streamHeight=9;
@@ -56,6 +56,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         setup.addView(text("Connect to a server",22,white));
         server=new EditText(this);server.setSingleLine();server.setTextColor(white);server.setHintTextColor(muted);server.setHint("Server IPv4 address");server.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
         server.setText(getPreferences(0).getString("server", ""));setup.addView(server);
+        port=new EditText(this);port.setSingleLine();port.setTextColor(white);port.setHintTextColor(muted);port.setHint("TCP port");port.setText("43824");port.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);setup.addView(port);
+        accessCode=new EditText(this);accessCode.setSingleLine();accessCode.setTextColor(white);accessCode.setHintTextColor(muted);accessCode.setHint("Access code (optional for trusted LAN)");accessCode.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);accessCode.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});accessCode.setSaveEnabled(false);setup.addView(accessCode);
         setup.addView(text("Connect through",14,muted));routes=new Spinner(this);setup.addView(routes);refreshRoutes();
         setup.addView(button("Refresh network addresses",this::refreshRoutes));
         setup.addView(button("Connect",this::connect));status=text("Ready",14,accent);setup.addView(status);
@@ -84,6 +86,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private void connect(){
         if(session!=null)return;if(!surfaceReady){status.setText("Video surface is not ready");return;}
         String address=server.getText().toString().trim();try{ClientSession.ipv4(address);}catch(Exception e){status.setText(e.getMessage());return;}
+        int selectedPort;try{selectedPort=Integer.parseInt(port.getText().toString());if(selectedPort<1||selectedPort>65535)throw new NumberFormatException();}catch(NumberFormatException e){status.setText("Enter a port from 1 to 65535");return;}
+        String code=accessCode.getText().toString();if(!code.isEmpty()&&!code.matches("[0-9]{6}")){status.setText("Enter a six-digit access code");return;}
         getPreferences(0).edit().putString("server",address).apply();
         ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(server.getWindowToken(),0);
         Point size=new Point();getDisplay().getRealSize(size);int hz=Math.max(1,Math.min(60,Math.round(getDisplay().getRefreshRate())));
@@ -93,7 +97,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             public void format(int w,int h,int caps,String decoder){runOnUiThread(()->{streamWidth=w;streamHeight=h;fit();capabilities.setText("Server input: "+((caps&4)!=0?"touch ":"")+((caps&1)!=0?"mouse ":"")+((caps&2)!=0?"keyboard ":"")+((caps&8)!=0?"pen":"\nPen forwarding unavailable: this host did not grant pen input.")+"\nDecoder: "+decoder);input.enable(!paused && toolbar.getVisibility()!=View.VISIBLE);});}
             public void statistics(String text){runOnUiThread(()->stats.setText(text));}
             public void ended(String reason){runOnUiThread(()->{session=null;input.enable(false);handler.removeCallbacks(hideToolbar);((View)setup.getTag()).setVisibility(View.VISIBLE);toolbar.setVisibility(View.GONE);stats.setVisibility(View.GONE);status.setText(reason);getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);getWindow().getInsetsController().show(WindowInsets.Type.systemBars());});}
-        });
+        },selectedPort,code);accessCode.setText("");
         session=next;((View)setup.getTag()).setVisibility(View.GONE);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().getInsetsController().setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);getWindow().getInsetsController().hide(WindowInsets.Type.systemBars());
         stats.setVisibility(showStats?View.VISIBLE:View.GONE);video.requestFocus();reveal();next.start();

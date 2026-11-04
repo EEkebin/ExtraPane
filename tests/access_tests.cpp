@@ -36,6 +36,7 @@ int main(){try{
     gate.generate();for(int i=0;i<5;++i)gate.begin();rejects([&]{gate.begin();});
     gate.generate();auto one=gate.begin(),two=gate.begin();std::atomic_int accepted=0;
     std::thread a([&]{try{gate.consume(one.generation);++accepted;}catch(...){}}),b([&]{try{gate.consume(two.generation);++accepted;}catch(...){}});a.join();b.join();check(accepted==1);
+    auto now=Clock::now();Gate expiring([&]{return now;});expiring.generate();auto pending=expiring.begin();now+=std::chrono::minutes(6);rejects([&]{expiring.begin();});rejects([&]{expiring.consume(pending.generation);});check(expiring.status()==Gate::Status::expired);
     gate.generate();gate.revoke();rejects([&]{gate.begin();});
     std::cout<<"Access authentication, one-use admission, retry budget, regeneration, concurrency, chunked encrypted records and tamper rejection passed\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

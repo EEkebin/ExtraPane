@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "host_tls.hpp"
 #include <mbedtls/ssl.h>
 #include <mbedtls/x509_crt.h>
@@ -43,8 +44,15 @@ struct HostTls::State {
         std::array<unsigned char,2048> der{};int size=mbedtls_x509write_crt_der(&writer,der.data(),der.size());if(size<0)check(size);check(mbedtls_x509_crt_parse_der(&cert,der.data()+der.size()-size,size));check(mbedtls_ssl_conf_own_cert(&config,&cert,&key));check(mbedtls_ssl_setup(&ssl,&config));mbedtls_ssl_set_bio(&ssl,&fd,sendBytes,receiveBytes,nullptr);
     }
 };
-HostTls::HostTls(int socket,std::function<bool()> cancelled):state_(std::make_unique<State>(socket,std::move(cancelled))){auto& s=*state_;fcntl(socket,F_SETFL,fcntl(socket,F_GETFL,0)|O_NONBLOCK);int yes=1;setsockopt(socket,SOL_SOCKET,SO_NOSIGPIPE,&yes,sizeof(yes));setsockopt(socket,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof(yes));s.configure();auto deadline=Clock::now()+std::chrono::seconds(10);for(;;){int r;{std::lock_guard lock(crypto);r=mbedtls_ssl_handshake(&s.ssl);}if(!r)break;s.retry(r,deadline);}}
+HostTls::HostTls(int socket,std::function<bool()> cancelled,access::Gate* gate):state_(std::make_unique<State>(socket,std::move(cancelled))){auto& s=*state_;fcntl(socket,F_SETFL,fcntl(socket,F_GETFL,0)|O_NONBLOCK);int yes=1;setsockopt(socket,SOL_SOCKET,SO_NOSIGPIPE,&yes,sizeof(yes));setsockopt(socket,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof(yes));s.configure();auto deadline=Clock::now()+std::chrono::seconds(10);for(;;){int r;{std::lock_guard lock(crypto);r=mbedtls_ssl_handshake(&s.ssl);}if(!r)break;s.retry(r,deadline);}
+    if(gate){protected_=std::make_unique<access::Stream>([this](std::span<uint8_t> out){auto bytes=readRaw(out.size(),seconds_);std::copy(bytes.begin(),bytes.end(),out.begin());},[this](std::span<const uint8_t> bytes){writeRaw(bytes,seconds_);});protected_->server(*gate);}
+}
 HostTls::~HostTls()=default;
-std::vector<uint8_t> HostTls::read(size_t count,int seconds){if(count>8192+32)throw std::runtime_error("Client input exceeds bounds");auto& s=*state_;std::vector<uint8_t> bytes(count);size_t offset=0;auto deadline=Clock::now()+std::chrono::seconds(seconds);while(offset<count){if(s.cancelled())throw std::runtime_error("Server stopped");int n;{std::lock_guard lock(crypto);n=mbedtls_ssl_read(&s.ssl,bytes.data()+offset,count-offset);}if(n>0)offset+=n;else if(!n || n==MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY)throw std::runtime_error("Client disconnected");else s.retry(n,deadline);}return bytes;}
-void HostTls::write(std::span<const uint8_t> data,int seconds){auto& s=*state_;auto deadline=Clock::now()+std::chrono::seconds(seconds);while(!data.empty()){if(s.cancelled())throw std::runtime_error("Server stopped");int n;{std::lock_guard lock(crypto);n=mbedtls_ssl_write(&s.ssl,data.data(),std::min(data.size(),size_t(16384)));}if(n>0)data=data.subspan(n);else s.retry(n,deadline);}}
+std::vector<uint8_t> HostTls::readRaw(size_t count,int seconds){if(count>65536+16)throw std::runtime_error("Client input exceeds bounds");auto& s=*state_;std::vector<uint8_t> bytes(count);size_t offset=0;auto deadline=Clock::now()+std::chrono::seconds(seconds);while(offset<count){if(s.cancelled())throw std::runtime_error("Server stopped");int n;{std::lock_guard lock(crypto);n=mbedtls_ssl_read(&s.ssl,bytes.data()+offset,count-offset);}if(n>0)offset+=n;else if(!n || n==MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY)throw std::runtime_error("Client disconnected");else s.retry(n,deadline);}return bytes;}
+void HostTls::writeRaw(std::span<const uint8_t> data,int seconds){auto& s=*state_;auto deadline=Clock::now()+std::chrono::seconds(seconds);while(!data.empty()){if(s.cancelled())throw std::runtime_error("Server stopped");int n;{std::lock_guard lock(crypto);n=mbedtls_ssl_write(&s.ssl,data.data(),std::min(data.size(),size_t(16384)));}if(n>0)data=data.subspan(n);else s.retry(n,deadline);}}
+}
+
+namespace dm::mac {
+std::vector<uint8_t> HostTls::read(size_t count,int seconds){if(count>8192+32)throw std::runtime_error("Client input exceeds bounds");seconds_=seconds;if(!protected_)return readRaw(count,seconds);std::vector<uint8_t> bytes(count);protected_->read(bytes);return bytes;}
+void HostTls::write(std::span<const uint8_t> bytes,int seconds){seconds_=seconds;if(protected_)protected_->write(bytes);else writeRaw(bytes,seconds);}
 }

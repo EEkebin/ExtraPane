@@ -41,12 +41,12 @@ QString Host::unavailable(){
 void Host::run(){
     int listener=-1;
     try{
-        sockaddr_in address{};address.sin_family=AF_INET;address.sin_port=htons(43824);
+        sockaddr_in address{};address.sin_family=AF_INET;address.sin_port=htons(port_);
         if(inet_pton(AF_INET,address_.toStdString().c_str(),&address.sin_addr)!=1 || address.sin_addr.s_addr==INADDR_ANY)throw std::runtime_error("Select a connected server IPv4 address");
         listener=socket(AF_INET,SOCK_STREAM|SOCK_NONBLOCK|SOCK_CLOEXEC,0);if(listener<0)throw std::runtime_error(std::strerror(errno));
         int yes=1;setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
         if(bind(listener,reinterpret_cast<sockaddr*>(&address),sizeof(address))<0 || listen(listener,4)<0)throw std::runtime_error(std::strerror(errno));
-        emit state("Listening on "+address_+":43824 — waiting for a client");
+        emit state("Listening on "+address_+":"+QString::number(port_)+" — waiting for a client");
         while(!isInterruptionRequested()){
             pollfd fd{listener,POLLIN,0};int ready=poll(&fd,1,100);
             if(ready<0){if(errno==EINTR)continue;throw std::runtime_error(std::strerror(errno));}if(!ready)continue;
@@ -55,7 +55,7 @@ void Host::run(){
             // Discard queued clients: each client must explicitly retry after the
             // active session ends, rather than unexpectedly opening a monitor.
             while((peer=accept4(listener,nullptr,nullptr,SOCK_NONBLOCK|SOCK_CLOEXEC))>=0)close(peer);
-            if(!isInterruptionRequested())emit state("Listening on "+address_+":43824 - waiting for a client");
+            if(!isInterruptionRequested())emit state("Listening on "+address_+":"+QString::number(port_)+" - waiting for a client");
         }
         emit state("Server stopped");
     }catch(const std::exception& e){emit state("Server error: "+QString::fromUtf8(e.what()));}
@@ -64,7 +64,7 @@ void Host::run(){
 void Host::serve(int socket){
     namespace wire=dm::video::wire;using namespace dm::input;
     auto cancelled=[this]{return isInterruptionRequested();};
-    Tls stream(socket,cancelled);auto request=wire::request;stream.read(request,deadline());
+    Tls stream(socket,cancelled,gate_.get());auto request=wire::request;stream.read(request,deadline());
     const auto display=wire::take_client_display(request);
     const auto input=request[7],caps=request[8],scale=request[9];request[7]=request[8]=request[9]=0;
     if(request!=wire::request || input>1 || caps>all_caps || (bool(input)!=bool(caps)) || scale>2)throw std::runtime_error("Invalid client request");

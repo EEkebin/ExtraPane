@@ -25,7 +25,7 @@ final class ClientSession extends Thread {
         void ended(String reason);
     }
     final InputQueue input;
-    private final String address,local;
+    private final String address,local;private String accessCode;private final int port;
     private final Network network;
     private final Surface surface;
     private final int width,height,hz,requested,scale;
@@ -33,7 +33,8 @@ final class ClientSession extends Thread {
     private volatile boolean cancelled;
     private volatile Socket socket;
     private Decoder decoder;
-    ClientSession(String address,String local,Network network,Surface surface,int width,int height,int hz,int caps,int scale,InputQueue input,Listener listener){
+    ClientSession(String address,String local,Network network,Surface surface,int width,int height,int hz,int caps,int scale,InputQueue input,Listener listener,int port,String accessCode){
+        this.port=port;this.accessCode=accessCode;
         super("ExtraPane connection");this.address=address;this.local=local;this.network=network;this.surface=surface;
         this.width=width;this.height=height;this.hz=hz;this.requested=caps;this.scale=scale;this.input=input;this.listener=listener;
     }
@@ -45,14 +46,14 @@ final class ClientSession extends Thread {
         InetAddress a=InetAddress.getByAddress(bytes);if(a.isAnyLocalAddress() || a.isLoopbackAddress() || a.isMulticastAddress() || (bytes[0]&255)>=224)throw new IOException("Use a reachable LAN IPv4 address");return a;
     }
     private byte[] read(DataInputStream in,int size)throws IOException{if(cancelled)throw new IOException("Disconnected");byte[] b=new byte[size];in.readFully(b);return b;}
-    @Override public void run(){String ending="Disconnected";
+    @Override public void run(){String ending="Disconnected";AccessChannel accessChannel=null;
         try{
             status("Connecting to "+address+"…");InetAddress peer=ipv4(address);
             Socket raw=new Socket();socket=raw;
             if(cancelled)throw new IOException("Disconnected");
             if(network!=null)network.bindSocket(raw);
             if(!local.isEmpty())raw.bind(new InetSocketAddress(ipv4(local),0));
-            raw.setTcpNoDelay(true);raw.connect(new InetSocketAddress(peer,43824),8000);raw.setSoTimeout(10000);
+            raw.setTcpNoDelay(true);raw.connect(new InetSocketAddress(peer,port),8000);raw.setSoTimeout(10000);
             // Product automatic-LAN mode deliberately has no peer identity check.
             // This trust manager is private to this socket, never a global default.
             SSLContext context=SSLContext.getInstance("TLSv1.3");
@@ -61,10 +62,11 @@ final class ClientSession extends Thread {
                 public void checkClientTrusted(X509Certificate[] c,String a){}
                 public void checkServerTrusted(X509Certificate[] c,String a){}
             }},new SecureRandom());
-            SSLSocket tls=(SSLSocket)context.getSocketFactory().createSocket(raw,address,43824,true);socket=tls;
+            SSLSocket tls=(SSLSocket)context.getSocketFactory().createSocket(raw,address,port,true);socket=tls;
             if(cancelled)throw new IOException("Disconnected");
             tls.setEnabledProtocols(new String[]{"TLSv1.3"});tls.startHandshake();
             DataInputStream in=new DataInputStream(tls.getInputStream());OutputStream out=tls.getOutputStream();
+            if(!accessCode.isEmpty()){status("Authenticating access code?");accessChannel=new AccessChannel(in,out,accessCode);accessCode="";in=new DataInputStream(accessChannel.input);out=accessChannel.output;}
             out.write(Protocol.request(width,height,hz,requested,scale));tls.setSoTimeout(45000);
             long[] offer=Protocol.offer(read(in,32));prepare(offer,out);tls.setSoTimeout(15000);
             long sequence=0,previous=0,frames=0,bytes=0,start=SystemClock.elapsedRealtime();
@@ -86,7 +88,7 @@ final class ClientSession extends Thread {
             }
             if(!cancelled && offer[3]!=0){decoder.awaitOutput(sequence);out.write(new byte[]{'D','O','N','E'});ending="Server diagnostic session completed";}
         }catch(Exception error){if(!cancelled){ending=error.getMessage()==null?error.getClass().getSimpleName():error.getMessage();Log.e("ExtraPane","Connection failed",error);}}
-        finally{input.grant(0);if(socket!=null)try{socket.close();}catch(IOException ignored){}if(decoder!=null)decoder.close();listener.ended(ending);}
+        finally{accessCode="";if(accessChannel!=null)accessChannel.close();input.grant(0);if(socket!=null)try{socket.close();}catch(IOException ignored){}if(decoder!=null)decoder.close();listener.ended(ending);}
     }
     private void prepare(long[] offer,OutputStream out)throws Exception{
         if(offer[4]!=2 || (offer[5]&~requested)!=0)throw new IOException("Unsupported codec or input grant");

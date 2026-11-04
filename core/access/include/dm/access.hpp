@@ -15,8 +15,12 @@ using Write=std::function<void(std::span<const uint8_t>)>;
 using Clock=std::chrono::steady_clock;
 bool validCode(const std::string& code);
 class Gate {
+    std::function<Clock::time_point()> now_;
     std::mutex mutex_;std::string code_;Clock::time_point expires_{};uint64_t generation_=0;unsigned attempts_=0;bool used_=true;
 public:
+    explicit Gate(std::function<Clock::time_point()> now=Clock::now):now_(std::move(now)){}
+    enum class Status { active,used,expired,exhausted };
+    Status status();
     struct Ticket {std::string code;uint64_t generation;};
     ~Gate();
     std::string generate();

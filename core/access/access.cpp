@@ -30,18 +30,19 @@ struct Exchange {
 };
 }
 bool validCode(const std::string& code){return code.size()==6 && std::all_of(code.begin(),code.end(),[](char c){return c>='0' && c<='9';});}
+Gate::Status Gate::status(){std::lock_guard lock(mutex_);if(used_)return Status::used;if(now_()>=expires_)return Status::expired;if(attempts_>=5)return Status::exhausted;return Status::active;}
 Gate::~Gate(){revoke();}
 std::string Gate::generate(){
     uint32_t value=0;constexpr uint32_t limit=4294000000u;
     do{need(RAND_bytes(reinterpret_cast<uint8_t*>(&value),sizeof(value))==1);}while(value>=limit);
     auto code=std::to_string(value%1000000);code.insert(0,6-code.size(),'0');
-    std::lock_guard lock(mutex_);wipe(code_);code_=code;expires_=Clock::now()+std::chrono::minutes(5);++generation_;attempts_=0;used_=false;return code;
+    std::lock_guard lock(mutex_);wipe(code_);code_=code;expires_=now_()+std::chrono::minutes(5);++generation_;attempts_=0;used_=false;return code;
 }
-Gate::Ticket Gate::begin(){std::lock_guard lock(mutex_);need(!used_ && Clock::now()<expires_ && attempts_<5);++attempts_;return {code_,generation_};}
-void Gate::consume(uint64_t generation){std::lock_guard lock(mutex_);need(!used_ && generation==generation_ && Clock::now()<expires_);used_=true;wipe(code_);}
+Gate::Ticket Gate::begin(){std::lock_guard lock(mutex_);need(!used_ && now_()<expires_ && attempts_<5);++attempts_;return {code_,generation_};}
+void Gate::consume(uint64_t generation){std::lock_guard lock(mutex_);need(!used_ && generation==generation_ && now_()<expires_);used_=true;wipe(code_);}
 void Gate::revoke(){std::lock_guard lock(mutex_);used_=true;++generation_;wipe(code_);}
 struct Stream::State {
-    Read readRaw;Write writeRaw;bool ready=false;uint64_t sent=0,received=0;
+    Read readRaw;Write writeRaw;bool ready=false,attempted=false;uint64_t sent=0,received=0;
     std::array<uint8_t,128> keys{};bssl::UniquePtr<EVP_AEAD_CTX> tx,rx;Bytes buffered;size_t offset=0;
     State(Read r,Write w):readRaw(std::move(r)),writeRaw(std::move(w)){}
     ~State(){OPENSSL_cleanse(keys.data(),keys.size());if(!buffered.empty())OPENSSL_cleanse(buffered.data(),buffered.size());}
@@ -60,27 +61,27 @@ struct Stream::State {
 };
 Stream::Stream(Read r,Write w):state_(std::make_unique<State>(std::move(r),std::move(w))){}
 Stream::~Stream()=default;
-void Stream::client(const std::string& code){auto& s=*state_;need(!s.ready);Exchange exchange(false,code);
+void Stream::client(const std::string& code){auto& s=*state_;need(!s.attempted);s.attempted=true;Exchange exchange(false,code);
     s.writeRaw(hello);s.writeRaw(std::span(exchange.message).first(exchange.size));
     std::array<uint8_t,32> response{},peer{};s.readRaw(response);need(response==hello);s.readRaw(peer);s.derive(exchange,peer,false);
     s.writeRaw(s.proof(false));std::array<uint8_t,32> proof{};s.readRaw(proof);auto expected=s.proof(true);need(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())==0);s.ready=true;
 }
-void Stream::server(Gate& gate){auto& s=*state_;need(!s.ready);auto ticket=gate.begin();
+void Stream::server(Gate& gate){auto& s=*state_;need(!s.attempted);s.attempted=true;auto ticket=gate.begin();
     struct Clean {std::string& code;~Clean(){wipe(code);}} clean{ticket.code};
     std::array<uint8_t,32> request{},peer{};s.readRaw(request);need(request==hello);s.readRaw(peer);Exchange exchange(true,ticket.code);wipe(ticket.code);
     s.writeRaw(hello);s.writeRaw(std::span(exchange.message).first(exchange.size));s.derive(exchange,peer,true);
     std::array<uint8_t,32> proof{};s.readRaw(proof);auto expected=s.proof(false);need(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())==0);
     gate.consume(ticket.generation);s.writeRaw(s.proof(true));s.ready=true;
 }
-void Stream::write(std::span<const uint8_t> bytes){auto& s=*state_;need(s.ready);
+void Stream::write(std::span<const uint8_t> bytes){auto& s=*state_;need(s.ready);struct Guard{bool& ready;bool ok=false;~Guard(){if(!ok)ready=false;}}guard{s.ready};
     while(!bytes.empty()){
         need(s.sent!=std::numeric_limits<uint64_t>::max());size_t n=std::min(bytes.size(),maxRecord);
         std::array<uint8_t,12> header{},nonce{};put(std::span(header).first(8),s.sent);put(std::span(header).last(4),n);put(std::span(nonce).last(8),s.sent);
         Bytes encrypted(n+16);size_t written=0;need(EVP_AEAD_CTX_seal(s.tx.get(),encrypted.data(),&written,encrypted.size(),nonce.data(),nonce.size(),bytes.data(),n,header.data(),header.size())==1 && written==encrypted.size());
         s.writeRaw(header);s.writeRaw(encrypted);++s.sent;bytes=bytes.subspan(n);
-    }
+    }guard.ok=true;
 }
-void Stream::read(std::span<uint8_t> bytes){auto& s=*state_;need(s.ready);
+void Stream::read(std::span<uint8_t> bytes){auto& s=*state_;need(s.ready);struct Guard{bool& ready;bool ok=false;~Guard(){if(!ok)ready=false;}}guard{s.ready};
     while(!bytes.empty()){
         if(s.offset==s.buffered.size()){
             need(s.received!=std::numeric_limits<uint64_t>::max());std::array<uint8_t,12> header{},nonce{};s.readRaw(header);
@@ -90,6 +91,6 @@ void Stream::read(std::span<uint8_t> bytes){auto& s=*state_;need(s.ready);
             ++s.received;s.offset=0;
         }
         auto n=std::min(bytes.size(),s.buffered.size()-s.offset);std::copy_n(s.buffered.data()+s.offset,n,bytes.data());s.offset+=n;bytes=bytes.subspan(n);
-    }
+    }guard.ok=true;
 }
 }

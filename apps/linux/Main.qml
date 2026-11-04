@@ -102,8 +102,12 @@ ApplicationWindow {
                     Button {
                         text: receiver.hosting ? "Stop server" : "Start server"
                         enabled: receiver.hostAvailability.length === 0
-                        onClicked: { if (receiver.hosting) receiver.stopHost(); else { const selected=receiver.addresses[hostAddress.currentIndex]; receiver.startHost(selected ? selected.address : "0.0.0.0") } }
+                        onClicked: { if (receiver.hosting) receiver.stopHost(); else { const selected=receiver.addresses[hostAddress.currentIndex]; receiver.startHost(selected ? selected.address : "0.0.0.0", Number(hostPort.text), requireCode.checked) } }
                     }
+                    TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 }; enabled: !receiver.hosting }
+                    CheckBox { id: requireCode; text: "Require access code"; enabled: !receiver.hosting }
+                    Label { text: receiver.accessCode; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Button { text: "Generate new code"; enabled: receiver.hosting && requireCode.checked; onClicked: receiver.generateAccessCode() }
                     Label { text: receiver.hostStatus; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { text: "Connected network addresses"; font.bold: true }
                     Repeater {
@@ -122,6 +126,11 @@ ApplicationWindow {
                     Label { visible: !root.fullscreen; text: "Client"; font.pixelSize: 30; font.bold: true }
                     RowLayout {
                         visible: !receiver.active && !root.fullscreen
+                        TextField { id: clientPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 }; Layout.preferredWidth: 100 }
+                        TextField { id: clientCode; placeholderText: "Access code (optional)"; echoMode: TextInput.Password; maximumLength: 6; Layout.fillWidth: true }
+                    }
+                    RowLayout {
+                        visible: !receiver.active && !root.fullscreen
                         TextField {
                             id: serverAddress; Layout.fillWidth: true
                             placeholderText: "Server IPv4 address"; text: receiver.savedAddress
@@ -131,7 +140,8 @@ ApplicationWindow {
                             id: connectButton; text: "Connect"; enabled: receiver.availability.length === 0
                             onClicked: {
                                 const selected = receiver.addresses[localAddress.currentIndex]
-                                receiver.connectTo(serverAddress.text, selected ? selected.address : "0.0.0.0", inputAllowed.checked, root.nextScale, selected ? selected.index : 0)
+                                receiver.connectTo(serverAddress.text, selected ? selected.address : "0.0.0.0", inputAllowed.checked, root.nextScale, selected ? selected.index : 0, Number(clientPort.text), clientCode.text)
+                                clientCode.text = ""
                                 root.nextScale = 0
                                 root.revealToolbar()
                             }
