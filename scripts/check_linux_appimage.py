@@ -8,7 +8,7 @@ import time
 
 artifact = Path(sys.argv[1]).resolve()
 environment = dict(os.environ, QT_QPA_PLATFORM='xcb',
-                   LIBGL_ALWAYS_SOFTWARE='1')
+                   LIBGL_ALWAYS_SOFTWARE='1', QT_FORCE_STDERR_LOGGING='1')
 environment.pop('APPIMAGE_EXTRACT_AND_RUN', None)
 log = artifact.parent/'appimage-startup.log'
 with log.open('w') as output, tempfile.TemporaryDirectory(prefix='extrapane-portable-') as temporary:
@@ -22,7 +22,8 @@ with log.open('w') as output, tempfile.TemporaryDirectory(prefix='extrapane-port
     try:
         time.sleep(12)
         if process.poll() is not None:
-            raise RuntimeError(f'AppImage exited before startup check: {process.returncode}')
+            output.flush()
+            raise RuntimeError(f'AppImage exited before startup check: {process.returncode}\n'+log.read_text())
         process.terminate()
         if process.wait(timeout=15) != 0:
             raise RuntimeError('AppImage did not shut down cleanly')

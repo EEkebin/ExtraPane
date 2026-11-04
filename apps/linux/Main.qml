@@ -104,7 +104,7 @@ ApplicationWindow {
                         enabled: receiver.hostAvailability.length === 0
                         onClicked: { if (receiver.hosting) receiver.stopHost(); else { const selected=receiver.addresses[hostAddress.currentIndex]; receiver.startHost(selected ? selected.address : "0.0.0.0", Number(hostPort.text), requireCode.checked) } }
                     }
-                    TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 }; enabled: !receiver.hosting }
+                    TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } enabled: !receiver.hosting }
                     CheckBox { id: requireCode; text: "Require access code"; enabled: !receiver.hosting }
                     Label { text: receiver.accessCode; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Button { text: "Generate new code"; enabled: receiver.hosting && requireCode.checked; onClicked: receiver.generateAccessCode() }
@@ -126,7 +126,7 @@ ApplicationWindow {
                     Label { visible: !root.fullscreen; text: "Client"; font.pixelSize: 30; font.bold: true }
                     RowLayout {
                         visible: !receiver.active && !root.fullscreen
-                        TextField { id: clientPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 }; Layout.preferredWidth: 100 }
+                        TextField { id: clientPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } Layout.preferredWidth: 100 }
                         TextField { id: clientCode; placeholderText: "Access code (optional)"; echoMode: TextInput.Password; maximumLength: 6; Layout.fillWidth: true }
                     }
                     RowLayout {
