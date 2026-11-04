@@ -3,11 +3,14 @@
 #include <functional>
 #include <span>
 #include <vector>
+#include <dm/access.hpp>
 namespace dm::mac {
 class HostTls {
+    std::unique_ptr<access::Stream> protected_;int seconds_=10;
+    std::vector<uint8_t> readRaw(size_t,int);void writeRaw(std::span<const uint8_t>,int);
     struct State;std::unique_ptr<State> state_;
 public:
-    HostTls(int socket,std::function<bool()> cancelled);
+    HostTls(int socket,std::function<bool()> cancelled,access::Gate* gate=nullptr);
     ~HostTls();
     std::vector<uint8_t> read(size_t count,int seconds=2);
     void write(std::span<const uint8_t> data,int seconds=2);

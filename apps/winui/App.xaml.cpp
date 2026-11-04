@@ -14,7 +14,7 @@ namespace {
 struct RolePage {
     const bool host;std::function<void()> changed;
     FrameworkElement root{nullptr};
-    TextBox peer{nullptr},details{nullptr};TextBlock status{nullptr},addresses{nullptr};
+    TextBox peer{nullptr},details{nullptr},port{nullptr};PasswordBox code{nullptr};CheckBox require_code{nullptr};TextBlock host_code{nullptr};Button generate_code{nullptr};ULONGLONG code_expires=0;TextBlock status{nullptr},addresses{nullptr};
     unsigned next_scale=0;std::wstring last_error,renderer_warning,renderer_failed;
     std::set<unsigned> connections;
     ULONGLONG last_addresses=0;
@@ -23,9 +23,9 @@ struct RolePage {
     Child engine,pattern;bool active=false,pattern_started=false;std::string pending;std::wstring log;
     template<class T>T find(const wchar_t* name){return root.FindName(name).as<T>();}
     void attempt(const std::function<void()>& action){try{action();}catch(const hresult_error& e){status.Text(e.message());}catch(const std::exception& e){status.Text(wide(e.what()));}}
-    void enabled(bool running){active=running;peer.IsEnabled(!running);input.IsEnabled(!running);debug.IsEnabled(!running);start_button.IsEnabled(!running);stop_button.IsEnabled(running);if(changed)changed();}
+    void enabled(bool running){active=running;peer.IsEnabled(!running);port.IsEnabled(!running);code.IsEnabled(!running);require_code.IsEnabled(!running);generate_code.IsEnabled(host&&running&&require_code.IsChecked().Value());input.IsEnabled(!running);debug.IsEnabled(!running);start_button.IsEnabled(!running);stop_button.IsEnabled(running);if(changed)changed();}
     void ready(){status.Text(host?L"Ready. Start Driver to accept LAN clients.":L"Ready. Enter the server address to connect.");}
-    void stop(){try{drain_output();}catch(...){}engine.stop();pattern.stop();connections.clear();enabled(false);status.Text(host?L"Driver stopped.":L"Disconnected. Ready when you are.");}
+    void stop(){try{drain_output();}catch(...){}engine.stop();pattern.stop();connections.clear();host_code.Text(L"No active code");code_expires=0;enabled(false);status.Text(host?L"Driver stopped.":L"Disconnected. Ready when you are.");}
     void refresh_addresses(){
         std::wstring value;
         for(const auto& nic:dm::net::local_addresses()) {
@@ -38,15 +38,17 @@ struct RolePage {
         last_addresses=GetTickCount64();
     }
     void start(){
+        const std::wstring portText(port.Text());if(portText.empty()||portText.size()>5||portText.find_first_not_of(L"0123456789")!=std::wstring::npos)throw std::runtime_error("Enter a port from 1 to 65535");const auto portValue=std::stoul(portText);if(!portValue||portValue>65535)throw std::runtime_error("Enter a port from 1 to 65535");
+        std::string secret=ascii(std::wstring(code.Password()));if(!host&&!secret.empty()&&(secret.size()!=6||secret.find_first_not_of("0123456789")!=std::string::npos))throw std::runtime_error("Access code must contain six digits");
         const std::wstring remote(peer.Text());if(!host)ipv4(remote);
         if(!host)save_setting(L"Peer",remote);pending.clear();log.clear();last_error.clear();renderer_warning.clear();renderer_failed.clear();details.Text(L"");pattern_started=false;
         std::vector<std::wstring> args{host?L"host":L"receive",L"--lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId())};
-        if(host)engine.start_driver(input.IsChecked().Value(),debug.IsChecked().Value());
-        else {const auto quality=std::exchange(next_scale,0u);find<TextBlock>(L"Mode").Text(quality==0?L"This connection: Native resolution.":quality==1?L"This connection: 75% stream resolution. The next connection defaults to Native.":L"This connection: 50% stream resolution. The next connection defaults to Native.");args.insert(args.end(),{L"--quality",quality==1?L"75":quality==2?L"50":L"native",L"--renderer",renderer_setting(),L"--peer",remote});if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);}
+        if(host)engine.start_driver(input.IsChecked().Value(),debug.IsChecked().Value(),static_cast<unsigned>(portValue),require_code.IsChecked().Value());
+        else {const auto quality=std::exchange(next_scale,0u);find<TextBlock>(L"Mode").Text(quality==0?L"This connection: Native resolution.":quality==1?L"This connection: 75% stream resolution. The next connection defaults to Native.":L"This connection: 50% stream resolution. The next connection defaults to Native.");args.insert(args.end(),{L"--quality",quality==1?L"75":quality==2?L"50":L"native",L"--renderer",renderer_setting(),L"--peer",remote});args.insert(args.end(),{L"--port",std::to_wstring(portValue)});if(!secret.empty())args.push_back(L"--access-stdin");if(input.IsChecked().Value())args.push_back(L"--control");engine.start((directory()/L"dm-view.exe").wstring(),args);if(!secret.empty()){engine.send_control(secret+"\n");SecureZeroMemory(secret.data(),secret.size());code.Password(L"");}}
         enabled(true);status.Text(host?L"Starting driver...":L"Connecting securely to your server...");
     }
-    void drain_output(){if(!engine.process)return;pending+=engine.drain();size_t end;
-        while((end=pending.find('\n'))!=std::string::npos){auto line=pending.substr(0,end);pending.erase(0,end+1);if(!line.empty()&&line.back()=='\r')line.pop_back();log+=wide(line)+L"\r\n";if(log.size()>24000)log.erase(0,log.size()-18000);
+    void drain_output(){if(code_expires&&GetTickCount64()>=code_expires){host_code.Text(L"Code expired. Generate a new code.");code_expires=0;}if(!engine.process)return;pending+=engine.drain();size_t end;
+        while((end=pending.find('\n'))!=std::string::npos){auto line=pending.substr(0,end);pending.erase(0,end+1);if(!line.empty()&&line.back()=='\r')line.pop_back();if(line.starts_with("ACCESS_STATUS ")){host_code.Text(L"Code "+wide(line.substr(14))+L". Generate a new code.");code_expires=0;continue;}if(line.starts_with("ACCESS_CODE ")){auto digits=line.substr(12);if(digits.size()==6&&digits.find_first_not_of("0123456789")==std::string::npos){host_code.Text(wide(digits)+L" ? one use, expires in 5 minutes");code_expires=GetTickCount64()+300000;}SecureZeroMemory(line.data(),line.size());continue;}log+=wide(line)+L"\r\n";if(log.size()>24000)log.erase(0,log.size()-18000);
             if(line.starts_with("DRIVER_STARTED")||line.starts_with("LISTENING")||line.starts_with("DRIVER_WAITING")){status.Text(L"Driver running. Waiting for a client connection.");pattern.stop();pattern_started=false;}
             if(host && (line.starts_with("CLIENT_CONNECTED slot=")||line.starts_with("CLIENT_DISCONNECTED slot="))){
                 const auto position=line.find("slot=");const auto slot=std::stoul(line.substr(position+5));
@@ -95,6 +97,11 @@ struct RolePage {
  <StackPanel Orientation="Horizontal" Spacing="12"><Button x:Name="Start" Style="{StaticResource AccentButtonStyle}"/><Button x:Name="Stop" Content="Disconnect" IsEnabled="False"/></StackPanel>
  <TextBlock x:Name="Status" Text="Ready to connect over LAN." TextWrapping="Wrap"/>
  </StackPanel></Border>
+ <TextBox x:Name="Port" Header="TCP port" Text="43824" MaxLength="5"/>
+ <CheckBox x:Name="RequireCode" Content="Require access code"/>
+ <PasswordBox x:Name="AccessCode" Header="Access code (leave blank for trusted LAN)" MaxLength="6"/>
+ <TextBlock x:Name="HostCode" Text="Start Driver to generate a code" IsTextSelectionEnabled="True" TextWrapping="Wrap"/>
+ <Button x:Name="GenerateCode" Content="Generate new code" IsEnabled="False"/>
  <CheckBox x:Name="Debug" Content="Debug diagnostics"/>
  <TextBox x:Name="Details" Visibility="Collapsed" IsReadOnly="True" AcceptsReturn="True" Height="180" TextWrapping="Wrap"/>
  <TextBlock Text="Direct LAN · Encrypted connection · No audio yet" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -102,6 +109,9 @@ struct RolePage {
         find<TextBlock>(L"Title").Text(host?L"Server":L"Client");find<TextBlock>(L"Subtitle").Text(host?L"Extend your desktop onto another computer.":L"Make this screen part of your server's desktop.");
         find<TextBlock>(L"Mode").Text(host?L"Up to four clients, each with its own monitor. Clients connect automatically while the driver is running. Resolution and refresh come from each client.":L"Uses this screen's resolution and refresh, within server limits. Resize the display window freely; F11 toggles fullscreen.");
         addresses=find<TextBlock>(L"Addresses");peer=find<TextBox>(L"Peer");details=find<TextBox>(L"Details");status=find<TextBlock>(L"Status");input=find<CheckBox>(L"Input");debug=find<CheckBox>(L"Debug");if(host)debug.Content(box_value(L"Debug: color test and 3,600-frame session"));start_button=find<Button>(L"Start");stop_button=find<Button>(L"Stop");
+        port=find<TextBox>(L"Port");code=find<PasswordBox>(L"AccessCode");require_code=find<CheckBox>(L"RequireCode");host_code=find<TextBlock>(L"HostCode");generate_code=find<Button>(L"GenerateCode");
+        code.Visibility(host?Visibility::Collapsed:Visibility::Visible);require_code.Visibility(host?Visibility::Visible:Visibility::Collapsed);host_code.Visibility(host?Visibility::Visible:Visibility::Collapsed);generate_code.Visibility(host?Visibility::Visible:Visibility::Collapsed);
+        generate_code.Click([this](auto&&,auto&&){attempt([&]{engine.send_control("G");});});
         refresh_addresses();peer.Text(host?L"":setting(L"Peer",L""));if(host)peer.Visibility(Visibility::Collapsed);
         start_button.Content(box_value(host?L"Start Driver":L"Connect"));stop_button.Content(box_value(host?L"Stop Driver":L"Disconnect"));
         start_button.Click([this](auto&&,auto&&){attempt([&]{start();});});stop_button.Click([this](auto&&,auto&&){attempt([&]{stop();});});

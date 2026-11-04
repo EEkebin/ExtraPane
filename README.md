@@ -6,7 +6,7 @@
 
 ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Windows and Linux can host; a macOS host preview is in development with an initial M3 Pro session reported working. Windows, Linux and Android clients are implemented, with a macOS Universal client preview verified for Windows-host video and mouse/keyboard on an M3 Pro. Mouse, keyboard, touch and pen availability depends on the client and host; see the platform guides below.
 
-[Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
+[Project website](https://eekebin.github.io/ExtraPane/) | [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
 The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers support up to four clients; the Linux host currently supports one. Android is currently a client only. The macOS development preview adds hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
 
@@ -54,6 +54,12 @@ The current driver uses a development code-signing certificate. It is **not Micr
 Setup does not disable Secure Boot or Memory Integrity, enable test-signing mode, or restart Windows automatically. Windows policy may still reject the driver when it loads. Successful package installation does not prove that every Windows configuration can load it. If setup or hosting fails, see [driver installation and troubleshooting](docs/DRIVER-INSTALLATION.md).
 
 Windows apps and installers are currently unsigned. The macOS preview is ad-hoc signed, not notarized. The bundled driver is development-signed; compatibility on a new PC depends on Windows policy and the hardware in use.
+
+## Access codes and reachable servers
+
+The access-code build adds an optional **Require access code** setting on Windows, Linux and macOS servers. Enter the server IPv4 address, TCP port and generated six-digit code on any supported client, including Android. Codes expire after five minutes, admit one session and have a shared five-attempt budget. Generate a new code to reconnect or admit another client. Existing sessions continue when a new code is generated.
+
+For a connection across networks, the server address and port must already be reachable. Router forwarding and external firewall configuration are up to you; there is no relay or automatic UPnP. Always require a code for a public listener. Without a code, automatic LAN mode does not verify peer identity. See [access-code setup and security](docs/ACCESS-CODES.md) and check release notes to confirm your downloaded build includes this feature.
 
 ## Connect
 

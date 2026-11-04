@@ -64,3 +64,7 @@ CI uses the pinned Arch snapshot described in RELEASING.md, records package vers
 - [linuxdeploy Qt](https://github.com/linuxdeploy/linuxdeploy-plugin-qt)
 - [AppImage runtime boundary](https://docs.appimage.org/introduction/concepts.html)
 
+
+## Access-code connections
+
+Code-enabled builds add a TCP port (default 43824) and optional six-digit access code on the Client page. Use matching releases. Enable Require access code before starting the server; Generate new code admits another connection without disconnecting existing sessions. See [access-code setup and security](ACCESS-CODES.md) for expiry, retry limits and reachable internet endpoints. No-code mode is still restricted to trusted-network use.

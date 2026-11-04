@@ -14,6 +14,10 @@
 #include <mutex>
 
 namespace dm::security {
+namespace {std::shared_ptr<access::Gate> accessGate;std::string accessCode;}
+void set_access_client(std::string code){if(!access::validCode(code))throw std::invalid_argument("Access code must contain exactly six digits");accessCode=std::move(code);}
+std::shared_ptr<access::Gate> enable_access_host(){accessGate=std::make_shared<access::Gate>();return accessGate;}
+
 namespace {
 // This dependency build has no native Windows threading backend. Serialize
 // crypto calls, never network waits, across independent connection contexts.
@@ -88,6 +92,7 @@ struct TlsStream::State {
 };
 TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair_name)
     : state_(std::make_unique<State>(std::move(socket))) {
+    server_=server;
     std::lock_guard lock(crypto_mutex);
     if (psa_crypto_init() != PSA_SUCCESS) throw std::runtime_error("Initialize system-backed crypto failed");
     auto key = pair_name.empty()?Key{}:load_pairing(pair_name);
@@ -120,11 +125,16 @@ void TlsStream::handshake(Deadline deadline) {
     for (;;) {
         check_deadline(deadline);
         const int result = [&]{std::lock_guard lock(crypto_mutex);return mbedtls_ssl_handshake(&state_->ssl);}();
-        if (result == 0) return;
+        if (result == 0) break;
         if (!state_->retry(result, deadline)) tls_error("TLS authentication failed", result);
     }
+    if((server_ && accessGate) || (!server_ && !accessCode.empty())){
+        access_deadline_=std::chrono::steady_clock::now()+std::chrono::seconds(10);
+        protected_=std::make_unique<access::Stream>([this](std::span<uint8_t> bytes){read_raw(bytes,access_deadline_);},[this](std::span<const uint8_t> bytes){write_raw(bytes,access_deadline_);});
+        if(server_)protected_->server(*accessGate);else protected_->client(accessCode);
+    }
 }
-void TlsStream::write(std::span<const std::uint8_t> bytes, Deadline deadline) {
+void TlsStream::write_raw(std::span<const std::uint8_t> bytes, Deadline deadline) {
     while (!bytes.empty()) {
         check_deadline(deadline);
         const int result = [&]{std::lock_guard lock(crypto_mutex);return mbedtls_ssl_write(&state_->ssl, bytes.data(), std::min<std::size_t>(bytes.size(), 16384));}();
@@ -132,7 +142,7 @@ void TlsStream::write(std::span<const std::uint8_t> bytes, Deadline deadline) {
         if (!state_->retry(result, deadline)) tls_error("TLS write", result);
     }
 }
-void TlsStream::read(std::span<std::uint8_t> bytes, Deadline deadline) {
+void TlsStream::read_raw(std::span<std::uint8_t> bytes, Deadline deadline) {
     while (!bytes.empty()) {
         check_deadline(deadline);
         const int result = [&]{std::lock_guard lock(crypto_mutex);return mbedtls_ssl_read(&state_->ssl, bytes.data(), bytes.size());}();
@@ -181,4 +191,9 @@ void session_check(const net::Options& options, const std::string& pair_name, bo
     stream.close(deadline);
     std::cout << "SESSION_OK " << stream.description() << " permissions=none capabilities=diagnostic-only" << std::endl;
 }
+}
+
+namespace dm::security {
+void TlsStream::read(std::span<uint8_t> bytes,std::chrono::steady_clock::time_point deadline){access_deadline_=deadline;if(protected_)protected_->read(bytes);else read_raw(bytes,deadline);}
+void TlsStream::write(std::span<const uint8_t> bytes,std::chrono::steady_clock::time_point deadline){access_deadline_=deadline;if(protected_)protected_->write(bytes);else write_raw(bytes,deadline);}
 }

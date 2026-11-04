@@ -5,12 +5,17 @@
 #include <QNetworkInterface>
 #include <QScreen>
 #include <QSettings>
+#include <QTimer>
 #include <algorithm>
 #include <cmath>
 
 Controller::Controller(QString availability,QObject* parent):QObject(parent),availability_(std::move(availability)){
     hostAvailability_=dm::linux_client::Host::unavailable();
     refreshAddresses();
+    auto* timer=new QTimer(this);timer->setInterval(500);
+    connect(timer,&QTimer::timeout,this,[this]{if(!accessGate_)return;auto state=accessGate_->status();if(state==dm::access::Gate::Status::active)return;
+        QString text=state==dm::access::Gate::Status::used?"Code used. Generate a new code for another connection.":state==dm::access::Gate::Status::expired?"Code expired. Generate a new code.":"Attempt limit reached. Generate a new code.";
+        if(accessCode_!=text){accessCode_=text;emit hostChanged();}});timer->start();
     connect(&media_,&dm::linux_client::Media::failed,this,[this](const QString& reason){
         failed_=true;status_=reason;if(receiver_)receiver_->requestInterruption();emit changed();
     });
@@ -41,8 +46,9 @@ void Controller::attachSurface(QObject* video,QObject* input){
     video_=qobject_cast<QQuickItem*>(video);inputSurface_=qobject_cast<dm::linux_client::InputSurface*>(input);
     if(inputSurface_)inputSurface_->queue=&input_;
 }
-void Controller::connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex){
+void Controller::connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex,unsigned port,QString code){
     if(receiver_)return;
+    if(!port||port>65535||(!code.isEmpty()&&!dm::access::validCode(code.toStdString()))){status_="Enter a valid port and six-digit access code";emit changed();return;}
     const QHostAddress address(server.trimmed());
     if(address.protocol()!=QAbstractSocket::IPv4Protocol || !address.toIPv4Address() || address.toIPv4Address()==0xffffffffu || address.isMulticast() || address.isLoopback()){
         status_="Enter the server's LAN IPv4 address.";emit changed();return;
@@ -62,6 +68,7 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
     const unsigned hz=static_cast<unsigned>(std::clamp(std::lround(screen->refreshRate()),1L,60L));
     dm::linux_client::Receiver::Options options{address.toString(),local,
         {static_cast<unsigned>(size.width()),static_cast<unsigned>(size.height()),hz},scale,input,interfaceIndex};
+    options.port=port;options.code=code;
     QSettings().setValue("serverAddress",options.server);
     releaseInput();input_.grant(0);media_.resetCounters();failed_=false;statistics_.clear();decoder_="Waiting for decoder";
     receiver_=new dm::linux_client::Receiver(options,input_,media_,this);
@@ -81,15 +88,17 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
 }
 void Controller::disconnectFromServer(){releaseInput();if(receiver_)receiver_->requestInterruption();}
 void Controller::releaseInput(){if(inputSurface_)inputSurface_->resetInput();else input_.reset();}
-void Controller::startHost(QString address){
+void Controller::startHost(QString address,unsigned port,bool requireCode){
+    if(!port||port>65535){hostStatus_="Enter a port from 1 to 65535";emit hostChanged();return;}
     if(host_)return;
     if(!hostAvailability_.isEmpty()){hostStatus_=hostAvailability_;emit hostChanged();return;}
     bool valid=false;
     for(const auto& entry:addresses_)if(entry.toMap().value("address").toString()==address && address!="0.0.0.0")valid=true;
     if(!valid){hostStatus_="Select a connected server IPv4 address";emit hostChanged();return;}
-    host_=new dm::linux_client::Host(address,this);auto* worker=host_;
+    accessGate_=requireCode?std::make_shared<dm::access::Gate>():nullptr;accessCode_.clear();if(accessGate_)generateAccessCode();
+    host_=new dm::linux_client::Host(address,this,port,accessGate_);auto* worker=host_;
     connect(worker,&dm::linux_client::Host::state,this,[this](const QString& status){hostStatus_=status;emit hostChanged();});
-    connect(worker,&QThread::finished,this,[this,worker]{if(host_!=worker)return;host_=nullptr;worker->deleteLater();emit hostChanged();});
+    connect(worker,&QThread::finished,this,[this,worker]{if(host_!=worker)return;host_=nullptr;if(accessGate_)accessGate_->revoke();accessGate_.reset();accessCode_.clear();worker->deleteLater();emit hostChanged();});
     hostStatus_="Starting listener...";worker->start();emit hostChanged();
 }
 void Controller::stopHost(){if(host_){host_->requestInterruption();hostStatus_="Stopping server...";emit hostChanged();}}
@@ -99,3 +108,5 @@ void Controller::shutdown(){
     if(receiver_){receiver_->requestInterruption();receiver_->wait();QObject::disconnect(receiver_,nullptr,this,nullptr);delete receiver_;receiver_=nullptr;}
     media_.stop();
 }
+
+void Controller::generateAccessCode(){if(!accessGate_)return;try{accessCode_=QString::fromStdString(accessGate_->generate())+" ? one use, expires in 5 minutes";}catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}emit hostChanged();}

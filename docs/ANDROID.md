@@ -74,3 +74,7 @@ For local release packaging, build `assembleRelease` with `EXTRAPANE_VERSION` an
 ## Android hosting scope
 
 A future Android host could share the device screen or one app through MediaProjection, with Android's consent prompt and foreground-service lifecycle, then encode H.264 using MediaCodec. This is screen sharing, not a portable independent extended Android desktop. Remote control would need separately authorized Android input/accessibility integration; ordinary applications cannot inject arbitrary global touch and pen input. Hosting is not part of the current Android client milestone.
+
+## Access-code connections
+
+Code-enabled builds add a TCP port (default 43824) and optional six-digit access code on the Client page. Use matching releases. Android remains a client only. See [access-code setup and security](ACCESS-CODES.md) for expiry, retry limits and reachable internet endpoints. No-code mode is still restricted to trusted-network use.

@@ -9,6 +9,7 @@
 
 class Controller final:public QObject {
     Q_OBJECT
+    Q_PROPERTY(QString accessCode READ accessCode NOTIFY hostChanged)
     Q_PROPERTY(bool hosting READ hosting NOTIFY hostChanged)
     Q_PROPERTY(QString hostStatus READ hostStatus NOTIFY hostChanged)
     Q_PROPERTY(QString hostAvailability READ hostAvailability CONSTANT)
@@ -29,7 +30,9 @@ public:
     bool hosting()const{return host_!=nullptr;}
     QString hostStatus()const{return hostStatus_;}
     QString hostAvailability()const{return hostAvailability_;}
-    Q_INVOKABLE void startHost(QString address);
+    QString accessCode()const{return accessCode_;}
+    Q_INVOKABLE void generateAccessCode();
+    Q_INVOKABLE void startHost(QString address,unsigned port=43824,bool requireCode=false);
     Q_INVOKABLE void stopHost();
     bool active()const{return receiver_!=nullptr;}
     QString status()const{return status_;}
@@ -43,7 +46,7 @@ public:
     unsigned sourceHeight()const{return height_;}
     Q_INVOKABLE void refreshAddresses();
     Q_INVOKABLE void attachSurface(QObject* video,QObject* input);
-    Q_INVOKABLE void connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex);
+    Q_INVOKABLE void connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex,unsigned port=43824,QString code={});
     Q_INVOKABLE void disconnectFromServer();
     Q_INVOKABLE void releaseInput();
     void shutdown();
@@ -53,6 +56,7 @@ signals:
     void addressesChanged();
     void statisticsChanged();
 private:
+    std::shared_ptr<dm::access::Gate> accessGate_;QString accessCode_;
     dm::linux_client::Host* host_=nullptr;
     QString hostStatus_="Server stopped",hostAvailability_;
     dm::linux_client::InputQueue input_;

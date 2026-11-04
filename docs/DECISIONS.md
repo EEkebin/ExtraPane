@@ -1,5 +1,11 @@
 # Decisions, assumptions, and evidence
 
+## Optional access-code admission (2026-11-03)
+
+The user requested direct reachable IPv4 address, port and six-digit one-time codes on every implemented platform, with forwarding handled outside the app. Retain explicit trusted-LAN mode; code mode uses pinned BoringSSL SPAKE2, key confirmation and authenticated records inside existing TLS before display/input allocation. Hosts share a five-attempt, five-minute, one-use admission gate across interfaces and slots. No automatic regeneration, pairing, discovery, relay or UPnP. See ACCESS-CODES.md for current validation and limits.
+
+The user also authorized an original GitHub Pages showcase using the canonical app icon, followed by merge, release and removal of merged feature branches. iOS remains deferred.
+
 ## Android receiver milestone (2026-11-03)
 
 The user accepted the Linux handoff and authorized installing/testing an Android client on their ADB-connected Pixel 8a. Keep C++20 shared protocol validation through JNI; use Android's platform UI, TLS sockets and MediaCodec Surface decoding for platform integration. First slice requests native touch, mouse and physical keyboard, with pen/audio/Android hosting explicitly unavailable. API 30 minimum, ARM64 and x86_64, Gradle 8.13/AGP 8.13.2 and NDK 27.2.12479018 are pinned. The first Wi-Fi Windows-host session negotiated 1080x1920 and the Pixel's hardware H.264 decoder at approximately 60 received FPS. The user confirmed the picture and physical touch work. Continue lifecycle and packaged build checks before claiming a release.

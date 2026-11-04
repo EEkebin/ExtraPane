@@ -19,7 +19,8 @@ void Receiver::run(){
     const auto cancelled=[this]{return isInterruptionRequested();};
     try{
         emit state("Connecting...");
-        Tls stream(options_.server.toStdString(),options_.local.toStdString(),43824,cancelled,options_.interfaceIndex);
+        Tls stream(options_.server.toStdString(),options_.local.toStdString(),static_cast<uint16_t>(options_.port),cancelled,options_.interfaceIndex,options_.code.toStdString());
+        options_.code.fill(QChar(0));options_.code.clear();
         auto request=wire::request;
         request[9]=static_cast<std::uint8_t>(options_.scale);
         const unsigned requested=options_.input?dm::input::all_caps:0;

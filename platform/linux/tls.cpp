@@ -56,7 +56,7 @@ struct Tls::State {
         else failure(operation);
     }
 };
-Tls::Tls(const std::string& peer,const std::string& local,std::uint16_t port,std::function<bool()> cancelled,unsigned interfaceIndex)
+Tls::Tls(const std::string& peer,const std::string& local,std::uint16_t port,std::function<bool()> cancelled,unsigned interfaceIndex,const std::string& code)
     :state_(std::make_unique<State>()) {
     auto& s=*state_;s.cancelled=std::move(cancelled);
     const auto destination=address(peer,port),source=address(local.empty()?"0.0.0.0":local,0);
@@ -88,8 +88,9 @@ Tls::Tls(const std::string& peer,const std::string& local,std::uint16_t port,std
     s.ssl=SSL_new(s.context);
     if(!s.ssl || SSL_set_fd(s.ssl,s.socket)!=1)failure("Create TLS connection");
     for(;;){s.check(deadline);ERR_clear_error();const int result=SSL_connect(s.ssl);if(result==1)break;s.retry(result,deadline,"TLS handshake");}
+    if(!code.empty())protect(code,nullptr);
 }
-Tls::Tls(int acceptedSocket,std::function<bool()> cancelled):state_(std::make_unique<State>()){
+Tls::Tls(int acceptedSocket,std::function<bool()> cancelled,access::Gate* gate):state_(std::make_unique<State>()){
     auto& s=*state_;s.socket=acceptedSocket;s.cancelled=std::move(cancelled);
     const int yes=1;setsockopt(s.socket,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof(yes));
     s.context=SSL_CTX_new(TLS_server_method());
@@ -110,9 +111,10 @@ Tls::Tls(int acceptedSocket,std::function<bool()> cancelled):state_(std::make_un
     s.ssl=SSL_new(s.context);if(!s.ssl || SSL_set_fd(s.ssl,s.socket)!=1)failure("Create TLS server connection");
     const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);
     for(;;){s.check(until);ERR_clear_error();int result=SSL_accept(s.ssl);if(result==1)break;s.retry(result,until,"Server TLS handshake");}
+    if(gate)protect({},gate);
 }
 Tls::~Tls()=default;
-void Tls::read(std::span<std::uint8_t> bytes,Deadline deadline){
+void Tls::readRaw(std::span<std::uint8_t> bytes,Deadline deadline){
     while(!bytes.empty()){
         state_->check(deadline);std::size_t size=0;ERR_clear_error();
         const int result=SSL_read_ex(state_->ssl,bytes.data(),bytes.size(),&size);
@@ -120,7 +122,7 @@ void Tls::read(std::span<std::uint8_t> bytes,Deadline deadline){
         state_->retry(result,deadline,"TLS read");
     }
 }
-void Tls::write(std::span<const std::uint8_t> bytes,Deadline deadline){
+void Tls::writeRaw(std::span<const std::uint8_t> bytes,Deadline deadline){
     while(!bytes.empty()){
         state_->check(deadline);std::size_t size=0;ERR_clear_error();
         const int result=SSL_write_ex(state_->ssl,bytes.data(),std::min<std::size_t>(bytes.size(),16384),&size);
@@ -128,4 +130,10 @@ void Tls::write(std::span<const std::uint8_t> bytes,Deadline deadline){
         state_->retry(result,deadline,"TLS write");
     }
 }
+}
+
+namespace dm::linux_client {
+void Tls::protect(const std::string& code,access::Gate* gate){accessDeadline_=std::chrono::steady_clock::now()+std::chrono::seconds(10);protected_=std::make_unique<access::Stream>([this](auto bytes){readRaw(bytes,accessDeadline_);},[this](auto bytes){writeRaw(bytes,accessDeadline_);});if(gate)protected_->server(*gate);else protected_->client(code);}
+void Tls::read(std::span<uint8_t> bytes,Deadline deadline){accessDeadline_=deadline;if(protected_)protected_->read(bytes);else readRaw(bytes,deadline);}
+void Tls::write(std::span<const uint8_t> bytes,Deadline deadline){accessDeadline_=deadline;if(protected_)protected_->write(bytes);else writeRaw(bytes,deadline);}
 }

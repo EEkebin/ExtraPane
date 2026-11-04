@@ -18,6 +18,7 @@ for role in ['ExtraPane']:
    assert prefix+required in names,required
   for notice in ['LICENSE.md','LICENSES/Apache-2.0.txt','LICENSES/MIT.txt']:
    assert prefix+'Licenses/vulkan-headers/'+notice in names,'Missing Vulkan-Headers notice'
+  assert z.read(prefix+'Licenses/boringssl/LICENSE').strip(), 'Missing BoringSSL license'
   assert not any(n.lower().endswith(('.pfx','.key','.pem','.log','.bmp','.pdb')) for n in names)
   manifest=json.loads(z.read(prefix+'manifest.json'))
   for exe,level in [('ExtraPane.exe',b'asInvoker'),('ExtraPane.Service.exe',b'requireAdministrator')]:

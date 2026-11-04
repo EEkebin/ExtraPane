@@ -24,10 +24,10 @@
 namespace dm::mac {
 namespace wire=video::wire;using Clock=std::chrono::steady_clock;using namespace std::chrono_literals;
 struct Host::State {
-    std::atomic_bool stop=false,running=true;std::string address;std::function<void(std::string)> report;std::thread listener;std::array<std::thread,4> workers;std::array<std::atomic_bool,4> occupied{};
-    State(std::string bind,std::function<void(std::string)> callback):address(std::move(bind)),report(std::move(callback)){}
+    std::shared_ptr<access::Gate> gate;unsigned port;std::atomic_bool stop=false,running=true;std::string address;std::function<void(std::string)> report;std::thread listener;std::array<std::thread,4> workers;std::array<std::atomic_bool,4> occupied{};
+    State(std::string bind,std::function<void(std::string)> callback,unsigned selectedPort,std::shared_ptr<access::Gate> selectedGate):gate(std::move(selectedGate)),port(selectedPort),address(std::move(bind)),report(std::move(callback)){}
     void serve(int socket,unsigned slot){@autoreleasepool{if(@available(macOS 13.0,*)){
-        auto cancelled=[this]{return stop.load();};HostTls transport(socket,cancelled);auto bytes=transport.read(32,10);auto display=wire::take_client_display(bytes);unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7];bytes[7]=bytes[8]=bytes[9]=0;
+        auto cancelled=[this]{return stop.load();};HostTls transport(socket,cancelled,gate.get());auto bytes=transport.read(32,10);auto display=wire::take_client_display(bytes);unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7];bytes[7]=bytes[8]=bytes[9]=0;
         if(!std::equal(bytes.begin(),bytes.end(),wire::request.begin()) || inputRequested>1 || wanted>15 || bool(inputRequested)!=bool(wanted) || scale>2)throw std::runtime_error("Invalid client request");
         if(!CGPreflightScreenCaptureAccess())throw std::runtime_error("Screen Recording permission is required");
         unsigned w=display.width?display.width:1920,h=display.height?display.height:1080,hz=std::clamp(display.hz?display.hz:60,1u,60u);
@@ -57,9 +57,9 @@ struct Host::State {
             int fd=socket(AF_INET,SOCK_STREAM,0);if(fd<0)throw std::runtime_error("Cannot create listener");
             listeners.push_back({fd,POLLIN,0});fcntl(fd,F_SETFD,FD_CLOEXEC);fcntl(fd,F_SETFL,O_NONBLOCK);
             int yes=1;setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));sockaddr_in bind{};
-            bind.sin_family=AF_INET;bind.sin_len=sizeof(bind);bind.sin_port=htons(43824);inet_pton(AF_INET,ip.c_str(),&bind.sin_addr);
-            if(::bind(fd,reinterpret_cast<sockaddr*>(&bind),sizeof(bind)) || listen(fd,4))throw std::runtime_error("Cannot listen on "+ip+":43824 (address unavailable or port in use)");
-            if(!listening.empty())listening+=", ";listening+=ip+":43824";
+            bind.sin_family=AF_INET;bind.sin_len=sizeof(bind);bind.sin_port=htons(port);inet_pton(AF_INET,ip.c_str(),&bind.sin_addr);
+            if(::bind(fd,reinterpret_cast<sockaddr*>(&bind),sizeof(bind)) || listen(fd,4))throw std::runtime_error("Cannot listen on "+ip+":"+std::to_string(port)+" (address unavailable or port in use)");
+            if(!listening.empty())listening+=", ";listening+=ip+":"+std::to_string(port)+"";
         }
         // Freeze this address list for the listener lifetime; workers only read it.
         address=listening;
@@ -79,7 +79,7 @@ struct Host::State {
     }}
 
 };
-Host::Host(std::string address,std::function<void(std::string)> report):state_(std::make_shared<State>(std::move(address),std::move(report))){auto state=state_;state_->listener=std::thread([state]{state->run();});}
+Host::Host(std::string address,std::function<void(std::string)> report,unsigned port,std::shared_ptr<access::Gate> gate):state_(std::make_shared<State>(std::move(address),std::move(report),port,std::move(gate))){auto state=state_;state_->listener=std::thread([state]{state->run();});}
 Host::~Host(){stop();if(state_->listener.joinable())state_->listener.join();}
 void Host::stop(){state_->stop=true;}
 bool Host::running()const{return state_->running;}
