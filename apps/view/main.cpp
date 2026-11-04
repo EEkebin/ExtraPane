@@ -97,6 +97,7 @@ int main(int argc, char** argv) {
             if(command!="host")throw std::invalid_argument("Only hosts generate codes");
             auto gate=dm::security::enable_access_host();
             auto generate=[gate]{std::osyncstream(std::cout)<<"ACCESS_CODE "<<gate->generate()<<std::endl;};generate();
+            std::thread([gate]{auto previous=dm::access::Gate::Status::active;for(;;){Sleep(500);auto current=gate->status();if(current!=previous){previous=current;if(current!=dm::access::Gate::Status::active)std::osyncstream(std::cout)<<"ACCESS_STATUS "<<(current==dm::access::Gate::Status::used?"used":current==dm::access::Gate::Status::expired?"expired":"exhausted")<<std::endl;}}}).detach();
             std::thread([generate]{std::string line;while(std::getline(std::cin,line)){if(line=="G")generate();}}).detach();
         }
         if(access_stdin){if(command!="receive")throw std::invalid_argument("Client access input only");std::string code;std::getline(std::cin,code);dm::security::set_access_client(code);SecureZeroMemory(code.data(),code.size());}

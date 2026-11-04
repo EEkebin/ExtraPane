@@ -34,8 +34,7 @@ final class ClientSession extends Thread {
     private volatile Socket socket;
     private Decoder decoder;
     ClientSession(String address,String local,Network network,Surface surface,int width,int height,int hz,int caps,int scale,InputQueue input,Listener listener,int port,String accessCode){
-        this.port=port;this.accessCode=accessCode;
-        super("ExtraPane connection");this.address=address;this.local=local;this.network=network;this.surface=surface;
+        super("ExtraPane connection");this.port=port;this.accessCode=accessCode;this.address=address;this.local=local;this.network=network;this.surface=surface;
         this.width=width;this.height=height;this.hz=hz;this.requested=caps;this.scale=scale;this.input=input;this.listener=listener;
     }
     void cancel(){cancelled=true;input.grant(0);Socket s=socket;if(s!=null)try{s.close();}catch(IOException ignored){}interrupt();}
@@ -66,7 +65,8 @@ final class ClientSession extends Thread {
             if(cancelled)throw new IOException("Disconnected");
             tls.setEnabledProtocols(new String[]{"TLSv1.3"});tls.startHandshake();
             DataInputStream in=new DataInputStream(tls.getInputStream());OutputStream out=tls.getOutputStream();
-            if(!accessCode.isEmpty()){status("Authenticating access code?");accessChannel=new AccessChannel(in,out,accessCode);accessCode="";in=new DataInputStream(accessChannel.input);out=accessChannel.output;}
+            if(!accessCode.isEmpty()){status("Authenticating access code?");java.util.Timer deadline=new java.util.Timer(true);deadline.schedule(new java.util.TimerTask(){public void run(){try{tls.close();}catch(IOException ignored){}}},10000);
+                try{accessChannel=new AccessChannel(in,out,accessCode);}finally{deadline.cancel();}accessCode="";in=new DataInputStream(accessChannel.input);out=accessChannel.output;}
             out.write(Protocol.request(width,height,hz,requested,scale));tls.setSoTimeout(45000);
             long[] offer=Protocol.offer(read(in,32));prepare(offer,out);tls.setSoTimeout(15000);
             long sequence=0,previous=0,frames=0,bytes=0,start=SystemClock.elapsedRealtime();

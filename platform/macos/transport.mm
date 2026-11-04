@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <stdexcept>
 #include <cstring>
+#include <chrono>
 namespace dm::mac {
 bool ipv4(const char* value){in_addr a{};if(inet_pton(AF_INET,value,&a)!=1)return false;auto n=ntohl(a.s_addr);return n && (n>>24)!=127 && (n>>24)<224;}
 static std::string errorText(nw_error_t error){
@@ -53,11 +54,12 @@ void Transport::connect(){
 std::vector<uint8_t> Transport::readRaw(size_t count,int seconds){
     if(count>2*1024*1024)throw std::runtime_error("Receive buffer exceeds protocol limit");
     std::vector<uint8_t> result;result.reserve(count);
-    while(result.size()<count){auto done=std::make_shared<Completion>();
+    auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(seconds);
+    while(result.size()<count){auto remaining=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-std::chrono::steady_clock::now()).count();if(remaining<=0)throw std::runtime_error("Read timed out");auto done=std::make_shared<Completion>();
         nw_connection_receive(connection_,1,uint32_t(count-result.size()),^(dispatch_data_t data,nw_content_context_t,bool complete,nw_error_t error){
             if(data)dispatch_data_apply(data,^bool(dispatch_data_t,size_t,const void* bytes,size_t size){auto p=static_cast<const uint8_t*>(bytes);done->bytes.insert(done->bytes.end(),p,p+size);return true;});
             done->failed=error || (done->bytes.empty() && complete);if(done->failed)done->message=errorText(error);dispatch_semaphore_signal(done->signal);
-        });wait(done,seconds);if(done->bytes.empty())throw std::runtime_error("Connection returned no data");result.insert(result.end(),done->bytes.begin(),done->bytes.end());
+        });wait(done,int((remaining+999)/1000));if(done->bytes.empty())throw std::runtime_error("Connection returned no data");result.insert(result.end(),done->bytes.begin(),done->bytes.end());
     }return result;
 }
 void Transport::writeRaw(std::span<const uint8_t> bytes){

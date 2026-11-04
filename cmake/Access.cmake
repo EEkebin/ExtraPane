@@ -7,11 +7,17 @@ function(dm_access_dependency)
   set(OPENSSL_NO_ASM ON)
   set(BORINGSSL_PREFIX EXTRAPANE)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  set(fetch_options)
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+    list(APPEND fetch_options DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    list(APPEND fetch_options EXCLUDE_FROM_ALL)
+  endif()
   FetchContent_Declare(boringssl
     URL https://codeload.github.com/google/boringssl/tar.gz/fd0ed4d0a1273570612a08a31bace08e4dd73c81
     URL_HASH SHA256=ea357dadb94a4973d8d910acf9cac0a61b27a557adaf114f26cbfd0365e2b5b4
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    EXCLUDE_FROM_ALL)
+    ${fetch_options})
   FetchContent_MakeAvailable(boringssl)
 endfunction()
 dm_access_dependency()

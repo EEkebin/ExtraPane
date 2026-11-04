@@ -30,7 +30,7 @@ for role in ['ExtraPane']:
     file=package/name
     if file.is_file() and str(file).lower() not in copied:
      z.write(file,role+'/Licenses/'+library.replace('/','-')+'/'+name);copied.add(str(file).lower())
-  for dependency,relative in [('mbedtls','mbedtls-src'),('tf-psa-crypto','mbedtls-src/tf-psa-crypto')]:
+  for dependency,relative in [('boringssl','boringssl-src'),('mbedtls','mbedtls-src'),('tf-psa-crypto','mbedtls-src/tf-psa-crypto')]:
    file=ROOT/'out/build/windows-release/_deps'/relative/'LICENSE'
    if not file.exists():raise RuntimeError('Missing TLS dependency license: '+str(file))
    z.write(file,role+'/Licenses/'+dependency+'/LICENSE')

@@ -38,5 +38,26 @@ int main(){try{
     std::thread a([&]{try{gate.consume(one.generation);++accepted;}catch(...){}}),b([&]{try{gate.consume(two.generation);++accepted;}catch(...){}});a.join();b.join();check(accepted==1);
     auto now=Clock::now();Gate expiring([&]{return now;});expiring.generate();auto pending=expiring.begin();now+=std::chrono::minutes(6);rejects([&]{expiring.begin();});rejects([&]{expiring.consume(pending.generation);});check(expiring.status()==Gate::Status::expired);
     gate.generate();gate.revoke();rejects([&]{gate.begin();});
+    // Used codes cannot authenticate another session; replacing a code does not
+    // revoke an already authenticated stream.
+    code=gate.generate();Pair established;check(established.authenticate(gate,code));Pair replay;check(!replay.authenticate(gate,code));gate.generate();
+    established.client.write(Bytes{42});Bytes single(1);established.server.read(single);check(single[0]==42);
+    // Reject replayed, reordered, oversized and truncated records. A failed
+    // stream stays unusable, preventing nonce/state reuse after an exception.
+    for(int mode=0;mode<4;++mode){
+        Pair pair;check(pair.authenticate(gate,gate.generate()));pair.client.write(Bytes{1,2,3});
+        auto packet=pair.c2s.bytes;
+        if(mode==0){Bytes first(3);pair.server.read(first);pair.c2s.bytes=packet;}
+        if(mode==1)pair.c2s.bytes[7]=9;
+        if(mode==2)pair.c2s.bytes[8]=127;
+        if(mode==3){pair.c2s.bytes.pop_back();pair.c2s.close();}
+        rejects([&]{Bytes out(3);pair.server.read(out);});
+        rejects([&]{pair.server.write(Bytes{9});});
+    }
+    // The protected gate never treats the legacy media request as admission.
+    Pair legacy;gate.generate();Bytes request(32);request[0]='D';request[1]='M';legacy.c2s.write(request);
+    rejects([&]{legacy.server.server(gate);});
+    Pair downgrade;Bytes badHello(32);downgrade.s2c.write(badHello);
+    rejects([&]{downgrade.client.client("000001");});
     std::cout<<"Access authentication, one-use admission, retry budget, regeneration, concurrency, chunked encrypted records and tamper rejection passed\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

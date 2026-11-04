@@ -10,7 +10,7 @@ struct Native {
         input=e->NewGlobalRef(in);output=e->NewGlobalRef(out);
         auto inClass=e->GetObjectClass(in),outClass=e->GetObjectClass(out);
         readID=e->GetMethodID(inClass,"readFully","([B)V");writeID=e->GetMethodID(outClass,"write","([B)V");e->DeleteLocalRef(inClass);e->DeleteLocalRef(outClass);
-        if(!input||!output||!readID||!writeID)throw std::runtime_error("Cannot create access transport");
+        if(!input||!output||!readID||!writeID){if(input)e->DeleteGlobalRef(input);if(output)e->DeleteGlobalRef(output);input=output=nullptr;throw std::runtime_error("Cannot create access transport");}
         stream=std::make_unique<dm::access::Stream>([this](std::span<uint8_t> bytes){
             auto a=env->NewByteArray(static_cast<jsize>(bytes.size()));if(!a)throw std::runtime_error("Cannot allocate input record");
             env->CallVoidMethod(input,readID,a);if(!env->ExceptionCheck())env->GetByteArrayRegion(a,0,static_cast<jsize>(bytes.size()),reinterpret_cast<jbyte*>(bytes.data()));env->DeleteLocalRef(a);
@@ -28,7 +28,7 @@ Native& state(jlong h){if(!h)throw std::runtime_error("Access channel closed");r
 }
 extern "C" JNIEXPORT jlong JNICALL Java_io_github_eekebin_extrapane_AccessChannel_open(JNIEnv* e,jclass,jobject in,jobject out,jstring text){
     try{if(!in||!out||!text)throw std::runtime_error("Missing access parameters");const char* chars=e->GetStringUTFChars(text,nullptr);if(!chars)throw std::runtime_error("Missing access code");std::string code(chars);e->ReleaseStringUTFChars(text,chars);
-        auto native=std::make_unique<Native>(e,in,out);native->stream->client(code);std::fill(code.begin(),code.end(),0);return reinterpret_cast<jlong>(native.release());
+        struct Wipe{std::string& text;~Wipe(){volatile char* p=text.data();for(size_t i=0;i<text.size();++i)p[i]=0;}}wipe{code};auto native=std::make_unique<Native>(e,in,out);native->stream->client(code);std::fill(code.begin(),code.end(),0);return reinterpret_cast<jlong>(native.release());
     }catch(const std::exception& x){fail(e,x);return 0;}
 }
 extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_eekebin_extrapane_AccessChannel_receive(JNIEnv* e,jclass,jlong h,jint count){

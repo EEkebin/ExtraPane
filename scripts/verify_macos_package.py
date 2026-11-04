@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='ExtraPane-package-') as temporary:
     binary = app / 'Contents/MacOS/ExtraPane'
     subprocess.run(['lipo', str(binary), '-verify_arch', 'arm64', 'x86_64'], check=True)
     subprocess.run(['codesign', '--verify', '--strict', '--verbose=2', str(app)], check=True)
-    for name in ('mbedtls', 'tf-psa-crypto'):
+    for name in ('boringssl', 'mbedtls', 'tf-psa-crypto'):
         if not (app / 'Contents/Resources/Licenses' / name / 'LICENSE').read_text().strip():
             raise RuntimeError(f'Missing dependency notice: {name}')
     dependencies = subprocess.check_output(['otool', '-L', str(binary)], text=True)

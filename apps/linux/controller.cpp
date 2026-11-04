@@ -5,12 +5,17 @@
 #include <QNetworkInterface>
 #include <QScreen>
 #include <QSettings>
+#include <QTimer>
 #include <algorithm>
 #include <cmath>
 
 Controller::Controller(QString availability,QObject* parent):QObject(parent),availability_(std::move(availability)){
     hostAvailability_=dm::linux_client::Host::unavailable();
     refreshAddresses();
+    auto* timer=new QTimer(this);timer->setInterval(500);
+    connect(timer,&QTimer::timeout,this,[this]{if(!accessGate_)return;auto state=accessGate_->status();if(state==dm::access::Gate::Status::active)return;
+        QString text=state==dm::access::Gate::Status::used?"Code used. Generate a new code for another connection.":state==dm::access::Gate::Status::expired?"Code expired. Generate a new code.":"Attempt limit reached. Generate a new code.";
+        if(accessCode_!=text){accessCode_=text;emit hostChanged();}});timer->start();
     connect(&media_,&dm::linux_client::Media::failed,this,[this](const QString& reason){
         failed_=true;status_=reason;if(receiver_)receiver_->requestInterruption();emit changed();
     });
@@ -93,7 +98,7 @@ void Controller::startHost(QString address,unsigned port,bool requireCode){
     accessGate_=requireCode?std::make_shared<dm::access::Gate>():nullptr;accessCode_.clear();if(accessGate_)generateAccessCode();
     host_=new dm::linux_client::Host(address,this,port,accessGate_);auto* worker=host_;
     connect(worker,&dm::linux_client::Host::state,this,[this](const QString& status){hostStatus_=status;emit hostChanged();});
-    connect(worker,&QThread::finished,this,[this,worker]{if(host_!=worker)return;host_=nullptr;worker->deleteLater();emit hostChanged();});
+    connect(worker,&QThread::finished,this,[this,worker]{if(host_!=worker)return;host_=nullptr;if(accessGate_)accessGate_->revoke();accessGate_.reset();accessCode_.clear();worker->deleteLater();emit hostChanged();});
     hostStatus_="Starting listener...";worker->start();emit hostChanged();
 }
 void Controller::stopHost(){if(host_){host_->requestInterruption();hostStatus_="Stopping server...";emit hostChanged();}}

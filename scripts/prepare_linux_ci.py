@@ -25,6 +25,7 @@ def main():
     (target/'tools.lock.json').write_text(json.dumps(lock, indent=2)+'\n')
     notices = ROOT/'out/linux-notices'
     notices.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT/'out/build/linux-release/_deps/boringssl-src/LICENSE', notices/'BoringSSL-LICENSE')
     shutil.copytree('/usr/share/licenses', notices/'licenses', dirs_exist_ok=True)
     packages = subprocess.check_output(['pacman', '-Q'], text=True)
     (notices/'build-packages.txt').write_text(packages)

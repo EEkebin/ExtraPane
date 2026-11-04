@@ -14,14 +14,14 @@ final class AccessChannel implements AutoCloseable {
     final InputStream input=new InputStream(){
         public int read()throws IOException{return receive(handle,1)[0]&255;}
         public int read(byte[] b,int offset,int length)throws IOException{
-            java.util.Objects.checkFromIndexSize(offset,length,b.length);if(length==0)return 0;
+            if(offset<0||length<0||offset>b.length-length)throw new IndexOutOfBoundsException();if(length==0)return 0;
             byte[] data=receive(handle,Math.min(length,65536));System.arraycopy(data,0,b,offset,data.length);return data.length;
         }
     };
     final OutputStream output=new OutputStream(){
         public void write(int b)throws IOException{send(handle,new byte[]{(byte)b});}
         public void write(byte[] b,int offset,int length)throws IOException{
-            java.util.Objects.checkFromIndexSize(offset,length,b.length);
+            if(offset<0||length<0||offset>b.length-length)throw new IndexOutOfBoundsException();
             while(length>0){int count=Math.min(length,65536);send(handle,java.util.Arrays.copyOfRange(b,offset,offset+count));offset+=count;length-=count;}
         }
     };
