@@ -1,5 +1,7 @@
 name: Access-code security checks
 on:
+  push:
+    branches: [feat/access-code]
   workflow_dispatch:
 permissions:
   contents: read
