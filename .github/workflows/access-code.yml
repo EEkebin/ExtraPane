@@ -1,0 +1,21 @@
+name: Access-code security checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  security:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure isolated security checks
+        run: cmake -S . -B out/access-check -DDM_ACCESS_ONLY=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build out/access-check --config Release --parallel 3
+      - name: Check admission and protected records
+        run: ctest --test-dir out/access-check -C Release --output-on-failure

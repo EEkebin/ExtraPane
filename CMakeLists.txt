@@ -18,6 +18,18 @@ add_library(dm_probe_protocol STATIC core/protocol/probe.cpp core/protocol/video
 target_include_directories(dm_probe_protocol PUBLIC core/protocol/include)
 target_compile_features(dm_probe_protocol PUBLIC cxx_std_20)
 
+include(cmake/Access.cmake)
+target_link_libraries(dm_probe_protocol PUBLIC dm_access)
+option(DM_ACCESS_ONLY "Build isolated admission checks without media, UI or drivers" OFF)
+if(DM_ACCESS_ONLY)
+  enable_testing()
+  add_executable(dm-access-tests tests/access_tests.cpp)
+  target_link_libraries(dm-access-tests PRIVATE dm_access)
+  add_test(NAME access-code-security COMMAND dm-access-tests)
+  set_tests_properties(access-code-security PROPERTIES TIMEOUT 30)
+  return()
+endif()
+
 if(APPLE)
   enable_testing()
   add_subdirectory(platform/macos)

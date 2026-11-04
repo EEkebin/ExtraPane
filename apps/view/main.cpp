@@ -1,3 +1,5 @@
+#include <dm/tls.hpp>
+#include <syncstream>
 #include <windows.h>
 #include <thread>
 #include <dm/video.hpp>
@@ -64,9 +66,11 @@ int main(int argc, char** argv) {
         }
         if (command != "host" && command != "receive") throw std::invalid_argument("Unknown command");
         bool allow = false, headless = false, extend=false,allow_input=false,control=false,fullscreen=false,keep_layout=false,client_mode=false,serve=false;
-        std::map<std::string,std::string> args;bool automatic_lan=false;
+        std::map<std::string,std::string> args;bool automatic_lan=false,require_code=false,access_stdin=false;
         for (int i = 2; i < argc; ++i) {
             const std::string key(argv[i]);
+            if(key=="--require-code"){require_code=true;continue;}
+            if(key=="--access-stdin"){access_stdin=true;continue;}
             if(key=="--lan"){automatic_lan=true;continue;}
             if(key=="--serve") {serve=true;continue;}
             if(key=="--client-mode") {client_mode=true;continue;}
@@ -88,6 +92,14 @@ int main(int argc, char** argv) {
             if(!parent)throw std::runtime_error("Launcher process is unavailable");
             std::thread([parent]{WaitForSingleObject(parent,INFINITE);CloseHandle(parent);TerminateProcess(GetCurrentProcess(),0);}).detach();
         }
+        if((require_code || access_stdin) && !automatic_lan)throw std::invalid_argument("Access codes require product LAN mode");
+        if(require_code){
+            if(command!="host")throw std::invalid_argument("Only hosts generate codes");
+            auto gate=dm::security::enable_access_host();
+            auto generate=[gate]{std::osyncstream(std::cout)<<"ACCESS_CODE "<<gate->generate()<<std::endl;};generate();
+            std::thread([generate]{std::string line;while(std::getline(std::cin,line)){if(line=="G")generate();}}).detach();
+        }
+        if(access_stdin){if(command!="receive")throw std::invalid_argument("Client access input only");std::string code;std::getline(std::cin,code);dm::security::set_access_client(code);SecureZeroMemory(code.data(),code.size());}
         dm::net::Options options;
         options.bind_address = args.at("--bind"); options.port = 43824; options.timeout = std::chrono::milliseconds(15000);
         if (args.contains("--port")) options.port = static_cast<std::uint16_t>(number(args.at("--port"),65535));

@@ -123,7 +123,7 @@ struct Bstr
 };
 // Start Driver exposes only this executable and TCP port on active IPv4 addresses.
 // Routed private LANs are supported without preconfiguring a particular client.
-void firewall(bool add)
+void firewall(bool add,unsigned port=43824)
 {
     ComPtr<INetFwPolicy2> policy;
     check(CoCreateInstance(__uuidof(NetFwPolicy2), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&policy)));
@@ -154,7 +154,7 @@ void firewall(bool add)
     check(rule->put_Name(name));
     check(rule->put_ApplicationName(Bstr(exe)));
     check(rule->put_Protocol(NET_FW_IP_PROTOCOL_TCP));
-    check(rule->put_LocalPorts(Bstr(L"43824")));
+    check(rule->put_LocalPorts(Bstr(std::to_wstring(port))));
     check(rule->put_LocalAddresses(Bstr(local)));
     check(rule->put_RemoteAddresses(Bstr(L"LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10")));
     check(rule->put_Direction(NET_FW_RULE_DIR_IN));
@@ -174,6 +174,8 @@ struct Child
     {
         stop();
     }
+    HANDLE input_write=nullptr;
+    void send_control(const std::string& value){DWORD written=0;HANDLE target=service?read:input_write;if(!target || !WriteFile(target,value.data(),static_cast<DWORD>(value.size()),&written,nullptr) || written!=value.size())throw std::runtime_error("Cannot send engine control");}
     void stop()
     {
         if (process)
@@ -192,6 +194,7 @@ struct Child
             CloseHandle(read);
             read = nullptr;
         }
+        if(input_write){CloseHandle(input_write);input_write=nullptr;}
         service=false;
     }
     void start(const std::wstring &exe, const std::vector<std::wstring> &args)
@@ -202,8 +205,9 @@ struct Child
         if (!CreatePipe(&read, &write, &security, 0))
             throw std::runtime_error("Cannot create app status pipe");
         SetHandleInformation(read, HANDLE_FLAG_INHERIT, 0);
-        HANDLE input =
-            CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &security, OPEN_EXISTING, 0, nullptr);
+        HANDLE input=nullptr;
+        if(!CreatePipe(&input,&input_write,&security,0)){CloseHandle(write);stop();throw std::runtime_error("Cannot create engine input pipe");}
+        SetHandleInformation(input_write,HANDLE_FLAG_INHERIT,0);
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         startup.dwFlags = STARTF_USESTDHANDLES;
@@ -229,7 +233,7 @@ struct Child
         process = pi.hProcess;
         CloseHandle(pi.hThread);
     }
-    void start_driver(bool input,bool debug) {
+    void start_driver(bool input,bool debug,unsigned port=43824,bool require_code=false) {
         stop();
         std::array<unsigned char,16> random{};
         if(BCryptGenRandom(nullptr,random.data(),static_cast<ULONG>(random.size()),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0)throw std::runtime_error("Cannot create driver channel");
@@ -245,7 +249,7 @@ struct Child
         read=CreateNamedPipeW(pipe.c_str(),PIPE_ACCESS_DUPLEX|FILE_FLAG_FIRST_PIPE_INSTANCE,PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_NOWAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,4096,0,&security);LocalFree(descriptor);
         if(read==INVALID_HANDLE_VALUE){read=nullptr;throw std::runtime_error("Cannot create driver channel");}
         const auto exe=(directory()/L"ExtraPane.Service.exe").wstring();
-        std::wstring args=L"--pipe "+command_quote(pipe)+L" --parent-pid "+std::to_wstring(GetCurrentProcessId());if(input)args+=L" --input";if(debug)args+=L" --debug";
+        std::wstring args=L"--pipe "+command_quote(pipe)+L" --parent-pid "+std::to_wstring(GetCurrentProcessId());if(input)args+=L" --input";if(debug)args+=L" --debug";args+=L" --port "+std::to_wstring(port);if(require_code)args+=L" --require-code";
         SHELLEXECUTEINFOW launch{sizeof(launch)};launch.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;launch.lpVerb=L"runas";launch.lpFile=exe.c_str();launch.lpParameters=args.c_str();launch.nShow=SW_HIDE;
         if(!ShellExecuteExW(&launch)){const auto error=GetLastError();stop();throw std::runtime_error(error==ERROR_CANCELLED?"Driver start cancelled.":"Cannot elevate driver helper (Windows error "+std::to_string(error)+").");}
         process=launch.hProcess;
