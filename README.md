@@ -55,6 +55,12 @@ Setup does not disable Secure Boot or Memory Integrity, enable test-signing mode
 
 Windows apps and installers are currently unsigned. The macOS preview is ad-hoc signed, not notarized. The bundled driver is development-signed; compatibility on a new PC depends on Windows policy and the hardware in use.
 
+## Access codes and reachable servers
+
+The access-code build adds an optional **Require access code** setting on Windows, Linux and macOS servers. Enter the server IPv4 address, TCP port and generated six-digit code on any supported client, including Android. Codes expire after five minutes, admit one session and have a shared five-attempt budget. Generate a new code to reconnect or admit another client. Existing sessions continue when a new code is generated.
+
+For a connection across networks, the server address and port must already be reachable. Router forwarding and external firewall configuration are up to you; there is no relay or automatic UPnP. Always require a code for a public listener. Without a code, automatic LAN mode does not verify peer identity. See [access-code setup and security](docs/ACCESS-CODES.md) and check release notes to confirm your downloaded build includes this feature.
+
 ## Connect
 
 1. On the PC whose desktop you want to extend, open **Server** and select **Start Driver**. Approve the helper's administrator prompt.

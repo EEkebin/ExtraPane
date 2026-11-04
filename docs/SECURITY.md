@@ -1,4 +1,10 @@
-# Automatic LAN connection security
+# Connection security
+
+## Optional access-code mode
+
+The access-code build supports short-lived, one-use six-digit admission codes on Windows, Linux and macOS hosts and all four clients. A password-authenticated exchange verifies code possession and derives session-specific encryption keys before monitor creation or input grants. See [setup, protocol and limits](ACCESS-CODES.md). This is separate from the legacy diagnostic PSK mode below. Do not substitute a numeric code directly for a TLS PSK.
+
+## Automatic LAN mode (no code)
 
 The product app uses `dm-view --lan`: TLS 1.3 with a fresh ECDSA server certificate and ephemeral key exchange, with no pairing, password or approval prompt. The client does not verify server identity and the server does not authenticate clients. Encryption protects against passive observation, but this mode does not resist an active intermediary. While Start Driver is running, any client that can reach the scoped listener can receive its own desktop monitor and use input when the Server input checkbox is enabled. Use this on a trusted LAN. No application-wide static key is embedded.
 

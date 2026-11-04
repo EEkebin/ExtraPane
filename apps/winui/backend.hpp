@@ -123,7 +123,7 @@ struct Bstr
 };
 // Start Driver exposes only this executable and TCP port on active IPv4 addresses.
 // Routed private LANs are supported without preconfiguring a particular client.
-void firewall(bool add,unsigned port=43824)
+void firewall(bool add,unsigned port=43824,bool requireCode=false)
 {
     ComPtr<INetFwPolicy2> policy;
     check(CoCreateInstance(__uuidof(NetFwPolicy2), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&policy)));
@@ -156,7 +156,7 @@ void firewall(bool add,unsigned port=43824)
     check(rule->put_Protocol(NET_FW_IP_PROTOCOL_TCP));
     check(rule->put_LocalPorts(Bstr(std::to_wstring(port))));
     check(rule->put_LocalAddresses(Bstr(local)));
-    check(rule->put_RemoteAddresses(Bstr(L"LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10")));
+    check(rule->put_RemoteAddresses(Bstr(requireCode?L"*":L"LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10")));
     check(rule->put_Direction(NET_FW_RULE_DIR_IN));
     check(rule->put_Action(NET_FW_ACTION_ALLOW));
     check(rule->put_Profiles(NET_FW_PROFILE2_ALL));

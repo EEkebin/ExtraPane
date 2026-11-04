@@ -17,7 +17,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
         pipe=CreateFileW(name.c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_EXISTING,0,nullptr);if(pipe==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot open launcher channel");
         ULONG server=0;if(!GetNamedPipeServerProcessId(pipe,&server)||server!=pid)throw std::runtime_error("Launcher channel identity mismatch");
         instance=CreateMutexW(nullptr,FALSE,L"Local\\SideScreen.DriverRuntime");if(!instance||GetLastError()==ERROR_ALREADY_EXISTS)throw std::runtime_error("ExtraPane driver is already running");
-        firewall(true,port);rule=true;
+        firewall(true,port,require_code);rule=true;
         std::vector<std::wstring> args{L"host",L"--lan",L"--bind",L"auto",L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--allow-screen",L"--extend",L"--serve",L"--keep-layout",L"--client-mode",L"--frames",debug?L"3600":L"0",L"--timeout-ms",L"0"};if(input)args.push_back(L"--allow-input");
         args.insert(args.end(),{L"--port",std::to_wstring(port)});if(require_code)args.push_back(L"--require-code");
         engine.start((directory()/L"dm-view.exe").wstring(),args);

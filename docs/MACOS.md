@@ -73,3 +73,7 @@ The Universal app compiled and protocol/input/framing checks passed on hosted Ap
 
 
 For connection diagnostics, the app logs TLS state, negotiated dimensions/grants and the ending reason through NSLog; it does not log typed keys. Launch with `-server <IPv4> -connectOnLaunch YES` to connect automatically for a diagnostic run. This opt-in launch argument is not a saved auto-connect preference. The normal app still waits for Connect. Network errors include the platform error code instead of hiding a TLS failure behind a generic timeout.
+
+## Access-code connections
+
+Code-enabled builds add a TCP port (default 43824) and optional six-digit access code on the Client page. Use matching releases. Enable Require access code before starting the server; Generate new code admits another connection without disconnecting existing sessions. See [access-code setup and security](ACCESS-CODES.md) for expiry, retry limits and reachable internet endpoints. No-code mode is still restricted to trusted-network use.
