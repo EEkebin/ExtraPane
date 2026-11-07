@@ -51,6 +51,12 @@ void no_reparse(const fs::path& path){
         auto parent=current.parent_path();if(parent==current)break;current=std::move(parent);
     }
 }
+bool trusted_writer(PSID sid){
+    if(IsWellKnownSid(sid,WinBuiltinAdministratorsSid)||IsWellKnownSid(sid,WinLocalSystemSid))return true;
+    Local installer;
+    check(ConvertStringSidToSidW(L"S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",&installer.value),"Resolve TrustedInstaller SID failed");
+    return EqualSid(sid,installer.value)!=FALSE;
+}
 void verify_security(const fs::path& path){
     no_reparse(path);
     PSID owner=nullptr;PACL acl=nullptr;Local existing;
@@ -60,10 +66,11 @@ void verify_security(const fs::path& path){
     const ACCESS_MASK writes=FILE_WRITE_DATA|FILE_APPEND_DATA|FILE_WRITE_EA|FILE_WRITE_ATTRIBUTES|FILE_DELETE_CHILD|DELETE|WRITE_DAC|WRITE_OWNER|GENERIC_WRITE|GENERIC_ALL;
     for(DWORD i=0;i<acl->AceCount;++i){
         void* raw=nullptr;check(GetAce(acl,i,&raw),"Inspect microphone directory ACL failed");const auto* header=static_cast<ACE_HEADER*>(raw);
+        if(header->AceFlags&INHERIT_ONLY_ACE)continue; // Does not grant access to this object; payload files are checked separately.
         if(header->AceType==ACCESS_DENIED_ACE_TYPE)continue;
         check(header->AceType==ACCESS_ALLOWED_ACE_TYPE,"Unsupported microphone directory ACL");
         auto* ace=static_cast<ACCESS_ALLOWED_ACE*>(raw);auto* principal=&ace->SidStart;
-        if(ace->Mask&writes)check(IsWellKnownSid(principal,WinBuiltinAdministratorsSid)||IsWellKnownSid(principal,WinLocalSystemSid),"Microphone directory is writable by an unprivileged principal");
+        if(ace->Mask&writes)check(trusted_writer(principal),"Microphone directory is writable by an unprivileged principal");
     }
 }
 void protected_directory(const fs::path& path){
@@ -97,6 +104,10 @@ void signed_file(const fs::path& path){
     GUID action=WINTRUST_ACTION_GENERIC_VERIFY_V2;const auto result=WinVerifyTrust(reinterpret_cast<HWND>(INVALID_HANDLE_VALUE),&action,&data);data.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(reinterpret_cast<HWND>(INVALID_HANDLE_VALUE),&action,&data);
     check(result==ERROR_SUCCESS,"USB/IP component has no trusted Authenticode signature; nothing will be executed");
 }
+void verified_payload(const fs::path& path){
+    check(setup::trusted_payload(path.filename().wstring(),sha256(read_file(path))),"USB/IP file does not match the pinned installer payload");
+    if(path.filename()==L"usbip.exe")signed_file(path);
+}
 bool key_exists(HKEY hive,const wchar_t* path,REGSAM view){Key key;const auto code=RegOpenKeyExW(hive,path,0,KEY_QUERY_VALUE|view,&key.value);if(code==ERROR_FILE_NOT_FOUND||code==ERROR_PATH_NOT_FOUND)return false;check(code==ERROR_SUCCESS,"Cannot inspect existing USB/IP registration");return true;}
 constexpr wchar_t uninstall_key[]=L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{199505b0-b93d-4521-a8c7-897818e0205a}_is1";
 bool backend_footprint(const fs::path& standard){
@@ -113,7 +124,7 @@ void compatible_version(const fs::path& exe){
 }
 void verify_backend(const fs::path& standard){
     verify_security(standard);compatible_version(standard/L"usbip.exe");
-    for(auto name:setup::files){const auto path=standard/name;verify_security(path);signed_file(path);}
+    for(auto name:setup::files){const auto path=standard/name;verify_security(path);verified_payload(path);}
     check(key_exists(HKEY_LOCAL_MACHINE,L"SYSTEM\\CurrentControlSet\\Services\\usbip2_ude",KEY_WOW64_64KEY),"USB/IP client driver is not installed; existing installation left unchanged");
 }
 constexpr wchar_t manifest_name[]=L"extrapane-microphone-v1.txt";
@@ -123,7 +134,7 @@ std::vector<unsigned char> manifest(const std::array<std::wstring,3>& hashes){
 }
 void verify_owned(const fs::path& root){
     verify_security(root);verify_security(root/manifest_name);std::array<std::wstring,3> hashes;
-    for(std::size_t i=0;i<setup::files.size();++i){verify_security(root/setup::files[i]);hashes[i]=sha256(read_file(root/setup::files[i]));}
+    for(std::size_t i=0;i<setup::files.size();++i){verify_security(root/setup::files[i]);verified_payload(root/setup::files[i]);hashes[i]=sha256(read_file(root/setup::files[i]));}
     check(read_file(root/manifest_name)==manifest(hashes),"Managed microphone files changed or have no valid ownership manifest");
 }
 DWORD install_backend(const fs::path& installer,const fs::path& standard){
@@ -163,7 +174,7 @@ int modify(bool install){
     try{
         if(!existing){if(write_payload(installer,payload()))created.push_back(installer);result=install_backend(installer,standard);verify_backend(standard);}
         std::array<std::wstring,3> hashes;
-        for(std::size_t i=0;i<setup::files.size();++i){auto bytes=read_file(standard/setup::files[i]);hashes[i]=sha256(bytes);const auto destination=root/setup::files[i];if(write_payload(destination,bytes))created.push_back(destination);verify_security(destination);signed_file(destination);}
+        for(std::size_t i=0;i<setup::files.size();++i){auto bytes=read_file(standard/setup::files[i]);hashes[i]=sha256(bytes);const auto destination=root/setup::files[i];if(write_payload(destination,bytes))created.push_back(destination);verify_security(destination);verified_payload(destination);}
         const auto marker=manifest(hashes);if(write_payload(root/manifest_name,marker))created.push_back(root/manifest_name);verify_owned(root);
         if(fs::exists(installer))check(DeleteFileW(installer.c_str()),"Cannot remove completed backend installer");
     }catch(...){for(auto it=created.rbegin();it!=created.rend();++it)DeleteFileW(it->c_str());RemoveDirectoryW(root.c_str());throw;}
@@ -172,6 +183,7 @@ int modify(bool install){
 }
 int wmain(int argc,wchar_t** argv){try{check(argc==2,"Use --check-package, --install, --status or --remove");const std::wstring mode=argv[1];
     if(mode==L"--check-package"){payload();std::cout<<"USBIP_PACKAGE_OK\n";return 0;}
+    if(mode==L"--check-backend"){verify_backend(component_root().parent_path().parent_path()/L"USBip");std::cout<<"USBIP_BACKEND_OK\n";return 0;}
     if(mode==L"--status"){const auto root=component_root();if(!fs::exists(root/manifest_name)){std::cout<<"not-installed\n";return 3;}verify_owned(root);verify_backend(root.parent_path().parent_path()/L"USBip");std::cout<<"installed\n";return 0;}
     if(mode==L"--install")return modify(true);if(mode==L"--remove")return modify(false);throw std::runtime_error("Unknown microphone setup command");
 }catch(const std::exception& e){std::cerr<<"error: "<<e.what()<<'\n';return 1;}}
