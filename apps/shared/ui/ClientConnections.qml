@@ -50,82 +50,148 @@ ScrollView {
         RowLayout {
             Button { text: "Disconnect all"; enabled: panel.runtime.active; onClicked: panel.runtime.disconnectAll() }
         }
-        Flow {
-            Layout.fillWidth: true; Layout.preferredHeight: childrenRect.height; spacing: 8
-            Repeater {
-                model: ["display", "camera", "microphone", "usb"]
-                Button { required property string modelData; text: "+ " + (modelData === "usb" ? "USB" : modelData.charAt(0).toUpperCase() + modelData.slice(1)); onClicked: panel.runtime.connections.addConnection(modelData) }
-            }
-        }
         Repeater {
-            model: panel.runtime.connections
-            Frame {
-                id: row
-                required property string connectionId
-                required property string resourceKind
-                required property bool connectionEnabled
-                required property string sourceId
-                required property var target
-                required property var effectiveTarget
-                required property var displayMode
-                required property string phase
-                required property string status
-                required property bool busy
-                required property bool destinationVisible
-                property bool displayOptionsValid: true
+            model: [
+                {kind: "display", title: "Displays", singular: "display"},
+                {kind: "camera", title: "Cameras", singular: "camera"},
+                {kind: "microphone", title: "Microphones", singular: "microphone"},
+                {kind: "usb", title: "USBs", singular: "USB"}
+            ]
+            ColumnLayout {
+                id: resourceGroup
+                required property var modelData
+                property bool expanded: true
                 Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width; spacing: 8
-                    RowLayout {
+                spacing: 8
+                function disconnectGroup() {
+                    for (let i = 0; i < groupRows.count; ++i) {
+                        const instance = groupRows.itemAt(i)
+                        if (instance && instance.resourceKind === modelData.kind && (instance.connectionEnabled || instance.busy))
+                            panel.runtime.toggle(instance.connectionId, false)
+                    }
+                }
+                function hasConnections() {
+                    for (let i = 0; i < groupRows.count; ++i) {
+                        const instance = groupRows.itemAt(i)
+                        if (instance && instance.resourceKind === modelData.kind && (instance.connectionEnabled || instance.busy)) return true
+                    }
+                    return false
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    ToolButton {
+                        objectName: "connectionGroupToggle_" + resourceGroup.modelData.kind
                         Layout.fillWidth: true
-                        CheckBox {
-                            text: row.resourceKind === "usb" ? "USB storage" : row.resourceKind.charAt(0).toUpperCase() + row.resourceKind.slice(1)
-                            enabled: row.connectionEnabled || row.displayOptionsValid
-                            checked: row.connectionEnabled
-                            onClicked: {
-                                if (checked && !(panel.runtime.connections.singleServer ? shared.save() : perRow.save())) { checked = Qt.binding(() => row.connectionEnabled); return }
-                                const code = panel.runtime.connections.singleServer ? shared.accessCode : perRow.accessCode
-                                panel.runtime.toggle(row.connectionId, checked, code, panel.inputAllowed)
-                                if (panel.runtime.connections.singleServer) shared.accessCode = ""; else perRow.accessCode = ""
+                        text: (resourceGroup.expanded ? "\u25be " : "\u25b8 ") + resourceGroup.modelData.title
+                        font.bold: true
+                        Accessible.name: resourceGroup.modelData.title + (resourceGroup.expanded ? ", expanded" : ", collapsed")
+                        onClicked: resourceGroup.expanded = !resourceGroup.expanded
+                    }
+                    Button {
+                        objectName: "connectionGroupAdd_" + resourceGroup.modelData.kind
+                        text: "+ Add " + resourceGroup.modelData.singular
+                        onClicked: { resourceGroup.expanded = true; panel.runtime.connections.addConnection(resourceGroup.modelData.kind) }
+                    }
+                    Button {
+                        objectName: "connectionGroupDisconnect_" + resourceGroup.modelData.kind
+                        text: "Disconnect all " + resourceGroup.modelData.title.toLowerCase()
+                        enabled: resourceGroup.hasConnections()
+                        onClicked: resourceGroup.disconnectGroup()
+                    }
+                }
+                Repeater {
+                    id: groupRows
+                    model: panel.runtime.connections
+                    Loader {
+                        id: instance
+                        required property string connectionId
+                        required property string resourceKind
+                        required property bool connectionEnabled
+                        required property string sourceId
+                        required property var target
+                        required property var effectiveTarget
+                        required property var displayMode
+                        required property string phase
+                        required property string status
+                        required property bool busy
+                        required property bool destinationVisible
+                        Layout.fillWidth: true
+                        // Collapse only hides the controls. The matching row and
+                        // its native connection stay alive, with edited values intact.
+                        active: resourceKind === resourceGroup.modelData.kind
+                        visible: active && resourceGroup.expanded
+                        sourceComponent: Component {
+                            Frame {
+                                id: row
+                                readonly property string connectionId: instance.connectionId
+                                readonly property string resourceKind: instance.resourceKind
+                                readonly property bool connectionEnabled: instance.connectionEnabled
+                                readonly property string sourceId: instance.sourceId
+                                readonly property var target: instance.target
+                                readonly property var effectiveTarget: instance.effectiveTarget
+                                readonly property var displayMode: instance.displayMode
+                                readonly property string phase: instance.phase
+                                readonly property string status: instance.status
+                                readonly property bool busy: instance.busy
+                                readonly property bool destinationVisible: instance.destinationVisible
+                                property bool displayOptionsValid: true
+                                width: instance.width
+                                ColumnLayout {
+                                    width: parent.width; spacing: 8
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        CheckBox {
+                                            text: row.resourceKind === "usb" ? "USB storage" : row.resourceKind.charAt(0).toUpperCase() + row.resourceKind.slice(1)
+                                            enabled: row.connectionEnabled || row.displayOptionsValid
+                                            checked: row.connectionEnabled
+                                            onClicked: {
+                                                if (checked && !(panel.runtime.connections.singleServer ? shared.save() : perRow.save())) { checked = Qt.binding(() => row.connectionEnabled); return }
+                                                const code = panel.runtime.connections.singleServer ? shared.accessCode : perRow.accessCode
+                                                panel.runtime.toggle(row.connectionId, checked, code, panel.inputAllowed)
+                                                if (panel.runtime.connections.singleServer) shared.accessCode = ""; else perRow.accessCode = ""
+                                            }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Button { text: "Remove"; enabled: !row.busy; onClicked: panel.runtime.connections.removeConnection(row.connectionId) }
+                                    }
+                                    DestinationFields { id: perRow; visible: row.destinationVisible; enabled: !row.busy; Layout.fillWidth: true; destination: row.target; addresses: panel.addresses; commit: value => panel.runtime.connections.setTarget(row.connectionId, value) }
+                                    Label { visible: row.busy; text: "Server: " + row.effectiveTarget.address + ":" + row.effectiveTarget.port; color: "#9eacc2" }
+                                    ComboBox {
+                                        id: source
+                                        visible: row.resourceKind !== "display"; enabled: !row.busy; Layout.fillWidth: true
+                                        model: panel.runtime.devices[row.resourceKind] || []
+                                        textRole: "label"; valueRole: "id"
+                                        currentIndex: model.findIndex(item => item.id === row.sourceId)
+                                        displayText: currentIndex < 0 ? "Choose " + row.resourceKind + " source" : currentText
+                                        delegate: ItemDelegate { required property int index; width: source.width; text: source.model[index].label; enabled: source.model[index].available !== false; highlighted: source.highlightedIndex === index }
+                                        onActivated: panel.runtime.connections.setSource(row.connectionId, currentValue)
+                                        Connections { target: source.popup; function onOpened() { panel.runtime.refreshDevices(row.resourceKind) } }
+                                    }
+                                    ColumnLayout {
+                                        visible: row.resourceKind === "display"; enabled: !row.busy; Layout.fillWidth: true
+                                        function saveDisplay() { row.displayOptionsValid = panel.runtime.connections.setDisplayMode(row.connectionId, {mode: displayChoice.currentIndex === 0 ? "custom" : "native", monitorId: displayChoice.currentIndex === 1 ? (monitor.currentValue || "") : "", width: widthSpin.value, height: heightSpin.value, fps: fpsSpin.value}) }
+                                        ComboBox { id: displayChoice; objectName: "displayModeChoice_" + row.connectionId; Layout.fillWidth: true; model: ["Custom resolution and frame rate", "Match local monitor"]; currentIndex: row.displayMode.mode === "native" ? 1 : 0; onActivated: parent.saveDisplay() }
+                                        ComboBox { id: monitor; objectName: "displayMonitor_" + row.connectionId; visible: displayChoice.currentIndex === 1; Layout.fillWidth: true; model: panel.runtime.monitors; textRole: "label"; valueRole: "id"; currentIndex: model.findIndex(item => item.id === row.displayMode.monitorId); displayText: currentIndex < 0 ? "Choose a local monitor" : currentText; onActivated: parent.saveDisplay(); Connections { target: monitor.popup; function onOpened() { panel.runtime.refreshMonitors() } } }
+                                        RowLayout {
+                                            visible: displayChoice.currentIndex === 0
+                                            SpinBox { id: widthSpin; from: 2; to: 4096; stepSize: 2; value: row.displayMode.width; editable: true; onValueModified: parent.parent.saveDisplay() }
+                                            Label { text: "×" }
+                                            SpinBox { id: heightSpin; from: 2; to: 4096; stepSize: 2; value: row.displayMode.height; editable: true; onValueModified: parent.parent.saveDisplay() }
+                                            SpinBox { id: fpsSpin; from: 1; to: 360; value: Math.min(360, row.displayMode.fps); editable: true; onValueModified: parent.parent.saveDisplay() }
+                                            Label { text: "FPS" }
+                                        }
+                                        Label { visible: !row.displayOptionsValid; text: "This custom mode is outside the current engine limits. Use even dimensions and stay below the total-pixel limit."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#f0c66e" }
+                                        Label { text: "Each display opens a resizable window. Current engine: up to 4096 × 4096 and 360 target FPS, subject to encoder, decoder and network support. This does not change the physical monitor's refresh rate."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
+                                    }
+                                    CheckBox { visible: row.resourceKind === "camera" && row.busy; text: "Mirror camera (all connections using this source)"; checked: panel.runtime.mirrorStates[row.sourceId] === true; onClicked: panel.runtime.setMirror(row.connectionId, checked) }
+                                    CheckBox { visible: row.resourceKind === "microphone" && row.busy; text: "Mute microphone for this connection"; onClicked: panel.runtime.setMuted(row.connectionId, checked) }
+                                    Button { visible: row.resourceKind === "usb" && row.phase === "recovery"; text: "Recheck USB availability"; onClicked: panel.runtime.refreshDevices("usb") }
+                                    Label { visible: row.resourceKind === "usb"; text: "USB storage is exclusive. Uncheck to return it safely; an interrupted transfer can require recovery."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#f0c66e" }
+                                    Label { visible: text.length > 0 && text !== "Disconnected"; text: row.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                }
                             }
                         }
-                        Item { Layout.fillWidth: true }
-                        Button { text: "Remove"; enabled: !row.busy; onClicked: panel.runtime.connections.removeConnection(row.connectionId) }
                     }
-                    DestinationFields { id: perRow; visible: row.destinationVisible; enabled: !row.busy; Layout.fillWidth: true; destination: row.target; addresses: panel.addresses; commit: value => panel.runtime.connections.setTarget(row.connectionId, value) }
-                    Label { visible: row.busy; text: "Server: " + row.effectiveTarget.address + ":" + row.effectiveTarget.port; color: "#9eacc2" }
-                    ComboBox {
-                        id: source
-                        visible: row.resourceKind !== "display"; enabled: !row.busy; Layout.fillWidth: true
-                        model: panel.runtime.devices[row.resourceKind] || []
-                        textRole: "label"; valueRole: "id"
-                        currentIndex: model.findIndex(item => item.id === row.sourceId)
-                        displayText: currentIndex < 0 ? "Choose " + row.resourceKind + " source" : currentText
-                        delegate: ItemDelegate { required property int index; width: source.width; text: source.model[index].label; enabled: source.model[index].available !== false; highlighted: source.highlightedIndex === index }
-                        onActivated: panel.runtime.connections.setSource(row.connectionId, currentValue)
-                        Connections { target: source.popup; function onOpened() { panel.runtime.refreshDevices(row.resourceKind) } }
-                    }
-                    ColumnLayout {
-                        visible: row.resourceKind === "display"; enabled: !row.busy; Layout.fillWidth: true
-                        function saveDisplay() { row.displayOptionsValid = panel.runtime.connections.setDisplayMode(row.connectionId, {mode: displayChoice.currentIndex === 0 ? "custom" : "native", monitorId: displayChoice.currentIndex === 1 ? (monitor.currentValue || "") : "", width: widthSpin.value, height: heightSpin.value, fps: fpsSpin.value}) }
-                        ComboBox { id: displayChoice; objectName: "displayModeChoice_" + row.connectionId; Layout.fillWidth: true; model: ["Custom resolution and frame rate", "Match local monitor"]; currentIndex: row.displayMode.mode === "native" ? 1 : 0; onActivated: parent.saveDisplay() }
-                        ComboBox { id: monitor; objectName: "displayMonitor_" + row.connectionId; visible: displayChoice.currentIndex === 1; Layout.fillWidth: true; model: panel.runtime.monitors; textRole: "label"; valueRole: "id"; currentIndex: model.findIndex(item => item.id === row.displayMode.monitorId); displayText: currentIndex < 0 ? "Choose a local monitor" : currentText; onActivated: parent.saveDisplay(); Connections { target: monitor.popup; function onOpened() { panel.runtime.refreshMonitors() } } }
-                        RowLayout {
-                            visible: displayChoice.currentIndex === 0
-                            SpinBox { id: widthSpin; from: 2; to: 4096; stepSize: 2; value: row.displayMode.width; editable: true; onValueModified: parent.parent.saveDisplay() }
-                            Label { text: "×" }
-                            SpinBox { id: heightSpin; from: 2; to: 4096; stepSize: 2; value: row.displayMode.height; editable: true; onValueModified: parent.parent.saveDisplay() }
-                            SpinBox { id: fpsSpin; from: 1; to: 360; value: Math.min(360, row.displayMode.fps); editable: true; onValueModified: parent.parent.saveDisplay() }
-                            Label { text: "FPS" }
-                        }
-                        Label { visible: !row.displayOptionsValid; text: "This custom mode is outside the current engine limits. Use even dimensions and stay below the total-pixel limit."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#f0c66e" }
-                        Label { text: "Each display opens a resizable window. Current engine: up to 4096 × 4096 and 360 target FPS, subject to encoder, decoder and network support. This does not change the physical monitor's refresh rate."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
-                    }
-                    CheckBox { visible: row.resourceKind === "camera" && row.busy; text: "Mirror camera (all connections using this source)"; checked: panel.runtime.mirrorStates[row.sourceId] === true; onClicked: panel.runtime.setMirror(row.connectionId, checked) }
-                    CheckBox { visible: row.resourceKind === "microphone" && row.busy; text: "Mute microphone for this connection"; onClicked: panel.runtime.setMuted(row.connectionId, checked) }
-                    Button { visible: row.resourceKind === "usb" && row.phase === "recovery"; text: "Recheck USB availability"; onClicked: panel.runtime.refreshDevices("usb") }
-                    Label { visible: row.resourceKind === "usb"; text: "USB storage is exclusive. Uncheck to return it safely; an interrupted transfer can require recovery."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#f0c66e" }
-                    Label { visible: text.length > 0 && text !== "Disconnected"; text: row.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
         }

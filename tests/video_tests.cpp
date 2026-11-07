@@ -78,6 +78,7 @@ int main() {
         gate.touch(26,300);gate.clear();require(!gate.accept(26,301),"Focus loss did not clear touch");
         using dm::input::editable_at_touch;
         require(editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,true,true),"Editable control on target display rejected");
+        require(editable_at_touch({100,0,500,400},{0,20,700,80},150,40,true,true,true),"Spanning editable field with touch on target display rejected");
         require(!editable_at_touch({100,0,500,400},{120,20,300,80},50,40,true,true,true),"Other display touch accepted");
         require(!editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,true,false),"Read-only control accepted");
         require(!editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,false,true),"Unfocused control accepted");

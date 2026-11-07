@@ -136,11 +136,12 @@ delivery, throughput, microphone endpoint, custom-display driver, or USB-storage
 verification. Matching native helpers and the updated display driver are required
 for the staged build.
 
-## Separate open incident (unchanged)
+## Separate USB incident
 
-The Surface microSD's version 2 bound recovery remains a separate pending
-operator-approved interrupted return. This feature request does not authorize
-disk recovery, new USB sharing tests, or removal of its recovery record.
+The Surface absent-reader ownership record was retired by the separately
+authorized pre.13 repair without opening or modifying the missing disk. See
+IMPLEMENTATION-CHECKLIST.md for the audit and limitations. This display/UI
+iteration does not perform new USB sharing or recovery operations.
 
 ## Windows custom virtual modes
 
@@ -160,13 +161,33 @@ and product identity stays unchanged. A default request preserves the original
 EDID, four default modes and preferred index; the launcher explicitly clears a
 prior slot's custom request when switching back to defaults.
 
-The unsigned 0.8.0.0 driver and catalog build passed with no warnings/errors.
+The unsigned 0.9.0.0 driver and catalog build passed with no warnings/errors.
+Its three-digit refresh descriptor supports up to 360 Hz and still decodes the
+legacy two-digit descriptor.
 Isolated property tests passed ABI bounds, descriptor roundtrips, corruption
 rejection and independent device descriptions. Driver installation and live
 custom-resolution/FPS tests have not been run for this change. Windows, capture,
-encoding and the receiver must still accept the mode; requesting 60 Hz does not
-establish that 60 frames per second are delivered.
+encoding and the receiver must still accept the mode; requesting 360 Hz does not
+establish that 360 frames per second are delivered.
 
 The mode callbacks retain the documented IddCx count-only behavior when output
 buffers are null. See Microsoft's [descriptor callback input contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/iddcx/ns-iddcx-idarg_in_parsemonitordescription)
 and [mode-origin definitions](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/iddcx/ne-iddcx-iddcx_monitor_mode_origin).
+
+## Resource groups (2026-11-07)
+
+The client groups rows into Displays, Cameras, Microphones and USBs. Each group can be expanded or collapsed without changing its connections. Add creates another row of that kind. Disconnect all within a group stops only that group; the page-wide action stops all groups. USB continues through its normal safe-return path. The Server page omits routine component-present messages and retains actionable component errors.
+
+## Automatic Windows keyboard (2026-11-07)
+
+The Windows receiver requests host-side automatic keyboard mode. After an
+admitted touch is released, the host confirms writable focused UI Automation
+metadata at the touched point on the streamed monitor. ValuePattern and writable
+TextPattern editors qualify; field contents are not read. The host requests the
+Windows accessibility On-Screen Keyboard and positions only its own verified
+process window on that monitor. Existing keyboards are preserved, and OS launch
+or positioning failures are logged. Manual receiver Keyboard remains available.
+This does not implement the modern Windows touch keyboard, TSF or IME. Matching
+Windows builds are required for the new request; Linux/macOS hosts accept the
+optional request but do not implement this Windows keyboard behavior. Physical
+touch typing and keyboard placement remain acceptance tests.

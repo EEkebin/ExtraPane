@@ -28,8 +28,9 @@
 namespace dm::video {
 namespace {
 struct PreviewWindow {
+    PreviewWindow(){DWORD value=1,size=sizeof(value);if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\ExtraPane\\ExtraPane",L"AutomaticRemoteKeyboard",RRF_RT_REG_DWORD,nullptr,&value,&size)==ERROR_SUCCESS)auto_keyboard.store(value!=0);}
     Renderer requested=Renderer::d3d11;
-    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr,handle=nullptr,stats=nullptr;bool show_statistics=false,auto_keyboard=true;std::atomic_bool touch_granted=false;std::atomic<std::uintptr_t> input_generation=0;ULONGLONG last_touch=0;bool pending_keyboard=false;std::set<UINT32> touch_contacts;std::atomic<Quality> quality{Quality::native};std::atomic<bool> menu_open{false},minimized{false};bool fullscreen=false,edge_gesture=false;
+    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr,handle=nullptr,stats=nullptr;bool show_statistics=false;std::atomic_bool auto_keyboard=true;std::atomic<Quality> quality{Quality::native};std::atomic<bool> menu_open{false},minimized{false};bool fullscreen=false,edge_gesture=false;
     UINT32 gesture_id=0;POINT gesture_start{};ULONGLONG edge_hover=0;
     WINDOWPLACEMENT saved{sizeof(saved)};ULONGLONG last_reveal=0;
     int scale(int n)const{return MulDiv(n,static_cast<int>(GetDpiForWindow(hwnd)),96);}
@@ -56,12 +57,16 @@ struct PreviewWindow {
         reveal();
     }
     void settings(){
-        menu_open.store(true);auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING|(show_statistics?MF_CHECKED:0),10,L"Show statistics");AppendMenuW(menu,MF_STRING|(auto_keyboard?MF_CHECKED:0),11,L"Show keyboard for supported remote text fields");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+        menu_open.store(true);auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING|(show_statistics?MF_CHECKED:0),10,L"Show statistics");AppendMenuW(menu,MF_STRING|(auto_keyboard.load()?MF_CHECKED:0),11,L"Automatic server keyboard (next connection)");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
         AppendMenuW(menu,MF_STRING|MF_DISABLED,0,L"Stream resolution - next connection only (not saved)");
         const wchar_t* modes[]={L"Native resolution (default)",L"75% resolution - lower bandwidth",L"50% resolution - lowest bandwidth"};
         for(unsigned i=0;i<3;++i)AppendMenuW(menu,MF_STRING|(static_cast<unsigned>(quality.load())==i?MF_CHECKED:0),20+i,modes[i]);
         RECT r{};GetWindowRect(GetDlgItem(bar,5),&r);SetForegroundWindow(hwnd);const auto command=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTALIGN,r.right,r.bottom,0,hwnd,nullptr);DestroyMenu(menu);menu_open.store(false);PostMessageW(hwnd,WM_NULL,0,0);
-        if(command==11)auto_keyboard=!auto_keyboard;
+        if(command==11){
+            const DWORD enabled=auto_keyboard.load()?0:1;HKEY key=nullptr;LSTATUS result=RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\ExtraPane\\ExtraPane",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr);
+            if(result==ERROR_SUCCESS){result=RegSetValueExW(key,L"AutomaticRemoteKeyboard",0,REG_DWORD,reinterpret_cast<const BYTE*>(&enabled),sizeof(enabled));RegCloseKey(key);}
+            if(result==ERROR_SUCCESS)auto_keyboard.store(enabled!=0);else std::cout<<"KEYBOARD_SETTING_FAILED "<<result<<std::endl;
+        }
         if(command==10){show_statistics=!show_statistics;ShowWindow(stats,show_statistics?SW_SHOWNOACTIVATE:SW_HIDE);}
         if(command>=20&&command<=22){quality.store(static_cast<Quality>(command-20));std::cout<<"NEXT_STREAM_SCALE "<<(command-20)<<std::endl;}
         reveal();
@@ -69,7 +74,7 @@ struct PreviewWindow {
     void reveal(){last_reveal=GetTickCount64();position_bar();if(handle)ShowWindow(handle,SW_HIDE);ShowWindow(bar,SW_SHOWNOACTIVATE);}
     void toggle(){release_input();if(!fullscreen){GetWindowPlacement(hwnd,&saved);MONITORINFO m{sizeof(m)};GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&m);SetWindowLongPtrW(hwnd,GWL_STYLE,WS_POPUP|WS_VISIBLE);SetWindowPos(hwnd,nullptr,m.rcMonitor.left,m.rcMonitor.top,m.rcMonitor.right-m.rcMonitor.left,m.rcMonitor.bottom-m.rcMonitor.top,SWP_FRAMECHANGED|SWP_NOZORDER);fullscreen=true;}else{SetWindowLongPtrW(hwnd,GWL_STYLE,WS_OVERLAPPEDWINDOW|WS_VISIBLE);SetWindowPlacement(hwnd,&saved);SetWindowPos(hwnd,nullptr,0,0,0,0,SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER);fullscreen=false;}SetWindowTextW(GetDlgItem(bar,3),fullscreen?L"Windowed":L"Fullscreen");reveal();}
 };
-constexpr UINT toolbar_command=WM_APP+42,editable_touch_message=WM_APP+43;
+constexpr UINT toolbar_command=WM_APP+42;
 LRESULT CALLBACK bar_proc(HWND hwnd,UINT message,WPARAM wparam,LPARAM lparam){
     if(message==WM_COMMAND){SendMessageW(GetWindow(hwnd,GW_OWNER),toolbar_command,LOWORD(wparam),0);return 0;}
     if(message==WM_MOUSEACTIVATE)return MA_NOACTIVATE;
@@ -92,15 +97,6 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
             if(!(lparam&(1LL<<30))){if(wparam==VK_F9)DestroyWindow(hwnd);else if(wparam==VK_F11)state->toggle();else state->reveal();}return 0;
         }
         if(message==WM_KEYUP && (wparam==VK_F9||wparam==VK_F10||wparam==VK_F11))return 0;
-        if(message==WM_KILLFOCUS){state->last_touch=0;state->pending_keyboard=false;state->touch_contacts.clear();}
-        if(message==WM_POINTERDOWN){POINTER_INFO info{};if(GetPointerInfo(GET_POINTERID_WPARAM(wparam),&info)&&info.pointerType==PT_TOUCH){state->last_touch=GetTickCount64();state->touch_contacts.insert(info.pointerId);}}
-        if(message==WM_POINTERUP)state->touch_contacts.erase(GET_POINTERID_WPARAM(wparam));
-        if(message==WM_POINTERCAPTURECHANGED&&state->touch_contacts.erase(GET_POINTERID_WPARAM(wparam))){state->pending_keyboard=false;state->last_touch=0;}
-        if(message==editable_touch_message){if(wparam==state->input_generation.load())state->pending_keyboard=true;return 0;}
-        if(message==WM_TIMER&&state->pending_keyboard){
-            if(!state->auto_keyboard||!state->touch_granted.load()||!state->last_touch||GetTickCount64()-state->last_touch>2500||GetForegroundWindow()!=hwnd||GetFocus()!=hwnd||IsIconic(hwnd))state->pending_keyboard=false;
-            else if(state->touch_contacts.empty()){state->pending_keyboard=false;state->last_touch=0;state->keyboard();std::cout<<"KEYBOARD_AUTO_REQUESTED remote-editable-touch"<<std::endl;}
-        }
         if(message==toolbar_command){state->release_input();if(wparam==1)ShowWindow(hwnd,SW_MINIMIZE);if(wparam==2){if(state->fullscreen)state->toggle();ShowWindow(hwnd,IsZoomed(hwnd)?SW_RESTORE:SW_MAXIMIZE);}if(wparam==3)state->toggle();if(wparam==4)DestroyWindow(hwnd);if(wparam==5)state->settings();if(wparam==6)state->keyboard();if(wparam==7)state->reveal();return 0;}
         if(message==WM_MOVE||message==WM_SIZE) {state->position_bar();state->minimized.store(IsIconic(hwnd)!=FALSE);if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);ShowWindow(state->handle,SW_HIDE);state->release_input();}}
         if(message==WM_TIMER){POINT p{};GetCursorPos(&p);RECT r{};GetWindowRect(state->bar,&r);if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);ShowWindow(state->handle,SW_HIDE);}else if(!state->menu_open.load()&&GetTickCount64()-state->last_reveal>4000&&!PtInRect(&r,p))state->hide_bar();POINT local=p;ScreenToClient(hwnd,&local);if(state->edge_hover&&state->reveal_area(local)&&GetTickCount64()-state->edge_hover>=600){state->reveal();state->edge_hover=0;}return 0;}
@@ -109,7 +105,7 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
             POINT p{GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam)};
             if(!promoted&&state->reveal_area(p)&&!(wparam&(MK_LBUTTON|MK_RBUTTON|MK_MBUTTON))){if(!state->edge_hover)state->edge_hover=GetTickCount64();}else state->edge_hover=0;
         }
-        if(message==WM_POINTERDOWN){POINTER_INFO p{};if(GetPointerInfo(GET_POINTERID_WPARAM(wparam),&p)&&p.pointerType==PT_TOUCH&&!state->gesture_id){state->last_touch=GetTickCount64();ScreenToClient(hwnd,&p.ptPixelLocation);if(state->reveal_area(p.ptPixelLocation)){state->gesture_id=p.pointerId;state->gesture_start=p.ptPixelLocation;return 0;}}}
+        if(message==WM_POINTERDOWN){POINTER_INFO p{};if(GetPointerInfo(GET_POINTERID_WPARAM(wparam),&p)&&p.pointerType==PT_TOUCH&&!state->gesture_id){ScreenToClient(hwnd,&p.ptPixelLocation);if(state->reveal_area(p.ptPixelLocation)){state->gesture_id=p.pointerId;state->gesture_start=p.ptPixelLocation;return 0;}}}
         if(state->gesture_id==GET_POINTERID_WPARAM(wparam)&&(message==WM_POINTERUPDATE||message==WM_POINTERUP||message==WM_POINTERCAPTURECHANGED)){
             POINTER_INFO p{};if(message==WM_POINTERUPDATE&&GetPointerInfo(state->gesture_id,&p)){ScreenToClient(hwnd,&p.ptPixelLocation);if(p.ptPixelLocation.y-state->gesture_start.y>=state->scale(24)){if(!state->edge_gesture)state->release_input();state->edge_gesture=true;state->reveal();}}
             if(message!=WM_POINTERUPDATE){state->gesture_id=0;state->edge_gesture=false;}return 0;
@@ -201,7 +197,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 if (cancel.load()) throw std::runtime_error("Video preview closed by user");
                 std::lock_guard guard(mutex);
                 if(latest){++dropped_total;}latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
-            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);++state.input_generation;state.touch_granted.store((caps&input::touch_cap)!=0);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,quality,[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;},[hwnd,&state]{PostMessageW(hwnd,editable_touch_message,state.input_generation.load(),0);});
+            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,quality,[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;},state.auto_keyboard.load()?std::function<void()>([]{std::cout<<"KEYBOARD_EDITABLE_TOUCH host keyboard requested"<<std::endl;}):std::function<void()>{});
         } catch (...) { error = std::current_exception(); }
         done.store(true);
     });

@@ -135,8 +135,10 @@ ApplicationWindow {
                         Label {
                             required property var modelData
                             Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            objectName: "serverComponent_" + modelData.label
+                            visible: !modelData.available && modelData.detail.length > 0
                             text: modelData.label + ": " + modelData.detail
-                            color: modelData.available ? "#9eacc2" : "#f0c66e"
+                            color: "#f0c66e"
                         }
                     }
                     Button { visible: receiver.platformLabel === "Windows"; text: "Eject USB"; enabled: receiver.hosting; onClicked: receiver.ejectUsb() }

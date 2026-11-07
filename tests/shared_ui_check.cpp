@@ -46,6 +46,13 @@ public:
     int setupRequests=0,recoveryRefreshRequests=0,recoveryRequests=0,hostStartRequests=0,hostStopRequests=0,ejectRequests=0;
     QString startedAddress,refreshed,stopped,recoveredId;int startedPort=0;bool startedRequireCode=false;
 };
+class TestConnectionRuntime final : public QQmlPropertyMap {
+    Q_OBJECT
+public:
+    explicit TestConnectionRuntime(ConnectionModel& connections):QQmlPropertyMap(this,nullptr),model(connections){}
+    Q_INVOKABLE void toggle(QString id,bool enabled){requests.push_back(id);model.setEnabled(id,enabled);if(!enabled)model.setState(id,ConnectionModel::State::idle);}
+    ConnectionModel& model;QStringList requests;
+};
 static QObject* named(QObject* root,const char* name){
     const auto wanted=QString::fromLatin1(name);QSet<QObject*> seen;
     std::vector<QObject*> pending{root};
@@ -112,7 +119,7 @@ int main(int argc,char** argv){
         QQmlApplicationEngine engine;watch(engine);engine.rootContext()->setContextProperty("receiver",&controller);engine.load(QUrl("qrc:/Main.qml"));require(!engine.rootObjects().isEmpty());app.processEvents();
         require(controller.refreshRequests==0&&controller.setupRequests==0&&controller.hostStartRequests==0&&controller.recoveryRefreshRequests==0&&controller.connectRequests==0);
         auto* root=engine.rootObjects().first();root->setProperty("page",0);app.processEvents();
-        auto* server=named(root,"serverPage");auto* start=named(root,"serverStartButton");auto* address=named(root,"hostAddressPicker");require(named(root,"hostComponentsRepeater")->property("count").toInt()==4);
+        auto* server=named(root,"serverPage");auto* start=named(root,"serverStartButton");auto* address=named(root,"hostAddressPicker");require(named(root,"hostComponentsRepeater")->property("count").toInt()==4);require(!named(root,"serverComponent_Display")->property("visible").toBool()&&named(root,"serverComponent_Camera")->property("visible").toBool());
         int serverCombos=0;for(auto* object:server->findChildren<QObject*>())if(object->inherits("QQuickComboBox")){++serverCombos;require(object==address);}require(serverCombos==1);
         for(auto* object:server->findChildren<QObject*>()){const auto text=object->property("text").toString();require(text!="Camera setup"&&text!="Receiving component setup");}
         require(start->property("enabled").toBool());require(QMetaObject::invokeMethod(start,"clicked"));require(controller.hostStartRequests==1&&controller.startedAddress=="0.0.0.0"&&controller.startedPort==43824&&!controller.startedRequireCode);
@@ -170,14 +177,23 @@ int main(int argc,char** argv){
         model.setCapability(Kind::camera,{false,"Camera unavailable"});app.processEvents();require(!model.selected(Kind::camera)&&connect->property("enabled").toBool());
         auto* window=qobject_cast<QWindow*>(root);require(window);window->resize(390,844);app.processEvents();window->resize(1120,760);app.processEvents();
         require(controller.setupRequests==0&&controller.recoveryRefreshRequests==0&&controller.ejectRequests==0&&!warnings);
-        ConnectionModel instances;const auto instanceDisplay=instances.addConnection("display");instances.addConnection("camera");
-        QQmlPropertyMap runtime;runtime.insert("connections",QVariant::fromValue(&instances));runtime.insert("active",false);runtime.insert("status",QString("Ready"));runtime.insert("devices",QVariantMap{});runtime.insert("monitors",QVariantList{});runtime.insert("mirrorStates",QVariantMap{});
+        ConnectionModel instances;const auto instanceDisplay=instances.addConnection("display"),instanceCamera=instances.addConnection("camera"),secondCamera=instances.addConnection("camera"),instanceMic=instances.addConnection("microphone");
+        TestConnectionRuntime runtime(instances);runtime.insert("connections",QVariant::fromValue(&instances));runtime.insert("active",false);runtime.insert("status",QString("Ready"));runtime.insert("devices",QVariantMap{});runtime.insert("monitors",QVariantList{});runtime.insert("mirrorStates",QVariantMap{});
         ResourceModel repeatedModel;TestController repeated(repeatedModel);defaults(repeated,true);repeated.insert("connectionRuntime",QVariant::fromValue(&runtime));
         QQmlApplicationEngine repeatedEngine;watch(repeatedEngine);repeatedEngine.rootContext()->setContextProperty("receiver",&repeated);repeatedEngine.load(QUrl("qrc:/Main.qml"));require(!repeatedEngine.rootObjects().isEmpty());repeatedEngine.rootObjects().first()->setProperty("page",1);app.processEvents();require(!warnings);
         auto* repeatedRoot=repeatedEngine.rootObjects().first();auto* monitorControl=named(repeatedRoot,("displayMonitor_"+instanceDisplay).toUtf8().constData());require(!monitorControl->property("visible").toBool());
         for(auto* object:repeatedRoot->findChildren<QObject*>())require(object->property("text").toString()!="Connect to server");
         auto monitorMode=instances.connection(instanceDisplay)["displayMode"].toMap();monitorMode["mode"]="native";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();require(monitorControl->property("visible").toBool());
         monitorMode["mode"]="custom";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();require(!monitorControl->property("visible").toBool()&&!warnings);
+        require(instances.setSharedTarget(QVariantMap{{"address","192.0.2.1"},{"port",43824},{"localAddress","0.0.0.0"},{"interfaceIndex",0}}));
+        for(const auto& id:{instanceDisplay,instanceCamera,secondCamera,instanceMic}){instances.setSource(id,"fake-source");instances.setEnabled(id,true);require(instances.beginConnection(id));require(instances.setState(id,ConnectionModel::State::active,"Connected"));}
+        app.processEvents();auto* displayMode=named(repeatedRoot,("displayModeChoice_"+instanceDisplay).toUtf8().constData());
+        auto* collapse=named(repeatedRoot,"connectionGroupToggle_display");require(QMetaObject::invokeMethod(collapse,"clicked"));app.processEvents();
+        require(!displayMode->property("visible").toBool()&&instances.connection(instanceDisplay)["phase"]=="active"&&runtime.requests.isEmpty());
+        require(QMetaObject::invokeMethod(collapse,"clicked"));app.processEvents();require(displayMode==named(repeatedRoot,("displayModeChoice_"+instanceDisplay).toUtf8().constData())&&displayMode->property("visible").toBool());
+        auto* camerasDisconnect=named(repeatedRoot,"connectionGroupDisconnect_camera");require(camerasDisconnect->property("enabled").toBool());require(QMetaObject::invokeMethod(camerasDisconnect,"clicked"));app.processEvents();
+        require(runtime.requests==QStringList{instanceCamera,secondCamera}&&instances.connection(instanceDisplay)["phase"]=="active"&&instances.connection(instanceMic)["phase"]=="active"&&!instances.connection(instanceCamera)["connectionEnabled"].toBool()&&!instances.connection(secondCamera)["connectionEnabled"].toBool());
+        const auto beforeAdd=instances.rowCount();require(QMetaObject::invokeMethod(named(repeatedRoot,"connectionGroupAdd_camera"),"clicked"));app.processEvents();require(instances.rowCount()==beforeAdd+1&&instances.data(instances.index(beforeAdd),ConnectionModel::Kind)=="camera"&&!warnings);
         std::cout<<"Shared UI multi-resource model and offscreen shell checks passed\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

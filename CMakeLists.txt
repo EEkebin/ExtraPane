@@ -121,7 +121,7 @@ add_executable(dm-session apps/session/main.cpp)
 target_link_libraries(dm-session PRIVATE dm_security)
 
 add_library(dm_video STATIC platform/windows/video_capture.cpp platform/windows/monitor_capture.cpp platform/windows/video_stream.cpp platform/windows/video_preview.cpp platform/windows/video_d3d12.cpp platform/windows/video_vulkan.cpp platform/windows/video_opengl.cpp platform/windows/h264.cpp platform/windows/video_gpu.cpp platform/windows/input_capture.cpp platform/windows/input_broker.cpp platform/windows/text_focus.cpp)
-target_link_libraries(dm_video PUBLIC dm_security PRIVATE Vulkan::Headers opengl32 gdi32 dm_display windowsapp d3d11 d3d12 d3dcompiler dxgi dxguid windowscodecs ole32 oleaut32 mfplat mfuuid mf user32 wmcodecdspuuid)
+target_link_libraries(dm_video PUBLIC dm_security PRIVATE shell32 Vulkan::Headers opengl32 gdi32 dm_display windowsapp d3d11 d3d12 d3dcompiler dxgi dxguid windowscodecs ole32 oleaut32 mfplat mfuuid mf user32 wmcodecdspuuid)
 add_executable(dm-view apps/view/main.cpp)
 add_library(extrapane_camera_stream STATIC platform/windows/camera_stream.cpp platform/windows/camera_receiver.cpp)
 target_link_libraries(extrapane_camera_stream PUBLIC extrapane_camera dm_video)

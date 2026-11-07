@@ -5,7 +5,7 @@ inline std::uint32_t touch_token(std::uint64_t micros){return static_cast<std::u
 struct FocusRect {long left=0,top=0,right=0,bottom=0;};
 inline bool contains(FocusRect r,long x,long y){return r.right>r.left&&r.bottom>r.top&&x>=r.left&&x<r.right&&y>=r.top&&y<r.bottom;}
 inline bool editable_at_touch(FocusRect monitor,FocusRect element,long x,long y,bool enabled,bool focused,bool editable){
-    return enabled&&focused&&editable&&contains(monitor,x,y)&&contains(element,x,y)&&element.left>=monitor.left&&element.top>=monitor.top&&element.right<=monitor.right&&element.bottom<=monitor.bottom;
+    return enabled&&focused&&editable&&contains(monitor,x,y)&&contains(element,x,y);
 }
 class TouchKeyboardGate {
 public:

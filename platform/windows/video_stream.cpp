@@ -46,8 +46,8 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     if(request[7]>1)throw std::runtime_error("Unknown input permission request");
     const bool control=request[7]==1;request[7]=0;
     const unsigned requested_caps=request[8];request[8]=0;
-    if(request[10]>1)throw std::runtime_error("Unknown text-focus hint request");
-    const bool text_focus_requested=request[10]==1;request[10]=0;
+    if(request[10]>2)throw std::runtime_error("Unknown text-focus hint request");
+    const bool host_keyboard_requested=request[10]==2;const bool text_focus_requested=request[10]!=0;request[10]=0;
     if(text_focus_requested&&(!control||!(requested_caps&input::touch_cap)))throw std::runtime_error("Text-focus hints require granted touch input");
     if(requested_caps>input::all_caps || control!=(requested_caps!=0))throw std::runtime_error("Invalid receiver input capabilities");
     if (request != wire::request) throw std::runtime_error("Unsupported video/input request");
@@ -146,7 +146,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         std::osyncstream(std::cout)<<"INPUT_GRANTED caps="<<granted_caps<<" touch_contacts="<<((granted_caps&input::touch_cap)?10:0)<<" pen_devices="<<((granted_caps&input::pen_cap)?1:0)<<" watchdog_ms=1500"<<std::endl;
     }
     const auto codec_name=codec==wire::Codec::h264 ? "H264" : "JPEG-test";
-    if(text_focus_requested&&(granted_caps&input::touch_cap))text_focus=std::make_unique<input::TextFocusProbe>(selected_source);
+    if(text_focus_requested&&(granted_caps&input::touch_cap))text_focus=std::make_unique<input::TextFocusProbe>(selected_source,host_keyboard_requested);
     stream.write(wire::encode_offer({frame.width, frame.height, fps, frames,codec,static_cast<std::uint8_t>(granted_caps),epoch}), deadline());
     std::array<std::uint8_t,wire::ready.size()> ready{};
     stream.read(ready,deadline());
@@ -193,7 +193,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         stream.write(wire::encode_offer({frame.width,frame.height,fps,frames,codec,static_cast<std::uint8_t>(granted_caps),epoch}),deadline());
         stream.read(ready,deadline());if(ready!=wire::ready)throw std::runtime_error("Receiver did not acknowledge changed geometry");
         if(keep_layout && extend)display::remember_mode(selected_source,profile_width,profile_height);
-        if(text_focus)text_focus=std::make_unique<input::TextFocusProbe>(selected_source);
+        if(text_focus)text_focus=std::make_unique<input::TextFocusProbe>(selected_source,host_keyboard_requested);
         last_input_time=0;next_frame=Clock::now();
         std::osyncstream(std::cout)<<"DISPLAY_RECONFIGURED "<<frame.width<<'x'<<frame.height<<" position="<<mode->x<<','<<mode->y<<" rotation="<<mode->rotation<<std::endl;
     };
@@ -288,7 +288,7 @@ void receive_video(const net::Options& options, const std::string& pair, const s
     auto socket = net::connect_stream(options);
     security::TlsStream stream(std::move(socket), false, pair);
     stream.handshake(deadline());
-    auto request=wire::request;request[9]=static_cast<std::uint8_t>(quality);if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}if(editable_touch&&input_source&&(request[8]&input::touch_cap))request[10]=1;wire::set_client_display(request,client_display);stream.write(request, deadline());
+    auto request=wire::request;request[9]=static_cast<std::uint8_t>(quality);if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}if(editable_touch&&input_source&&(request[8]&input::touch_cap))request[10]=2;wire::set_client_display(request,client_display);stream.write(request, deadline());
     wire::OfferBytes offer_bytes{};
     // Authenticated host may need to enumerate/start its session-owned driver.
     stream.read(offer_bytes, Clock::now()+std::chrono::seconds(45));

@@ -66,8 +66,8 @@ void Host::serve(int socket){
     auto cancelled=[this]{return isInterruptionRequested();};
     Tls stream(socket,cancelled,gate_.get());auto request=wire::request;stream.read(request,deadline());
     const auto display=wire::take_client_display(request);
-    const auto input=request[7],caps=request[8],scale=request[9];request[7]=request[8]=request[9]=0;
-    if(request!=wire::request || input>1 || caps>all_caps || (bool(input)!=bool(caps)) || scale>2)throw std::runtime_error("Invalid client request");
+    const auto input=request[7],caps=request[8],scale=request[9],keyboard=request[10];request[7]=request[8]=request[9]=request[10]=0;
+    if(request!=wire::request || input>1 || caps>all_caps || (bool(input)!=bool(caps)) || scale>2 || keyboard>2 || (keyboard&&(!input||!(caps&touch_cap))))throw std::runtime_error("Invalid client request");
     emit state("Client connected — approve KDE's desktop-sharing prompt to create a virtual monitor");
     Portal portal(cancelled);portal.start(input!=0);
     unsigned granted=input?((portal.devices&1?keyboard_cap:0)|(portal.devices&2?mouse_cap:0)|(portal.devices&4?touch_cap:0))&caps:0;

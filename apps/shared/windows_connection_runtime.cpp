@@ -177,7 +177,7 @@ void WindowsConnectionRuntime::poll(){
         while(row.pending.contains('\n')){
             const auto at=row.pending.indexOf('\n');const auto line=row.pending.left(at).trimmed();row.pending.remove(0,at+1);
             if(row.kind=="usb"&&(line.startsWith("USB_")||line.startsWith("error:")))emit usbEvent("client",line);
-            if(row.kind=="display"&&(line.startsWith("VIDEO_")||line.startsWith("DISPLAY_")||line.startsWith("error:")))emit displayEvent("client","row="+id+" "+line.left(2048));
+            if(row.kind=="display"&&(line.startsWith("VIDEO_")||line.startsWith("DISPLAY_")||line.startsWith("KEYBOARD_")||line.startsWith("error:")))emit displayEvent("client","row="+id+" "+line.left(2048));
             auto& b=*impl_->brokers[row.broker];
             const bool consumed=line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("USB_WAITING")||line.startsWith("USB_STARTED");
             if(consumed){if(!row.stopping)model_.setState(id,State::active,line.startsWith("USB_WAITING")?"Waiting for USB storage on the server...":"Connected");if(b.inflight==id){b.inflight.clear();advance(row.broker);}}

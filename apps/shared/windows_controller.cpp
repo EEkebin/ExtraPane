@@ -398,7 +398,7 @@ void WindowsController::poll(){
         while(pending.contains('\n')){
             auto at=pending.indexOf('\n');auto line=pending.left(at).trimmed();pending.remove(0,at+1);
             if(line.startsWith("USB_")||(!host&&index==3&&line.startsWith("error:")))usbDiagnostic(host?"server":"client",line);
-            if((host&&(line.contains("kind=display")||line.startsWith("CLIENT_MODE")||line.startsWith("CAPTURE_SOURCE")||line.startsWith("VIDEO_")))||(!host&&index==0&&(line.startsWith("error:")||line.startsWith("VIDEO_")||line.startsWith("CLIENT_DISPLAY"))))usbDiagnostic(host?"server":"client",line,true);
+            if((host&&(line.contains("kind=display")||line.startsWith("CLIENT_MODE")||line.startsWith("CAPTURE_SOURCE")||line.startsWith("AUTO_KEYBOARD_")||line.startsWith("VIDEO_")))||(!host&&index==0&&(line.startsWith("error:")||line.startsWith("VIDEO_")||line.startsWith("CLIENT_DISPLAY"))))usbDiagnostic(host?"server":"client",line,true);
             if(line.startsWith("ACCESS_CODE ")){
                 auto digits=line.mid(12);
                 if(host&&digits.size()==6&&std::all_of(digits.begin(),digits.end(),[](QChar c){return c>='0'&&c<='9';})){

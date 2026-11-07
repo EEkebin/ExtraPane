@@ -27,8 +27,8 @@ struct Host::State {
     std::shared_ptr<access::Gate> gate;unsigned port;std::atomic_bool stop=false,running=true;std::string address;std::function<void(std::string)> report;std::thread listener;std::array<std::thread,4> workers;std::array<std::atomic_bool,4> occupied{};
     State(std::string bind,std::function<void(std::string)> callback,unsigned selectedPort,std::shared_ptr<access::Gate> selectedGate):gate(std::move(selectedGate)),port(selectedPort),address(std::move(bind)),report(std::move(callback)){}
     void serve(int socket,unsigned slot){@autoreleasepool{if(@available(macOS 13.0,*)){
-        auto cancelled=[this]{return stop.load();};HostTls transport(socket,cancelled,gate.get());auto bytes=transport.read(32,10);auto display=wire::take_client_display(bytes);unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7];bytes[7]=bytes[8]=bytes[9]=0;
-        if(!std::equal(bytes.begin(),bytes.end(),wire::request.begin()) || inputRequested>1 || wanted>15 || bool(inputRequested)!=bool(wanted) || scale>2)throw std::runtime_error("Invalid client request");
+        auto cancelled=[this]{return stop.load();};HostTls transport(socket,cancelled,gate.get());auto bytes=transport.read(32,10);auto display=wire::take_client_display(bytes);unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7],keyboard=bytes[10];bytes[7]=bytes[8]=bytes[9]=bytes[10]=0;
+        if(!std::equal(bytes.begin(),bytes.end(),wire::request.begin()) || inputRequested>1 || wanted>15 || bool(inputRequested)!=bool(wanted) || scale>2 || keyboard>2 || (keyboard&&(!inputRequested||!(wanted&4))))throw std::runtime_error("Invalid client request");
         if(!CGPreflightScreenCaptureAccess())throw std::runtime_error("Screen Recording permission is required");
         unsigned w=display.width?display.width:1920,h=display.height?display.height:1080,hz=std::clamp(display.hz?display.hz:60,1u,60u);
         double reduction=std::min({1.0,4096.0/w,4096.0/h,std::sqrt(8847360.0/(double(w)*h))});w=std::max(640u,unsigned(w*reduction)&~1u);h=std::max(480u,unsigned(h*reduction)&~1u);

@@ -13,6 +13,9 @@ checked and enter that server's address and port. Add the desired resource rows,
 choose their sources, then check each row to connect and start it. There is no
 separate Connect button. Uncheck a row to stop just that connection.
 Uncheck Single server to enter a separate destination for each row.
+Expand the Displays, Cameras, Microphones or USBs group to add/edit rows.
+Collapsing a group must leave its streams running. Disconnect all within one
+group must leave other groups running; page-wide Disconnect all stops everything.
 
 During authorized device testing, verify two camera/microphone rows produce
 separate OS endpoints, and that stopping one leaves the other running. Reusing
@@ -26,8 +29,12 @@ for native mode and fullscreen placement. Custom even resolutions must remain wi
 4096 pixels per dimension, 8,847,360 pixels total and 1–360 FPS. The physical
 panel's refresh rate is not changed. Check arrangement restoration, fullscreen,
 the top-center Controls handle, and the Keyboard action. Automatic keyboard
-opening uses Windows On-Screen Keyboard for remote fields exposing supported
-accessibility metadata; it is not a complete modern touch-keyboard/IME bridge.
+opening requests Windows On-Screen Keyboard on the server monitor for remote
+fields exposing writable accessibility metadata. Test a plain textbox and a
+modern editor after releasing the touch. Existing server keyboards are preserved;
+Windows launch/position restrictions are reported in display.log. The manual
+Keyboard action opens the receiver keyboard. This is the accessibility keyboard,
+not a complete modern touch-keyboard/IME bridge. Update both endpoints.
 
 With active server/client work, close the main window and double-click its tray
 icon: the main window should return and focus without disconnecting anything.
