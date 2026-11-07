@@ -88,7 +88,7 @@ speaker forwarding remain deferred.
 
 ## Packaging and release
 
-- [x] Combined Windows camera/microphone/USB portable development package staged at `out/windows-unified-server-20261107`; packaged offscreen startup, USB configuration, microphone endpoint and setup-payload checks pass.
+- [x] Combined Windows camera/microphone/USB portable development package staged at `out/windows-multiselect-20261107`; packaged offscreen startup, USB configuration, microphone endpoint and setup-payload checks pass.
 - [x] CI definitions for isolated resource and camera checks.
 - [x] Windows camera installer integration source and graceful app shutdown protocol.
 - [ ] Compile and verify the new installer; compiler staging was blocked by automatic approval review.
@@ -137,3 +137,5 @@ Unified routing verification also passes an in-memory authenticated-record test:
 2026-11-07 unified server deployment: packaged offscreen startup passed; all 1,322 files copied and verified on the Surface Desktop as `ExtraPane-unified-server-20261107`. Old Surface camera-fix build removed. Automatic approval review blocked local old camera-fix folder/archive cleanup (reason: blocked by policy), so those copies remain. No application, listener or device was started on the Surface.
 
 2026-11-07 client multi-select: model/UI checks cover combined display/camera/microphone selections, independent source devices, stop/mute, unavailable devices and no automatic capture. Group admission uses one-use per-resource tickets, with real in-memory PAKE/AEAD expiry/replay/wrong-kind checks; all native helpers rebuilt. Physical simultaneous delivery remains unverified.
+
+2026-11-07 multi-select deployment: packaged offscreen startup and Session helper configuration checks pass. All 1,323 package files copied and verified on the Surface Desktop in `ExtraPane-multiselect-20261107`; its superseded unified-server folder was removed. No live resource session, device capture or driver installation was run. Local old-build cleanup remains subject to the previously reported approval-review block.
