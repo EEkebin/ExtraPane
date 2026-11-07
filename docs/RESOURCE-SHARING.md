@@ -276,3 +276,25 @@ resources. Selection and source changes are locked while connected; disconnect
 before choosing a different combination. USB retains its explicit server-side
 eject and source recovery requirements. These changes have passed isolated UI,
 protocol and authorization checks; simultaneous physical delivery is unverified.
+
+## Consolidated Windows installation
+
+The development installer now uses `C:\Program Files\ExtraPane` for the app
+and `Components\Display`, `Components\Camera`, `Components\Microphone`, and
+`Components\UsbHost` beneath that directory. The app has a machine-wide Windows
+Apps entry. Its internal display manager retains its stable upgrade identity but
+is hidden from Windows Apps; the main uninstaller invokes it for owned driver removal.
+Per-user settings remain in the Windows user profile.
+
+Display migration copies verified legacy ownership records before changing the
+manager location. The old `SideScreen Driver` folder currently remains as a rollback
+copy: automatic approval review blocked implementation of its retirement. Do not
+manually run that stale uninstaller or delete its records during migration testing.
+Native camera, microphone and USB helper migrations validate owned paths and files.
+Full upgrade/uninstall testing is still pending. Independently installed USB/IP
+backends remain owned by their original installers and are not relocated.
+
+USB source setup can reuse the reviewed, Oracle-signed 7.2.2 monitor already shipped
+with usbipd-win. Its running protocol must report the supported 5.x interface;
+unknown binaries remain rejected. A read-only protocol query passed on the development
+desktop. This does not verify USB storage transfer, eject or recovery.

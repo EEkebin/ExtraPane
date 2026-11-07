@@ -94,7 +94,7 @@ QString WindowsController::resourceAvailability(const QString& kind)const{
         if(kind=="microphone"&&(!QFileInfo::exists(dir+"/ExtraPane.Microphone.exe")||!QFileInfo::exists(dir+"/ExtraPane.MicrophoneEndpoint.exe")))return "The microphone receiving engine is missing from this installation.";
         PWSTR location=nullptr;
         if(FAILED(SHGetKnownFolderPath(FOLDERID_ProgramFilesX64,0,nullptr,&location)))return "The microphone component location is unavailable.";
-        const auto root=QString::fromWCharArray(location)+"/ExtraPane Components/Microphone/";CoTaskMemFree(location);
+        const auto root=QString::fromWCharArray(location)+"/ExtraPane/Components/Microphone/";CoTaskMemFree(location);
         for(const auto* name:{"usbip.exe","libusbip.dll","resources.dll"})if(!QFileInfo::exists(root+name))return "Start server prepares the microphone and USB receiving component.";
         return {}; // The endpoint verifies the protected backend before attaching.
     }

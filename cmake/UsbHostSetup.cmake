@@ -27,5 +27,8 @@ target_compile_definitions(extrapane_usb_host_setup PRIVATE UNICODE _UNICODE NOM
 target_link_libraries(extrapane_usb_host_setup PRIVATE bcrypt advapi32 shell32 ole32 wintrust crypt32 setupapi)
 set_target_properties(extrapane_usb_host_setup PROPERTIES OUTPUT_NAME "ExtraPane.UsbHostSetup")
 if(EXTRAPANE_RESOURCE_SECURITY_TESTS)
+  add_executable(extrapane-usb-monitor-policy-check tests/usb_monitor_policy_check.cpp)
+  target_compile_features(extrapane-usb-monitor-policy-check PRIVATE cxx_std_20)
+  add_test(NAME usb-monitor-policy COMMAND extrapane-usb-monitor-policy-check)
   add_test(NAME usb-host-setup-payload COMMAND extrapane_usb_host_setup --check-package)
 endif()

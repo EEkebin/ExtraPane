@@ -44,7 +44,13 @@ std::span<const unsigned char> payload(){
 }
 fs::path component_root(){
     PWSTR value=nullptr;check(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_ProgramFilesX64,0,nullptr,&value)),"Program Files location is unavailable");
-    fs::path root(value);CoTaskMemFree(value);return root/L"ExtraPane Components"/L"Camera";
+    fs::path root(value);CoTaskMemFree(value);return root/L"ExtraPane"/L"Components"/L"Camera";
+}
+fs::path legacy_root(){return component_root().parent_path().parent_path().parent_path()/L"ExtraPane Components"/L"Camera";}
+bool trusted_writer(PSID sid){
+    if(IsWellKnownSid(sid,WinBuiltinAdministratorsSid)||IsWellKnownSid(sid,WinLocalSystemSid))return true;
+    Local installer;check(ConvertStringSidToSidW(L"S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",&installer.value),"Resolve TrustedInstaller SID failed");
+    return EqualSid(sid,installer.value)!=FALSE;
 }
 void no_reparse(const fs::path& path){
     for(auto current=path;!current.empty();){
@@ -66,10 +72,11 @@ void protected_directory(const fs::path& path){
     const ACCESS_MASK writes=FILE_WRITE_DATA|FILE_APPEND_DATA|FILE_WRITE_EA|FILE_WRITE_ATTRIBUTES|FILE_DELETE_CHILD|DELETE|WRITE_DAC|WRITE_OWNER|GENERIC_WRITE|GENERIC_ALL;
     for(DWORD i=0;i<acl->AceCount;++i){
         void* raw=nullptr;check(GetAce(acl,i,&raw),"Inspect camera directory ACL failed");const auto* header=static_cast<ACE_HEADER*>(raw);
+        if(header->AceFlags&INHERIT_ONLY_ACE)continue;
         if(header->AceType==ACCESS_DENIED_ACE_TYPE)continue;
         check(header->AceType==ACCESS_ALLOWED_ACE_TYPE,"Unsupported camera directory ACL");
         auto* ace=static_cast<ACCESS_ALLOWED_ACE*>(raw);auto* principal=&ace->SidStart;
-        if(ace->Mask&writes)check(IsWellKnownSid(principal,WinBuiltinAdministratorsSid)||IsWellKnownSid(principal,WinLocalSystemSid),"Camera directory is writable by an unprivileged principal");
+        if(ace->Mask&writes)check(trusted_writer(principal),"Camera directory is writable by an unprivileged principal");
     }
 }
 class Registry final:public setup::Store {
@@ -109,7 +116,7 @@ bool empty_class(){
     return children==0&&values==0;
 }
 void verify_ownership(const setup::Snapshot& state,const fs::path& root){
-    check(setup::owner_matches(state)&&owned_path(fs::path(*state[0]),root),"Camera COM class belongs to another registration; no changes made");
+    check(setup::owner_matches(state)&&(owned_path(fs::path(*state[0]),root)||owned_path(fs::path(*state[0]),legacy_root())),"Camera COM class belongs to another registration; no changes made");
 }
 std::vector<unsigned char> read_file(const fs::path& path){
     no_reparse(path);Handle file(CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
@@ -136,7 +143,7 @@ void remove_empty_key(const wchar_t* path){
 }
 int status(){
     Registry store;const auto state=setup::snapshot(store);if(setup::absent(state)){check(empty_class(),"Camera COM class exists without ExtraPane ownership");std::wcout<<L"not-installed\n";return 3;}
-    const auto root=component_root();verify_ownership(state,root);const fs::path path(*state[0]);const auto digest=sha256(read_file(path));
+    const auto root=component_root();verify_ownership(state,root);if(fs::path(*state[0]).parent_path()==legacy_root()){std::wcout<<L"migration-required\n";return 3;}const fs::path path(*state[0]);const auto digest=sha256(read_file(path));
     check(path.filename()==L"ExtraPane.CameraSource."+digest+L".dll","Registered camera payload hash mismatch");
     std::wcout<<L"installed\npath="<<path.wstring()<<L"\nsha256="<<digest<<L'\n';return 0;
 }
@@ -147,12 +154,23 @@ int modify(bool install){
     Handle mutex(CreateMutexW(nullptr,FALSE,L"Global\\ExtraPane.CameraSetup.5A053AD3"));check(mutex.value&&mutex.value!=INVALID_HANDLE_VALUE,"Camera setup lock unavailable");
     const auto wait=WaitForSingleObject(mutex.value,0);check(wait==WAIT_OBJECT_0||wait==WAIT_ABANDONED,"Another camera setup operation is running");
     struct Unlock{HANDLE value;~Unlock(){ReleaseMutex(value);}} unlock{mutex.value};
-    Registry store;const auto state=setup::snapshot(store);const auto root=component_root();
-    if(!setup::absent(state))verify_ownership(state,root);
+    Registry store;const auto state=setup::snapshot(store);auto root=component_root();
+    if(!setup::absent(state))verify_ownership(state,component_root());
     else if(install)check(empty_class(),"Camera COM class already exists without ExtraPane ownership; no changes made");
+    if(!install&&!setup::absent(state))root=fs::path(*state[0]).parent_path();
     if(!install&&setup::absent(state)){std::wcout<<L"not-installed\n";return 0;}
-    protected_directory(root.parent_path());protected_directory(root);
+    if(root==component_root())protected_directory(root.parent_path().parent_path());protected_directory(root.parent_path());protected_directory(root);
     if(install){
+        // Validate the old tree before changing COM registration; unknown files
+        // or modified payloads must leave the prior installation intact.
+        if(fs::exists(legacy_root())){
+            protected_directory(legacy_root());
+            for(const auto& item:fs::directory_iterator(legacy_root())){
+                const auto name=item.path().filename().wstring();
+                check(item.is_regular_file()&&setup::payload_name(name),"Unknown legacy camera file; migration stopped");
+                check(sha256(read_file(item.path()))==name.substr(std::wstring(L"ExtraPane.CameraSource.").size(),64),"Legacy camera payload changed; migration stopped");
+            }
+        }
         const auto bytes=payload();const auto digest=sha256(bytes);const auto path=root/(L"ExtraPane.CameraSource."+digest+L".dll");
         bool created=false;
         try{created=write_payload(path,bytes);setup::replace(store,setup::registration(path.wstring()));}
@@ -163,7 +181,22 @@ int modify(bool install){
             if(created&&!referenced)DeleteFileW(path.c_str());
             remove_empty_key(inproc_key);remove_empty_key(class_key);throw;
         }
-        std::wcout<<L"installed\nsha256="<<digest<<L'\n';return 0;
+        bool reboot=false;
+        if(fs::exists(legacy_root())){
+            protected_directory(legacy_root());
+            for(const auto& item:fs::directory_iterator(legacy_root())){
+                const auto name=item.path().filename().wstring();
+                check(item.is_regular_file()&&setup::payload_name(name),"Unknown legacy camera file; cleanup stopped");
+                check(sha256(read_file(item.path()))==name.substr(std::wstring(L"ExtraPane.CameraSource.").size(),64),"Legacy camera payload changed; cleanup stopped");
+            }
+            for(const auto& item:fs::directory_iterator(legacy_root()))if(!DeleteFileW(item.path().c_str())){
+                check(MoveFileExW(item.path().c_str(),nullptr,MOVEFILE_DELAY_UNTIL_REBOOT),"Schedule legacy camera cleanup failed");reboot=true;
+            }
+            if(reboot)check(MoveFileExW(legacy_root().c_str(),nullptr,MOVEFILE_DELAY_UNTIL_REBOOT),"Schedule legacy camera directory cleanup failed");
+            else RemoveDirectoryW(legacy_root().c_str());
+            RemoveDirectoryW(legacy_root().parent_path().c_str());
+        }
+        std::wcout<<L"installed\nsha256="<<digest<<L'\n';return reboot?3010:0;
     }
     std::vector<fs::path> files;
     for(const auto& item:fs::directory_iterator(root)){

@@ -16,10 +16,12 @@ VersionInfoProductTextVersion={#ReleaseVersion}
 AppPublisher=EEkebin
 AppPublisherURL=https://github.com/EEkebin/ExtraPane
 AppSupportURL=https://github.com/EEkebin/ExtraPane/issues
-DefaultDirName={localappdata}\Programs\ExtraPane
+DefaultDirName={autopf}\ExtraPane
+UsePreviousAppDir=no
+DisableDirPage=yes
 DefaultGroupName=ExtraPane
 UsePreviousGroup=no
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.22000
@@ -70,7 +72,7 @@ Name: "{group}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch ExtraPane"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch ExtraPane"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [Code]
 var
@@ -124,7 +126,7 @@ begin
 #endif
   DriverConsent := CreateInputOptionPage(RoleChoice.ID, 'Required server driver',
     'Server setup includes a machine-wide virtual-display driver.',
-    'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver has its own Windows uninstall entry. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.', False, False);
+    'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver is managed by the ExtraPane uninstaller. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.', False, False);
   DriverConsent.Add('I agree to install the driver and trust its development certificate on this PC.');
   DriverConsent.Values[0] := ExpandConstant('{param:ACCEPTDEVELOPMENTCERT|0}') = '1';
 end;
@@ -175,6 +177,9 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer;
 begin
   Result := '';
+  if CompareText(ExpandConstant('{app}'), ExpandConstant('{autopf}\ExtraPane')) <> 0 then begin
+    Result := 'ExtraPane must be installed in Program Files\ExtraPane.'; Exit;
+  end;
 #if !HasUsbHost
   if ExpandConstant('{param:USBHOST|0}') = '1' then begin
     Result := 'USB source sharing was requested, but this installer does not contain its component.';
@@ -196,7 +201,7 @@ begin
       '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /ACCEPTDEVELOPMENTCERT=1', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'The driver installer could not start or administrator permission was canceled. Server setup cannot continue.'
     else if Code <> 0 then
-      Result := 'The required server driver was not installed (exit ' + IntToStr(Code) + '). See Program Files\SideScreen Driver\driver-setup.log. Retry or go Back and choose Client only.'
+      Result := 'The required server driver was not installed (exit ' + IntToStr(Code) + '). See Program Files\ExtraPane\Components\Display\driver-setup.log. Retry or go Back and choose Client only.'
     else DriverInstalled := True;
 #else
     Result := 'This setup does not contain the required driver installer. Server setup cannot continue.';
@@ -208,9 +213,9 @@ begin
     if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.CameraSetup.exe'),
       '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'Camera component setup could not start or administrator permission was canceled.'
-    else if Code <> 0 then
+    else if (Code <> 0) and (Code <> 3010) then
       Result := 'The camera component could not be installed (exit ' + IntToStr(Code) + '). Existing foreign registrations are not overwritten. Retry or choose Client only.'
-    else CameraInstalled := True;
+    else begin CameraInstalled := True; if Code = 3010 then NeedsRestart := True; end;
   end;
 #endif
 #if HasUsb
@@ -232,11 +237,30 @@ begin
     if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.UsbHostSetup.exe'),
       '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'USB source setup could not start or administrator permission was canceled. Retry or clear the USB storage sharing option.'
-    else if Code <> 0 then
+    else if (Code <> 0) and (Code <> 3010) then
       Result := 'USB source setup failed (exit ' + IntToStr(Code) + '). Existing shared drivers are not replaced or removed. Eject and recover any pending USB transfers before retrying; incompatible components need separate resolution.'
-    else UsbHostInstalled := True;
+    else begin UsbHostInstalled := True; if Code = 3010 then NeedsRestart := True; end;
   end;
 #endif
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var LegacyLocation, LegacyName, LegacyKey, ExpectedLocation: String;
+begin
+  if CurStep <> ssDone then Exit;
+  LegacyKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen_is1';
+  ExpectedLocation := ExpandConstant('{localappdata}\Programs\ExtraPane');
+  if RegQueryStringValue(HKCU, LegacyKey, 'InstallLocation', LegacyLocation) and
+     RegQueryStringValue(HKCU, LegacyKey, 'DisplayName', LegacyName) and
+     (CompareText(RemoveBackslashUnlessRoot(LegacyLocation), ExpectedLocation) = 0) and
+     ((CompareText(LegacyName, 'ExtraPane') = 0) or (CompareText(LegacyName, 'SideScreen') = 0)) then begin
+    { Old user-owned executable is never executed elevated. Preserve files and
+      settings for rollback, retire only the positively identified duplicate entry. }
+    if RegDeleteKeyIncludingSubkeys(HKCU, LegacyKey) then
+      SaveStringToFile(ExpandConstant('{app}\migration.log'),
+        'Legacy per-user application retained for rollback: ' + ExpectedLocation + #13#10, True)
+    else Log('Could not retire the legacy per-user uninstall entry; files/settings were preserved.');
+  end;
 end;
 
 function CredDelete(Target: String; CredType, Flags: LongWord): Boolean;
@@ -270,7 +294,7 @@ begin
     Description.SetBounds(ScaleX(20), ScaleY(20), ScaleX(420), ScaleY(65));
     Description.AutoSize := False;
     Description.WordWrap := True;
-    Description.Caption := 'Remove ExtraPane from this PC. Machine-wide display and USB components stay installed; shared USB drivers are never removed automatically. Finish any pending USB eject/recovery before uninstalling. The display driver has its own Windows Apps entry.';
+    Description.Caption := 'Remove ExtraPane from this PC. The owned display driver is removed with ExtraPane. Independently installed USB drivers are preserved. Finish pending USB eject/recovery before uninstalling.';
     Choice := TNewCheckBox.Create(Dialog);
     Choice.Parent := Dialog;
     Choice.SetBounds(ScaleX(20), ScaleY(90), ScaleX(420), ScaleY(25));
@@ -319,6 +343,13 @@ var
   ErrorCode: LongWord;
   CameraCode: Integer;
 begin
+  if (CurUninstallStep = usUninstall) and FileExists(ExpandConstant('{app}\Components\Display\unins000.exe')) then begin
+    if not Exec(ExpandConstant('{app}\Components\Display\unins000.exe'),
+      '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, CameraCode) then
+      RaiseException('The display component uninstaller could not start. ExtraPane files were retained.');
+    if CameraCode <> 0 then
+      RaiseException('Display component removal failed (exit ' + IntToStr(CameraCode) + '). ExtraPane files were retained for retry.');
+  end;
   if (CurUninstallStep = usUninstall) and RemoveCamera then begin
     if not FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe')) then
       RaiseException('Camera setup helper is missing. The shared camera component was not removed.');

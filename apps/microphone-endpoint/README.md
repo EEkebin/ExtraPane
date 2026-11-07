@@ -20,7 +20,7 @@ seconds for graceful stop. A five-second stdin stall fails closed. The owner mus
 close stdin if its network peer or parent session disappears.
 
 The helper accepts only a fixed managed executable under the OS-provided Program
-Files directory: `ExtraPane Components/Microphone/usbip.exe`. It rejects reparse
+Files directory: `ExtraPane/Components/Microphone/usbip.exe`. It rejects reparse
 points beneath that directory and verifies Authenticode trust without network
 certificate retrieval. It does not search PATH, accept executable arguments,
 read USBIP_EXE, elevate, install anything or attach unrelated USB devices. Managed

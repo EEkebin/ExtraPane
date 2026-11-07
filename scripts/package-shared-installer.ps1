@@ -39,7 +39,8 @@ try {
         @'
 ExtraPane shared-resource development build
 
-Client only installs the per-user app without machine component changes.
+All choices install the app in Program Files/ExtraPane with administrator approval.
+Client only does not install receiving drivers.
 Server + Client installs the same app, virtual-display driver, camera source,
 and microphone/USB receiving components.
 Camera setup requires administrator permission. Camera use remains subject to
@@ -48,6 +49,8 @@ Windows camera privacy settings. No physical camera is detached or replaced.
 Server + Client also requires the virtual-display driver installer. That choice
 requires a package containing DriverSetup; otherwise setup refuses that role.
 
+Managed components live under Program Files/ExtraPane/Components. The display
+component uninstaller is invoked by the main ExtraPane uninstaller.
 The camera component stays installed when its server stops. App uninstall keeps
 the shared camera component unless you explicitly select its removal, which
 affects every user on this PC. Loaded camera files may require a Windows restart

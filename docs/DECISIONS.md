@@ -297,3 +297,13 @@ one-use, resource-bound child tickets; never silently reuse the six-digit code.
 The current implementation uses separate protected streams, not one multiplexed
 TCP connection. Selection changes require disconnect; stopping/muting individual
 resources does not stop the others.
+
+## Consolidated Windows layout (2026-11-07)
+
+The user requests one ExtraPane installation instead of scattered SideScreen and
+ExtraPane component folders. Use Program Files/ExtraPane for the app and managed
+components, with one visible app entry. Preserve stable internal installation IDs
+for upgrades and retain exact driver ownership records during migration. Independent
+usbipd-win/USBip installations are not ExtraPane-owned and must remain untouched.
+A retained legacy rollback folder is an incomplete cleanup step, not proof of full
+consolidation. Installation, upgrade and unified removal need end-to-end validation.

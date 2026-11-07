@@ -117,7 +117,7 @@ mod trust {
         let mut len=0;unsafe{while len<32768&&*ptr.add(len)!=0{len+=1;}}
         if len==32768{unsafe{CoTaskMemFree(ptr.cast());}return Err("Invalid program files path".into());}
         let root=PathBuf::from(std::ffi::OsString::from_wide(unsafe{std::slice::from_raw_parts(ptr,len)}));unsafe{CoTaskMemFree(ptr.cast());}
-        let mut path=root;for piece in ["ExtraPane Components","Microphone","usbip.exe"]{path.push(piece);let meta=std::fs::symlink_metadata(&path).map_err(|_|"Install the managed ExtraPane microphone component first")?;if meta.file_attributes()&0x400!=0{return Err("Microphone component cannot use reparse points".into());}}
+        let mut path=root;for piece in ["ExtraPane","Components","Microphone","usbip.exe"]{path.push(piece);let meta=std::fs::symlink_metadata(&path).map_err(|_|"Install the managed ExtraPane microphone component first")?;if meta.file_attributes()&0x400!=0{return Err("Microphone component cannot use reparse points".into());}}
         if !path.is_file(){return Err("Microphone component is missing".into());}
         managed(path.parent().ok_or("Missing component folder")?)?;
         let wide:Vec<u16>=path.as_os_str().encode_wide().chain(Some(0)).collect();

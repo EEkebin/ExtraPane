@@ -62,7 +62,7 @@ std::vector<unsigned char> read_file(const fs::path& path){
     std::vector<unsigned char> bytes(static_cast<std::size_t>(size.QuadPart));DWORD got=0;
     check(ReadFile(file.value,bytes.data(),static_cast<DWORD>(bytes.size()),&got,nullptr)&&got==bytes.size(),"Read installed USB payload failed");return bytes;
 }
-fs::path protected_root(){PWSTR value=nullptr;check(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_ProgramFilesX64,0,nullptr,&value)),"Program Files unavailable");fs::path root(value);CoTaskMemFree(value);return root/L"ExtraPane Components"/L"UsbHost";}
+fs::path protected_root(){PWSTR value=nullptr;check(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_ProgramFilesX64,0,nullptr,&value)),"Program Files unavailable");fs::path root(value);CoTaskMemFree(value);return root/L"ExtraPane"/L"Components"/L"UsbHost";}
 bool hex(std::string_view s){return s.size()==64&&std::all_of(s.begin(),s.end(),[](char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');});}
 bool filename(std::string_view s){
     constexpr std::array<std::string_view,8> allowed{"usbipd.exe","usb.ids","EventManifest.xml","COPYING.md","Drivers/VBoxUSB.inf","Drivers/VBoxUSB.cat","Drivers/VBoxUSB.sys","Drivers/VBoxUSBMon.sys"};

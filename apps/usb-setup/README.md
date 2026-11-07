@@ -26,7 +26,7 @@ certificate configuration or test-signing commands itself. The pinned upstream
 installer owns its driver/service installation and associated system changes.
 
 After verification, setup copies exactly `usbip.exe`, `libusbip.dll`, and
-`resources.dll` into `%ProgramFiles%/ExtraPane Components/Microphone`. Each file
+`resources.dll` into `%ProgramFiles%/ExtraPane/Components/Microphone`. Each file
 must match its exact SHA256 from the pinned installer; usbip.exe additionally
 requires a trusted Authenticode signature. The upstream DLLs are unsigned. Source and destination paths reject
 reparse points and unprivileged write ACLs. A protected ownership manifest records

@@ -28,7 +28,7 @@ KEYS = ['Software\\DM\\' + role for role in ('Host', 'Receiver', 'Display')]
 UNINSTALL = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen_is1'
 
 def registered_uninstaller(target):
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, UNINSTALL) as key:
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, UNINSTALL, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
         assert winreg.QueryValueEx(key, 'DisplayName')[0].startswith('ExtraPane')
         location = winreg.QueryValueEx(key, 'InstallLocation')[0]
         assert Path(location).resolve() == target.resolve()
@@ -40,8 +40,9 @@ def registered_uninstaller(target):
     return exe
 
 def exists(key):
+    hive = winreg.HKEY_LOCAL_MACHINE if key == UNINSTALL else winreg.HKEY_CURRENT_USER
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key): return True
+        with winreg.OpenKey(hive, key, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY): return True
     except FileNotFoundError: return False
 
 def paired(name):
@@ -72,7 +73,8 @@ def verify(installer):
         save(PAIR)
         save(OTHER)
         with tempfile.TemporaryDirectory(prefix='ExtraPane-data-check-') as folder:
-            target = Path(folder) / 'app'
+            target = Path(os.environ['ProgramFiles']) / 'ExtraPane'
+            assert not (target/'ExtraPane.exe').exists(), 'Refusing to overwrite existing app'
             for reset in (False, True, True):
                 fixtures = []
                 try:
