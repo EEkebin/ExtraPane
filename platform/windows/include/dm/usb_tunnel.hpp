@@ -9,5 +9,5 @@ namespace dm::usb {
 // importer starts turns; exporter must supply its exact locally selected bus ID.
 // Both borrowed streams stay alive until pump returns and its cancel watcher joins.
 void pump_tunnel(security::TlsStream& remote,net::TcpStream& local,bool importer,
-                 const std::string& exporter_bus,std::atomic_bool& stop);
+                 const std::string& exporter_bus,std::atomic_bool& stop,bool keep_tls_open=false);
 }
