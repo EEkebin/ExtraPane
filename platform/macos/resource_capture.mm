@@ -120,12 +120,13 @@ struct Capture::State {
     AVCaptureSession* session=nil;AVCaptureDevice* device=nil;AVCaptureDeviceInput* input=nil;AVCaptureOutput* output=nil;
     ExtraPaneResourceSink* sink=nil;AVCaptureConnection* connection=nil;id errorObserver=nil;id interruptionObserver=nil;
     VTCompressionSessionRef encoder=nullptr;dispatch_queue_t queue=dispatch_queue_create("io.github.EEkebin.ExtraPane.resource.capture",DISPATCH_QUEUE_SERIAL);
-    bool configuring=false;
+    bool configuring=false,deviceLocked=false;
     ~State(){
         shared->stopping=true;shared->changed.notify_all();
         if(errorObserver)[NSNotificationCenter.defaultCenter removeObserver:errorObserver];
         if(interruptionObserver)[NSNotificationCenter.defaultCenter removeObserver:interruptionObserver];
         @try {if(configuring)[session commitConfiguration];[session stopRunning];} @catch(NSException* exception) {(void)exception;}
+        if(deviceLocked){[device unlockForConfiguration];deviceLocked=false;}
         if([output isKindOfClass:AVCaptureVideoDataOutput.class])[(AVCaptureVideoDataOutput*)output setSampleBufferDelegate:nil queue:nullptr];
         if([output isKindOfClass:AVCaptureAudioDataOutput.class])[(AVCaptureAudioDataOutput*)output setSampleBufferDelegate:nil queue:nullptr];
         dispatch_sync(queue,^{});
@@ -143,14 +144,15 @@ Capture::Capture(Choice choice,std::function<bool()> muted):state_(std::make_uni
         s.session=[AVCaptureSession new];s.sink=[ExtraPaneResourceSink new];s.sink->shared=s.shared;s.sink->camera=s.choice.kind==Kind::Camera;s.sink->previousAudioEnd=kCMTimeInvalid;
         [s.session beginConfiguration];s.configuring=true;require([s.session canAddInput:s.input],"Cannot add selected capture input");[s.session addInput:s.input];
         if(s.choice.kind==Kind::Camera){
-            require([s.session canSetSessionPreset:AVCaptureSessionPresetInputPriority],"Camera session cannot preserve an explicit capture mode");
-            s.session.sessionPreset=AVCaptureSessionPresetInputPriority;
-            require([s.session.sessionPreset isEqualToString:AVCaptureSessionPresetInputPriority],"Camera session did not accept the explicit capture mode");
             const bool requested=s.choice.width||s.choice.height||s.choice.fps;const auto mode=modeFor(s.device,requested?&s.choice:nullptr);require(mode.format,"Selected camera mode is unavailable");
             s.choice.width=mode.width;s.choice.height=mode.height;s.choice.fps=mode.fps;
             s.sink->width=mode.width;s.sink->height=mode.height;
             require([s.device lockForConfiguration:&error],"Cannot configure selected camera");
-            @try {s.device.activeFormat=mode.format;s.device.activeVideoMinFrameDuration=CMTimeMake(1,mode.fps);s.device.activeVideoMaxFrameDuration=CMTimeMake(1,mode.fps);} @finally {[s.device unlockForConfiguration];}
+            // macOS has no InputPriority preset. Retaining the configuration
+            // lock prevents session startup/topology changes overriding this
+            // exact mode. Release after stopping, including failed construction.
+            s.deviceLocked=true;
+            s.device.activeFormat=mode.format;s.device.activeVideoMinFrameDuration=CMTimeMake(1,mode.fps);s.device.activeVideoMaxFrameDuration=CMTimeMake(1,mode.fps);
             AVCaptureVideoDataOutput* video=[AVCaptureVideoDataOutput new];video.alwaysDiscardsLateVideoFrames=YES;
             video.videoSettings=@{(NSString*)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)};
             [video setSampleBufferDelegate:s.sink queue:s.queue];s.output=video;
