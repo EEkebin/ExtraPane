@@ -8,6 +8,7 @@ on:
       - 'tests/media_check.cpp'
       - 'tests/resource_security_check.cpp'
       - 'tests/camera_format_check.cpp'
+      - 'tests/camera_source_check.cpp'
       - 'platform/windows/camera*.cpp'
       - 'platform/windows/include/dm/camera*.hpp'
       - 'CMakeLists.txt'
@@ -21,6 +22,7 @@ on:
       - 'tests/media_check.cpp'
       - 'tests/resource_security_check.cpp'
       - 'tests/camera_format_check.cpp'
+      - 'tests/camera_source_check.cpp'
       - 'platform/windows/camera*.cpp'
       - 'platform/windows/include/dm/camera*.hpp'
       - 'CMakeLists.txt'
@@ -36,9 +38,9 @@ jobs:
       - name: Configure camera compilation and hardware-free checks
         run: cmake -S . -B out/camera-checks -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON
       - name: Build camera source and checks
-        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane-camera-format-check --parallel 2
+        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane-camera-format-check extrapane-camera-source-check --parallel 2
       - name: Check synthetic buffers and inert lifecycle only
-        run: ctest --test-dir out/camera-checks -C Release -R camera-format --output-on-failure
+        run: ctest --test-dir out/camera-checks -C Release -R "camera-(format|source)" --output-on-failure
   lifecycle:
     strategy:
       fail-fast: false

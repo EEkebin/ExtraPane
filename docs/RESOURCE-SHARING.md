@@ -56,6 +56,14 @@ bounded channels must be bound to the admitted session and use the configured po
   restarting requires a new resource generation and encoder. This is not yet
   connected to sockets or a virtual-camera endpoint. Isolated tests cover malformed
   lengths, stale generations, truncated streams, overflow and cancellation.
+- A native Windows receiving-side Media Foundation source implements sample
+  requests, NV12 delivery, request tokens, start/stop/restart and shutdown. It
+  retains one pending decoded image and at most four pending sample requests.
+  Synthetic in-process consumer checks pass, including token delivery, replacing
+  an older pending raw frame, clearing requests on stop and waking a waiting
+  consumer on shutdown. This is not a registered system camera: COM activation,
+  Frame Server IPC, virtual-camera registration and installer integration remain
+  unfinished. Discord/browser delivery has not been tested.
 - The existing Linux QML shell now lives in apps/shared/ui and is consumed by the
   Linux package through the same resource URL. Video.qml remains platform-specific.
   A shared resource checklist is connected to the Linux controller. The Windows

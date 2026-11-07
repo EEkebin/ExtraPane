@@ -12,14 +12,16 @@ namespace dm::camera {
 class SourceResource final:public extrapane::Resource {
 public:
     using Sink=std::function<void(Sample)>;
-    SourceResource(std::wstring local_device,Format format,Sink sink);
+    // Cleanup executes on the capture worker before COM uninitialization. It
+    // must not throw or call back into the owner/session lifecycle.
+    SourceResource(std::wstring local_device,Format format,Sink sink,std::function<void()> worker_cleanup={});
     ~SourceResource() override;
     extrapane::Availability prepare() override;
     extrapane::Availability start() override;
     void stop() noexcept override;
     bool failed() const noexcept{return failed_.load();}
 private:
-    std::wstring device_;Format format_;Sink sink_;
+    std::wstring device_;Format format_;Sink sink_;std::function<void()> worker_cleanup_;
     std::unique_ptr<Capture> capture_;std::thread worker_;
     std::atomic_bool stopping_=false,failed_=false;
 };

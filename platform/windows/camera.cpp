@@ -39,7 +39,7 @@ public:
     STDMETHODIMP_(ULONG) Release()override{const auto refs=--refs_;if(!refs)delete this;return refs;}
     STDMETHODIMP OnReadSample(HRESULT status,DWORD,DWORD flags,LONGLONG timestamp,IMFSample* sample)override{
         std::lock_guard lock(pending_->mutex);
-        if(!pending_->running)return S_OK;
+        if(!pending_->running||FAILED(pending_->status))return S_OK;
         pending_->pending=false;pending_->ready=true;pending_->status=status;
         if(flags&MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)pending_->status=MF_E_INVALIDMEDIATYPE;
         if(flags&MF_SOURCE_READERF_ERROR)pending_->status=E_FAIL;
@@ -51,7 +51,7 @@ public:
     STDMETHODIMP OnEvent(DWORD,IMFMediaEvent* event)override{
         if(!event)return S_OK;HRESULT status=S_OK;
         if(SUCCEEDED(event->GetStatus(&status))&&FAILED(status)){
-            std::lock_guard lock(pending_->mutex);if(!pending_->running)return S_OK;
+            std::lock_guard lock(pending_->mutex);if(!pending_->running||FAILED(pending_->status))return S_OK;
             pending_->pending=false;pending_->ready=true;pending_->status=status;pending_->sample={};pending_->changed.notify_all();
         }return S_OK;
     }
@@ -117,7 +117,7 @@ void Capture::stop()noexcept{state_->stop();}
 Sample Capture::read(std::chrono::milliseconds timeout){
     if(timeout.count()<=0)throw std::invalid_argument("Camera read needs a positive timeout");
     auto pending=state_->pending;ComPtr<IMFSourceReader> reader;bool request=false;
-    {std::lock_guard lock(pending->mutex);if(!pending->running)throw std::runtime_error("Camera stopped");reader=state_->reader;if(!pending->pending&&!pending->ready){pending->pending=true;request=true;}}
+    {std::lock_guard lock(pending->mutex);if(!pending->running)throw std::runtime_error("Camera stopped");checked(pending->status,"Camera previously failed");reader=state_->reader;if(!pending->pending&&!pending->ready){pending->pending=true;request=true;}}
     if(request){const auto hr=reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM,0,nullptr,nullptr,nullptr,nullptr);if(FAILED(hr)){stop();checked(hr,"Request camera sample");}}
     std::unique_lock lock(pending->mutex);
     if(!pending->changed.wait_for(lock,timeout,[&]{return !pending->running||pending->ready;}))throw std::runtime_error("Camera sample timed out");

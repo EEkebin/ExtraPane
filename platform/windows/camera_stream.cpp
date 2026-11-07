@@ -9,7 +9,7 @@ EncodedSource::EncodedSource(std::wstring device,Format format,Sink sink)
         auto output=encoder_->encode_nv12(pixels,sequence_);
         if(output.empty()||output.size()>2*1024*1024)throw std::runtime_error("Camera H264 output exceeds channel limit");
         sink_({sequence_++,sample.timestamp,std::move(output)});
-    }){if(!sink_)throw std::invalid_argument("Camera requires an encoded-frame sink");}
+    },[this]{encoder_.reset();}){if(!sink_)throw std::invalid_argument("Camera requires an encoded-frame sink");}
 EncodedSource::~EncodedSource(){stop();}
 extrapane::Availability EncodedSource::prepare(){return source_.prepare();}
 extrapane::Availability EncodedSource::start(){return source_.start();}
