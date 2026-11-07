@@ -4,6 +4,7 @@ on:
     paths:
       - 'core/session/**'
       - 'apps/microphone*/**'
+      - 'apps/usb*/**'
       - 'platform/windows/microphone*.cpp'
       - 'platform/windows/usb*.cpp'
       - 'platform/windows/include/dm/microphone*.hpp'
@@ -40,6 +41,7 @@ on:
     paths:
       - 'core/session/**'
       - 'apps/microphone*/**'
+      - 'apps/usb*/**'
       - 'platform/windows/microphone*.cpp'
       - 'platform/windows/usb*.cpp'
       - 'platform/windows/include/dm/microphone*.hpp'
@@ -82,9 +84,9 @@ jobs:
       - name: Configure camera compilation and hardware-free checks
         run: cmake -S . -B out/camera-checks -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_MICROPHONE_TESTS=ON
       - name: Build camera source and checks
-        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane_camera_setup extrapane-camera-setup-check extrapane-resources extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check ExtraPane.Microphone extrapane-microphone-check extrapane-usb-inventory-check extrapane-usb-storage-check extrapane_usb_tunnel --parallel 2
+        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane_camera_setup extrapane-camera-setup-check extrapane-resources extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check ExtraPane.Microphone extrapane-microphone-check extrapane-usb-inventory-check extrapane-usb-storage-check extrapane-usb-host-backend-check extrapane-usb-recovery-check extrapane_usb_runner extrapane_usb_tunnel --parallel 2
       - name: Check synthetic frames, local IPC and unregistered COM activation
-        run: ctest --test-dir out/camera-checks -C Release -R "camera-|resource-.*-config|microphone-|usb-inventory|usb-storage" --output-on-failure
+        run: ctest --test-dir out/camera-checks -C Release -R "camera-|resource-.*-config|microphone-|usb-inventory|usb-storage|usb-host-backend|usb-recovery" --output-on-failure
   microphone-endpoint:
     runs-on: windows-2025
     timeout-minutes: 15

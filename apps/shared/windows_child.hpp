@@ -60,7 +60,7 @@ struct Child
         {
             if (WaitForSingleObject(process, 0) == WAIT_TIMEOUT)
             {
-                if(service && read){DWORD written=0;const char stop='Q';WriteFile(read,&stop,1,&written,nullptr);WaitForSingleObject(process,10000);}
+                if(service && read){DWORD written=0;const char stop[]="Q\n";WriteFile(read,stop,graceful_control?2:1,&written,nullptr);WaitForSingleObject(process,graceful_control?15000:10000);}
                 else if(graceful_control&&input_write){DWORD written=0;const char stop[]="Q\n";WriteFile(input_write,stop,2,&written,nullptr);WaitForSingleObject(process,15000);}
                 if(WaitForSingleObject(process,0)==WAIT_TIMEOUT)TerminateProcess(process, 0);
                 WaitForSingleObject(process, 3000);
@@ -113,7 +113,8 @@ struct Child
         graceful_control=graceful;
         CloseHandle(pi.hThread);
     }
-    void start_driver(bool input,bool debug,unsigned port=43824,bool require_code=false,std::wstring bind=L"auto") {
+    void start_elevated(const std::wstring& filename,const std::vector<std::wstring>& options,bool lines=true) {
+        if(filename!=L"ExtraPane.Service.exe"&&filename!=L"ExtraPane.Usb.exe")throw std::runtime_error("Unknown privileged helper");
         stop();
         std::array<unsigned char,16> random{};
         if(BCryptGenRandom(nullptr,random.data(),static_cast<ULONG>(random.size()),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0)throw std::runtime_error("Cannot create driver channel");
@@ -128,9 +129,9 @@ struct Child
         SECURITY_ATTRIBUTES security{sizeof(security),descriptor,FALSE};
         read=CreateNamedPipeW(pipe.c_str(),PIPE_ACCESS_DUPLEX|FILE_FLAG_FIRST_PIPE_INSTANCE,PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_NOWAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,4096,0,&security);LocalFree(descriptor);
         if(read==INVALID_HANDLE_VALUE){read=nullptr;throw std::runtime_error("Cannot create driver channel");}
-        const auto exe=(directory()/L"ExtraPane.Service.exe").wstring();
-        std::wstring args=L"--pipe "+command_quote(pipe)+L" --parent-pid "+std::to_wstring(GetCurrentProcessId());if(input)args+=L" --input";if(debug)args+=L" --debug";args+=L" --port "+std::to_wstring(port);if(require_code)args+=L" --require-code";
-        args+=L" --bind "+command_quote(bind);
+        const auto exe=(directory()/filename).wstring();
+        std::wstring args=L"--pipe "+command_quote(pipe)+L" --parent-pid "+std::to_wstring(GetCurrentProcessId());
+        for(const auto& option:options)args+=L" "+command_quote(option);
         SHELLEXECUTEINFOW launch{sizeof(launch)};launch.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;launch.lpVerb=L"runas";launch.lpFile=exe.c_str();launch.lpParameters=args.c_str();launch.nShow=SW_HIDE;
         if(!ShellExecuteExW(&launch)){const auto error=GetLastError();stop();throw std::runtime_error(error==ERROR_CANCELLED?"Driver start cancelled.":"Cannot elevate driver helper (Windows error "+std::to_string(error)+").");}
         process=launch.hProcess;
@@ -138,7 +139,12 @@ struct Child
         while(GetTickCount64()<until && WaitForSingleObject(process,0)==WAIT_TIMEOUT){if(ConnectNamedPipe(read,nullptr)||GetLastError()==ERROR_PIPE_CONNECTED){connected=true;break;}Sleep(25);}
         ULONG client=0;
         if(!connected||!GetNamedPipeClientProcessId(read,&client)||client!=GetProcessId(process)){stop();throw std::runtime_error("Driver helper could not connect securely");}
-        DWORD mode=PIPE_READMODE_BYTE|PIPE_WAIT;SetNamedPipeHandleState(read,&mode,nullptr,nullptr);service=true;
+        DWORD mode=PIPE_READMODE_BYTE|PIPE_WAIT;SetNamedPipeHandleState(read,&mode,nullptr,nullptr);service=true;graceful_control=lines;
+    }
+    void start_driver(bool input,bool debug,unsigned port=43824,bool require_code=false,std::wstring bind=L"auto") {
+        std::vector<std::wstring> args{L"--port",std::to_wstring(port),L"--bind",std::move(bind)};
+        if(input)args.push_back(L"--input");if(debug)args.push_back(L"--debug");if(require_code)args.push_back(L"--require-code");
+        start_elevated(L"ExtraPane.Service.exe",args,false);
     }
     std::string drain()
     {

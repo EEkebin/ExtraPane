@@ -21,6 +21,9 @@ class WindowsController final:public QObject {
     Q_PROPERTY(bool cameraScanRunning READ cameraScanRunning NOTIFY camerasChanged)
     Q_PROPERTY(QString cameraStatus READ cameraStatus NOTIFY camerasChanged)
     Q_PROPERTY(QString selectedCamera READ selectedCamera WRITE setSelectedCamera NOTIFY camerasChanged)
+    Q_PROPERTY(QVariantList usbRecoveries READ usbRecoveries NOTIFY recoveryChanged)
+    Q_PROPERTY(QString recoveryStatus READ recoveryStatus NOTIFY recoveryChanged)
+    Q_PROPERTY(bool recoveryBusy READ recoveryBusy NOTIFY recoveryChanged)
     Q_PROPERTY(bool microphoneMuted READ microphoneMuted NOTIFY changed)
     Q_PROPERTY(QString savedAddress READ savedAddress CONSTANT)
     Q_PROPERTY(QVariantList addresses READ addresses NOTIFY addressesChanged)
@@ -54,6 +57,13 @@ public:
     bool microphoneMuted()const{return microphoneMuted_;}
     Q_INVOKABLE void setMicrophoneMuted(bool muted);
     Q_INVOKABLE void setupMicrophone();
+    Q_INVOKABLE void setupUsbSource();
+    Q_INVOKABLE void ejectUsb();
+    QVariantList usbRecoveries()const{return recoveries_;}
+    QString recoveryStatus()const{return recoveryStatus_;}
+    bool recoveryBusy()const;
+    Q_INVOKABLE void refreshUsbRecovery();
+    Q_INVOKABLE void recoverUsb(QString id);
     QString hostAvailability()const;
     QString hostMode()const{return hostMode_;}
     void setHostMode(QString mode);
@@ -79,7 +89,7 @@ public:
     Q_INVOKABLE void releaseInput(){}
     void shutdown();
 signals:
-    void changed();void hostChanged();void addressesChanged();void camerasChanged();
+    void recoveryChanged();void changed();void hostChanged();void addressesChanged();void camerasChanged();
 private:
     void poll();
     struct Impl;std::unique_ptr<Impl> impl_;
@@ -88,5 +98,7 @@ private:
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
     QString hostMode_="display",clientMode_="display",selectedCamera_,cameraStatus_="Click Refresh cameras to list local cameras. Capture starts only after connection is accepted.";
     QVariantList cameras_;
+    QVariantList recoveries_;
+    QString recoveryStatus_="Refresh recovery records after USB stops. Recovery never forces a busy or unverified disk online.";
     bool microphoneMuted_=false;
 };

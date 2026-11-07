@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 // Shared shell baseline. Platforms supply Video.qml and the receiver controller.
 // Linux is currently the first consumer; other platform adapters are pending.
 import QtQuick.Controls
@@ -24,6 +24,7 @@ ApplicationWindow {
     palette.toolTipText: "#edf1f8"
     palette.placeholderText: "#aab8cc"
     property bool cameraClient: receiver.platformLabel === "Windows" ? receiver.clientMode !== "display" : false
+    property bool usbClient: receiver.platformLabel === "Windows" ? receiver.clientMode === "usb" : false
     property bool microphoneClient: receiver.platformLabel === "Windows" ? receiver.clientMode === "microphone" : false
     property bool inputPaused: false
     component ToolbarButton: ToolButton {
@@ -112,10 +113,10 @@ ApplicationWindow {
                     Label { text: "Accept connections from your other devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     ComboBox {
                         visible: receiver.platformLabel === "Windows"
-                        model: ["Display", "Camera (preview)", "Microphone (preview)"]
-                        currentIndex: receiver.platformLabel === "Windows" ? (receiver.hostMode === "microphone" ? 2 : receiver.hostMode === "camera" ? 1 : 0) : 0
+                        model: ["Display", "Camera (preview)", "Microphone (preview)", "USB storage (preview)"]
+                        currentIndex: receiver.platformLabel === "Windows" ? (receiver.hostMode === "usb" ? 3 : receiver.hostMode === "microphone" ? 2 : receiver.hostMode === "camera" ? 1 : 0) : 0
                         enabled: !receiver.hosting
-                        onActivated: if (receiver.platformLabel === "Windows") receiver.hostMode = currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
+                        onActivated: if (receiver.platformLabel === "Windows") receiver.hostMode = currentIndex === 3 ? "usb" : currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
                     }
                     Label {
                         text: receiver.hostAvailability.length ? receiver.hostAvailability : receiver.hostDescription
@@ -137,11 +138,12 @@ ApplicationWindow {
                         onClicked: receiver.setupCamera()
                     }
                     Button {
-                        visible: receiver.platformLabel === "Windows" && receiver.hostMode === "microphone"
-                        text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing component..." : "Microphone setup"
+                        visible: receiver.platformLabel === "Windows" && (receiver.hostMode === "microphone" || receiver.hostMode === "usb")
+                        text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing component..." : "Receiving component setup"
                         enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
                         onClicked: receiver.setupMicrophone()
                     }
+                    Button { visible: receiver.platformLabel === "Windows" && receiver.hostMode === "usb"; text: "Eject USB"; enabled: receiver.hosting; onClicked: receiver.ejectUsb() }
                     TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } enabled: !receiver.hosting }
                     CheckBox { id: requireCode; text: "Require access code"; enabled: !receiver.hosting }
                     Label { text: receiver.accessCode; wrapMode: Text.WordWrap; Layout.fillWidth: true }
@@ -165,15 +167,15 @@ ApplicationWindow {
                     ComboBox {
                         visible: receiver.platformLabel === "Windows" && !root.fullscreen
                         enabled: !receiver.active && (receiver.platformLabel === "Windows" ? !receiver.cameraScanRunning : true)
-                        model: ["Display", "Camera (preview)", "Microphone (preview)"]
-                        currentIndex: root.microphoneClient ? 2 : root.cameraClient ? 1 : 0
-                        onActivated: receiver.clientMode = currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
+                        model: ["Display", "Camera (preview)", "Microphone (preview)", "USB storage (preview)"]
+                        currentIndex: root.usbClient ? 3 : root.microphoneClient ? 2 : root.cameraClient ? 1 : 0
+                        onActivated: receiver.clientMode = currentIndex === 3 ? "usb" : currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
                     }
                     ColumnLayout {
                         objectName: "cameraClientPanel"
                         visible: root.cameraClient && !root.fullscreen
                         Layout.fillWidth: true
-                        Label { text: root.microphoneClient ? "Send a local microphone to a Windows microphone server. Resource modes use separate connections in this preview." : "Send a local camera to a Windows camera server. Display and camera use separate connections in this preview."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Label { text: root.usbClient ? "Share removable USB storage exclusively. Close its files first. Use Eject USB on the receiving PC before stopping; a lost connection requires source recovery." : root.microphoneClient ? "Send a local microphone to a Windows microphone server. Resource modes use separate connections in this preview." : "Send a local camera to a Windows camera server. Display and camera use separate connections in this preview."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         RowLayout {
                             Layout.fillWidth: true
                             ComboBox {
@@ -181,12 +183,12 @@ ApplicationWindow {
                                 enabled: root.cameraClient && !receiver.active && !receiver.cameraScanRunning
                                 model: root.cameraClient ? receiver.cameras : []
                                 textRole: "label"; valueRole: "id"
-                                currentIndex: root.cameraClient ? model.findIndex(item => item.id === receiver.selectedCamera) : -1
-                                displayText: currentIndex < 0 ? (root.microphoneClient ? "Select a microphone" : "Select a camera") : currentText
+                                currentIndex: root.cameraClient ? model.findIndex(item => item.id === receiver.selectedCamera && item.available !== false) : -1
+                                displayText: currentIndex < 0 ? (root.usbClient ? "Select removable storage" : root.microphoneClient ? "Select a microphone" : "Select a camera") : currentText
                                 onActivated: receiver.selectedCamera = currentValue
                             }
                             Button {
-                                objectName: "cameraRefreshButton"; text: root.cameraClient && receiver.cameraScanRunning ? "Listing..." : root.microphoneClient ? "Refresh microphones" : "Refresh cameras"
+                                objectName: "cameraRefreshButton"; text: root.cameraClient && receiver.cameraScanRunning ? "Listing..." : root.usbClient ? "Refresh USB storage" : root.microphoneClient ? "Refresh microphones" : "Refresh cameras"
                                 enabled: root.cameraClient && !receiver.active && !receiver.cameraScanRunning
                                 onClicked: receiver.refreshCameras()
                             }
@@ -197,7 +199,19 @@ ApplicationWindow {
                             text: root.microphoneClient && receiver.microphoneMuted ? "Unmute microphone" : "Mute microphone"
                             onClicked: receiver.setMicrophoneMuted(!receiver.microphoneMuted)
                         }
-                        Button { objectName: "cameraDisconnectButton"; text: root.microphoneClient ? "Stop sharing microphone" : "Stop sharing camera"; visible: receiver.active; onClicked: receiver.disconnectFromServer() }
+                        Button { visible: root.usbClient; text: "USB source setup"; enabled: !receiver.active && !receiver.hosting && !receiver.cameraSetupRunning; onClicked: receiver.setupUsbSource() }
+                        ColumnLayout {
+                            visible: root.usbClient
+                            Layout.fillWidth: true
+                            Label { text: "USB recovery"; font.bold: true }
+                            Label { text: root.usbClient ? receiver.recoveryStatus : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            ComboBox { id: recoveryPicker; Layout.fillWidth: true; model: root.usbClient ? receiver.usbRecoveries : []; textRole: "label"; valueRole: "id"; enabled: !receiver.active && !receiver.hosting && !receiver.recoveryBusy }
+                            RowLayout {
+                                Button { text: "Refresh recovery"; enabled: root.usbClient && !receiver.active && !receiver.hosting && !receiver.recoveryBusy; onClicked: receiver.refreshUsbRecovery() }
+                                Button { text: "Restore selected disk"; enabled: root.usbClient && !receiver.active && !receiver.hosting && !receiver.recoveryBusy && recoveryPicker.currentIndex >= 0 && receiver.usbRecoveries[recoveryPicker.currentIndex].available; onClicked: receiver.recoverUsb(recoveryPicker.currentValue) }
+                            }
+                        }
+                        Button { objectName: "cameraDisconnectButton"; text: root.usbClient ? "Stop USB (recovery may be required)" : root.microphoneClient ? "Stop sharing microphone" : "Stop sharing camera"; visible: receiver.active; onClicked: receiver.disconnectFromServer() }
                     }
 
                     RowLayout {
@@ -214,7 +228,7 @@ ApplicationWindow {
                         }
                         Button {
                             id: connectButton; objectName: "connectButton"; text: "Connect"
-                            enabled: !receiver.active && receiver.availability.length === 0 && (root.cameraClient ? !receiver.cameraScanRunning && receiver.selectedCamera.length > 0 && receiver.cameras.some(item => item.id === receiver.selectedCamera) : receiver.resources.canConnect)
+                            enabled: !receiver.active && receiver.availability.length === 0 && (root.cameraClient ? !receiver.cameraScanRunning && receiver.selectedCamera.length > 0 && receiver.cameras.some(item => item.id === receiver.selectedCamera && item.available !== false) : receiver.resources.canConnect)
                             onClicked: {
                                 const selected = receiver.addresses[localAddress.currentIndex]
                                 receiver.connectTo(serverAddress.text, selected ? selected.address : "0.0.0.0", inputAllowed.checked, root.nextScale, selected ? selected.index : 0, Number(clientPort.text), clientCode.text)

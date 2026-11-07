@@ -84,6 +84,8 @@ int main(int argc,char** argv){
         controller.setClientMode("camera");
         controller.setHostMode("microphone");
         controller.setClientMode("microphone");
+        controller.setHostMode("usb");
+        controller.setClientMode("usb");
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane server");

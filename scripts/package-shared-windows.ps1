@@ -1,10 +1,11 @@
-﻿param(
+param(
     [string]$UiBuild = 'out/shared-ui',
     [string]$EngineBuild = 'out/shared-engine',
     [string]$QtRoot = 'out/qt-sdk/6.8.3/msvc2022_64',
     [string]$Destination = 'out/shared-portable',
     [switch]$IncludeCamera,
     [switch]$IncludeMicrophone,
+    [switch]$IncludeUsb,
     [string]$MicrophoneEndpoint = 'out/microphone-endpoint/release/extrapane-microphone-endpoint.exe'
 )
 $ErrorActionPreference = 'Stop'
@@ -35,6 +36,14 @@ if ($IncludeMicrophone) {
     $endpoint = Join-Path $projectRoot $MicrophoneEndpoint
     if (-not (Test-Path -LiteralPath $endpoint)) { throw 'Build the pinned microphone endpoint helper before packaging.' }
 }
+if ($IncludeUsb) {
+    $files += (Join-Path $enginePath 'ExtraPane.Usb.exe'), (Join-Path $enginePath 'ExtraPane.UsbHostSetup.exe'), (Join-Path $enginePath 'ExtraPane.UsbRecovery.exe')
+    if (-not $IncludeMicrophone) { $files += (Join-Path $enginePath 'ExtraPane.UsbSetup.exe') }
+    $usbSource = Join-Path $projectRoot 'out/usb-host/corresponding-source'
+    foreach ($required in @('usbipd-upstream.tar','usbipd-loopback.patch','build-usb-host.ps1','BUILD.json','COPYING.md')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $usbSource $required))) { throw "Missing USB host corresponding source: $required" }
+    }
+}
 foreach ($file in $files) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" } }
 New-Item -ItemType Directory -Path $destinationPath | Out-Null
 foreach ($file in $files) { Copy-Item -LiteralPath $file -Destination $destinationPath }
@@ -42,6 +51,11 @@ if ($IncludeMicrophone) {
     Copy-Item -LiteralPath $endpoint -Destination (Join-Path $destinationPath 'ExtraPane.MicrophoneEndpoint.exe')
     Copy-Item -LiteralPath (Join-Path $projectRoot 'apps/microphone-endpoint/USBIP-AUDIO-LICENSE.txt') -Destination $destinationPath
     Copy-Item -LiteralPath (Join-Path $projectRoot 'apps/usb-setup/USBIP-WIN2-LICENSE.txt') -Destination $destinationPath
+}
+if ($IncludeUsb) {
+    Copy-Item -LiteralPath $usbSource -Destination (Join-Path $destinationPath 'usb-host-source') -Recurse
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/USB.md') -Destination (Join-Path $destinationPath 'USB-RECOVERY.md')
+    if (-not $IncludeMicrophone) { Copy-Item -LiteralPath (Join-Path $projectRoot 'apps/usb-setup/USBIP-WIN2-LICENSE.txt') -Destination $destinationPath }
 }
 & (Join-Path $qtPath 'bin/windeployqt.exe') --release --no-translations --verbose 0 --qmldir (Join-Path $projectRoot 'apps/shared/ui') (Join-Path $destinationPath 'ExtraPane.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Qt deployment failed' }
@@ -51,5 +65,5 @@ Get-ChildItem -LiteralPath $crt.FullName -Filter '*.dll' | ForEach-Object { Copy
 Copy-Item -LiteralPath (Join-Path $qtPath 'plugins/platforms/qoffscreen.dll') -Destination (Join-Path $destinationPath 'platforms/qoffscreen.dll')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/RESOURCE-SHARING.md') -Destination (Join-Path $destinationPath 'DEVELOPMENT-STATUS.md')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/IMPLEMENTATION-CHECKLIST.md') -Destination (Join-Path $destinationPath 'IMPLEMENTATION-CHECKLIST.md')
-Write-Host "Staged development display shell: $destinationPath"
+Write-Host "Staged development resource-sharing app: $destinationPath"
 Write-Host 'No app was launched, no driver installed, and no connection was attempted.'

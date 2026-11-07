@@ -68,7 +68,9 @@ speaker forwarding remain deferred.
 - [x] Platform-independent storage eligibility, exclusive ownership and recovery lifecycle with synthetic checks.
 - [x] Windows read-only disk inventory implementation and synthetic descriptor/layout checks.
 - [x] Native storage lock/dismount adapter and bounded single-worker USB tunnel implemented; synthetic lifecycle/framing checks pass.
-- [ ] Connect the native storage adapter, protected backend, durable recovery and encrypted USB/IP into app sessions.
+- [x] Protected local USB backend, durable offline journal, explicit recovery helper and managed source setup compiled; synthetic checks pass.
+- [x] Windows USB source picker, destination eject and guided recovery controls implemented; offscreen UI checks pass.
+- [ ] Finish native session integration build and failure-path review before staging the combined package.
 
 - [ ] Windows/Linux USB forwarding through admitted encrypted transport.
 - [ ] Safe per-device selection, exclusions and exclusive ownership.
@@ -104,6 +106,7 @@ speaker forwarding remain deferred.
 | 2026-11-07 Windows sender | Windows camera picker/share/stop UI and USB ownership foundation | Offscreen camera/fallback UI and 5 core suites pass; no physical device access. |
 | 2026-11-07 native sources | WASAPI source, local microphone endpoint helper and native USB inventory | Native builds/PCM and inventory checks; 4 Rust unit checks. No capture, attachment or disk enumeration executed. |
 | 2026-11-07 microphone connection | Windows microphone session/UI and managed component setup | 6 core suites, UI checks, native configuration/payload checks pass. No live sockets or driver installation. |
+| 2026-11-07 USB ownership and recovery | Protected backend, offline journal, source setup and guided Windows controls | Native recovery/setup payload checks and offscreen UI pass. No storage enumeration, driver setup or real USB session run. |
 | 2026-11-07 Android microphone / USB transport | Android microphone sender and native storage/tunnel foundations | Android APK/instrumentation compilation/lint; 7 core suites; synthetic native storage lifecycle checks. No live USB or audio access. |
 
 Concurrent implementation is authorized. Device testing is deferred until camera, microphone and USB implementation is complete. CAMERA-TEST.md is a future test guide, not a request to test now.
