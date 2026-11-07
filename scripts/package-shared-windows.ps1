@@ -99,8 +99,15 @@ if ($IncludeUsb) {
     Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/USB.md') -Destination (Join-Path $destinationPath 'USB-RECOVERY.md')
     if (-not $IncludeMicrophone) { Copy-Item -LiteralPath (Join-Path $projectRoot 'apps/usb-setup/USBIP-WIN2-LICENSE.txt') -Destination $destinationPath }
 }
-& (Join-Path $qtPath 'bin/windeployqt.exe') --release --no-translations --verbose 0 --qmldir (Join-Path $projectRoot 'apps/shared/ui') (Join-Path $destinationPath 'ExtraPane.exe')
-if ($LASTEXITCODE -ne 0) { throw 'Qt deployment failed' }
+# Windows PowerShell turns redirected native stderr into ErrorRecords. Qt emits
+# nonfatal deployment warnings there; determine success from its exit code.
+$previousErrorAction = $ErrorActionPreference
+try {
+    $ErrorActionPreference = 'Continue'
+    & (Join-Path $qtPath 'bin/windeployqt.exe') --release --no-translations --verbose 0 --qmldir (Join-Path $projectRoot 'apps/shared/ui') (Join-Path $destinationPath 'ExtraPane.exe')
+    $deploymentExit = $LASTEXITCODE
+} finally { $ErrorActionPreference = $previousErrorAction }
+if ($deploymentExit -ne 0) { throw 'Qt deployment failed' }
 Get-ChildItem -LiteralPath $crt.FullName -Filter '*.dll' | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $destinationPath }
 # windeployqt includes the interactive platform plugin only. The isolated
 # package check explicitly selects offscreen and must not open an error dialog.
