@@ -133,7 +133,7 @@ int main(int argc,char** argv){
         int serverCombos=0;for(auto* object:server->findChildren<QObject*>())if(object->inherits("QQuickComboBox")){++serverCombos;require(object==address);}require(serverCombos==1);
         for(auto* object:server->findChildren<QObject*>()){const auto text=object->property("text").toString();require(text!="Camera setup"&&text!="Receiving component setup");}
         require(start->property("enabled").toBool());require(QMetaObject::invokeMethod(start,"clicked"));require(controller.hostStartRequests==1&&controller.startedAddress=="0.0.0.0"&&controller.startedPort==43824&&!controller.startedRequireCode);
-        controller.insert("hosting",true);controller.insert("hostAvailability",QString("Unavailable"));app.processEvents();require(start->property("enabled").toBool());require(QMetaObject::invokeMethod(start,"clicked"));require(controller.hostStopRequests==1);
+        controller.insert("hosting",true);controller.insert("hostAvailability",QString("Unavailable"));app.processEvents();require(start->property("enabled").toBool());require(start->property("background").value<QObject*>()->property("color").value<QColor>()==QColor("#b32635"));require(QMetaObject::invokeMethod(start,"clicked"));require(controller.hostStopRequests==1);
         controller.insert("hosting",false);app.processEvents();require(!start->property("enabled").toBool());controller.insert("hostAvailability",QString{});controller.insert("cameraSetupRunning",true);app.processEvents();require(!start->property("enabled").toBool());require(start->property("text").toString()=="Preparing server...");require(!address->property("enabled").toBool());controller.insert("cameraSetupRunning",false);
         root->setProperty("page",1);app.processEvents();
         auto* picker=named(root,"resourcePicker");auto* connect=named(root,"connectButton");auto* disconnect=named(root,"clientDisconnectButton");
@@ -198,11 +198,20 @@ int main(int argc,char** argv){
         require(instances.setSharedTarget(QVariantMap{{"address","192.0.2.1"},{"port",43824},{"localAddress","0.0.0.0"},{"interfaceIndex",0}}));
         for(const auto& id:{instanceDisplay,instanceCamera,secondCamera,instanceMic}){instances.setSource(id,"fake-source");instances.setEnabled(id,true);require(instances.beginConnection(id));require(instances.setState(id,ConnectionModel::State::active,"Connected"));}
         app.processEvents();auto* displayMode=named(repeatedRoot,("displayModeChoice_"+instanceDisplay).toUtf8().constData());
+        require(!displayMode->property("visible").toBool()&&!named(repeatedRoot,"sharedDestinationFields")->property("visible").toBool()&&named(repeatedRoot,"sharedDestinationSummary")->property("visible").toBool());
+        auto* displaySummary=named(repeatedRoot,("connectedDescription_"+instanceDisplay).toUtf8().constData());
+        require(displaySummary->property("visible").toBool()&&displaySummary->property("text").toString().contains("1920")&&displaySummary->property("text").toString().contains("60 target FPS"));
+        const auto sharedTarget=instances.sharedTarget();auto nextTarget=sharedTarget;nextTarget["address"]="192.0.2.55";require(instances.setSharedTarget(nextTarget));app.processEvents();
+        require(named(repeatedRoot,("connectedTarget_"+instanceDisplay).toUtf8().constData())->property("text")=="192.0.2.1:43824");require(named(repeatedRoot,"sharedDestinationSummary")->property("text")=="Connected to 192.0.2.1:43824");require(instances.setSharedTarget(sharedTarget));
+
         auto* collapse=named(repeatedRoot,"connectionGroupToggle_display");require(QMetaObject::invokeMethod(collapse,"clicked"));app.processEvents();
         require(!displayMode->property("visible").toBool()&&instances.connection(instanceDisplay)["phase"]=="active"&&runtime.requests.isEmpty());
-        require(QMetaObject::invokeMethod(collapse,"clicked"));app.processEvents();require(displayMode==named(repeatedRoot,("displayModeChoice_"+instanceDisplay).toUtf8().constData())&&displayMode->property("visible").toBool());
+        require(QMetaObject::invokeMethod(collapse,"clicked"));app.processEvents();require(displayMode==named(repeatedRoot,("displayModeChoice_"+instanceDisplay).toUtf8().constData())&&!displayMode->property("visible").toBool());
         auto* camerasDisconnect=named(repeatedRoot,"connectionGroupDisconnect_camera");require(camerasDisconnect->property("enabled").toBool());require(QMetaObject::invokeMethod(camerasDisconnect,"clicked"));app.processEvents();
         require(runtime.requests==QStringList{instanceCamera,secondCamera}&&instances.connection(instanceDisplay)["phase"]=="active"&&instances.connection(instanceMic)["phase"]=="active"&&!instances.connection(instanceCamera)["connectionEnabled"].toBool()&&!instances.connection(secondCamera)["connectionEnabled"].toBool());
+        auto* micDisconnect=named(repeatedRoot,("connectionDisconnect_"+instanceMic).toUtf8().constData());require(micDisconnect->property("destructive").toBool());
+        require(QMetaObject::invokeMethod(micDisconnect,"clicked"));app.processEvents();require(runtime.requests.back()==instanceMic&&instances.connection(instanceMic)["phase"]=="idle"&&instances.connection(instanceDisplay)["phase"]=="active");
+        instances.setEnabled(instanceMic,true);require(instances.beginConnection(instanceMic));require(instances.setState(instanceMic,ConnectionModel::State::active,"Connected"));
         const auto beforeAdd=instances.rowCount();require(QMetaObject::invokeMethod(named(repeatedRoot,"connectionGroupAdd_camera"),"clicked"));app.processEvents();require(instances.rowCount()==beforeAdd+1&&instances.data(instances.index(beforeAdd),ConnectionModel::Kind)=="camera"&&!warnings);
         auto* nav=named(repeatedRoot,"navigationSidebar");auto* navToggle=named(repeatedRoot,"sidebarToggle");
         auto* repeatedWindow=qobject_cast<QQuickWindow*>(repeatedRoot);require(repeatedWindow);repeatedWindow->resize(1120,760);app.processEvents();
@@ -216,13 +225,15 @@ int main(int argc,char** argv){
             auto capture=[&](QString name){for(int i=0;i<35;++i){app.processEvents();QThread::msleep(10);}const auto image=repeatedWindow->grabWindow();require(!image.isNull()&&image.save(screenshotPath+"/"+name+".png"));};
             repeated.insert("hostComponents",QVariantList{});repeated.insert("hostDescription",QString("Clients choose which displays, cameras, microphones and USB devices to share."));
             runtime.insert("devices",QVariantMap{{"camera",devices("fake-source","Surface camera")},{"microphone",devices("fake-source","Surface microphone")}});runtime.insert("active",true);
-            repeated.insert("hostStatus",QString("Ready to accept connections"));repeatedRoot->setProperty("page",0);capture("server-1120");
+            repeated.insert("hostStatus",QString("Ready to accept connections"));repeatedRoot->setProperty("page",0);capture("server-1120");repeated.insert("hosting",true);capture("server-stop-1120");repeated.insert("hosting",false);
             repeatedRoot->setProperty("page",1);capture("client-1120");
             repeatedWindow->resize(720,760);repeatedRoot->setProperty("sidebarCollapsed",false);capture("client-720-expanded");
             repeatedRoot->setProperty("sidebarCollapsed",true);capture("client-720-collapsed");
             while(instances.rowCount()){const auto id=instances.data(instances.index(0),ConnectionModel::Id).toString();instances.setState(id,ConnectionModel::State::idle);require(instances.removeConnection(id));}
             runtime.insert("active",false);repeatedWindow->resize(1120,760);repeatedRoot->setProperty("sidebarCollapsed",false);capture("client-empty-1120");
         }
+        for(int index=0;index<instances.rowCount();++index){const auto id=instances.data(instances.index(index),ConnectionModel::Id).toString();instances.setState(id,ConnectionModel::State::idle);}
+        repeatedRoot->setProperty("page",1);app.processEvents();require(named(repeatedRoot,"sharedDestinationFields")->property("visible").toBool()&&!named(repeatedRoot,"sharedDestinationSummary")->property("visible").toBool());
         require(!warnings);
         std::cout<<"Shared UI multi-resource model and offscreen shell checks passed\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

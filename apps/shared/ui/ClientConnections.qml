@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 ScrollView {
@@ -12,6 +13,14 @@ ScrollView {
     // Keep a stable gutter even while the scrollbar is faded out.
     rightPadding: ScrollBar.vertical.implicitWidth + 12
     contentWidth: availableWidth
+    function activeTargets() {
+        let targets = []
+        for (let i = 0; i < resourceGroups.count; ++i) {
+            const group = resourceGroups.itemAt(i)
+            if (group) targets = targets.concat(group.activeTargets())
+        }
+        return [...new Set(targets)].join(", ")
+    }
     component DestinationFields: ColumnLayout {
         id: fields
         required property var destination
@@ -44,16 +53,24 @@ ScrollView {
         Label { text: "Add resources, then check them to connect."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#9eacc2" }
         DestinationFields {
             id: shared
-            visible: panel.runtime.connections.singleServer
+            objectName: "sharedDestinationFields"
+            visible: panel.runtime.connections.singleServer && panel.runtime.connections.activeConnectionCount === 0
             Layout.fillWidth: true; Layout.minimumWidth: 0
             destination: panel.runtime.connections.sharedTarget
             addresses: panel.addresses
             commit: value => panel.runtime.connections.setSharedTarget(value)
         }
+        Label {
+            objectName: "sharedDestinationSummary"
+            visible: panel.runtime.connections.singleServer && !shared.visible
+            text: "Connected to " + panel.activeTargets()
+            color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true
+        }
         RowLayout {
-            Button { text: "Disconnect all"; enabled: panel.runtime.active; onClicked: panel.runtime.disconnectAll() }
+            Button { text: "Disconnect all"; background: Rectangle { implicitHeight: 44; radius: 10; color: !parent.enabled ? "#27364c" : parent.down ? "#8f1d2a" : parent.hovered ? "#ce3949" : "#b32635"; border.width: parent.activeFocus ? 2 : 0; border.color: "#ff9da8" } Material.foreground: "white"; enabled: panel.runtime.active; onClicked: panel.runtime.disconnectAll() }
         }
         Repeater {
+            id: resourceGroups
             model: [
                 {kind: "display", title: "Displays", singular: "display"},
                 {kind: "camera", title: "Cameras", singular: "camera"},
@@ -72,6 +89,15 @@ ScrollView {
                         if (instance && instance.resourceKind === modelData.kind && (instance.connectionEnabled || instance.busy))
                             panel.runtime.toggle(instance.connectionId, false)
                     }
+                }
+                function activeTargets() {
+                    const targets = []
+                    for (let i = 0; i < groupRows.count; ++i) {
+                        const instance = groupRows.itemAt(i)
+                        if (instance && instance.resourceKind === modelData.kind && instance.busy)
+                            targets.push(instance.effectiveTarget.address + ":" + instance.effectiveTarget.port)
+                    }
+                    return targets
                 }
                 function rowCount() {
                     let count = 0
@@ -123,7 +149,7 @@ ScrollView {
                         }
                         IconButton {
                             objectName: "connectionGroupDisconnect_" + resourceGroup.modelData.kind
-                            symbol: "disconnect"; description: "Disconnect all " + resourceGroup.modelData.title.toLowerCase()
+                            symbol: "disconnect"; destructive: true; description: "Disconnect all " + resourceGroup.modelData.title.toLowerCase()
                             enabled: resourceGroup.hasConnections()
                             onClicked: resourceGroup.disconnectGroup()
                         }
@@ -173,10 +199,27 @@ ScrollView {
                                 readonly property bool busy: instance.busy
                                 readonly property bool destinationVisible: instance.destinationVisible
                                 property bool displayOptionsValid: true
+                                property string connectedDescription: ""
+                                function freezeDescription() {
+                                    if (!busy) return
+                                    if (resourceKind === "display") {
+                                        const mode = displayMode
+                                        const local = (panel.runtime.monitors || []).find(item => item.id === mode.monitorId)
+                                        connectedDescription = mode.mode === "native"
+                                            ? (local ? local.width + " x " + local.height + " @ " + Math.min(60, local.fps) + " target FPS (local monitor)" : "Local monitor native mode")
+                                            : mode.width + " x " + mode.height + " @ " + mode.fps + " target FPS"
+                                    } else {
+                                        const device = (panel.runtime.devices[resourceKind] || []).find(item => item.id === sourceId)
+                                        connectedDescription = device ? device.label : sourceId || resourceKind
+                                    }
+                                }
+                                onBusyChanged: freezeDescription()
+                                Component.onCompleted: freezeDescription()
                                 width: instance.width
                                 ColumnLayout {
                                     width: parent.width; spacing: 8
                                     RowLayout {
+                                        visible: !row.busy
                                         Layout.fillWidth: true; Layout.minimumWidth: 0
                                         CheckBox {
                                             text: row.resourceKind === "usb" ? "USB storage" : row.resourceKind.charAt(0).toUpperCase() + row.resourceKind.slice(1)
@@ -192,11 +235,24 @@ ScrollView {
                                         Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                         Button { text: "Remove"; enabled: !row.busy; onClicked: panel.runtime.connections.removeConnection(row.connectionId) }
                                     }
-                                    DestinationFields { id: perRow; visible: row.destinationVisible; enabled: !row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0; destination: row.target; addresses: panel.addresses; commit: value => panel.runtime.connections.setTarget(row.connectionId, value) }
-                                    Label { visible: row.busy; text: "Server: " + row.effectiveTarget.address + ":" + row.effectiveTarget.port; color: "#9eacc2" }
+                                    DestinationFields { id: perRow; visible: row.destinationVisible && !row.busy; enabled: !row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0; destination: row.target; addresses: panel.addresses; commit: value => panel.runtime.connections.setTarget(row.connectionId, value) }
+                                    RowLayout {
+                                        visible: row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0
+                                        ColumnLayout {
+                                            Layout.fillWidth: true; Layout.minimumWidth: 0
+                                            Label { objectName: "connectedTarget_" + row.connectionId; text: row.effectiveTarget.address + ":" + row.effectiveTarget.port; font.weight: Font.DemiBold; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                            Label { objectName: "connectedDescription_" + row.connectionId; text: row.connectedDescription; color: "#9eacc2"; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                        }
+                                        IconButton {
+                                            objectName: "connectionDisconnect_" + row.connectionId
+                                            symbol: "disconnect"; destructive: true; description: "Disconnect " + row.resourceKind
+                                            enabled: row.phase !== "returning" && row.phase !== "recovery"
+                                            onClicked: panel.runtime.toggle(row.connectionId, false)
+                                        }
+                                    }
                                     ComboBox {
                                         id: source
-                                        visible: row.resourceKind !== "display"; enabled: !row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0
+                                        visible: row.resourceKind !== "display" && !row.busy; enabled: !row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0
                                         model: panel.runtime.devices[row.resourceKind] || []
                                         textRole: "label"; valueRole: "id"
                                         currentIndex: model.findIndex(item => item.id === row.sourceId)
@@ -206,7 +262,7 @@ ScrollView {
                                         Connections { target: source.popup; function onOpened() { panel.runtime.refreshDevices(row.resourceKind) } }
                                     }
                                     ColumnLayout {
-                                        visible: row.resourceKind === "display"; enabled: !row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0
+                                        visible: row.resourceKind === "display" && !row.busy; enabled: !row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0
                                         function saveDisplay() { row.displayOptionsValid = panel.runtime.connections.setDisplayMode(row.connectionId, {mode: displayChoice.currentIndex === 0 ? "custom" : "native", monitorId: displayChoice.currentIndex === 1 ? (monitor.currentValue || "") : "", width: widthSpin.value, height: heightSpin.value, fps: fpsSpin.value}) }
                                         ComboBox { id: displayChoice; objectName: "displayModeChoice_" + row.connectionId; Layout.fillWidth: true; Layout.minimumWidth: 0; model: ["Custom resolution and frame rate", "Match local monitor"]; currentIndex: row.displayMode.mode === "native" ? 1 : 0; onActivated: parent.saveDisplay() }
                                         ComboBox { id: monitor; objectName: "displayMonitor_" + row.connectionId; visible: displayChoice.currentIndex === 1; Layout.fillWidth: true; Layout.minimumWidth: 0; model: panel.runtime.monitors; textRole: "label"; valueRole: "id"; currentIndex: model.findIndex(item => item.id === row.displayMode.monitorId); displayText: currentIndex < 0 ? "Choose a local monitor" : currentText; onActivated: parent.saveDisplay(); Connections { target: monitor.popup; function onOpened() { panel.runtime.refreshMonitors() } } }

@@ -16,6 +16,14 @@ The user requested two destination modes:
   rows may share a server or use different servers. Admission is scoped to each
   destination. Secrets are not persisted.
 
+While a row is connecting or connected, its configuration collapses into a
+compact destination and resource summary with a red disconnect action. Display
+summaries report the configured resolution and target FPS, not measured throughput.
+Camera mirror and microphone mute remain available during a connection. Failed
+rows return to editable configuration; USB return/recovery status stays visible.
+The shared destination fields collapse while connections are active and return
+when they stop. Disconnect and Stop server actions use red styling.
+
 The same camera or microphone may be sent to several servers where supported.
 Native capture must be shared, with independent bounded outbound streams. A slow
 or disconnected recipient must not stop other recipients. USB storage remains

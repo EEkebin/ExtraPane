@@ -37,6 +37,7 @@ ApplicationWindow {
     property bool inputPaused: false
     component ToolbarButton: ToolButton {
         id: control
+        property bool destructive: false
         font.pixelSize: 12
         padding: 8
         contentItem: Text {
@@ -45,7 +46,7 @@ ApplicationWindow {
         }
         background: Rectangle {
             radius: 6
-            color: control.down ? "#45638d" : control.hovered ? "#354b69" : "#253349"
+            color: control.destructive ? (control.down ? "#8f1d2a" : control.hovered ? "#ce3949" : "#b32635") : control.down ? "#45638d" : control.hovered ? "#354b69" : "#253349"
             border.color: "#516681"
         }
     }
@@ -174,7 +175,7 @@ ApplicationWindow {
                         objectName: "serverStartButton"
                         highlighted: true
                         leftPadding: 22; rightPadding: 22
-                        background: Rectangle { implicitHeight: 44; radius: 10; color: parent.enabled ? (parent.down ? "#3468a7" : parent.hovered ? "#5288cb" : "#3e76bb") : "#27364c"; border.width: parent.activeFocus ? 2 : 0; border.color: "#a7ceff" }
+                        background: Rectangle { implicitHeight: 44; radius: 10; color: parent.enabled ? (receiver.hosting ? (parent.down ? "#8f1d2a" : parent.hovered ? "#ce3949" : "#b32635") : (parent.down ? "#3468a7" : parent.hovered ? "#5288cb" : "#3e76bb")) : "#27364c"; border.width: parent.activeFocus ? 2 : 0; border.color: "#a7ceff" }
                         contentItem: Text { text: parent.text; font: parent.font; color: parent.enabled ? "#ffffff" : "#8fa0b6"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         text: receiver.hosting ? "Stop server" : receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Preparing server..." : "Start server"
                         enabled: receiver.hosting || (receiver.hostAvailability.length === 0 && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning))
@@ -252,6 +253,8 @@ ApplicationWindow {
                         objectName: "clientDisconnectButton"
                         visible: root.windowsClient && !root.multiClient && receiver.active
                         text: "Disconnect all"
+                        background: Rectangle { implicitHeight: 44; radius: 10; color: !parent.enabled ? "#27364c" : parent.down ? "#8f1d2a" : parent.hovered ? "#ce3949" : "#b32635"; border.width: parent.activeFocus ? 2 : 0; border.color: "#ff9da8" }
+                        Material.foreground: "#ffffff"
                         onClicked: receiver.disconnectFromServer()
                     }
                     Loader {
@@ -327,7 +330,7 @@ ApplicationWindow {
                                 }
                                 ToolbarButton { text: root.fullscreen ? "Windowed" : "Fullscreen"; onClicked: root.toggleFullscreen() }
                                 ToolbarButton { text: "Minimize"; onClicked: { receiver.releaseInput(); root.showMinimized() } }
-                                ToolbarButton { text: "Disconnect"; onClicked: receiver.disconnectFromServer() }
+                                ToolbarButton { text: "Disconnect"; destructive: true; onClicked: receiver.disconnectFromServer() }
                             }
                         }
                         Rectangle {
