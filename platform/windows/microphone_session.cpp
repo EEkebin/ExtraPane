@@ -292,7 +292,7 @@ void SourceBroker::add(std::string row,net::Options options,std::string credenti
     std::shared_ptr<State::Recipient> previous;{std::lock_guard lock(s.mutex);const auto found=s.recipients.find(row);if(found!=s.recipients.end()){need(found->second->ended,"Microphone recipient is already active");previous=found->second;s.recipients.erase(found);}}
     if(previous&&previous->worker.joinable())previous->worker.join();
     auto r=std::make_shared<State::Recipient>();r->row=std::move(row);r->options=std::move(options);r->credential=credential;
-    {std::lock_guard lock(s.mutex);need(s.recipients.size()<16,"One microphone source supports at most 16 recipient rows");s.recipients.emplace(r->row,r);}
+    {std::lock_guard lock(s.mutex);s.recipients.emplace(r->row,r);}
     try{r->worker=std::thread([&s,r]{s.transmit(r);});}catch(...){std::lock_guard lock(s.mutex);s.recipients.erase(r->row);throw;}
 }
 void SourceBroker::remove(const std::string& row){

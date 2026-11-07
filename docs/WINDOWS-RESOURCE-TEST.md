@@ -19,9 +19,9 @@ group must leave other groups running; page-wide Disconnect all stops everything
 
 During authorized device testing, verify two camera/microphone rows produce
 separate OS endpoints, and that stopping one leaves the other running. Reusing
-one source across servers must also leave other recipients working. Receiving
-limits are four displays, four cameras, four microphones and one USB storage
-connection per server. USB sharing remains exclusive.
+one source across servers must also leave other recipients working. Windows receiving slots are dynamically allocated. During authorized testing,
+try more than four resources when hardware permits, and multiple USB imports
+from different source PCs. Per-physical-device USB sharing remains exclusive.
 
 Each display row opens a separate resizable window. Custom virtual monitor mode
 requires no local monitor selection. Alternatively, choose Match local monitor
@@ -100,7 +100,8 @@ verify that the server receives the camera/microphone while its extended desktop
 shows on the client. Uncheck one resource and confirm the others continue. Recheck it to restart; Disconnect all must clear every checkbox after USB ownership return completes. Mute the
 microphone independently. For access-code mode, enter one fresh code for the
 connection; it issues fresh short-lived, single-use resource tickets when checkboxes start resources.
-Windows USB is one removable-storage session per receiver. Linux/macOS new media
+Windows USB receivers support independent imports, but the source backend still
+allows only one exporter process per source PC. Linux/macOS new media
 resources and raw USB are not covered by this Windows milestone. Android camera
 and microphone source code/APK are present but require their own physical checks.
 The combined portable package contains setup helpers; drivers still require

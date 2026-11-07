@@ -9,7 +9,7 @@ void require(bool value){if(!value)throw std::runtime_error("Virtual display mod
 int main(){try{
     // Same producer/validator path used before server display allocation. This
     // updates thread-local naming only: no registry, driver or screen changes.
-    for(unsigned slot=1;slot<=4;++slot)dm::display::select_client_layout_profile(L"10.0.20.130",slot);
+    for(unsigned slot: {1u,4u,5u,255u,65536u,0xffffffffu})dm::display::select_client_layout_profile(L"10.0.20.130",slot);
     bool rejected=false;try{dm::display::select_layout_profile(L"10.0.20.130-slot-1");}catch(const std::invalid_argument&){rejected=true;}require(rejected);
     rejected=false;try{dm::display::select_client_layout_profile(L"10.0.20.130",0);}catch(const std::invalid_argument&){rejected=true;}require(rejected);
     dm::display::select_layout_profile(L"");

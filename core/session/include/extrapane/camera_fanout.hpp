@@ -20,7 +20,7 @@ public:
     };
     std::shared_ptr<Recipient> add(const std::string& id,media::Binding binding){
         std::lock_guard lock(mutex_);
-        if(id.empty()||id.size()>64||recipients_.size()>=8||recipients_.contains(id))throw std::invalid_argument("Camera recipient is duplicate or exceeds the eight-recipient limit");
+        if(id.empty()||id.size()>64||recipients_.contains(id))throw std::invalid_argument("Camera recipient identity is invalid or duplicate");
         auto item=std::make_shared<Recipient>(binding);recipients_.emplace(id,item);return item;
     }
     void remove(const std::string& id){std::lock_guard lock(mutex_);auto it=recipients_.find(id);if(it!=recipients_.end()){it->second->frames.close();recipients_.erase(it);}}

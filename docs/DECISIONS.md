@@ -384,3 +384,12 @@ move general usage limits out of the primary connection workflow.
 ## Installer role and consent flow (2026-11-07)
 
 Role choice is Client only or Server + Client. USB source support is mandatory in both roles, with no checkbox or separate optional setup flow. Driver certificate information remains explicit; the driver page uses an I agree - Next action instead of a checkbox. Silent server deployment still requires /ACCEPTDEVELOPMENTCERT=1. Installation never selects or exports storage automatically.
+
+## Dynamic Windows resource capacity (2026-11-07)
+
+Replace fixed product counts with dynamic endpoint/session allocation and remove
+the Connection limits UI section. Preserve bounded pending admissions, tickets
+and per-recipient queues, plus exact USB ownership and per-device exclusivity.
+Do not advertise unlimited hardware capacity: endpoint/driver allocation may
+fail. The current USB source backend retains its one-exporter-process constraint
+until a coordinated backend/broker redesign preserves its attachment evidence.

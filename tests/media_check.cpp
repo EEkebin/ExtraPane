@@ -60,8 +60,8 @@ int main() {try {
         auto replacement=fanout.add("first",{23,2});replacement->admitted=true;
         fanout.publish(21,210,{1},false);check(!replacement->frames.pop_for(0ms));
         fanout.publish(22,220,{2},true);check(replacement->frames.pop_for(0ms)->binding==Binding{23,2});
-        for(unsigned i=0;i<7;++i)fanout.add("row"+std::to_string(i),{30+i,1});
-        check(rejects([&]{fanout.add("too-many",{50,1});}));
+        for(unsigned i=0;i<40;++i)fanout.add("row"+std::to_string(i),{30+i,1});
+        check(fanout.add("additional",{100,1})!=nullptr);
         check(rejects([&]{fanout.publish(23,230,{},true);}));
     }
     std::cout<<"Media framing, stale generation, bounds and cancellation checks passed\n";return 0;

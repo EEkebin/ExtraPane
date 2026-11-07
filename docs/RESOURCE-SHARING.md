@@ -48,7 +48,7 @@ authorized device test; the checks below do not establish physical interoperabil
 - The native Windows camera helper uses the existing TLS/access-code admission
   before the bounded camera offer, capability exchange and request/grant. The
   offer selects geometry and a connection-scoped resource/generation binding.
-  No monitor is allocated for a camera connection. Up to four receiving workers
+  No monitor is allocated for a camera connection. Dynamically allocated receiving workers
   have independent local camera slots; one client's failure does not stop the
   listener.
 - Camera frames use bounded H.264 framing, contiguous sequence numbers and
@@ -257,8 +257,10 @@ admission once per incoming connection, then examines eight decrypted bytes to
 select the existing display, camera, microphone or USB adapter. A bounded prefix
 buffer preserves those bytes for the adapter's full protocol validation. Unknown
 protocols, component errors and client disconnects end that connection; the
-listener remains available. Limits are four display sessions, four cameras, four
-microphones and one USB session, with a bounded pending-connection pool.
+listener remains available. Established sessions use dynamic slots/workers; pending admissions remain
+bounded independently. OS/driver/resource allocation failures affect that session.
+USB imports have individual eject signals; source exporting still permits one
+backend process per source PC.
 
 Starting the server does not allocate a virtual monitor, camera or microphone.
 Adapters prepare those resources after the corresponding client request. The

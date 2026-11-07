@@ -1,6 +1,6 @@
 # Windows microphone recipients
 
-The unified Windows listener can allocate four distinct receiving microphone
+The unified Windows listener dynamically allocates receiving microphone
 slots. Each native helper receives its assigned slot, exposes the corresponding
 `ExtraPane Microphone N` product/capture name, and owns its own USB/IP attachment.
 Global slot leases reject duplicate slot ownership, including across Windows
@@ -25,8 +25,8 @@ Q
 `credential` is the freshly scoped admission credential, or `-` for automatic LAN
 mode. It travels only through the local input pipe; it is not a process argument,
 status message or saved setting. Row IDs are 1–128 ASCII letters, digits, hyphens
-or underscores. The broker limits one source to 16 recipient rows. The receiving
-host's independent four-slot capacity can reject additional incoming streams.
+or underscores. The broker has no fixed recipient count. The receiving host allocates slots
+dynamically; hardware, driver or memory exhaustion can reject a new stream.
 
 The broker emits `BROKER_READY` after initialization. Per-row events are:
 

@@ -55,7 +55,7 @@ private:
 std::unique_ptr<CameraRegistration> native_camera_registration(){return std::make_unique<NativeRegistration>();}
 CameraEndpoint::CameraEndpoint(Format format,unsigned slot,std::unique_ptr<CameraRegistration> registration)
     :format_(format),slot_(slot),registration_(std::move(registration)),publisher_(format){
-    if(slot<1||slot>4||!registration_)throw std::invalid_argument("Invalid local camera slot or registration backend");
+    if(slot<1||!registration_)throw std::invalid_argument("Invalid local camera slot or registration backend");
 }
 CameraEndpoint::~CameraEndpoint(){stop();}
 extrapane::Availability CameraEndpoint::prepare(){

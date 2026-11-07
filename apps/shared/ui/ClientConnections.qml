@@ -256,8 +256,6 @@ ScrollView {
                 Button { text: "Restore selected disk"; enabled: recovery.currentIndex >= 0 && recovery.model[recovery.currentIndex].available; onClicked: panel.controller.recoverUsb(recovery.currentValue) }
             }
         }
-        ToolButton { id: limitDetails; text: "Connection limits"; checkable: true; font.pixelSize: 12; Accessible.name: "Show connection limits" }
-        Label { visible: limitDetails.checked; text: "Current receiving limits: four displays, four cameras, four microphones and one USB storage connection per Windows server. One camera source can feed eight recipients; one microphone source can feed sixteen. Hardware and driver limits also apply."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#9eacc2" }
         Label { text: panel.runtime.status; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
     }
 }

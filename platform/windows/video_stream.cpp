@@ -1,3 +1,4 @@
+#include <climits>
 #include <windows.h>
 #include <dm/video_wait.hpp>
 #include <dm/video.hpp>
@@ -255,33 +256,36 @@ void serve_video(const net::Options& requested,const std::string& pair,bool allo
     if(!pair.empty()){auto key=security::load_pairing(pair);SecureZeroMemory(key.data(),key.size());}
     auto options=requested;options.timeout=std::chrono::milliseconds(0);
     net::TcpListener listener(options);
-    std::osyncstream(std::cout)<<"DRIVER_STARTED waiting-for-clients capacity=4"<<std::endl;
+    std::osyncstream(std::cout)<<"DRIVER_STARTED waiting-for-clients capacity=resource-dependent"<<std::endl;
     std::osyncstream(std::cout)<<"LISTENING "<<listener.endpoints()<<std::endl;
     struct Session {std::thread worker;std::atomic<bool> done{true};};
-    std::array<Session,4> sessions;
+    std::vector<std::unique_ptr<Session>> sessions;std::atomic_uint pending_handshakes=0;
     // The launcher owns process lifetime. Each worker owns its own monitor,
     // capture, encoder, TLS stream and input watchdog; failure stays local.
     for(;;) {
         auto socket=listener.accept();
-        auto free=std::find_if(sessions.begin(),sessions.end(),[](const auto& session){return session.done.load();});
-        if(free==sessions.end()){std::osyncstream(std::cout)<<"CLIENT_REJECTED all four display slots are in use"<<std::endl;continue;}
-        if(free->worker.joinable())free->worker.join();
-        auto* session=&*free;session->done.store(false);
+        if(pending_handshakes.load()>=32){std::osyncstream(std::cout)<<"CLIENT_REJECTED Server is busy admitting new connections; retry shortly"<<std::endl;continue;}
+        auto free=std::find_if(sessions.begin(),sessions.end(),[](const auto& session){return session->done.load();});
+        if(free==sessions.end()){try{if(sessions.size()>=UINT_MAX)throw std::runtime_error("Display endpoint identity space exhausted");sessions.push_back(std::make_unique<Session>());free=sessions.end()-1;}catch(const std::exception& error){std::osyncstream(std::cout)<<"CLIENT_REJECTED Cannot allocate display session: "<<error.what()<<std::endl;continue;}}
+        if((*free)->worker.joinable())(*free)->worker.join();
+        auto* session=free->get();session->done.store(false);++pending_handshakes;
         const auto slot=static_cast<unsigned>(free-sessions.begin())+1;
-        session->worker=std::thread([session,slot,options,pair,allow_input,frames,socket=std::move(socket)]() mutable {
+        try{session->worker=std::thread([session,slot,options,pair,allow_input,frames,&pending_handshakes,socket=std::move(socket)]() mutable {
+            bool pending=true;struct Pending{std::atomic_uint& count;bool& pending;~Pending(){if(pending)--count;}}pending_guard{pending_handshakes,pending};
             const auto com=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
             try {
                 if(FAILED(com))throw std::runtime_error("Cannot initialize client COM apartment");
                 const auto peer=socket.peer_endpoint();const auto ip=peer.substr(0,peer.find(':'));
                 display::select_layout_profile(std::wstring(ip.begin(),ip.end()));
                 std::osyncstream(std::cout)<<"CLIENT_CONNECTED slot="<<slot<<" peer="<<peer<<std::endl;
-                host_video(options,pair,frames,60,wire::Codec::h264,L"",true,allow_input,1280,720,true,true,{},nullptr,&socket,slot);
+                security::TlsStream tls(std::move(socket),true,pair);tls.handshake(deadline());--pending_handshakes;pending=false;
+                host_video(options,pair,frames,60,wire::Codec::h264,L"",true,allow_input,1280,720,true,true,{},nullptr,nullptr,slot,&tls);
             } catch(const std::exception& error){std::osyncstream(std::cout)<<"CLIENT_ERROR slot="<<slot<<" "<<error.what()<<std::endl;}
             catch(...){std::osyncstream(std::cout)<<"CLIENT_ERROR slot="<<slot<<" unexpected session failure"<<std::endl;}
             if(SUCCEEDED(com))CoUninitialize();
             std::osyncstream(std::cout)<<"CLIENT_DISCONNECTED slot="<<slot<<std::endl;
             session->done.store(true);
-        });
+        });}catch(const std::exception& error){--pending_handshakes;session->done=true;std::osyncstream(std::cout)<<"CLIENT_REJECTED Cannot start display worker: "<<error.what()<<std::endl;}
     }
 }
 void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display,Quality quality,const std::function<void(StreamStats)>& statistics,const std::function<void()>& editable_touch) {

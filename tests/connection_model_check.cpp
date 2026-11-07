@@ -7,6 +7,7 @@ static void require(bool condition,const std::source_location where=std::source_
 static QVariantMap target(QString address){return {{"address",address},{"port",43824},{"localAddress","0.0.0.0"},{"interfaceIndex",0}};}
 static QVariantMap custom(int width=2560,int height=1440,int fps=60){return {{"mode","custom"},{"monitorId",""},{"width",width},{"height",height},{"fps",fps}};}
 int main(int argc,char** argv){QCoreApplication app(argc,argv);try{
+    ConnectionModel many;for(int i=0;i<160;++i)require(!many.addConnection("camera").isEmpty());require(many.rowCount()==160);
     ConnectionModel model;const auto camera=model.addConnection("camera"),second=model.addConnection("camera"),mic=model.addConnection("microphone");
     require(camera!=second&&!camera.isEmpty()&&model.rowCount()==3&&model.addConnection("invalid").isEmpty());
     require(model.setSharedTarget(target("192.0.2.10"))&&model.setTarget(camera,target("192.0.2.11")));

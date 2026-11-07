@@ -343,3 +343,13 @@ Uninstall uses the broader guarded `--prepare-uninstall` path described above.
 Malformed records, active exporters and ambiguous/foreign ownership still block
 removal; a missing card with exact inactive owned state is no longer an automatic
 uninstall blocker.
+
+## Concurrent Windows receiving sessions
+
+Windows receiving sessions allocate independent import ports, loopback listeners,
+identifiers and eject signals. There is no fixed one-session receiver cap.
+The current source usbipd backend still uses a single exporter process per PC;
+multiple receiving sessions therefore require distinct source PCs. Its global
+process identity participates in attachment/recovery checks and is not safe to
+remove in isolation. Each physical source device remains exclusive. Physical
+multi-import delivery and failure recovery still require authorized device tests.

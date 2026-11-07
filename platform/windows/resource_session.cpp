@@ -1,3 +1,4 @@
+#include <climits>
 #include <windows.h>
 #include <bcrypt.h>
 #include <dm/resource_session.hpp>
@@ -107,22 +108,24 @@ void serve_camera(const net::Options& requested,std::atomic_bool& stop,const Rep
     auto report=[&](const std::string& line)noexcept{try{std::lock_guard lock(reportMutex);sink(line);}catch(...){}};
     report("LISTENING "+listener.endpoints());
     struct Worker {std::thread thread;std::atomic_bool done=true;};
-    std::array<Worker,4> workers;
+    std::vector<std::unique_ptr<Worker>> workers;std::atomic_uint pending_handshakes=0;
     // On every exit, stop pending workers and wait for their bounded TLS reads.
-    struct Join {std::array<Worker,4>& workers;std::atomic_bool& stop;~Join(){stop=true;for(auto& worker:workers)if(worker.thread.joinable())worker.thread.join();}} join{workers,stop};
+    struct Join {std::vector<std::unique_ptr<Worker>>& workers;std::atomic_bool& stop;~Join(){stop=true;for(auto& worker:workers)if(worker->thread.joinable())worker->thread.join();}} join{workers,stop};
     while(!stop){
         try{
             auto socket=listener.accept();if(stop)break;
+            if(pending_handshakes.load()>=32){report("CAMERA_SESSION_ERROR Server is busy admitting new connections; retry shortly");continue;}
             Worker* available=nullptr;unsigned slot=0;
-            for(unsigned i=0;i<workers.size();++i)if(workers[i].done){available=&workers[i];slot=i+1;break;}
-            if(!available){report("CAMERA_SESSION_ERROR Camera connection limit reached");continue;}
-            if(available->thread.joinable())available->thread.join();available->done=false;
+            for(unsigned i=0;i<workers.size();++i)if(workers[i]->done){available=workers[i].get();slot=i+1;break;}
+            if(!available){try{if(workers.size()>=UINT_MAX)throw std::runtime_error("Camera endpoint identity space exhausted");workers.push_back(std::make_unique<Worker>());available=workers.back().get();slot=static_cast<unsigned>(workers.size());}catch(const std::exception& error){report(std::string("CAMERA_SESSION_ERROR Cannot allocate camera worker: ")+error.what());continue;}}
+            if(available->thread.joinable())available->thread.join();available->done=false;++pending_handshakes;
             try{available->thread=std::thread([&,available,slot,socket=std::move(socket)]()mutable{
-                try{security::TlsStream tls(std::move(socket),true,"");Cancellation cancellation(tls,stop);tls.handshake(Clock::now()+std::chrono::seconds(10));receive_admitted(tls,slot,stop,report);}
+                bool pending=true;struct Pending{std::atomic_uint& count;bool& pending;~Pending(){if(pending)--count;}}pending_guard{pending_handshakes,pending};
+                try{security::TlsStream tls(std::move(socket),true,"");Cancellation cancellation(tls,stop);tls.handshake(Clock::now()+std::chrono::seconds(10));--pending_handshakes;pending=false;receive_admitted(tls,slot,stop,report);}
                 catch(const std::exception& error){if(!stop)report("CAMERA_SESSION_ERROR slot="+std::to_string(slot)+" "+error.what());}
                 catch(...){if(!stop)report("CAMERA_SESSION_ERROR slot="+std::to_string(slot)+" Camera session failed");}
                 report("CAMERA_DISCONNECTED slot="+std::to_string(slot));available->done=true;
-            });}catch(...){available->done=true;throw;}
+            });}catch(const std::exception& error){--pending_handshakes;available->done=true;report(std::string("CAMERA_SESSION_ERROR Cannot start camera worker: ")+error.what());}
         }catch(const std::runtime_error& error){if(std::string_view(error.what())!="Accept timed out")throw;}
     }
 }
@@ -183,7 +186,6 @@ void broker_camera(const std::wstring& local_device,std::optional<camera::Format
         if(workers.contains(command->row)){report(command->row,"ERROR","Recipient already exists");continue;}
         const auto request_row=command->row;
         try{
-            if(workers.size()>=8)throw std::runtime_error("One camera source supports up to eight recipients");
             if(!source){
                 source=std::make_unique<camera::EncodedSource>(local_device,format,[&](camera::EncodedFrame frame){fanout.publish(frame.sequence,frame.capture_timestamp,frame.h264,frame.fresh_encoder);},mirrored);
                 auto prepared=source->prepare();if(!prepared.available){source.reset();throw std::runtime_error(prepared.reason);}

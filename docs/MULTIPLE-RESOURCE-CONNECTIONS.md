@@ -50,8 +50,8 @@ client array indexed by resource kind. The shared resource model similarly
 represented one row per kind. These could not represent repeated cameras/microphones
 or independent destinations.
 
-The new Windows server allocates four camera slots, four display slots, four
-microphone slots and one USB slot. Microphone endpoint launch, readiness and
+The Windows server allocates display, camera, microphone and USB session slots
+dynamically. Microphone endpoint launch, readiness and
 ownership are scoped to the assigned slot. Camera and microphone source brokers
 share one capture per physical source and isolate recipient queues. These paths
 have compiled and their isolated queue checks pass; simultaneous delivery to real
@@ -121,11 +121,14 @@ Match local monitor is an optional alternative. Checking the resource establishe
 the connection; the separate Connect button has been removed. Custom requests use even dimensions from 2 to 4096,
 at most 8,847,360 total pixels, and 1–360 target FPS. The native host still validates
 the actual requested mode. These controls do not change physical monitor refresh.
-Current Windows receiving limits are four displays, four cameras, four microphone
-endpoints, and one USB storage connection per server. A camera source broker
-supports eight recipients; a microphone source broker supports sixteen across
-destinations. These are limits, not promises that a particular device can sustain
-every connection at its requested quality.
+Windows receiving slots and camera/microphone fanout no longer impose fixed
+product counts. Endpoint/driver allocation, GPU/codec resources, memory and
+network throughput determine what can run. Pending admissions and media queues
+remain bounded for safety; these do not cap established resource sessions.
+USB sessions have separate importer/eject ownership. Multiple source PCs may
+send storage to one server, but the current source backend still permits only
+one exporter process per source PC. One physical USB device remains exclusive.
+No increased physical connection count or throughput has yet been verified.
 
 Isolated verification covers model identity, frozen destinations, settings
 validation and USB exclusivity; offscreen QML loading of both legacy and repeated

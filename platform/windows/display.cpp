@@ -127,7 +127,7 @@ void select_layout_profile(const std::wstring& profile) {
     layout_name=profile.empty()?L"Layout":L"Layout-"+profile;
 }
 void select_client_layout_profile(const std::wstring& peer,unsigned slot) {
-    if(peer.empty()||slot<1||slot>4)throw std::invalid_argument("Invalid client display layout slot");
+    if(peer.empty()||slot<1)throw std::invalid_argument("Invalid client display layout slot");
     select_layout_profile(peer+L"-"+std::to_wstring(slot));
 }
 void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height) {

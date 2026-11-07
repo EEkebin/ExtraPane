@@ -1,3 +1,4 @@
+#include <limits>
 #include "connection_model.hpp"
 #include <QHostAddress>
 #include <QUuid>
@@ -45,7 +46,7 @@ bool ConnectionModel::validTarget(const QVariantMap& target,bool complete){
 }
 bool ConnectionModel::setSharedTarget(QVariantMap target){if(!validTarget(target,false))return false;sharedTarget_=std::move(target);if(rowCount())emit dataChanged(index(0),index(rowCount()-1),{EffectiveTarget});emit sharedTargetChanged();return true;}
 QString ConnectionModel::addConnection(QString kind){
-    if(rows_.size()>=128||(kind!="display"&&kind!="camera"&&kind!="microphone"&&kind!="usb"))return {};
+    if(rows_.size()>=static_cast<std::size_t>(std::numeric_limits<int>::max())||(kind!="display"&&kind!="camera"&&kind!="microphone"&&kind!="usb"))return {};
     Row row;row.id=QUuid::createUuid().toString(QUuid::WithoutBraces);row.kind=std::move(kind);row.target=sharedTarget_;
     row.display={{"mode","custom"},{"monitorId",""},{"width",1920},{"height",1080},{"fps",60}};
     const auto id=row.id;beginInsertRows({},rowCount(),rowCount());rows_.push_back(std::move(row));endInsertRows();return id;

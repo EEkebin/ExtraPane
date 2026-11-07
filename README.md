@@ -8,7 +8,7 @@ ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Window
 
 [Project website](https://eekebin.github.io/ExtraPane/) | [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
-The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers support up to four clients; the Linux host currently supports one. Android is currently a client only. The macOS development preview adds hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
+The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers allocate connections dynamically, subject to available hardware and OS resources; the Linux host currently supports one. Android is currently a client only. The macOS development preview adds hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
 
 ## Requirements
 

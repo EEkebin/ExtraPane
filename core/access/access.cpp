@@ -53,8 +53,10 @@ std::vector<ChannelCredential> Gate::issue_locked(unsigned mask,uint64_t control
     }
     return result;
 }
+// Authenticated controls live until explicitly closed. Outstanding admission
+// tickets remain bounded separately; active sessions are not a ticket backlog.
 uint64_t Gate::open_control(uint64_t admitted_generation){
-    std::lock_guard lock(mutex_);need(used_&&admitted_generation&&generation_==admitted_generation&&now_()<expires_&&controls_.size()<16&&next_control_!=std::numeric_limits<uint64_t>::max());
+    std::lock_guard lock(mutex_);need(used_&&admitted_generation&&generation_==admitted_generation&&now_()<expires_&&next_control_!=std::numeric_limits<uint64_t>::max());
     const auto id=++next_control_;controls_.emplace(id,true);return id;
 }
 std::vector<ChannelCredential> Gate::control_channels(unsigned mask,uint64_t control){

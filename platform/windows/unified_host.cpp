@@ -7,6 +7,7 @@
 #include <dm/microphone_session.hpp>
 #include <dm/usb_session.hpp>
 #include <extrapane/session_route.hpp>
+#include <extrapane/host_resources.hpp>
 #include <dm/group.hpp>
 #include <dm/control.hpp>
 #include <array>
@@ -25,12 +26,6 @@ struct Cancel {
     std::jthread thread;
     Cancel(security::TlsStream& tls,std::atomic_bool& stop):thread([&](std::stop_token token){while(!token.stop_requested()&&!stop.load())Sleep(25);if(stop.load())tls.cancel();}){}
 };
-struct Slots {
-    std::mutex mutex;std::array<std::array<bool,4>,4> used{};
-    unsigned acquire(ResourceKind kind,Control& control){std::lock_guard lock(mutex);if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping; retry after restart");const auto index=static_cast<unsigned>(kind);if(index>=4)throw std::runtime_error("Unsupported server resource");const unsigned capacity=index<3?4:1;for(unsigned slot=0;slot<capacity;++slot)if(!used[index][slot]){used[index][slot]=true;return slot+1;}throw std::runtime_error("Resource is already in use or its connection limit was reached");}
-    void release(ResourceKind kind,unsigned slot){std::lock_guard lock(mutex);used[static_cast<unsigned>(kind)][slot-1]=false;}
-    bool stop_if_no_usb(Control& control){std::lock_guard lock(mutex);if(used[3][0])return false;control.stop=true;return true;}
-};
 const char* name(ResourceKind kind){switch(kind){case ResourceKind::display:return "display";case ResourceKind::camera:return "camera";case ResourceKind::microphone:return "microphone";case ResourceKind::usb:return "usb";}return "unknown";}
 // Preserve the ownership boundary with old diagnostic listeners. A missing/busy
 // component reports only for its resource; it does not prevent server startup.
@@ -43,30 +38,34 @@ struct Lease {
 void serve(const net::Options& requested,const std::string& pair,bool allow_input,unsigned frames,Control& control){
     Apartment apartment;
     auto options=requested;options.timeout=std::chrono::milliseconds(250);
-    net::TcpListener listener(options);Slots slots;
+    net::TcpListener listener(options);extrapane::HostResources slots;
     std::atomic_bool quit_pending=false;
     Clock::time_point quit_deadline{};
     std::unique_ptr<Lease> camera_lease;std::string camera_busy;
     try{camera_lease=std::make_unique<Lease>(L"Local\\ExtraPane.CameraServer");}catch(const std::exception& error){camera_busy=error.what();report("SERVER_RESOURCE_UNAVAILABLE kind=camera "+camera_busy);}
-    struct Worker{std::thread thread;std::atomic_bool done=true;};std::array<Worker,16> workers;
+    struct Worker{std::thread thread;std::atomic_bool done=false;};std::vector<std::unique_ptr<Worker>> workers;
+    // Bound unauthenticated/unfinished admission work, not established sessions.
+    std::atomic_uint pending=0;
     report("SERVER_STARTED resources=display,camera,microphone,usb");report("LISTENING "+listener.endpoints());
     auto events=[&](const std::string& text){
         if(control.quit.load()&&(text.starts_with("USB_EJECT_BUSY")||text.starts_with("USB_RETURN_FAILED")))report("SERVER_STOPPING USB could not eject cleanly; ending the session so the source can reclaim its device. Writes may be incomplete.");
         report(text);
     };
-    struct Join{std::array<Worker,16>& workers;Control& control;~Join(){control.stop=true;for(auto& w:workers)if(w.thread.joinable())w.thread.join();}}join{workers,control};
+    struct Join{std::vector<std::unique_ptr<Worker>>& workers;Control& control;~Join(){control.stop=true;for(auto& w:workers)if(w->thread.joinable())w->thread.join();}}join{workers,control};
     while(!control.stop.load()){
+        for(auto it=workers.begin();it!=workers.end();){if((*it)->done.load()){if((*it)->thread.joinable())(*it)->thread.join();it=workers.erase(it);}else ++it;}
+        if(control.eject_usb.exchange(false))slots.eject_all();
         if(control.quit.load()){
-            if(slots.stop_if_no_usb(control))break;
-            if(!quit_pending.exchange(true)){control.eject_usb=true;quit_deadline=Clock::now()+std::chrono::seconds(10);}
+            if(slots.stop_if_no_usb(control.stop))break;
+            if(!quit_pending.exchange(true)){slots.eject_all();quit_deadline=Clock::now()+std::chrono::seconds(10);}
             if(Clock::now()>=quit_deadline){report("SERVER_STOPPING USB eject timed out; ending the import session. Writes may be incomplete.");control.stop=true;break;}
         }
         try{
             auto socket=listener.accept();if(control.stop.load())break;
-            Worker* available=nullptr;for(auto& w:workers)if(w.done.load()){available=&w;break;}
-            if(!available){report("SERVER_SESSION_ERROR Connection capacity reached");continue;}
-            if(available->thread.joinable())available->thread.join();available->done=false;
+            if(pending.load()>=32){report("SERVER_SESSION_ERROR Too many pending connection handshakes; retry shortly");continue;}
+            auto worker=std::make_unique<Worker>();auto* available=worker.get();workers.push_back(std::move(worker));++pending;
             try{available->thread=std::thread([&,available,socket=std::move(socket)]()mutable{
+                struct Admission{std::atomic_uint& pending;bool held=true;void finish(){if(held){--pending;held=false;}}~Admission(){finish();}}admission{pending};
                 std::string resource="unclassified";unsigned slot=0;
                 try{
                     Apartment worker_apartment;const auto peer=socket.peer_endpoint();
@@ -79,6 +78,7 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                         if(access::parse_control(request).first!=access::ControlOperation::open)throw std::runtime_error("Control must open first");
                         if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping");
                         const bool protected_mode=tls.open_control();
+                        admission.finish();
                         tls.write(access::control_reply(access::ControlOperation::open,0,protected_mode),Clock::now()+std::chrono::seconds(5));
                         while(!control.stop.load()&&!control.quit.load()){
                             tls.read(request,Clock::now()+std::chrono::seconds(15));const auto [op,kind]=access::parse_control(request);
@@ -99,9 +99,9 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     }else{
                     const auto kind=extrapane::classify_session_prefix(prefix);tls.require_resource(static_cast<unsigned>(kind));resource=name(kind);
                     if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping; retry after restart");
-                    slot=slots.acquire(kind,control);
-                    if(kind==ResourceKind::usb)control.eject_usb=control.quit.load();
-                    struct Release{Slots& slots;ResourceKind kind;unsigned slot;Control& control;~Release(){if(kind==ResourceKind::usb)control.eject_usb=false;slots.release(kind,slot);}}release{slots,kind,slot,control};
+                    slot=slots.acquire(static_cast<unsigned>(kind),control.quit,control.stop);
+                    struct Release{extrapane::HostResources& slots;ResourceKind kind;unsigned slot;~Release(){slots.release(static_cast<unsigned>(kind),slot);}}release{slots,kind,slot};
+                    admission.finish();
                     report("SERVER_RESOURCE_STARTING kind="+resource+" slot="+std::to_string(slot)+" peer="+peer);
                     switch(kind){
                     case ResourceKind::display:{
@@ -110,14 +110,14 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     }
                     case ResourceKind::camera: if(!camera_lease)throw std::runtime_error(camera_busy);resources::receive_camera_admitted(tls,slot,control.stop,events);break;
                     case ResourceKind::microphone:{microphone::receive_admitted(tls,control.stop,events,slot);break;}
-                    case ResourceKind::usb: usb::receive_storage_admitted(tls,control.stop,control.eject_usb,events);break;
+                    case ResourceKind::usb: {auto eject=slots.eject_signal(slot);usb::receive_storage_admitted(tls,control.stop,*eject,events);break;}
                     }
                     }
                 }catch(const std::exception& error){if(!control.stop.load())report("SERVER_SESSION_ERROR kind="+resource+" "+error.what());}
                 catch(...){if(!control.stop.load())report("SERVER_SESSION_ERROR kind="+resource+" Unexpected connection failure");}
                 report("SERVER_RESOURCE_DISCONNECTED kind="+resource+" slot="+std::to_string(slot));available->done=true;
-            });}catch(...){available->done=true;throw;}
-        }catch(const std::runtime_error& error){if(std::string_view(error.what())!="Accept timed out")throw;}
+            });}catch(...){--pending;available->done=true;throw;}
+        }catch(const std::exception& error){if(std::string_view(error.what())!="Accept timed out")report("SERVER_SESSION_ERROR Unable to accept new connection: "+std::string(error.what()));}
     }
     report("SERVER_STOPPING");
 }
