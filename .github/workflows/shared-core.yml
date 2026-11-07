@@ -1,0 +1,31 @@
+name: Shared resource core
+on:
+  pull_request:
+    paths:
+      - 'core/session/**'
+      - 'tests/session_check.cpp'
+      - '.github/workflows/shared-core.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/session/**'
+      - 'tests/session_check.cpp'
+      - '.github/workflows/shared-core.yml'
+permissions:
+  contents: read
+jobs:
+  lifecycle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure isolated core
+        run: cmake -S core/session -B out/session-checks -DEXTRAPANE_SESSION_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build out/session-checks --config Release --parallel 2
+      - name: Check lifecycle and envelope validation
+        run: ctest --test-dir out/session-checks -C Release --output-on-failure

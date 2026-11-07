@@ -9,18 +9,20 @@ pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET
 set(CMAKE_AUTOMOC ON)
 add_executable(ExtraPane
   tls.cpp host.cpp host.hpp portal.cpp portal.hpp receiver.cpp receiver.hpp media.cpp media.hpp input.cpp input.hpp
-  ../../apps/linux/main.cpp ../../apps/linux/controller.cpp ../../apps/linux/controller.hpp)
-target_include_directories(ExtraPane PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/apps/linux")
+  ../../apps/linux/main.cpp ../../apps/linux/controller.cpp ../../apps/linux/controller.hpp
+  ../../apps/shared/resource_model.cpp ../../apps/shared/resource_model.hpp)
+target_include_directories(ExtraPane PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/apps/linux" "${PROJECT_SOURCE_DIR}/apps/shared")
 target_compile_features(ExtraPane PRIVATE cxx_std_20)
 target_compile_options(ExtraPane PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(ExtraPane PRIVATE dm_probe_protocol OpenSSL::SSL OpenSSL::Crypto
+target_link_libraries(ExtraPane PRIVATE extrapane_session dm_probe_protocol OpenSSL::SSL OpenSSL::Crypto
   Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus PkgConfig::GSTREAMER)
 # Stable resource paths, independent of this subdirectory's relative location.
-set_source_files_properties(../../apps/linux/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
+set_source_files_properties(../../apps/shared/ui/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
+set_source_files_properties(../../apps/shared/ui/ResourcePicker.qml PROPERTIES QT_RESOURCE_ALIAS ResourcePicker.qml)
 set_source_files_properties(../../apps/linux/Video.qml PROPERTIES QT_RESOURCE_ALIAS Video.qml)
 set_source_files_properties(../../assets/branding/icon.png PROPERTIES QT_RESOURCE_ALIAS extrapane.png)
 qt_add_resources(ExtraPane ui PREFIX / FILES
-  ../../apps/linux/Main.qml ../../apps/linux/Video.qml ../../assets/branding/icon.png)
+  ../../apps/shared/ui/Main.qml ../../apps/shared/ui/ResourcePicker.qml ../../apps/linux/Video.qml ../../assets/branding/icon.png)
 include(GNUInstallDirs)
 install(TARGETS ExtraPane RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES ../../packaging/linux/io.github.EEkebin.ExtraPane.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)

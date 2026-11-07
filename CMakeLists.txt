@@ -6,6 +6,7 @@ endif()
 string(REGEX REPLACE "-.*" "" DM_VERSION "${DM_VERSION}")
 string(STRIP "${DM_VERSION}" DM_VERSION)
 project(dm VERSION ${DM_VERSION} LANGUAGES C CXX)
+add_subdirectory(core/session)
 find_package(Python3 3.10 COMPONENTS Interpreter REQUIRED)
 execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/release_version.py"
   --header "${CMAKE_CURRENT_SOURCE_DIR}/out/generated/ExtraPaneVersion.h" COMMAND_ERROR_IS_FATAL ANY)

@@ -3,6 +3,7 @@
 #include "media.hpp"
 #include "receiver.hpp"
 #include "host.hpp"
+#include "resource_model.hpp"
 #include <QObject>
 #include <QQuickWindow>
 #include <QVariantList>
@@ -10,6 +11,11 @@
 class Controller final:public QObject {
     Q_OBJECT
     Q_PROPERTY(QString accessCode READ accessCode NOTIFY hostChanged)
+    Q_PROPERTY(ResourceModel* resources READ resources CONSTANT)
+    Q_PROPERTY(QString platformLabel READ platformLabel CONSTANT)
+    Q_PROPERTY(QString hostDescription READ hostDescription CONSTANT)
+    Q_PROPERTY(QString inputDescription READ inputDescription CONSTANT)
+    Q_PROPERTY(QString rendererDescription READ rendererDescription CONSTANT)
     Q_PROPERTY(bool hosting READ hosting NOTIFY hostChanged)
     Q_PROPERTY(QString hostStatus READ hostStatus NOTIFY hostChanged)
     Q_PROPERTY(QString hostAvailability READ hostAvailability CONSTANT)
@@ -26,6 +32,11 @@ class Controller final:public QObject {
 public:
     explicit Controller(QString availability,QObject* parent=nullptr);
     ~Controller() override;
+    ResourceModel* resources() { return &resources_; }
+    QString platformLabel()const{return "Linux";}
+    QString hostDescription()const{return "KDE/Wayland hosting creates a virtual monitor after a client connects. Approve the desktop portal prompt. Supports one client; the portal controls monitor dimensions.";}
+    QString inputDescription()const{return "Touch and pen are forwarded when granted by the server. Linux hosting supports mouse, keyboard and touch through the portal; pen injection is unavailable.";}
+    QString rendererDescription()const{return "Video presentation: OpenGL. GStreamer selects the decoder from installed plugins. Hardware acceleration is not guaranteed.";}
     void setWindow(QQuickWindow* window){window_=window;}
     bool hosting()const{return host_!=nullptr;}
     QString hostStatus()const{return hostStatus_;}
@@ -56,6 +67,7 @@ signals:
     void addressesChanged();
     void statisticsChanged();
 private:
+    ResourceModel resources_;
     std::shared_ptr<dm::access::Gate> accessGate_;QString accessCode_;
     dm::linux_client::Host* host_=nullptr;
     QString hostStatus_="Server stopped",hostAvailability_;

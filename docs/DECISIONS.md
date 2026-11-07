@@ -1,5 +1,13 @@
 # Decisions, assumptions, and evidence
 
+## Shared interface and resources (2026-11-07)
+
+The user approved Qt Quick with native C++ engines, one managed installation and
+one server start/stop control. Clients contribute selected display, camera,
+microphone and USB resources. See [RESOURCE-SHARING.md](RESOURCE-SHARING.md) for
+the approved direction, distribution gates and actual implementation status.
+Existing display applications remain unchanged pending integration and validation.
+
 ## Optional access-code admission (2026-11-03)
 
 The user requested direct reachable IPv4 address, port and six-digit one-time codes on every implemented platform, with forwarding handled outside the app. Retain explicit trusted-LAN mode; code mode uses pinned BoringSSL SPAKE2, key confirmation and authenticated records inside existing TLS before display/input allocation. Hosts share a five-attempt, five-minute, one-use admission gate across interfaces and slots. No automatic regeneration, pairing, discovery, relay or UPnP. See ACCESS-CODES.md for current validation and limits.

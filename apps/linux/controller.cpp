@@ -10,6 +10,7 @@
 #include <cmath>
 
 Controller::Controller(QString availability,QObject* parent):QObject(parent),availability_(std::move(availability)){
+    resources_.setCapability(extrapane::ResourceKind::display,{availability_.isEmpty(),availability_.toStdString()});
     hostAvailability_=dm::linux_client::Host::unavailable();
     refreshAddresses();
     auto* timer=new QTimer(this);timer->setInterval(500);
@@ -48,6 +49,9 @@ void Controller::attachSurface(QObject* video,QObject* input){
 }
 void Controller::connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex,unsigned port,QString code){
     if(receiver_)return;
+    if(!resources_.canConnect() || !resources_.selected(extrapane::ResourceKind::display)){
+        status_="Select an available resource before connecting.";emit changed();return;
+    }
     if(!port||port>65535||(!code.isEmpty()&&!dm::access::validCode(code.toStdString()))){status_="Enter a valid port and six-digit access code";emit changed();return;}
     const QHostAddress address(server.trimmed());
     if(address.protocol()!=QAbstractSocket::IPv4Protocol || !address.toIPv4Address() || address.toIPv4Address()==0xffffffffu || address.isMulticast() || address.isLoopback()){
@@ -82,9 +86,9 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
     connect(receiver_,&dm::linux_client::Receiver::statistics,this,[this](const QString& text){statistics_=text;emit statisticsChanged();});
     connect(receiver_,&QThread::finished,this,[this,worker]{
         if(receiver_!=worker)return;
-        receiver_=nullptr;media_.stop();releaseInput();worker->deleteLater();emit changed();
+        receiver_=nullptr;resources_.setLocked(false);media_.stop();releaseInput();worker->deleteLater();emit changed();
     });
-    status_="Connecting...";receiver_->start();emit changed();emit statisticsChanged();
+    resources_.setLocked(true);status_="Connecting...";receiver_->start();emit changed();emit statisticsChanged();
 }
 void Controller::disconnectFromServer(){releaseInput();if(receiver_)receiver_->requestInterruption();}
 void Controller::releaseInput(){if(inputSurface_)inputSurface_->resetInput();else input_.reset();}

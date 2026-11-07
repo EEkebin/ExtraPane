@@ -1,4 +1,6 @@
 import QtQuick
+// Shared shell baseline. Platforms supply Video.qml and the receiver controller.
+// Linux is currently the first consumer; other platform adapters are pending.
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
@@ -6,7 +8,7 @@ import QtQuick.Window
 ApplicationWindow {
     id: root
     width: 1120; height: 760
-    minimumWidth: 760; minimumHeight: 480
+    minimumWidth: 360; minimumHeight: 480
     visible: true
     title: "ExtraPane"
     color: "#10151f"
@@ -39,6 +41,21 @@ ApplicationWindow {
     function pauseInput() { receiver.releaseInput(); inputPaused = true; revealToolbar() }
     function toggleInput() { receiver.releaseInput(); inputPaused = !inputPaused; revealToolbar() }
     property int page: Qt.application.arguments.indexOf("--host") >= 0 ? 0 : 1
+    onPageChanged: receiver.releaseInput()
+    footer: TabBar {
+        visible: root.width < 700 && !root.fullscreen
+        height: visible ? implicitHeight : 0
+        currentIndex: root.page
+        Repeater {
+            model: ["Server", "Client", "Settings", "About"]
+            TabButton {
+                required property int index
+                required property string modelData
+                text: modelData
+                onClicked: root.page = index
+            }
+        }
+    }
     property int nextScale: 0
     property bool toolbarVisible: true
     property bool fullscreen: visibility === Window.FullScreen
@@ -62,7 +79,7 @@ ApplicationWindow {
         anchors.fill: parent; spacing: 0
         Rectangle {
             Layout.fillHeight: true; Layout.preferredWidth: 180
-            visible: !root.fullscreen
+            visible: !root.fullscreen && root.width >= 700
             color: "#161e2b"
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 18; spacing: 10
@@ -74,13 +91,12 @@ ApplicationWindow {
                         required property string modelData
                         text: modelData; Layout.fillWidth: true
                         checkable: true; checked: root.page === index
-                        enabled: !receiver.active || index === 1
                         onClicked: root.page = index
                     }
                 }
                 Item { Layout.fillHeight: true }
-                Label { text: "Linux preview"; color: "#f0c66e" }
-                Button { text: "About"; Layout.fillWidth: true; enabled: !receiver.active; onClicked: root.page = 3 }
+                Label { text: receiver.platformLabel; color: "#aab8cc" }
+                Button { text: "About"; Layout.fillWidth: true; onClicked: root.page = 3 }
             }
         }
         StackLayout {
@@ -90,14 +106,14 @@ ApplicationWindow {
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 24; spacing: 16
                     Label { text: "Server"; font.pixelSize: 30; font.bold: true }
-                    Label { text: "Use this Linux desktop on another screen."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: "Accept connections from your other devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label {
-                        text: receiver.hostAvailability.length ? receiver.hostAvailability : "KDE/Wayland hosting creates a virtual monitor after a client connects. Approve the desktop portal prompt. This backend supports one client; the portal controls monitor dimensions (currently 1920?1080 on KDE)."
+                        text: receiver.hostAvailability.length ? receiver.hostAvailability : receiver.hostDescription
                         color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
                     ComboBox {
                         id: hostAddress; Layout.fillWidth: true; model: receiver.addresses; textRole: "label"
-                        currentIndex: receiver.addresses.length > 1 ? 1 : 0; enabled: !receiver.hosting
+                        currentIndex: receiver.platformLabel === "Windows" ? 0 : receiver.addresses.length > 1 ? 1 : 0; enabled: !receiver.hosting
                     }
                     Button {
                         text: receiver.hosting ? "Stop server" : "Start server"
@@ -137,7 +153,7 @@ ApplicationWindow {
                             onAccepted: connectButton.clicked()
                         }
                         Button {
-                            id: connectButton; text: "Connect"; enabled: receiver.availability.length === 0
+                            id: connectButton; text: "Connect"; enabled: receiver.resources.canConnect
                             onClicked: {
                                 const selected = receiver.addresses[localAddress.currentIndex]
                                 receiver.connectTo(serverAddress.text, selected ? selected.address : "0.0.0.0", inputAllowed.checked, root.nextScale, selected ? selected.index : 0, Number(clientPort.text), clientCode.text)
@@ -159,11 +175,16 @@ ApplicationWindow {
                     }
                     Rectangle {
                         id: viewport; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
+                        ScrollView {
+                            anchors.fill: parent; anchors.margins: 18
+                            visible: !receiver.active
+                            contentWidth: availableWidth
+                            ResourcePicker { width: parent.width; resourceModel: receiver.resources }
+                        }
                         Loader {
-                            anchors.fill: parent; active: receiver.availability.length === 0; source: "qrc:/Video.qml"
+                            anchors.fill: parent; active: receiver.availability.length === 0; visible: receiver.active; source: "qrc:/Video.qml"
                             onLoaded: item.inputPaused = Qt.binding(function() { return root.inputPaused || root.toolbarVisible || settingsMenu.opened })
                         }
-                        Label { anchors.centerIn: parent; visible: !receiver.active; text: "Connect to a Windows server to extend its desktop."; color: "#9eacc2"; width: parent.width - 48; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
                         Item {
                             anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter
                             width: 96; height: 8; visible: receiver.active
@@ -217,9 +238,9 @@ ApplicationWindow {
                     anchors.fill: parent; anchors.margins: 24; spacing: 16
                     Label { text: "Settings"; font.pixelSize: 30; font.bold: true }
                     CheckBox { id: inputAllowed; text: "Send mouse, keyboard, touch and pen input"; checked: true; enabled: !receiver.active }
-                    Label { text: "Keyboard forwarding uses physical keys and the host's layout. IME text, Pause, Print Screen, and multimedia keys are not supported yet."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { text: "Touch and pen are forwarded when the device and host support them. Physical touch/pen validation is pending. Linux hosts support mouse, keyboard and touch through the portal; pen injection is unavailable."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { text: "Video presentation: OpenGL\nThe decoder is selected from the installed GStreamer plugins. Hardware acceleration is not guaranteed."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: "Keyboard forwarding follows the server's keyboard layout. Available input features depend on both devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: receiver.inputDescription; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: receiver.rendererDescription; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { text: "Use a trusted LAN. Connections are encrypted, but automatic LAN mode does not verify the other computer's identity."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Item { Layout.fillHeight: true }
                 }
