@@ -195,6 +195,13 @@ void session_check(const net::Options& options, const std::string& pair_name, bo
 }
 
 namespace dm::security {
-void TlsStream::read(std::span<uint8_t> bytes,std::chrono::steady_clock::time_point deadline){access_deadline_=deadline;if(protected_)protected_->read(bytes);else read_raw(bytes,deadline);}
+void TlsStream::peek(std::span<uint8_t> bytes,std::chrono::steady_clock::time_point deadline){
+    access_deadline_=deadline;
+    prefix_.peek(bytes,[&](auto data){if(protected_)protected_->read(data);else read_raw(data,deadline);});
+}
+void TlsStream::read(std::span<uint8_t> bytes,std::chrono::steady_clock::time_point deadline){
+    access_deadline_=deadline;
+    prefix_.read(bytes,[&](auto data){if(protected_)protected_->read(data);else read_raw(data,deadline);});
+}
 void TlsStream::write(std::span<const uint8_t> bytes,std::chrono::steady_clock::time_point deadline){access_deadline_=deadline;if(protected_)protected_->write(bytes);else write_raw(bytes,deadline);}
 }

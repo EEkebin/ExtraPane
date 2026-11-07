@@ -121,3 +121,10 @@ speaker forwarding remain deferred.
 Concurrent implementation is authorized. Device testing is deferred until camera, microphone and USB implementation is complete. CAMERA-TEST.md is a future test guide, not a request to test now.
 
 2026-11-07 camera setup correction: status now uses read-only registry APIs; setup can initialize an entirely empty class key while preserving nonempty registrations. Setup policy/payload checks and offscreen UI pass. Actual installation retry remains pending.
+
+2026-11-07 unified-server routing: added bounded eight-byte lookahead above
+TLS/access admission and classification of existing display/camera/microphone/USB
+prefixes. Existing clients need no wire change. Eight isolated core checks pass,
+including prefix preservation across split reads and failed-stream rejection;
+Windows TLS library compiles. Unified listener integration and physical
+simultaneous-resource verification remain pending.

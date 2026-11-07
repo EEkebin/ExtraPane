@@ -1,6 +1,7 @@
 #pragma once
 #include <dm/network.hpp>
 #include <dm/pairing.hpp>
+#include <dm/prefix_buffer.hpp>
 #include <memory>
 #include <dm/access.hpp>
 
@@ -16,6 +17,8 @@ public:
     void handshake(std::chrono::steady_clock::time_point deadline);
     void write(std::span<const std::uint8_t> bytes, std::chrono::steady_clock::time_point deadline);
     void read(std::span<std::uint8_t> bytes, std::chrono::steady_clock::time_point deadline);
+    // Inspect at most eight admitted application bytes without consuming them.
+    void peek(std::span<std::uint8_t> bytes, std::chrono::steady_clock::time_point deadline);
     void close(std::chrono::steady_clock::time_point deadline);
     // Cross-thread cancellation only shuts down the native socket. The caller
     // must keep this stream alive until the canceling thread has joined.
@@ -24,6 +27,7 @@ public:
 private:
     void read_raw(std::span<std::uint8_t>,std::chrono::steady_clock::time_point);
     void write_raw(std::span<const std::uint8_t>,std::chrono::steady_clock::time_point);
+    dm::protocol::PrefixBuffer prefix_;
     std::unique_ptr<access::Stream> protected_;
     std::chrono::steady_clock::time_point access_deadline_;
     bool server_=false;
