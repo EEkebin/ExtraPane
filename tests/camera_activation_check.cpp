@@ -60,6 +60,20 @@ int wmain(int argc,wchar_t** argv){try{
     check(SUCCEEDED(source.value->Stop()));next(stream.Get(),MEStreamStopped);next(source.value.Get(),MESourceStopped);
     source.value->Shutdown();source.value.Reset();stream.Reset();pd.Reset();event.Reset();sample.Reset();publisher.stop();
     check(unload()==S_OK);
+    // Frame Server may release IMFActivate immediately after obtaining the source.
+    // Its retained source must remain usable without an explicit DetachObject.
+    check(SUCCEEDED(get(id,IID_PPV_ARGS(&factory))));
+    check(SUCCEEDED(factory->CreateInstance(nullptr,IID_PPV_ARGS(&activation))));
+    dm::camera::FramePublisher retainedPublisher({4,4,30});retainedPublisher.start();
+    check(SUCCEEDED(activation->SetString(dm::camera::pipe_attribute,retainedPublisher.name().c_str())));
+    check(SUCCEEDED(MFSetAttributeSize(activation.Get(),MF_MT_FRAME_SIZE,4,4)));
+    check(SUCCEEDED(MFSetAttributeRatio(activation.Get(),MF_MT_FRAME_RATE,30,1)));
+    check(SUCCEEDED(activation->ActivateObject(IID_PPV_ARGS(&source.value))));
+    activation.Reset();factory.Reset();
+    DWORD characteristics=0;check(SUCCEEDED(source.value->GetCharacteristics(&characteristics)));
+    check(SUCCEEDED(source.value->CreatePresentationDescriptor(&pd)));
+    check(SUCCEEDED(source.value->Shutdown()));source.value.Reset();pd.Reset();
+    retainedPublisher.stop();check(unload()==S_OK);
     std::cout<<"Unregistered camera DLL activation, pipe delivery and COM ownership passed\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

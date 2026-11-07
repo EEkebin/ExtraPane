@@ -212,13 +212,18 @@ the server or receiver. It checks startup, not actual device delivery.
 ## Current Windows resource build (2026-11-07)
 
 The Windows server starts once and accepts display, camera, microphone and USB
-connections on one selected address/port. Missing components fail only the
-requested resource. Existing clients select their resource using the current
+connections on one selected address/port. Start server checks the display driver
+package and prepares missing or outdated camera and microphone/USB receiving
+components, with administrator permission when needed. Setup failures prevent
+listening and show the reason. Runtime failures affect only the requested resource. Existing clients select their resource using the current
 protocol; no extra public ports or server mode selection are required. The Windows client uses a multi-select resource checklist with independent device
 choices and status. One Connect action starts the selected resources, including
 receiving a display while sending a camera and microphone. Separate protected
 resource streams coexist; they are not multiplexed over one TCP stream.
-Windows camera sharing currently requires a 1280 ? 720, 30 FPS capture mode.
+Windows camera sharing selects a supported native mode from the client camera
+before offering its dimensions and frame rate to the server. The current protocol
+supports even dimensions up to 3840 x 2160 and whole-number rates up to 60 FPS;
+fractional-only modes are reported as unsupported.
 Windows microphone sharing accepts 48 kHz mono/stereo WASAPI sources and sends
 mono PCM16 over the encrypted connection; Opus and sample-rate conversion remain
 future work. Camera and microphone capture do not detach the physical source,
@@ -253,8 +258,8 @@ microphone and one USB session, with a bounded pending-connection pool.
 
 Starting the server does not allocate a virtual monitor, camera or microphone.
 Adapters prepare those resources after the corresponding client request. The
-server page shows component availability and setup actions without a resource
-selector. Normal Stop requests safe USB eject before shutting down; a busy eject
+server page shows component availability without manual camera/receiving setup
+buttons or a resource selector. Normal Stop requests safe USB eject before shutting down; a busy eject
 keeps the server running. Process termination still follows the documented USB
 quarantine/recovery rules. Optional six-digit codes remain single-use. For a multi-resource selection, a
 short admission connection exchanges that code for one ticket per selected

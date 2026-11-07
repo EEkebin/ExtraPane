@@ -50,7 +50,6 @@ public:
     Q_INVOKABLE void stopResource(QString kind);
     bool microphoneMuted()const{return microphoneMuted_;}
     Q_INVOKABLE void setMicrophoneMuted(bool muted);
-    Q_INVOKABLE void setupMicrophone();
     Q_INVOKABLE void setupUsbSource();
     Q_INVOKABLE void ejectUsb();
     QVariantList usbRecoveries()const{return recoveries_;}
@@ -78,13 +77,15 @@ public:
     Q_INVOKABLE void startHost(QString address,unsigned port,bool requireCode);
     Q_INVOKABLE void stopHost();
     Q_INVOKABLE void generateAccessCode();
-    Q_INVOKABLE void setupCamera();
     Q_INVOKABLE void releaseInput(){}
     void shutdown();
 signals:
     void recoveryChanged();void changed();void hostChanged();void addressesChanged();
 private:
     void poll();
+    void prepareHostComponent();
+    void failHostPreparation(QString reason);
+    void launchHost();
     void startClients(std::array<std::string,4> credentials);
     void cancelAdmission();
     QString resourceAvailability(const QString& kind)const;

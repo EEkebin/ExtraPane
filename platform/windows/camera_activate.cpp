@@ -16,7 +16,7 @@ public:
     STDMETHODIMP ActivateObject(REFIID id,void** out)override{
         if(!out)return E_POINTER;*out=nullptr;std::lock_guard lock(mutex_);
         try{
-            if(!feed_){
+            if(!source_){
                 UINT32 width=0,height=0,num=0,den=0,length=0;
                 auto hr=MFGetAttributeSize(attributes_.Get(),MF_MT_FRAME_SIZE,&width,&height);if(FAILED(hr))return hr;
                 hr=MFGetAttributeRatio(attributes_.Get(),MF_MT_FRAME_RATE,&num,&den);if(FAILED(hr))return hr;
@@ -24,14 +24,18 @@ public:
                 hr=attributes_->GetStringLength(pipe_attribute,&length);if(FAILED(hr))return hr;
                 if(length>128)return E_INVALIDARG;
                 std::wstring pipe(length+1,L'\0');hr=attributes_->GetString(pipe_attribute,pipe.data(),length+1,&length);if(FAILED(hr))return hr;pipe.resize(length);
-                feed_=std::make_unique<MediaSource>(Format{width,height,num},std::move(pipe));
+                MediaSource feed(Format{width,height,num},std::move(pipe));
+                source_=feed.detach();
             }
-            return feed_->source()->QueryInterface(id,out);
+            return source_->QueryInterface(id,out);
         }catch(const std::invalid_argument&){return E_INVALIDARG;}catch(const std::bad_alloc&){return E_OUTOFMEMORY;}catch(...){return E_FAIL;}
     }
-    STDMETHODIMP ShutdownObject()override{std::lock_guard lock(mutex_);feed_.reset();return S_OK;}
+    STDMETHODIMP ShutdownObject()override{
+        std::lock_guard lock(mutex_);
+        const auto hr=source_?source_->Shutdown():S_OK;source_.Reset();return hr;
+    }
     STDMETHODIMP DetachObject()override{
-        std::lock_guard lock(mutex_);if(feed_){feed_->detach();feed_.reset();}return S_OK;
+        std::lock_guard lock(mutex_);source_.Reset();return S_OK;
     }
     // IMFAttributes is delegated to MF's thread-safe attribute store. The
     // activation snapshot is populated by Frame Server before ActivateObject.
@@ -68,7 +72,9 @@ public:
     FORWARD(CopyAllItems,(IMFAttributes* a),(a))
 #undef FORWARD
 private:
-    ComPtr<IMFAttributes> attributes_;std::mutex mutex_;std::unique_ptr<MediaSource> feed_;
+    // Releasing an activation object only releases its reference. The caller
+    // owning the activated source is responsible for explicit Shutdown.
+    ComPtr<IMFAttributes> attributes_;std::mutex mutex_;ComPtr<IMFMediaSourceEx> source_;
 };
 }
 HRESULT create_camera_activation(IMFActivate** out)noexcept{

@@ -69,7 +69,7 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     Apartment worker_apartment;const auto peer=socket.peer_endpoint();
                     security::TlsStream tls(std::move(socket),true,pair);Cancel cancel(tls,control.stop);
                     tls.handshake(Clock::now()+std::chrono::seconds(10));
-                    std::array<std::uint8_t,extrapane::session_prefix_size> prefix{};tls.peek(prefix,Clock::now()+std::chrono::seconds(10));
+                    std::array<std::uint8_t,extrapane::session_prefix_size> prefix{};tls.peek(prefix,Clock::now()+std::chrono::seconds(30));
                     if(prefix==access::group_prefix){
                         if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping");
                         access::GroupRequest request{};tls.read(request,Clock::now()+std::chrono::seconds(5));const auto mask=access::group_mask(request);

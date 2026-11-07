@@ -12,22 +12,29 @@ private:dm::video::H264Decoder decoder_;
 };
 }
 std::unique_ptr<Decoder> native_camera_decoder(Format format){validate_format(format);return std::make_unique<NativeDecoder>(format);}
-Receiver::Receiver(Format format,unsigned slot,extrapane::media::Binding binding,std::unique_ptr<CameraRegistration> registration,DecoderFactory factory)
-    :format_(format),binding_(binding),endpoint_(format,slot,std::move(registration)),factory_(std::move(factory)){
+Receiver::Receiver(Format format,unsigned slot,extrapane::media::Binding binding,std::unique_ptr<CameraRegistration> registration,DecoderFactory factory,FailureReport report)
+    :report_(std::move(report)),format_(format),binding_(binding),endpoint_(format,slot,std::move(registration)),factory_(std::move(factory)){
     if(!binding.resource||!binding.generation||!factory_)throw std::invalid_argument("Camera receiver requires admission binding and decoder factory");
 }
 Receiver::~Receiver(){stop();}
+extrapane::Availability Receiver::fail(std::string reason){
+    failed_=true;stop();
+    // Diagnostics are local and survive destruction after failed admission.
+    if(report_)try{report_(reason);}catch(...){}
+    return {false,std::move(reason)};
+}
 extrapane::Availability Receiver::prepare(){
     if(stopped_||prepared_)return {false,"Camera receiver already prepared or stopped"};
     try{
         decoder_=factory_(format_);if(!decoder_)throw std::runtime_error("Camera decoder unavailable");
-        auto result=endpoint_.prepare();if(!result.available){failed_=true;stop();return result;}
+        auto result=endpoint_.prepare();if(!result.available)return fail(std::move(result.reason));
         prepared_=true;return {true,{}};
-    }catch(...){failed_=true;stop();return {false,"Camera receiver could not prepare its decoder or endpoint"};}
+    }catch(const std::exception& e){return fail(std::string("Camera receiver preparation: ")+e.what());}
+    catch(...){return fail("Camera receiver preparation: unknown exception");}
 }
 extrapane::Availability Receiver::start(){
     if(!prepared_||running_||stopped_)return {false,"Camera receiver is not ready"};
-    auto result=endpoint_.start();if(!result.available){failed_=true;stop();return result;}
+    auto result=endpoint_.start();if(!result.available)return fail(std::move(result.reason));
     running_=true;return result;
 }
 void Receiver::stop()noexcept{if(stopped_)return;stopped_=true;running_=false;decoder_.reset();endpoint_.stop();}

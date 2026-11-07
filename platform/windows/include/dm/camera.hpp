@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include <wrl/client.h>
@@ -21,7 +22,7 @@ struct Sample {
 std::vector<Device> enumerate();
 class Capture final {
 public:
-    Capture(const std::wstring& locally_selected_device,Format format);
+    Capture(const std::wstring& locally_selected_device,std::optional<Format> format);
     ~Capture();
     Capture(const Capture&)=delete;
     Capture& operator=(const Capture&)=delete;

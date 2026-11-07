@@ -14,11 +14,12 @@ struct EncodedFrame {
 class EncodedSource final:public extrapane::Resource {
 public:
     using Sink=std::function<void(EncodedFrame)>;
-    EncodedSource(std::wstring local_device,Format format,Sink sink);
+    EncodedSource(std::wstring local_device,std::optional<Format> format,Sink sink);
     ~EncodedSource()override;
     extrapane::Availability prepare()override;
     extrapane::Availability start()override;
     void stop()noexcept override;
+    Format format() const { return source_.format(); }
     bool failed()const noexcept{return source_.failed();}
 private:
     Format format_;Sink sink_;std::unique_ptr<dm::video::H264Encoder> encoder_;
@@ -31,11 +32,12 @@ private:
 // reports channel failures to the session owner. It never calls stop() itself.
 class QueuedSource final:public extrapane::Resource {
 public:
-    QueuedSource(std::wstring local_device,Format format,extrapane::media::Binding binding);
+    QueuedSource(std::wstring local_device,std::optional<Format> format,extrapane::media::Binding binding);
     ~QueuedSource() override;
     extrapane::Availability prepare() override;
     extrapane::Availability start() override;
     void stop() noexcept override;
+    Format format() const { return source_.format(); }
     bool failed() const noexcept;
     std::optional<extrapane::media::Frame> next_frame(std::chrono::milliseconds timeout);
 private:

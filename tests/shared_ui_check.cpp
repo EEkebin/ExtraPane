@@ -33,8 +33,6 @@ public:
     Q_INVOKABLE void setMicrophoneMuted(bool value){++muteRequests;model.setSessionState(Kind::microphone,true,"Sharing",value);}
     Q_INVOKABLE void disconnectFromServer(){++disconnectRequests;}
     Q_INVOKABLE void connectTo(QString,QString,bool,unsigned,unsigned,unsigned,QString){++connectRequests;}
-    Q_INVOKABLE void setupCamera(){++setupRequests;}
-    Q_INVOKABLE void setupMicrophone(){++setupRequests;}
     Q_INVOKABLE void setupUsbSource(){++setupRequests;}
     Q_INVOKABLE void refreshUsbRecovery(){++recoveryRefreshRequests;}
     Q_INVOKABLE void recoverUsb(QString id){++recoveryRequests;recoveredId=std::move(id);}
@@ -114,9 +112,10 @@ int main(int argc,char** argv){
         auto* root=engine.rootObjects().first();root->setProperty("page",0);app.processEvents();
         auto* server=named(root,"serverPage");auto* start=named(root,"serverStartButton");auto* address=named(root,"hostAddressPicker");require(named(root,"hostComponentsRepeater")->property("count").toInt()==4);
         int serverCombos=0;for(auto* object:server->findChildren<QObject*>())if(object->inherits("QQuickComboBox")){++serverCombos;require(object==address);}require(serverCombos==1);
+        for(auto* object:server->findChildren<QObject*>()){const auto text=object->property("text").toString();require(text!="Camera setup"&&text!="Receiving component setup");}
         require(start->property("enabled").toBool());require(QMetaObject::invokeMethod(start,"clicked"));require(controller.hostStartRequests==1&&controller.startedAddress=="0.0.0.0"&&controller.startedPort==43824&&!controller.startedRequireCode);
         controller.insert("hosting",true);controller.insert("hostAvailability",QString("Unavailable"));app.processEvents();require(start->property("enabled").toBool());require(QMetaObject::invokeMethod(start,"clicked"));require(controller.hostStopRequests==1);
-        controller.insert("hosting",false);app.processEvents();require(!start->property("enabled").toBool());controller.insert("hostAvailability",QString{});controller.insert("cameraSetupRunning",true);app.processEvents();require(!start->property("enabled").toBool());controller.insert("cameraSetupRunning",false);
+        controller.insert("hosting",false);app.processEvents();require(!start->property("enabled").toBool());controller.insert("hostAvailability",QString{});controller.insert("cameraSetupRunning",true);app.processEvents();require(!start->property("enabled").toBool());require(start->property("text").toString()=="Preparing server...");require(!address->property("enabled").toBool());controller.insert("cameraSetupRunning",false);
         root->setProperty("page",1);app.processEvents();
         auto* picker=named(root,"resourcePicker");auto* connect=named(root,"connectButton");auto* disconnect=named(root,"clientDisconnectButton");
         auto* display=named(picker,"resourceCheck_display");auto* camera=named(picker,"resourceCheck_camera");auto* microphone=named(picker,"resourceCheck_microphone");auto* usb=named(picker,"resourceCheck_usb");

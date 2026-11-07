@@ -8,6 +8,8 @@
 #include <mutex>
 #include <stdexcept>
 #include <atomic>
+#include <algorithm>
+#include <tuple>
 
 namespace dm::camera {
 using Microsoft::WRL::ComPtr;
@@ -80,8 +82,8 @@ struct Capture::State {
         if(closingSource)closingSource->Shutdown();
     }
 };
-Capture::Capture(const std::wstring& device,Format wanted):state_(std::make_unique<State>()){
-    validate_format(wanted);
+Capture::Capture(const std::wstring& device,std::optional<Format> requested):state_(std::make_unique<State>()){
+    if(requested)validate_format(*requested);
     if(device.empty())throw std::invalid_argument("Select a local camera");
     // Re-resolve against current local inventory. Never open an arbitrary path.
     bool found=false;for(const auto& local:enumerate())if(local.id==device)found=true;
@@ -97,19 +99,47 @@ Capture::Capture(const std::wstring& device,Format wanted):state_(std::make_uniq
     checked(MFCreateSourceReaderFromMediaSource(state_->source.Get(),options.Get(),&state_->reader),"Create camera reader");
     checked(state_->reader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS,FALSE),"Deselect camera streams");
     checked(state_->reader->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM,TRUE),"Select camera video");
-    ComPtr<IMFMediaType> type;checked(MFCreateMediaType(&type),"Create camera format");
-    checked(type->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video),"Set camera media type");
-    checked(type->SetGUID(MF_MT_SUBTYPE,MFVideoFormat_NV12),"Set camera pixel format");
-    checked(MFSetAttributeSize(type.Get(),MF_MT_FRAME_SIZE,wanted.width,wanted.height),"Set camera dimensions");
-    checked(MFSetAttributeRatio(type.Get(),MF_MT_FRAME_RATE,wanted.fps,1),"Set camera rate");
-    checked(state_->reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,nullptr,type.Get()),"Camera cannot supply requested NV12 mode");
-    ComPtr<IMFMediaType> actual;checked(state_->reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,&actual),"Read camera format");
-    UINT32 width=0,height=0,num=0,den=0;GUID subtype{};
-    checked(actual->GetGUID(MF_MT_SUBTYPE,&subtype),"Read camera pixel format");
-    checked(MFGetAttributeSize(actual.Get(),MF_MT_FRAME_SIZE,&width,&height),"Read camera dimensions");
-    checked(MFGetAttributeRatio(actual.Get(),MF_MT_FRAME_RATE,&num,&den),"Read camera rate");
-    if(subtype!=MFVideoFormat_NV12||width!=wanted.width||height!=wanted.height||!den||std::uint64_t(num)!=std::uint64_t(wanted.fps)*den)throw std::runtime_error("Camera changed the requested format");
-    state_->format=wanted;
+    struct Mode { Format format;ComPtr<IMFMediaType> native; };
+    std::vector<Mode> modes;
+    for(DWORD index=0;index<1024;++index){
+        ComPtr<IMFMediaType> native;
+        const auto hr=state_->reader->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,index,&native);
+        if(hr==MF_E_NO_MORE_TYPES)break;
+        checked(hr,"Enumerate camera modes");
+        UINT32 width=0,height=0,num=0,den=0;
+        if(FAILED(MFGetAttributeSize(native.Get(),MF_MT_FRAME_SIZE,&width,&height))||
+           FAILED(MFGetAttributeRatio(native.Get(),MF_MT_FRAME_RATE,&num,&den))||!den||num%den)continue;
+        const Format mode{width,height,num/den};
+        try{validate_format(mode);}catch(const std::invalid_argument&){continue;}
+        if(requested&&(mode.width!=requested->width||mode.height!=requested->height||mode.fps!=requested->fps))continue;
+        modes.push_back({mode,std::move(native)});
+    }
+    // Favor normal-motion modes, then the largest native image, then frame rate.
+    // No resizing or invented frame rates: the offered mode must exist on the camera.
+    std::stable_sort(modes.begin(),modes.end(),[](const auto& a,const auto& b){
+        const auto rank=[](Format f){return std::tuple{f.fps>=30,std::uint64_t(f.width)*f.height,f.fps};};
+        return rank(a.format)>rank(b.format);
+    });
+    for(const auto& candidate:modes){
+        const auto wanted=candidate.format;
+        if(FAILED(state_->reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,nullptr,candidate.native.Get())))continue;
+        ComPtr<IMFMediaType> type;checked(MFCreateMediaType(&type),"Create camera format");
+        checked(type->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video),"Set camera media type");
+        checked(type->SetGUID(MF_MT_SUBTYPE,MFVideoFormat_NV12),"Set camera pixel format");
+        checked(MFSetAttributeSize(type.Get(),MF_MT_FRAME_SIZE,wanted.width,wanted.height),"Set camera dimensions");
+        checked(MFSetAttributeRatio(type.Get(),MF_MT_FRAME_RATE,wanted.fps,1),"Set camera rate");
+        if(FAILED(state_->reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,nullptr,type.Get())))continue;
+        ComPtr<IMFMediaType> actual;
+        if(FAILED(state_->reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,&actual)))continue;
+        UINT32 width=0,height=0,num=0,den=0;GUID subtype{};
+        if(FAILED(actual->GetGUID(MF_MT_SUBTYPE,&subtype))||
+           FAILED(MFGetAttributeSize(actual.Get(),MF_MT_FRAME_SIZE,&width,&height))||
+           FAILED(MFGetAttributeRatio(actual.Get(),MF_MT_FRAME_RATE,&num,&den)))continue;
+        if(subtype!=MFVideoFormat_NV12||width!=wanted.width||height!=wanted.height||!den||std::uint64_t(num)!=std::uint64_t(wanted.fps)*den)continue;
+        state_->format=wanted;return;
+    }
+    throw std::runtime_error(requested?"Camera does not provide the requested native mode with NV12 conversion":
+        "Camera has no usable native mode: this build supports even dimensions up to 3840x2160 and whole-number rates up to 60 FPS with NV12 conversion");
 }
 Capture::~Capture()=default;
 Format Capture::format()const{return state_->format;}

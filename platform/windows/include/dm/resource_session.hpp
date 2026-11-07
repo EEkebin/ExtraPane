@@ -13,5 +13,5 @@ using Report=std::function<void(const std::string&)>;
 void receive_camera_admitted(security::TlsStream&,unsigned slot,std::atomic_bool& stop,const Report& report);
 void serve_camera(const net::Options& options,std::atomic_bool& stop,const Report& report);
 void send_camera(const net::Options& options,const std::wstring& local_device,
-    camera::Format format,std::atomic_bool& stop,const Report& report);
+    std::optional<camera::Format> format,std::atomic_bool& stop,const Report& report);
 }

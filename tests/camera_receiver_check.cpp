@@ -43,6 +43,17 @@ int main(){try{
     rejects([&]{dm::video::pack_nv12(4,4,3,y,uv);});rejects([&]{dm::video::pack_nv12(4,4,8,std::span(y).first(27),uv);});
     check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_MULTITHREADED)));struct Com{~Com(){CoUninitialize();}} com;
     check(SUCCEEDED(MFStartup(MF_VERSION)));struct Mf{~Mf(){MFShutdown();}} mf;
+    // A failed resource is destroyed during negotiation. Its concrete local
+    // diagnostic must survive and must not prevent cleanup if reporting throws.
+    std::string diagnostic;Counts broken;
+    {
+        Receiver r({4,4,30},1,{7,9},std::make_unique<Registration>(broken),
+            [](Format)->std::unique_ptr<Decoder>{throw std::runtime_error("Decoder HRESULT 0x80004005");},
+            [&](const std::string& message){diagnostic=message;throw std::runtime_error("report failed");});
+        auto result=r.prepare();check(!result.available&&r.failed());
+        check(result.reason.find("0x80004005")!=std::string::npos);
+    }
+    check(diagnostic.find("0x80004005")!=std::string::npos&&broken.stopped==1);
     Counts counts;auto receiver=make_receiver(counts);check(counts.created==0&&counts.prepared==0);
     check(receiver->prepare().available&&receiver->start().available);
     MediaSource feed({4,4,30},counts.pipe);auto source=feed.source();

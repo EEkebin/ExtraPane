@@ -2,8 +2,8 @@
 #include <dm/camera_encode.hpp>
 #include <stdexcept>
 namespace dm::camera {
-EncodedSource::EncodedSource(std::wstring device,Format format,Sink sink)
-    :format_(format),sink_(std::move(sink)),source_(std::move(device),format,[this](Sample sample){
+EncodedSource::EncodedSource(std::wstring device,std::optional<Format> format,Sink sink)
+    :format_(format.value_or(Format{})),sink_(std::move(sink)),source_(std::move(device),format,[this](Sample sample){
         if(!encoder_)encoder_=std::make_unique<dm::video::H264Encoder>(format_.width,format_.height,format_.fps);
         auto pixels=nv12_pixels(sample,format_);
         auto output=encoder_->encode_nv12(pixels,sequence_);
@@ -11,10 +11,10 @@ EncodedSource::EncodedSource(std::wstring device,Format format,Sink sink)
         sink_({sequence_++,sample.timestamp,std::move(output)});
     },[this]{encoder_.reset();}){if(!sink_)throw std::invalid_argument("Camera requires an encoded-frame sink");}
 EncodedSource::~EncodedSource(){stop();}
-extrapane::Availability EncodedSource::prepare(){return source_.prepare();}
+extrapane::Availability EncodedSource::prepare(){auto result=source_.prepare();if(result.available)format_=source_.format();return result;}
 extrapane::Availability EncodedSource::start(){return source_.start();}
 void EncodedSource::stop()noexcept{source_.stop();encoder_.reset();sequence_=0;}
-QueuedSource::QueuedSource(std::wstring device,Format format,extrapane::media::Binding binding)
+QueuedSource::QueuedSource(std::wstring device,std::optional<Format> format,extrapane::media::Binding binding)
     :binding_(binding),queue_(binding),source_(std::move(device),format,[this](EncodedFrame frame){
         if(!queue_.push({binding_,frame.sequence,frame.capture_timestamp,std::move(frame.h264)})) {
             if(!stopped_)overflow_=true;

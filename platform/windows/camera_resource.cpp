@@ -2,14 +2,15 @@
 #include <dm/camera_resource.hpp>
 #include <stdexcept>
 namespace dm::camera {
-SourceResource::SourceResource(std::wstring device,Format format,Sink sink,std::function<void()> cleanup)
+SourceResource::SourceResource(std::wstring device,std::optional<Format> format,Sink sink,std::function<void()> cleanup)
     :device_(std::move(device)),format_(format),sink_(std::move(sink)),worker_cleanup_(std::move(cleanup)){
-    validate_format(format_);if(device_.empty()||!sink_)throw std::invalid_argument("Camera source needs a local device and native sink");
+    if(format_)validate_format(*format_);if(device_.empty()||!sink_)throw std::invalid_argument("Camera source needs a local device and native sink");
 }
 SourceResource::~SourceResource(){stop();}
 extrapane::Availability SourceResource::prepare(){
     if(capture_)return {false,"Camera source already prepared"};
-    try{capture_=std::make_unique<Capture>(device_,format_);failed_=false;stopping_=false;return {true,{}};}
+    try{capture_=std::make_unique<Capture>(device_,format_);format_=capture_->format();failed_=false;stopping_=false;return {true,{}};}
+    catch(const std::exception& error){return {false,error.what()};}
     catch(...){return {false,"Camera could not open the selected mode; check permission, device availability and format support"};}
 }
 extrapane::Availability SourceResource::start(){

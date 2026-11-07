@@ -3,6 +3,8 @@
 #include <mfvirtualcamera.h>
 #include <dm/camera_endpoint.hpp>
 #include <stdexcept>
+#include <iomanip>
+#include <sstream>
 
 namespace dm::camera {
 namespace {
@@ -18,20 +20,23 @@ public:
         // Fail before creating a device when setup has not installed the source.
         Microsoft::WRL::ComPtr<IClassFactory> factory;
         hr=CoGetClassObject(clsid,CLSCTX_INPROC_SERVER,nullptr,IID_PPV_ARGS(&factory));
-        if(FAILED(hr)){stop();return failure("ExtraPane camera component is not installed or cannot load",hr);}
+        if(FAILED(hr)){stop();return failure("CoGetClassObject for ExtraPane camera source failed",hr);}
         const auto name=L"ExtraPane Camera "+std::to_wstring(slot);
         hr=MFCreateVirtualCamera(MFVirtualCameraType_SoftwareCameraSource,MFVirtualCameraLifetime_Session,
             MFVirtualCameraAccess_CurrentUser,name.c_str(),source_class_id,nullptr,0,&camera_);
-        if(SUCCEEDED(hr))hr=camera_->SetString(pipe_attribute,pipe.c_str());
-        if(SUCCEEDED(hr))hr=MFSetAttributeSize(camera_.Get(),MF_MT_FRAME_SIZE,format.width,format.height);
-        if(SUCCEEDED(hr))hr=MFSetAttributeRatio(camera_.Get(),MF_MT_FRAME_RATE,format.fps,1);
-        if(FAILED(hr)){stop();return failure("Virtual camera preparation failed",hr);}
+        if(FAILED(hr)){stop();return failure("MFCreateVirtualCamera failed",hr);}
+        hr=camera_->SetString(pipe_attribute,pipe.c_str());
+        if(FAILED(hr)){stop();return failure("Virtual camera pipe attribute failed",hr);}
+        hr=MFSetAttributeSize(camera_.Get(),MF_MT_FRAME_SIZE,format.width,format.height);
+        if(FAILED(hr)){stop();return failure("Virtual camera frame size attribute failed",hr);}
+        hr=MFSetAttributeRatio(camera_.Get(),MF_MT_FRAME_RATE,format.fps,1);
+        if(FAILED(hr)){stop();return failure("Virtual camera frame rate attribute failed",hr);}
         return {true,{}};
     }
     extrapane::Availability start()override{
         if(!camera_)return {false,"Virtual camera is not prepared"};
         const auto hr=camera_->Start(nullptr);
-        if(FAILED(hr)){stop();return failure("Virtual camera could not start; check camera permissions and component installation",hr);}
+        if(FAILED(hr)){stop();return failure("IMFVirtualCamera::Start failed",hr);}
         return {true,{}};
     }
     void stop()noexcept override{
@@ -41,7 +46,8 @@ public:
     }
 private:
     static extrapane::Availability failure(const char* message,HRESULT hr){
-        return {false,std::string(message)+" (HRESULT "+std::to_string(static_cast<unsigned long>(hr))+")"};
+        std::ostringstream text;text<<message<<" (HRESULT 0x"<<std::uppercase<<std::hex<<std::setw(8)<<std::setfill('0')<<static_cast<unsigned long>(hr)<<")";
+        return {false,text.str()};
     }
     bool runtime_=false;Microsoft::WRL::ComPtr<IMFVirtualCamera> camera_;
 };
@@ -58,12 +64,14 @@ extrapane::Availability CameraEndpoint::prepare(){
         publisher_.start();auto result=registration_->prepare(publisher_.name(),format_,slot_);
         if(!result.available){stop();return result;}
         prepared_=true;return {true,{}};
-    }catch(...){stop();return {false,"Camera endpoint preparation failed"};}
+    }catch(const std::exception& e){stop();return {false,std::string("Camera endpoint preparation: ")+e.what()};}
+    catch(...){stop();return {false,"Camera endpoint preparation: unknown exception"};}
 }
 extrapane::Availability CameraEndpoint::start(){
     if(!prepared_||started_||stopped_)return {false,"Camera endpoint is not ready"};
     try{auto result=registration_->start();if(!result.available){stop();return result;}started_=true;return result;}
-    catch(...){stop();return {false,"Camera endpoint startup failed"};}
+    catch(const std::exception& e){stop();return {false,std::string("Camera endpoint startup: ")+e.what()};}
+    catch(...){stop();return {false,"Camera endpoint startup: unknown exception"};}
 }
 void CameraEndpoint::stop()noexcept{
     if(stopped_)return;stopped_=true;started_=false;prepared_=false;

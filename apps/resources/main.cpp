@@ -34,6 +34,7 @@ int main(int argc,char** argv){try{
             "  ExtraPane.Resources.exe serve-camera --bind <local-ipv4|auto> --port N [--require-code] [--parent-pid N]\n"
             "  ExtraPane.Resources.exe send-camera --bind <local-ipv4|auto> --peer <server-ipv4> --port N --device-stdin [--access-stdin] [--width 1280 --height 720 --fps 30]\n"
             "  ExtraPane.Resources.exe list-cameras\n"
+            "Camera mode is automatically selected from the device unless all three format options are supplied.\n"
             "Host stdin: G generates a new one-time code; Q stops. Client stdin: device ID then optional code, followed by Q.\n"
             "Camera-only listener; do not run the legacy display listener on the same interface/port.\n";return 0;
     }
@@ -69,7 +70,11 @@ int main(int argc,char** argv){try{
     dm::net::Options options;options.bind_address=values.at("--bind");options.port=static_cast<std::uint16_t>(number(values.at("--port"),65535));options.timeout=std::chrono::seconds(5);
     if(!server)options.peer=values.at("--peer");
     if(options.bind_address!="auto")ipv4(options.bind_address);if(!server)ipv4(options.peer);
-    dm::camera::Format format{values.contains("--width")?number(values.at("--width"),3840):1280,values.contains("--height")?number(values.at("--height"),2160):720,values.contains("--fps")?number(values.at("--fps"),60):30};dm::camera::validate_format(format);
+    std::optional<dm::camera::Format> format;
+    if(values.contains("--width")||values.contains("--height")||values.contains("--fps")){
+        if(!values.contains("--width")||!values.contains("--height")||!values.contains("--fps"))throw std::invalid_argument("Explicit camera mode needs --width, --height and --fps together");
+        format=dm::camera::Format{number(values.at("--width"),3840),number(values.at("--height"),2160),number(values.at("--fps"),60)};dm::camera::validate_format(*format);
+    }
     if(values.contains("--device-index"))number(values.at("--device-index"),65535,true);
     if(values.contains("--parent-pid"))number(values.at("--parent-pid"),0xffffffffu);
     if(checkConfig){report(std::string("CONFIG_OK mode=")+(server?"camera-server":"camera-client"));return 0;}

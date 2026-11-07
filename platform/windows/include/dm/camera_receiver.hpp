@@ -14,10 +14,11 @@ std::unique_ptr<Decoder> native_camera_decoder(Format format);
 // after admission; lease the local camera slot before prepare().
 class Receiver final:public extrapane::Resource {
 public:
+    using FailureReport=std::function<void(const std::string&)>;
     using DecoderFactory=std::function<std::unique_ptr<Decoder>(Format)>;
     Receiver(Format format,unsigned slot,extrapane::media::Binding binding,
         std::unique_ptr<CameraRegistration> registration=native_camera_registration(),
-        DecoderFactory factory=native_camera_decoder);
+        DecoderFactory factory=native_camera_decoder,FailureReport report={});
     ~Receiver()override;
     extrapane::Availability prepare()override;
     extrapane::Availability start()override;
@@ -26,6 +27,8 @@ public:
     void accept(const extrapane::media::Frame& frame);
     bool failed()const noexcept{return failed_;}
 private:
+    extrapane::Availability fail(std::string reason);
+    FailureReport report_;
     Format format_;extrapane::media::Binding binding_;CameraEndpoint endpoint_;
     DecoderFactory factory_;std::unique_ptr<Decoder> decoder_;
     std::optional<std::uint64_t> sequence_;

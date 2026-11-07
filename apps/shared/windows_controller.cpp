@@ -3,6 +3,8 @@
 #include <ExtraPaneVersion.h>
 #include <QCoreApplication>
 #include <QFileInfo>
+#include <QDir>
+#include <QRegularExpression>
 #include <QHostAddress>
 #include <QNetworkInterface>
 #include <QSettings>
@@ -22,12 +24,14 @@ extrapane::ResourceKind resourceKind(int i){return static_cast<extrapane::Resour
 const wchar_t* helper(int i){return i==0?L"dm-view.exe":i==1?L"ExtraPane.Resources.exe":i==2?L"ExtraPane.Microphone.exe":L"ExtraPane.Usb.exe";}
 }
 struct WindowsController::Impl {
-    struct Client{Child child;QProcess* inventory=nullptr;QByteArray inventoryOutput;bool inventoryFailed=false,failed=false,stopping=false;QString pending,status="Ready";};
+    struct Client{Child child;QProcess* inventory=nullptr;QByteArray inventoryOutput;bool inventoryFailed=false,failed=false,stopping=false;QString pending,format,status="Ready";};
     struct Request{QString server,local;unsigned port=0,scale=0;bool input=false;std::array<bool,4> selected{};} request;
     std::array<Client,4> clients;
     QProcess* admission=nullptr;QByteArray admissionOutput;bool admissionFailed=false;
     QProcess* recoveryScan=nullptr;QByteArray recoveryOutput;bool recoveryInvalid=false,recovering=false;
     Child host;QString hostPending,cameraProblem;bool hostFailed=false;quint64 codeExpires=0;HANDLE setup=nullptr;
+    bool preparing=false,setupAttempted=false;int component=0;QProcess* probe=nullptr;QByteArray probeOutput;
+    QString cameraHash;QString hostAddress;unsigned hostPort=0;bool hostRequireCode=false;
     ~Impl(){if(setup)CloseHandle(setup);}
 };
 WindowsController::WindowsController(QObject* parent):QObject(parent),impl_(std::make_unique<Impl>()){
@@ -45,10 +49,10 @@ WindowsController::WindowsController(QObject* parent):QObject(parent),impl_(std:
 }
 WindowsController::~WindowsController(){shutdown();}
 QString WindowsController::availability()const{return {};}
-bool WindowsController::clientReady()const{return !active()&&!impl_->setup&&resources_.canConnect();}
+bool WindowsController::clientReady()const{return !active()&&!cameraSetupRunning()&&resources_.canConnect();}
 void WindowsController::selectDevice(QString kind,QString id){const auto i=resourceIndex(kind);if(i<1||active())return;resources_.setSelectedDevice(resourceKind(i),id);emit changed();}
 void WindowsController::refreshDevices(QString key){
-    const auto i=resourceIndex(key);if(i<1||active()||impl_->setup)return;
+    const auto i=resourceIndex(key);if(i<1||active()||cameraSetupRunning())return;
     auto& state=impl_->clients[i];if(state.inventory)return;
     auto* process=new QProcess(this);state.inventory=process;state.inventoryOutput.clear();state.inventoryFailed=false;
     resources_.setDevices(resourceKind(i),resources_.devices(resourceKind(i)),resources_.selectedDevice(resourceKind(i)),"Listing devices...",true);
@@ -71,7 +75,7 @@ void WindowsController::refreshDevices(QString key){
             ids.insert(QString::fromLatin1(id));found.push_back(QVariantMap{{"label",available?label:label+" - "+reason},{"id",QString::fromLatin1(id)},{"available",available}});
         }
         state.inventory=nullptr;state.inventoryOutput.clear();process->deleteLater();
-        const QString message=valid&&done?(found.isEmpty()?"No devices found. Check setup/privacy settings and refresh.":i==1?"Choose a camera; this build requires 1280 x 720 at 30 FPS.":i==2?"Choose a microphone; supported sources use 48 kHz mono/stereo.":"Choose eligible removable storage. Eject on the server before stopping."):"Device listing failed or timed out. Check component setup and privacy settings.";
+        const QString message=valid&&done?(found.isEmpty()?"No devices found. Check setup/privacy settings and refresh.":i==1?"Choose a camera; its supported resolution and frame rate are selected automatically.":i==2?"Choose a microphone; supported sources use 48 kHz mono/stereo.":"Choose eligible removable storage. Eject on the server before stopping."):"Device listing failed or timed out. Check component setup and privacy settings.";
         resources_.setDevices(resourceKind(i),valid&&done?found:QVariantList{},resources_.selectedDevice(resourceKind(i)),message,false);emit changed();
     };
     connect(process,&QProcess::readyRead,this,[this,process,i]{auto& state=impl_->clients[i];if(state.inventory!=process)return;state.inventoryOutput+=process->readAll();if(state.inventoryOutput.size()>1024*1024){state.inventoryFailed=true;state.inventoryOutput.clear();process->kill();}});
@@ -91,8 +95,17 @@ QString WindowsController::resourceAvailability(const QString& kind)const{
         PWSTR location=nullptr;
         if(FAILED(SHGetKnownFolderPath(FOLDERID_ProgramFilesX64,0,nullptr,&location)))return "The microphone component location is unavailable.";
         const auto root=QString::fromWCharArray(location)+"/ExtraPane Components/Microphone/";CoTaskMemFree(location);
-        for(const auto* name:{"usbip.exe","libusbip.dll","resources.dll"})if(!QFileInfo::exists(root+name))return "Run receiving component setup before accepting a microphone or USB device.";
+        for(const auto* name:{"usbip.exe","libusbip.dll","resources.dll"})if(!QFileInfo::exists(root+name))return "Start server prepares the microphone and USB receiving component.";
         return {}; // The endpoint verifies the protected backend before attaching.
+    }
+    if(kind=="display"){
+        wchar_t windows[MAX_PATH]{};if(!GetWindowsDirectoryW(windows,MAX_PATH))return "Cannot locate the Windows driver store.";
+        const QDir store(QString::fromWCharArray(windows)+"/System32/DriverStore/FileRepository");
+        for(const auto& name:store.entryList({"dmindirectdisplay.inf_*"},QDir::Dirs|QDir::NoDotAndDotDot)){
+            const auto path=store.filePath(name)+"/";
+            if(QFileInfo::exists(path+"DMIndirectDisplay.inf")&&QFileInfo::exists(path+"DMIndirectDisplay.dll")&&QFileInfo::exists(path+"DMIndirectDisplay.cat"))return {};
+        }
+        return "The virtual-display driver is not staged. Install Server + Client with its display driver and explicit certificate consent, then retry Start server.";
     }
     if(kind!="camera")return hostUnavailable_;
     if(!QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Resources.exe"))return "The camera connection engine is missing from this build.";
@@ -101,7 +114,7 @@ QString WindowsController::resourceAvailability(const QString& kind)const{
     const auto path=read==ERROR_SUCCESS?QString::fromWCharArray(installed):QString{};
     wchar_t owner[128]{};DWORD ownerBytes=sizeof(owner);
     const auto ownerRead=RegGetValueW(HKEY_LOCAL_MACHINE,L"Software\\Classes\\CLSID\\{5A053AD3-02CD-4281-8367-CEF990182004}",L"ExtraPaneOwner",RRF_RT_REG_SZ|RRF_SUBKEY_WOW6464KEY,nullptr,owner,&ownerBytes);
-    if(ownerRead!=ERROR_SUCCESS||QString::fromWCharArray(owner)!="ExtraPane.CameraSource/v1"||!QFileInfo::exists(path))return "Install the ExtraPane camera component using Camera setup before hosting a camera.";
+    if(ownerRead!=ERROR_SUCCESS||QString::fromWCharArray(owner)!="ExtraPane.CameraSource/v1"||!QFileInfo::exists(path))return "Start server prepares the camera receiving component.";
     return {};
 }
 QString WindowsController::hostAvailability()const{return hostUnavailable_;}
@@ -109,39 +122,19 @@ QVariantList WindowsController::hostComponents()const{
     QVariantList result;
     for(const auto& item:std::initializer_list<std::pair<QString,QString>>{{"display","Display"},{"camera","Camera"},{"microphone","Microphone"},{"usb","USB storage"}}){
         const auto reason=resourceAvailability(item.first);
-        result.push_back(QVariantMap{{"label",item.second},{"available",reason.isEmpty()},{"detail",reason.isEmpty()?(item.first=="display"?"Requires the virtual display driver; a monitor is created when a client requests one.":"Component present; availability is checked when a client connects."):reason}});
+        result.push_back(QVariantMap{{"label",item.second},{"available",reason.isEmpty()},{"detail",reason.isEmpty()?(item.first=="display"?"Display driver package present; loading is checked when a client requests its monitor.":"Component present; availability is checked when a client connects."):reason}});
     }
     return result;
 }
 QString WindowsController::hostDescription()const{
-    return "Clients choose which resources to use. Display, camera, microphone and USB connections share this server address and port. A missing component affects only that resource.";
+    return "Clients choose which resources to use. Display, camera, microphone and USB connections share this server address and port. Start server checks and prepares the required receiving components. Windows may ask for administrator permission.";
 }
-bool WindowsController::cameraSetupRunning()const{return impl_->setup!=nullptr;}
+bool WindowsController::cameraSetupRunning()const{return impl_->setup!=nullptr||impl_->preparing;}
 void WindowsController::setMicrophoneMuted(bool muted){
     auto& state=impl_->clients[2];if(!state.child.process||state.stopping)return;
     try{state.child.send_control(muted?"M\n":"U\n");microphoneMuted_=muted;}
     catch(const std::exception& e){state.status=QString::fromUtf8(e.what());}
     resources_.setSessionState(resourceKind(2),true,state.status,microphoneMuted_);emit changed();
-}
-void WindowsController::setupMicrophone(){
-    if(active()||hosting()||impl_->setup)return;
-    const auto exe=extrapane::windows_bridge::directory()/L"ExtraPane.UsbSetup.exe";
-    if(!std::filesystem::is_regular_file(exe)){hostStatus_="Microphone component setup is missing from this build.";emit hostChanged();return;}
-    SHELLEXECUTEINFOW info{sizeof(info)};info.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;
-    info.lpVerb=L"runas";info.lpFile=exe.c_str();info.lpParameters=L"--install";info.nShow=SW_HIDE;
-    if(!ShellExecuteExW(&info))hostStatus_="Microphone component setup could not start or was canceled.";
-    else{impl_->setup=info.hProcess;hostStatus_="Installing microphone component...";}
-    emit hostChanged();
-}
-void WindowsController::setupCamera(){
-    if(active()||hosting()||impl_->setup)return;
-    const auto exe=extrapane::windows_bridge::directory()/L"ExtraPane.CameraSetup.exe";
-    if(!std::filesystem::is_regular_file(exe)){hostStatus_="Camera setup is missing from this build.";emit hostChanged();return;}
-    SHELLEXECUTEINFOW info{sizeof(info)};info.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;
-    info.lpVerb=L"runas";info.lpFile=exe.c_str();info.lpParameters=L"--install";info.nShow=SW_HIDE;
-    if(!ShellExecuteExW(&info)){hostStatus_=GetLastError()==ERROR_CANCELLED?"Camera setup canceled.":"Camera setup could not start.";}
-    else{impl_->setup=info.hProcess;hostStatus_="Installing camera component...";}
-    emit hostChanged();
 }
 QString WindowsController::savedAddress()const{return QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).value("Peer").toString();}
 void WindowsController::refreshAddresses(){
@@ -194,7 +187,7 @@ void WindowsController::connectTo(QString server,QString local,bool input,unsign
 }
 void WindowsController::startClients(std::array<std::string,4> credentials){
     const auto request=impl_->request;
-    for(int i=0;i<4;++i){if(!request.selected[i])continue;auto& state=impl_->clients[i];state.failed=false;state.stopping=false;state.pending.clear();
+    for(int i=0;i<4;++i){if(!request.selected[i])continue;auto& state=impl_->clients[i];state.failed=false;state.stopping=false;state.pending.clear();state.format.clear();
         try{
             std::vector<std::wstring> args;
             if(i==0){
@@ -225,15 +218,60 @@ void WindowsController::stopResource(QString key){
 }
 void WindowsController::disconnectFromServer(){cancelAdmission();for(const auto* key:resourceNames)stopResource(key);resources_.setLocked(active());status_=active()?"Stopping selected resources...":"Disconnected";emit changed();}
 void WindowsController::startHost(QString address,unsigned port,bool requireCode){
-    if(hosting()||impl_->setup)return;
+    if(hosting()||cameraSetupRunning())return;
     if(!hostAvailability().isEmpty()){hostStatus_=hostAvailability();emit hostChanged();return;}
     if(!port||port>65535){hostStatus_="Enter a valid TCP port.";emit hostChanged();return;}
     bool local=false;refreshAddresses();
     for(const auto& item:addresses_)if(item.toMap()["address"].toString()==address)local=true;
     if(!local){hostStatus_="Select a connected local address.";emit hostChanged();return;}
+    const auto displayProblem=resourceAvailability("display");
+    if(!displayProblem.isEmpty()){hostStatus_="Server not started: "+displayProblem;emit hostChanged();return;}
+    impl_->hostAddress=address;impl_->hostPort=port;impl_->hostRequireCode=requireCode;
+    impl_->preparing=true;impl_->component=0;impl_->setupAttempted=false;prepareHostComponent();
+}
+void WindowsController::failHostPreparation(QString reason){
+    impl_->preparing=false;hostStatus_="Server not started: "+reason;emit hostChanged();
+}
+void WindowsController::prepareHostComponent(){
+    if(!impl_->preparing)return;
+    if(impl_->component>=3){launchHost();return;}
+    const auto label=impl_->component<2?QString("Camera"):QString("Microphone / USB receiving");
+    const auto helperName=impl_->component<2?QString("ExtraPane.CameraSetup.exe"):QString("ExtraPane.UsbSetup.exe");
+    const auto exe=QCoreApplication::applicationDirPath()+"/"+helperName;
+    if(!QFileInfo::exists(exe)){failHostPreparation(label+" setup is missing from this package. Install the complete Server + Client package.");return;}
+    auto* process=new QProcess(this);impl_->probe=process;impl_->probeOutput.clear();
+    hostStatus_="Checking "+label.toLower()+" component...";emit hostChanged();
+    process->setProcessChannelMode(QProcess::MergedChannels);
+    auto finish=[this,process,label,exe](bool success){
+        if(impl_->probe!=process)return;impl_->probeOutput+=process->readAll();
+        auto detail=QString::fromUtf8(impl_->probeOutput).trimmed().left(1000);
+        impl_->probe=nullptr;impl_->probeOutput.clear();process->deleteLater();
+        if(!impl_->preparing)return;
+        const auto digest=QRegularExpression("(?:^|\\n)sha256=([0-9a-fA-F]{64})(?:\\r?\\n|$)").match(detail).captured(1).toLower();
+        if(impl_->component==0){
+            if(!success||digest.isEmpty()){failHostPreparation("The bundled camera component failed its integrity check. "+detail);return;}
+            impl_->cameraHash=digest;
+        }else if(impl_->component==1)success=success&&!digest.isEmpty()&&digest==impl_->cameraHash;
+        if(success){++impl_->component;impl_->setupAttempted=false;prepareHostComponent();return;}
+        if(impl_->setupAttempted){failHostPreparation(label+" is not ready after setup. "+detail);return;}
+        impl_->setupAttempted=true;
+        const auto path=exe.toStdWString();SHELLEXECUTEINFOW info{sizeof(info)};
+        info.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;info.lpVerb=L"runas";
+        info.lpFile=path.c_str();info.lpParameters=L"--install";info.nShow=SW_HIDE;
+        if(!ShellExecuteExW(&info)){failHostPreparation(label+" setup was canceled or could not start (Windows error "+QString::number(GetLastError())+").");return;}
+        impl_->setup=info.hProcess;hostStatus_="Preparing "+label.toLower()+" component...";emit hostChanged();
+    };
+    connect(process,&QProcess::readyRead,this,[this,process]{if(impl_->probe!=process)return;impl_->probeOutput+=process->readAll();if(impl_->probeOutput.size()>16384)process->kill();});
+    connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[finish](int code,QProcess::ExitStatus state){finish(code==0&&state==QProcess::NormalExit);});
+    connect(process,&QProcess::errorOccurred,this,[finish](QProcess::ProcessError error){if(error==QProcess::FailedToStart)finish(false);});
+    QTimer::singleShot(15000,process,[this,process]{if(impl_->probe==process)process->kill();});
+    process->start(exe,QStringList{impl_->component==0?"--check-package":"--status"});
+}
+void WindowsController::launchHost(){
+    impl_->preparing=false;
     try{
         impl_->hostFailed=false;impl_->hostPending.clear();impl_->cameraProblem.clear();
-        impl_->host.start_driver(true,false,port,requireCode,address=="0.0.0.0"?L"auto":address.toStdWString());
+        impl_->host.start_driver(true,false,impl_->hostPort,impl_->hostRequireCode,impl_->hostAddress=="0.0.0.0"?L"auto":impl_->hostAddress.toStdWString());
         hostStatus_="Starting server...";
     }
     catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}
@@ -252,8 +290,13 @@ void WindowsController::generateAccessCode(){
 void WindowsController::poll(){
     if(impl_->setup&&WaitForSingleObject(impl_->setup,0)==WAIT_OBJECT_0){
         DWORD result=1;GetExitCodeProcess(impl_->setup,&result);CloseHandle(impl_->setup);impl_->setup=nullptr;
+        if(impl_->preparing){
+            if(result==0)prepareHostComponent();
+            else failHostPreparation(result==3010?"Restart Windows to finish component setup, then click Start server.":"Required component setup failed (exit "+QString::number(result)+"). Retry Start server to repair it.");
+        }else{
         hostStatus_=result==0?"Component setup completed.":result==3010?"Component setup completed; restart Windows before using it.":"Component setup failed (exit "+QString::number(result)+").";if(impl_->recovering){recoveryStatus_=result==0?"USB storage restored. Refresh to check remaining records.":"Recovery refused or failed. No forced recovery is available; review the record and USB connection state.";impl_->recovering=false;recoveries_.clear();emit recoveryChanged();}
         status_=hostStatus_;emit changed();emit hostChanged();
+        }
     }
     auto drain=[&](Child& child,QString& pending,bool host,int index=-1){
         auto& currentStatus=host?hostStatus_:impl_->clients[index].status;
@@ -286,7 +329,8 @@ void WindowsController::poll(){
             else if(line.startsWith("MICROPHONE_STARTED")){if(host){impl_->cameraProblem.clear();hostStatus_="Microphone connected. Select ExtraPane Microphone in your recording app.";}else currentStatus="Sharing microphone. Select ExtraPane Microphone in an app on the server.";}
             else if(line.startsWith("MICROPHONE_SESSION_ERROR")){if(host){impl_->cameraProblem=line.mid(25).trimmed();hostStatus_="Microphone connection failed; server still listening. "+impl_->cameraProblem;}}
             else if(line.startsWith("MICROPHONE_DISCONNECTED")){if(host)hostStatus_="Listening; microphone disconnected. "+impl_->cameraProblem;}
-            else if(line.startsWith("CAMERA_STARTED")){if(!host)currentStatus="Sharing camera. Select ExtraPane Camera in an app on the server.";if(host){impl_->cameraProblem.clear();hostStatus_="Camera connected â€” select ExtraPane Camera in your application.";}}
+            else if(line.startsWith("CAMERA_FORMAT ")&&!host&&index==1){impl_->clients[index].format=line.mid(14).left(100);currentStatus="Camera: "+impl_->clients[index].format;}
+            else if(line.startsWith("CAMERA_STARTED")){if(!host)currentStatus="Sharing camera "+impl_->clients[index].format+". Select ExtraPane Camera in an app on the server.";if(host){impl_->cameraProblem.clear();hostStatus_="Camera connected â€” select ExtraPane Camera in your application.";}}
             else if(line.startsWith("CAMERA_SESSION_ERROR")){if(host){impl_->cameraProblem=line.section(' ',2);hostStatus_="Camera connection failed; server still listening. "+impl_->cameraProblem;}}
             else if(line.startsWith("CAMERA_DISCONNECTED")){if(host)hostStatus_=impl_->cameraProblem.isEmpty()?"Listening â€” camera client disconnected.":"Listening. Last camera error: "+impl_->cameraProblem;}
             if(host)emit hostChanged();else{if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("USB_STARTED"))status_="Resources are active. Manage each one below.";resources_.setSessionState(resourceKind(index),true,currentStatus,index==2&&microphoneMuted_);emit changed();}
@@ -298,6 +342,8 @@ void WindowsController::poll(){
     if(impl_->codeExpires&&GetTickCount64()>=impl_->codeExpires){impl_->codeExpires=0;code_="Code expired. Generate a new code.";emit hostChanged();}
 }
 void WindowsController::shutdown(){
+    impl_->preparing=false;
+    if(impl_->probe){auto* process=impl_->probe;impl_->probe=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}
     cancelAdmission();
     if(impl_->recoveryScan){auto* process=impl_->recoveryScan;impl_->recoveryScan=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}
     for(auto& state:impl_->clients){if(state.inventory){auto* process=state.inventory;state.inventory=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}state.child.stop();}
@@ -310,7 +356,7 @@ void WindowsController::ejectUsb(){
     catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}emit hostChanged();
 }
 void WindowsController::setupUsbSource(){
-    if(active()||hosting()||impl_->setup)return;
+    if(active()||hosting()||cameraSetupRunning())return;
     const auto exe=extrapane::windows_bridge::directory()/L"ExtraPane.UsbHostSetup.exe";
     if(!std::filesystem::is_regular_file(exe)){status_="USB source setup is missing from this build.";emit changed();return;}
     SHELLEXECUTEINFOW info{sizeof(info)};info.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;
@@ -320,7 +366,7 @@ void WindowsController::setupUsbSource(){
     emit changed();emit hostChanged();
 }
 
-bool WindowsController::recoveryBusy()const{return impl_->recoveryScan||impl_->setup;}
+bool WindowsController::recoveryBusy()const{return impl_->recoveryScan||cameraSetupRunning();}
 void WindowsController::refreshUsbRecovery(){
     if(active()||hosting()||recoveryBusy())return;
     auto* process=new QProcess(this);impl_->recoveryScan=process;impl_->recoveryOutput.clear();impl_->recoveryInvalid=false;

@@ -120,25 +120,13 @@ ApplicationWindow {
                     }
                     ComboBox {
                         id: hostAddress; objectName: "hostAddressPicker"; Layout.fillWidth: true; model: receiver.addresses; textRole: "label"
-                        currentIndex: receiver.platformLabel === "Windows" ? 0 : receiver.addresses.length > 1 ? 1 : 0; enabled: !receiver.hosting
+                        currentIndex: receiver.platformLabel === "Windows" ? 0 : receiver.addresses.length > 1 ? 1 : 0; enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
                     }
                     Button {
                         objectName: "serverStartButton"
-                        text: receiver.hosting ? "Stop server" : "Start server"
+                        text: receiver.hosting ? "Stop server" : receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Preparing server..." : "Start server"
                         enabled: receiver.hosting || (receiver.hostAvailability.length === 0 && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning))
                         onClicked: { if (receiver.hosting) receiver.stopHost(); else { const selected=receiver.addresses[hostAddress.currentIndex]; receiver.startHost(selected ? selected.address : "0.0.0.0", Number(hostPort.text), requireCode.checked) } }
-                    }
-                    Button {
-                        visible: receiver.platformLabel === "Windows"
-                        text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing camera component..." : "Camera setup"
-                        enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
-                        onClicked: receiver.setupCamera()
-                    }
-                    Button {
-                        visible: receiver.platformLabel === "Windows"
-                        text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing component..." : "Receiving component setup"
-                        enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
-                        onClicked: receiver.setupMicrophone()
                     }
                     Repeater {
                         objectName: "hostComponentsRepeater"
@@ -151,8 +139,8 @@ ApplicationWindow {
                         }
                     }
                     Button { visible: receiver.platformLabel === "Windows"; text: "Eject USB"; enabled: receiver.hosting; onClicked: receiver.ejectUsb() }
-                    TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } enabled: !receiver.hosting }
-                    CheckBox { id: requireCode; text: "Require access code"; enabled: !receiver.hosting }
+                    TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning) }
+                    CheckBox { id: requireCode; text: "Require access code"; enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning) }
                     Label { text: receiver.accessCode; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Button { text: "Generate new code"; enabled: receiver.hosting && requireCode.checked; onClicked: receiver.generateAccessCode() }
                     Label { text: receiver.hostStatus; wrapMode: Text.WordWrap; Layout.fillWidth: true }
