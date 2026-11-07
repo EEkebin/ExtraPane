@@ -101,7 +101,9 @@ bool write_payload(const fs::path& path,std::span<const unsigned char> bytes){
 }
 void signed_file(const fs::path& path){
     no_reparse(path);WINTRUST_FILE_INFO file{sizeof(file)};file.pcwszFilePath=path.c_str();
-    WINTRUST_DATA data{sizeof(data)};data.dwUIChoice=WTD_UI_NONE;data.fdwRevocationChecks=WTD_REVOKE_NONE;data.dwUnionChoice=WTD_CHOICE_FILE;data.pFile=&file;data.dwStateAction=WTD_STATEACTION_VERIFY;data.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL|WTD_REVOCATION_CHECK_NONE;
+    WINTRUST_DATA data{sizeof(data)};data.dwUIChoice=WTD_UI_NONE;data.fdwRevocationChecks=WTD_REVOKE_NONE;data.dwUnionChoice=WTD_CHOICE_FILE;data.pFile=&file;data.dwStateAction=WTD_STATEACTION_VERIFY;// Setup may retrieve missing certificate-chain intermediates on a fresh PC.
+    // Trust verification still fails closed; pinned payload hashes remain mandatory.
+    data.dwProvFlags=WTD_REVOCATION_CHECK_NONE;
     GUID action=WINTRUST_ACTION_GENERIC_VERIFY_V2;const auto result=WinVerifyTrust(reinterpret_cast<HWND>(INVALID_HANDLE_VALUE),&action,&data);data.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(reinterpret_cast<HWND>(INVALID_HANDLE_VALUE),&action,&data);
     check(result==ERROR_SUCCESS,"USB/IP component has no trusted Authenticode signature; nothing will be executed");
 }

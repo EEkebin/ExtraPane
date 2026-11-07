@@ -52,3 +52,7 @@ packages in addition to the microphone adapter's MIT dependency notice.
 Permission checks allow the Windows TrustedInstaller service to maintain backend
 files and ignore inheritance-only ACEs on the object being checked. Every payload
 file is checked separately. No existing directory ACL is rewritten.
+
+On a fresh Windows installation, setup may need internet access to retrieve missing
+publisher certificate-chain intermediates. It still rejects untrusted signatures;
+normal LAN sessions do not depend on this installation-time retrieval.
