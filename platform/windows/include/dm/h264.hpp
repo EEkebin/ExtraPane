@@ -21,6 +21,10 @@ public:
     H264Decoder(unsigned width, unsigned height, unsigned fps, std::optional<unsigned> adapter=std::nullopt,bool gpu_output=false);
     ~H264Decoder();
     std::vector<Frame> decode(std::span<const std::uint8_t> access_unit, std::uint64_t sequence);
+    // Native camera output, with capture-relative 100 ns timestamps. Delivers
+    // each packed NV12 image immediately; no BGRA conversion or UI messaging.
+    void decode_nv12(std::span<const std::uint8_t> access_unit,std::int64_t timestamp,
+        const std::function<void(std::span<const std::uint8_t>,std::int64_t)>& sink);
     std::vector<Frame> finish();
     std::uint64_t gpu_frames() const;
     std::string description() const;

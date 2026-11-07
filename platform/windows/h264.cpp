@@ -12,6 +12,8 @@
 #include <wrl/client.h>
 #include <dm/h264.hpp>
 #include <dm/video_gpu.hpp>
+#include <dm/nv12.hpp>
+#include <limits>
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -343,7 +345,7 @@ struct H264Decoder::State {
         }
         throw std::runtime_error("Decoder has no NV12 output");
     }
-    Frame pixels(IMFSample* sample) {
+    Frame pixels(IMFSample* sample,std::vector<std::uint8_t>* nv12=nullptr) {
         if (!sample) throw std::runtime_error("Decoder returned no sample");
         ComPtr<IMFMediaBuffer> buffer;
         check(sample->GetBufferByIndex(0,&buffer),"Decoded media buffer");
@@ -354,7 +356,7 @@ struct H264Decoder::State {
         check(gpu->GetSubresourceIndex(&slice),"Decoded GPU slice");
         D3D11_TEXTURE2D_DESC desc{}; texture->GetDesc(&desc);
         if (desc.Format!=DXGI_FORMAT_NV12 || desc.Width<width || desc.Height<height || desc.Width>width+32 || desc.Height>height+32) throw std::runtime_error("Unsupported decoded GPU surface dimensions/format");
-        if(gpu_output) {
+        if(gpu_output&&!nv12) {
             Frame frame{width,height,{}};
             frame.gpu=std::make_shared<GpuFrame>(); frame.gpu->device=device;
             // Detach the pooled array slice into owned NV12 memory on the GPU.
@@ -378,6 +380,12 @@ struct H264Decoder::State {
         struct Unmap { ID3D11DeviceContext* context; ID3D11Texture2D* texture; ~Unmap(){context->Unmap(texture,0);} } unmap{context.Get(),staging.Get()};
         const auto* yplane=static_cast<const std::uint8_t*>(mapped.pData);
         const auto* uvplane=yplane+static_cast<std::size_t>(mapped.RowPitch)*staging_desc.Height;
+        if(nv12){
+            *nv12=pack_nv12(width,height,mapped.RowPitch,
+                {yplane,std::size_t(mapped.RowPitch)*staging_desc.Height},
+                {uvplane,std::size_t(mapped.RowPitch)*(staging_desc.Height/2)});
+            ++decoded;return {};
+        }
         Frame frame{width,height,{}}; frame.bgra.resize(static_cast<std::size_t>(width)*height*4);
         for (unsigned y=0;y<height;++y) for (unsigned x=0;x<width;++x) {
             const int c=static_cast<int>(yplane[static_cast<std::size_t>(y)*mapped.RowPitch+x])-16;
@@ -406,6 +414,26 @@ struct H264Decoder::State {
 };
 H264Decoder::H264Decoder(unsigned w,unsigned h,unsigned fps,std::optional<unsigned> adapter,bool gpu_output):state_(std::make_unique<State>(w,h,fps,adapter,gpu_output)){}
 H264Decoder::~H264Decoder()=default;
+void H264Decoder::decode_nv12(std::span<const std::uint8_t> bytes,std::int64_t timestamp,
+    const std::function<void(std::span<const std::uint8_t>,std::int64_t)>& sink){
+    auto& s=*state_;
+    if(s.drained||s.gpu_output||!sink||bytes.empty()||bytes.size()>2*1024*1024||timestamp<0||
+       timestamp>std::numeric_limits<std::int64_t>::max()-10000000/s.fps)
+        throw std::invalid_argument("Invalid camera decode input");
+    const auto sample=memory_sample(bytes,timestamp,10000000/s.fps);
+    check(s.transform->ProcessInput(0,sample.Get(),0),"Submit camera H264 sample");
+    for(unsigned attempts=0;attempts<32;++attempts){
+        Output output(s.transform.Get(),s.width*s.height*3/2);DWORD status=0;
+        const auto result=s.transform->ProcessOutput(0,1,&output.data,&status);
+        if(result==MF_E_TRANSFORM_NEED_MORE_INPUT)return;
+        if(result==MF_E_TRANSFORM_STREAM_CHANGE){s.output_type();continue;}
+        check(result,"Decode camera H264 sample");
+        if(!output.data.pSample)throw std::runtime_error("Camera decoder returned no sample");
+        LONGLONG time=0;check(output.data.pSample->GetSampleTime(&time),"Read decoded camera timestamp");
+        std::vector<std::uint8_t> pixels;s.pixels(output.data.pSample,&pixels);sink(pixels,time);
+    }
+    throw std::runtime_error("Camera decoder produced excessive output");
+}
 std::vector<Frame> H264Decoder::decode(std::span<const std::uint8_t> bytes,std::uint64_t sequence) {
     auto& s=*state_;
     if (s.drained || bytes.empty() || bytes.size()>2*1024*1024) throw std::runtime_error("Invalid H264 access unit or decoder state");

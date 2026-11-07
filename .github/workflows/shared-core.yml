@@ -10,6 +10,9 @@ on:
       - 'tests/camera_*_check.cpp'
       - 'platform/windows/camera*.cpp'
       - 'platform/windows/camera_source.def'
+      - 'platform/windows/h264.cpp'
+      - 'platform/windows/include/dm/h264.hpp'
+      - 'platform/windows/include/dm/nv12.hpp'
       - 'platform/windows/include/dm/camera*.hpp'
       - 'CMakeLists.txt'
       - '.github/workflows/shared-core.yml'
@@ -24,6 +27,9 @@ on:
       - 'tests/camera_*_check.cpp'
       - 'platform/windows/camera*.cpp'
       - 'platform/windows/camera_source.def'
+      - 'platform/windows/h264.cpp'
+      - 'platform/windows/include/dm/h264.hpp'
+      - 'platform/windows/include/dm/nv12.hpp'
       - 'platform/windows/include/dm/camera*.hpp'
       - 'CMakeLists.txt'
       - '.github/workflows/shared-core.yml'
@@ -38,9 +44,9 @@ jobs:
       - name: Configure camera compilation and hardware-free checks
         run: cmake -S . -B out/camera-checks -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON
       - name: Build camera source and checks
-        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check --parallel 2
+        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check --parallel 2
       - name: Check synthetic frames, local IPC and unregistered COM activation
-        run: ctest --test-dir out/camera-checks -C Release -R "camera-(format|source|pipe|endpoint|activation)" --output-on-failure
+        run: ctest --test-dir out/camera-checks -C Release -R "camera-(format|source|pipe|endpoint|activation|receiver)" --output-on-failure
   lifecycle:
     strategy:
       fail-fast: false

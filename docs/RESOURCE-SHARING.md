@@ -79,8 +79,20 @@ bounded channels must be bound to the admitted session and use the configured po
   access, requires the installed COM source, and tears down partial startup on
   failure. It has not been run or installed. Lifecycle tests substitute a fake
   registration backend while exercising real local pipes and MF samples.
-  Installer registration, live decoder/session integration and actual Frame Server
+  Installer registration, live session integration and actual Frame Server
   activation remain unfinished. Discord/browser delivery has not been tested.
+- The Windows receiving resource now connects framed camera messages to the
+  existing hardware H.264 decoder and camera endpoint. Its new NV12 output path
+  strips row/coded-height padding without a BGRA round trip, and sends decoded
+  images directly to the native pipe. Capture timestamps are normalized per
+  resource; wrong bindings, missing/duplicate sequences, backwards clocks,
+  unexpected decoder output and transport failures stop that resource. All work
+  belongs on one COM-initialized native session executor.
+  The hardware path and existing display executable compile. Isolated checks
+  substitute the decoder and registration backend, but exercise real frame
+  serialization, pipes and MF sample consumption, plus padded NV12 packing and
+  cleanup. They do not run the GPU decoder or prove real H.264 camera delivery,
+  color correctness, hardware performance or live network integration.
 - The existing Linux QML shell now lives in apps/shared/ui and is consumed by the
   Linux package through the same resource URL. Video.qml remains platform-specific.
   A shared resource checklist is connected to the Linux controller. The Windows
