@@ -80,7 +80,8 @@ struct Lease {
 std::vector<std::uint8_t> query(HANDLE handle,DWORD control,void* input=nullptr,DWORD inputSize=0){
     for(DWORD size=4096;size<=1024*1024;size*=2){std::vector<std::uint8_t> bytes(size);DWORD returned=0;
         if(DeviceIoControl(handle,control,input,inputSize,bytes.data(),size,&returned,nullptr)){need(returned<=size,"Invalid disk identity response");bytes.resize(returned);return bytes;}
-        need(GetLastError()==ERROR_MORE_DATA||GetLastError()==ERROR_INSUFFICIENT_BUFFER,"USB disk identity cannot be queried");}
+        const auto error=GetLastError();
+        if(error!=ERROR_MORE_DATA&&error!=ERROR_INSUFFICIENT_BUFFER)throw std::runtime_error("USB disk identity query failed (IOCTL "+std::to_string(control)+", Windows error "+std::to_string(error)+")");}
     throw std::runtime_error("USB disk identity exceeds bounds");
 }
 // Match the selected path against present SetupAPI disk interfaces, not a remote
@@ -116,14 +117,16 @@ void offline(HANDLE handle,bool value){
     need(DeviceIoControl(handle,IOCTL_DISK_SET_DISK_ATTRIBUTES,&data,sizeof(data),nullptr,0,&returned,nullptr),"Windows refused persistent disk offline/online change; the journal requires recovery");
     need(((attributes(handle)&DISK_ATTRIBUTE_OFFLINE)!=0)==value,"Disk offline state did not match the requested persistent change");
 }
-Handle open_disk(const Disk& disk){present(disk);Handle h(CreateFileW(disk.interface_path.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));need(h.h!=INVALID_HANDLE_VALUE,"Cannot open selected disk for persistent quarantine");validate_handle(h.h,disk);return h;}
+Handle open_disk(const Disk& disk){present(disk);Handle h(CreateFileW(disk.interface_path.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));if(h.h==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot open selected disk for persistent quarantine (Windows error "+std::to_string(GetLastError())+")");validate_handle(h.h,disk);return h;}
 std::string guid(const std::wstring& value){std::string result;for(wchar_t c:value){need(c<128,"Invalid USB binding identifier");result+=static_cast<char>(c);}return result;}
 class NativeGuard final:public RecoveryGuard {
 public:
     explicit NativeGuard(LockedDiskVerifier verifier):locked_(std::move(verifier)){need(static_cast<bool>(locked_),"USB quarantine requires a locked-handle verifier");}
     Availability quarantine(const Disk& disk)override{return attempt([&]{
         need(!lease_,"This USB recovery guard already owns a generation");need(extrapane::usb::eligible(disk.facts).available,"Selected USB disk is not eligible for exclusive sharing");
-        lease_=std::make_unique<Lease>(disk);auto proof=locked_(disk);need(proof.available,"Source volume locks or locked physical identity cannot be verified");
+        lease_=std::make_unique<Lease>(disk);
+        need(!has_pending_recovery(disk,pending_recoveries()),"This USB disk has a pending ExtraPane recovery record. Restore the source disk before exporting it again.");
+        auto proof=locked_(disk);need(proof.available,"Source volume locks or locked physical identity cannot be verified");
         auto physical=open_disk(disk);const auto prior=attributes(physical.h);need(!(prior&DISK_ATTRIBUTE_OFFLINE),"A disk that was already offline cannot be claimed for export");
         auto parent=root(true);key_=child(parent.h,key_name(disk),true,true);record_.disk_number=disk.disk_number;record_.prior_attributes=prior;record_.fingerprint=fingerprint(disk);
         need(BCryptGenRandom(nullptr,record_.owner.data(),static_cast<ULONG>(record_.owner.size()),BCRYPT_USE_SYSTEM_PREFERRED_RNG)>=0,"USB recovery owner identity unavailable");store(key_.h,record_);
@@ -174,6 +177,11 @@ std::vector<PendingRecovery> pending_recoveries(){
     }
     return result;
 }
+bool has_pending_recovery(const Disk& disk,std::span<const PendingRecovery> pending){
+    const auto id=key_name(disk);
+    return std::any_of(pending.begin(),pending.end(),[&](const auto& item){return item.journal_id==id;});
+}
+std::array<std::uint8_t,32> recovery_fingerprint(const Disk& disk){return fingerprint(disk);}
 bool matches_recovery(const Disk& disk,const PendingRecovery& pending){
     try{return pending.record&&key_name(disk)==pending.journal_id&&pending.record->disk_number==disk.disk_number&&pending.record->fingerprint==fingerprint(disk);}
     catch(...){return false;}

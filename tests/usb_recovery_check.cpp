@@ -5,6 +5,14 @@ using namespace dm::usb;
 void require(bool value){if(!value)throw std::runtime_error("USB recovery policy check failed");}
 template<class F>void rejects(F f){try{f();}catch(const std::exception&){return;}throw std::runtime_error("Invalid recovery record accepted");}
 int main(){try{
+    Disk disk;disk.instance_id=L"USBSTOR\\TEST";
+    PendingRecovery pending;pending.journal_id=L"6ecf2fd1bbf55edf2e08cfb90b404a0d892941475423823e88c58a1469ef469f";
+    require(has_pending_recovery(disk,std::span(&pending,1))); // Corrupt records still block export.
+    pending.record=RecoveryRecord{};pending.record->disk_number=23;
+    disk.disk_number=7;disk.layout_bytes={1,2,3};
+    require(has_pending_recovery(disk,std::span(&pending,1))); // Changed facts cannot bypass a journal.
+    pending.journal_id[0]=L'0';require(!has_pending_recovery(disk,std::span(&pending,1)));
+    require(!has_pending_recovery(disk,{}));
     RecoveryRecord record;record.disk_number=7;record.owner[0]=5;record.fingerprint[0]=8;record.prior_attributes=2;
     auto bytes=encode_recovery(record);require(bytes.size()==72);require(decode_recovery(bytes)==record);
     require(recovery_state_allows_restore(record).available);

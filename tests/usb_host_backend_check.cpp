@@ -9,7 +9,7 @@ static void require(bool value){if(!value)throw std::runtime_error("USB host bac
 struct State {
     std::vector<std::string> events;
     HostDevice device{L"USB\\VID_LOCAL", "1-2", {}, false, false};
-    bool running=false,failQuarantine=false,failJournal=false,failEjectJournal=false,busyEject=false,failHandoff=false;
+    bool running=false,failQuarantine=false,failJournal=false,failEjectJournal=false,busyEject=false,failHandoff=false,failOfflineVerify=false;
     unsigned reattachMisses=0;
 };
 class Runner final:public HostRunner {
@@ -38,7 +38,7 @@ class Guard final:public RecoveryGuard {
 public:
     explicit Guard(State& state):s(state){}
     Availability quarantine(const Disk&)override{s.events.push_back("quarantine");return {!s.failQuarantine,"Offline unsupported"};}
-    Availability verify(const Disk&)override{s.events.push_back("verify-offline");return {true,{}};}
+    Availability verify(const Disk&)override{s.events.push_back("verify-offline");return {!s.failOfflineVerify,"Disk identity changed"};}
     Availability binding_intent(const Disk&,const std::string&)override{s.events.push_back("journal-intent");return {true,{}};}
     Availability binding_acquired(const Disk&,const std::wstring&)override{s.events.push_back("journal-bound");return {!s.failJournal,"Journal write failed"};}
     Availability destination_ejected(const Disk&)override{s.events.push_back("journal-ejected");return {!s.failEjectJournal,"Eject journal write failed"};}
@@ -79,6 +79,13 @@ int main(){
         {
             State s;s.failHandoff=true;auto host=backend(s);require(host->claim(disk).available);
             require(!host->export_locked(disk).available&&has(s,"handoff")&&!has(s,"bind"));
+        }
+        {
+            State s;s.failOfflineVerify=true;auto host=backend(s);require(host->claim(disk).available);
+            const auto result=host->export_locked(disk);
+            require(!result.available&&result.reason=="Verifying disk after taking it offline: Disk identity changed");
+            require(!has(s,"journal-intent")&&!has(s,"bind")&&!has(s,"daemon-start"));
+            host->release_claim(true);require(!has(s,"unbind"));
         }
         {
             State s;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);

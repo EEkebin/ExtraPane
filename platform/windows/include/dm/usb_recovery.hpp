@@ -21,6 +21,11 @@ struct PendingRecovery {
 // Read-only registry queries. Throws if the protected registry cannot be read or
 // trusted; a malformed individual journal is returned with an error, untouched.
 std::vector<PendingRecovery> pending_recoveries();
+// Match the stable journal key, not the full fingerprint: changed partitions or
+// disk numbering must not make an unresolved journal disappear from export UI.
+bool has_pending_recovery(const Disk&,std::span<const PendingRecovery>);
+// Hash-only diagnostic for the exact current identity; no disk/registry mutation.
+std::array<std::uint8_t,32> recovery_fingerprint(const Disk&);
 bool matches_recovery(const Disk&,const PendingRecovery&);
 // Pure journal-state policy; caller must additionally prove current local USB
 // binding absence and revalidate the selected disk before recovery.

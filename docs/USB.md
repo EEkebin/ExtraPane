@@ -2,7 +2,7 @@
 
 USB sharing means transferring exclusive access to an actual USB device. It is
 separate from camera and microphone media forwarding, which do not deliberately
-detach the source device. USB storage is not enabled in the application yet.
+detach the source device. The Windows development app includes USB storage sharing; physical compatibility and recovery remain hardware validation gates.
 
 ## Windows inventory
 
@@ -270,3 +270,20 @@ ExtraPane source app. The receiver forwards USB/IP data to the installed driver;
 it does not sandbox a malicious peer or validate every possible USB descriptor
 and transfer. Automatic LAN mode does not verify peer identity. TLS encryption
 and optional access codes do not turn raw USB into an untrusted-device sandbox.
+
+## MicroSD adapter limitation found during testing
+
+On the tested Surface USB microSD reader, taking the disk offline changed the
+Windows drive-layout response from the actual partition table to a whole-disk
+pseudo partition. Export stopped before binding, leaving a durable offline
+journal. Reconnecting the same reader and card restored local exFAT access, but
+the saved v1 fingerprint still did not match. The record was preserved and no
+forced recovery or partition change was performed.
+
+Pending records now make the disk unavailable in the USB picker and reject a new
+export before network admission or disk mutation. `ExtraPane.UsbRecovery --inspect
+<journal-id>` is read-only and exposes the recorded/current fingerprints and disk
+metadata for diagnosis. It does not authorize recovery. Do not retry export on
+this adapter yet. A versioned identity based on stable media metadata readable
+while offline is needed; relaxing the existing v1 fingerprint would permit an
+uncertain card to be restored.

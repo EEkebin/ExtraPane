@@ -9,6 +9,7 @@ namespace dm::usb {
 namespace {
 using extrapane::Availability;
 Availability fail(const char* text){return {false,text};}
+Availability step(Availability result,const char* name){if(!result.available)result.reason=std::string(name)+": "+result.reason;return result;}
 bool equal_id(const std::wstring& a,const std::wstring& b){
     return a.size()==b.size()&&std::equal(a.begin(),a.end(),b.begin(),[](wchar_t x,wchar_t y){return std::towupper(x)==std::towupper(y);});
 }
@@ -53,14 +54,14 @@ public:
         if(!before||before->bus_id!=bus_||before->forced||before->attached||!before->binding_id.empty())return fail("USB device changed or became bound before export");
         // This durable guard must confirm persistent offline state, not merely
         // retain volume handles; usbipd can restore the source driver on loss.
-        auto result=recovery_->quarantine(selected_);if(!result.available)return result;
+        auto result=step(recovery_->quarantine(selected_),"Preparing persistent USB quarantine");if(!result.available)return result;
         quarantined_=true;
-        result=recovery_->verify(selected_);if(!result.available)return result;
-        result=recovery_->binding_intent(selected_,bus_);if(!result.available)return result;
-        result=transport_.handoff_quarantined(selected_);if(!result.available)return result;
-        result=recovery_->verify(selected_);if(!result.available)return result;
+        result=step(recovery_->verify(selected_),"Verifying disk after taking it offline");if(!result.available)return result;
+        result=step(recovery_->binding_intent(selected_,bus_),"Recording USB binding intent");if(!result.available)return result;
+        result=step(transport_.handoff_quarantined(selected_),"Handing off quarantined USB handles");if(!result.available)return result;
+        result=step(recovery_->verify(selected_),"Verifying disk after handle handoff");if(!result.available)return result;
         // No --force, broad hardware ID, auto-bind policy, or remote device ID.
-        result=runner_->bind(bus_);if(!result.available)return result;
+        result=step(runner_->bind(bus_),"Binding the selected USB source");if(!result.available)return result;
         const auto bound=find(selected_.usb_instance_id);
         if(!bound||bound->bus_id!=bus_||bound->forced||bound->attached||!canonical_guid(bound->binding_id))
             return fail("USB binding result is ambiguous; keep the device quarantined for recovery");

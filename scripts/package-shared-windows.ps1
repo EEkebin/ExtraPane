@@ -15,8 +15,8 @@ if (-not $destinationPath.StartsWith(($projectRoot + '\out\'), [StringComparison
     throw 'Staging must be inside this checkout out directory.'
 }
 if (Test-Path -LiteralPath $destinationPath) { throw 'Use a new staging directory to avoid mixing package versions.' }
-$uiPath = Join-Path $projectRoot $UiBuild
-$enginePath = Join-Path $projectRoot $EngineBuild
+$uiPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $UiBuild))
+$enginePath = [IO.Path]::GetFullPath((Join-Path $projectRoot $EngineBuild))
 $qtPath = Join-Path $projectRoot $QtRoot
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio runtime discovery is unavailable.' }
@@ -27,23 +27,65 @@ $redistVersion = Get-ChildItem -LiteralPath $redistRoot -Directory | Where-Objec
 if (-not $redistVersion) { throw 'MSVC redistributable files are missing.' }
 $crt = Get-ChildItem -LiteralPath (Join-Path $redistVersion.FullName 'x64') -Directory | Where-Object { $_.Name -like 'Microsoft.VC*.CRT' } | Select-Object -First 1
 if (-not $crt) { throw 'MSVC x64 runtime files are missing.' }
-$files = @((Join-Path $uiPath 'ExtraPane.exe'), (Join-Path $enginePath 'dm-view.exe'), (Join-Path $enginePath 'ExtraPane.Service.exe'), (Join-Path $enginePath 'ExtraPane.Session.exe'))
+# Keep target/output pairs together: every native executable copied below must
+# first pass through its dependency graph, including rarely used recovery tools.
+# Timestamps alone miss relinks after static-library or generated-payload changes.
+$nativeOutputs = [ordered]@{
+    'dm-view' = 'dm-view.exe'
+    'ExtraPane.Service' = 'ExtraPane.Service.exe'
+    'ExtraPane.Session' = 'ExtraPane.Session.exe'
+}
 if ($IncludeCamera) {
-    $files += (Join-Path $enginePath 'ExtraPane.Resources.exe'), (Join-Path $enginePath 'ExtraPane.CameraSetup.exe')
+    $nativeOutputs['extrapane-resources'] = 'ExtraPane.Resources.exe'
+    $nativeOutputs['extrapane_camera_setup'] = 'ExtraPane.CameraSetup.exe'
 }
 if ($IncludeMicrophone) {
-    $files += (Join-Path $enginePath 'ExtraPane.Microphone.exe'), (Join-Path $enginePath 'ExtraPane.UsbSetup.exe')
+    $nativeOutputs['ExtraPane.Microphone'] = 'ExtraPane.Microphone.exe'
+    $nativeOutputs['extrapane_usb_setup'] = 'ExtraPane.UsbSetup.exe'
     $endpoint = Join-Path $projectRoot $MicrophoneEndpoint
     if (-not (Test-Path -LiteralPath $endpoint)) { throw 'Build the pinned microphone endpoint helper before packaging.' }
 }
 if ($IncludeUsb) {
-    $files += (Join-Path $enginePath 'ExtraPane.Usb.exe'), (Join-Path $enginePath 'ExtraPane.UsbHostSetup.exe'), (Join-Path $enginePath 'ExtraPane.UsbRecovery.exe')
-    if (-not $IncludeMicrophone) { $files += (Join-Path $enginePath 'ExtraPane.UsbSetup.exe') }
+    $nativeOutputs['extrapane_usb'] = 'ExtraPane.Usb.exe'
+    $nativeOutputs['extrapane_usb_host_setup'] = 'ExtraPane.UsbHostSetup.exe'
+    $nativeOutputs['extrapane_usb_recovery_tool'] = 'ExtraPane.UsbRecovery.exe'
+    $nativeOutputs['extrapane_usb_setup'] = 'ExtraPane.UsbSetup.exe'
     $usbSource = Join-Path $projectRoot 'out/usb-host/corresponding-source'
     foreach ($required in @('usbipd-upstream.tar','usbipd-loopback.patch','build-usb-host.ps1','BUILD.json','COPYING.md')) {
         if (-not (Test-Path -LiteralPath (Join-Path $usbSource $required))) { throw "Missing USB host corresponding source: $required" }
     }
 }
+function Get-ConfiguredCMake([string]$BuildPath, [string]$ExpectedSource) {
+    if (-not $BuildPath.StartsWith(($projectRoot + '\out\'), [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Build directories must be inside this checkout out directory.'
+    }
+    $cache = Join-Path $BuildPath 'CMakeCache.txt'
+    if (-not (Test-Path -LiteralPath $cache)) { throw "Configure the build before packaging: $BuildPath" }
+    $values = @{}
+    foreach ($line in Get-Content -LiteralPath $cache) {
+        if ($line -match '^(CMAKE_COMMAND|CMAKE_HOME_DIRECTORY):INTERNAL=(.*)$') { $values[$Matches[1]] = $Matches[2] }
+    }
+    if (-not $values.ContainsKey('CMAKE_HOME_DIRECTORY') -or
+        [IO.Path]::GetFullPath($values['CMAKE_HOME_DIRECTORY']) -ne [IO.Path]::GetFullPath($ExpectedSource)) {
+        throw "Build directory belongs to another source tree: $BuildPath"
+    }
+    if (-not $values.ContainsKey('CMAKE_COMMAND') -or -not (Test-Path -LiteralPath $values['CMAKE_COMMAND'] -PathType Leaf)) {
+        throw "Configured CMake executable is unavailable: $BuildPath"
+    }
+    return $values['CMAKE_COMMAND']
+}
+$nativeCMake = Get-ConfiguredCMake $enginePath $projectRoot
+$uiCMake = Get-ConfiguredCMake $uiPath (Join-Path $projectRoot 'apps/shared')
+$devShell = Join-Path $vsPath 'Common7/Tools/Launch-VsDevShell.ps1'
+if (-not (Test-Path -LiteralPath $devShell)) { throw 'Visual Studio developer environment is unavailable.' }
+& $devShell -VsInstallationPath $vsPath -Arch amd64 -HostArch amd64 -SkipAutomaticLocation -NoLogo | Out-Null
+Write-Host 'Updating every included native helper and the shared UI before staging...'
+& $nativeCMake --build $enginePath --target @($nativeOutputs.Keys) --parallel 2
+if ($LASTEXITCODE -ne 0) { throw 'Native package build failed; nothing was staged.' }
+& $uiCMake --build $uiPath --target ExtraPane --parallel 2
+if ($LASTEXITCODE -ne 0) { throw 'Shared UI package build failed; nothing was staged.' }
+$files = @((Join-Path $uiPath 'ExtraPane.exe'))
+foreach ($output in $nativeOutputs.Values) { $files += (Join-Path $enginePath $output) }
 foreach ($file in $files) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" } }
 New-Item -ItemType Directory -Path $destinationPath | Out-Null
 foreach ($file in $files) { Copy-Item -LiteralPath $file -Destination $destinationPath }

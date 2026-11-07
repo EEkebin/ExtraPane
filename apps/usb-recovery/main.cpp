@@ -1,6 +1,7 @@
 #include <dm/usb_recovery.hpp>
 #include <dm/usb_runner.hpp>
 #include <windows.h>
+#include <winioctl.h>
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
@@ -42,6 +43,35 @@ void list(){
         std::cout<<'}';
     }
     std::cout<<"]}\n";
+}
+std::string hex_bytes(std::span<const std::uint8_t> bytes){std::string text;for(auto b:bytes){text+="0123456789abcdef"[b>>4];text+="0123456789abcdef"[b&15];}return text;}
+void inspect(const std::wstring& id){
+    const auto pending=pending_recoveries();std::optional<PendingRecovery> selected;
+    for(const auto& item:pending)if(item.journal_id==id){require(!selected,"Duplicate journal identity");selected=item;}
+    require(selected&&selected->record,"Recovery journal unavailable or malformed");
+    // Inspection never reserves a backend, binds USB, opens a writable disk,
+    // changes attributes or treats the dummy ownership probe as recovery proof.
+    const auto snapshot=inventory([](const std::wstring&)->std::optional<bool>{return false;});
+    std::cout<<"{\"journal\":"<<json(utf8(id))<<",\"expectedDisk\":"<<selected->record->disk_number
+        <<",\"expectedFingerprint\":"<<json(hex_bytes(selected->record->fingerprint))<<",\"ownershipChecked\":false,\"disks\":[";
+    bool first=true;
+    for(const auto& disk:snapshot.disks){
+        if(!first)std::cout<<',';first=false;
+        std::cout<<"{\"number\":"<<disk.disk_number<<",\"instance\":"<<json(utf8(disk.instance_id))
+            <<",\"usbInstance\":"<<json(utf8(disk.usb_instance_id))<<",\"sameJournalKey\":"<<(has_pending_recovery(disk,std::span(&*selected,1))?"true":"false")
+            <<",\"descriptorBytes\":"<<disk.descriptor_bytes.size()<<",\"layoutBytes\":"<<disk.layout_bytes.size();
+        try{const auto digest=recovery_fingerprint(disk);std::cout<<",\"fingerprint\":"<<json(hex_bytes(digest));}catch(const std::exception& error){std::cout<<",\"fingerprintError\":"<<json(error.what());}
+        const auto handle=CreateFileW(disk.interface_path.c_str(),0,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);
+        STORAGE_HOTPLUG_INFO hotplug{};DWORD returned=0;
+        if(handle!=INVALID_HANDLE_VALUE){
+            if(DeviceIoControl(handle,IOCTL_STORAGE_GET_HOTPLUG_INFO,nullptr,0,&hotplug,sizeof(hotplug),&returned,nullptr)&&returned>=sizeof(hotplug))
+                std::cout<<",\"mediaRemovable\":"<<(hotplug.MediaRemovable?"true":"false")<<",\"mediaHotplug\":"<<(hotplug.MediaHotplug?"true":"false")<<",\"deviceHotplug\":"<<(hotplug.DeviceHotplug?"true":"false");
+            CloseHandle(handle);
+        }
+        std::cout<<",\"descriptorHex\":"<<json(hex_bytes(disk.descriptor_bytes))<<",\"layoutHex\":"<<json(hex_bytes(disk.layout_bytes))<<",\"unresolved\":[";
+        bool firstReason=true;for(const auto& reason:disk.unresolved){if(!firstReason)std::cout<<',';firstReason=false;std::cout<<json(reason);}std::cout<<"]}";
+    }
+    std::cout<<"],\"inventoryErrors\":[";first=true;for(const auto& error:snapshot.errors){if(!first)std::cout<<',';first=false;std::cout<<json(error);}std::cout<<"]}\n";
 }
 void recover(const std::wstring& id){
     require(id.size()==64&&std::all_of(id.begin(),id.end(),[](wchar_t c){return (c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');}),"Use an exact journal ID from --list, not a disk path or number");
@@ -109,11 +139,12 @@ void recover(const std::wstring& id){
 int wmain(int argc,wchar_t** argv){
     try{
         if(argc==2&&std::wstring_view(argv[1])==L"--list"){list();return 0;}
+        if(argc==3&&std::wstring_view(argv[1])==L"--inspect"){inspect(argv[2]);return 0;}
         if(argc==3&&std::wstring_view(argv[1])==L"--recover"){recover(argv[2]);return 0;}
         if(argc==2&&std::wstring_view(argv[1])==L"--help"){
-            std::cout<<"ExtraPane.UsbRecovery --list\nExtraPane.UsbRecovery --recover <journal-id>\n"
+            std::cout<<"ExtraPane.UsbRecovery --list\nExtraPane.UsbRecovery --inspect <journal-id> (read-only)\nExtraPane.UsbRecovery --recover <journal-id>\n"
                 <<"Recovery requires administrator rights, a verified local disk and durable eject/release evidence.\n";return 0;
         }
-        throw std::runtime_error("Use --list, --recover <journal-id>, or --help. No --force mode exists.");
+        throw std::runtime_error("Use --list, --inspect <journal-id>, --recover <journal-id>, or --help. No --force mode exists.");
     }catch(const std::exception& error){std::cout<<"{\"error\":"<<json(error.what())<<"}\n";return 1;}
 }
