@@ -119,13 +119,13 @@ Android lifecycle references: [camera foreground-service requirements](https://d
 ## Microphone-sharing development slice
 
 The Microphones group lists local audio inputs. Check Microphone to send the
-selected input; the live Mute checkbox and persistent notification control its
+selected input; the live per-row Mute checkbox controls its
 audio. Display, camera and microphone can run together against a unified server;
 individual failures and disconnects release only their own resource.
 
 The visible Activity requests `RECORD_AUDIO` before launching a non-exported
-`microphone` foreground service. Its persistent notification includes Mute/Unmute
-and Stop; it never restarts capture after process death or reboot. Android 13+
+`microphone` foreground service. Its persistent notification stops all microphone
+connections; it never restarts capture after process death or reboot. Android 13+
 notification permission is requested separately. If notifications are denied,
 the in-app controls and Android foreground-service task manager remain available.
 These rules follow [Android's microphone foreground-service requirements](https://developer.android.com/develop/background-work/services/fgs/service-types#microphone).
@@ -166,9 +166,13 @@ Access codes are held only in memory while related resources are pending/running
 not saved to preferences. Each foreground service keeps its own notification and
 requires visible-activity permission before capture starts.
 
-This increment is one display, one camera and one microphone per Android app
-process. Multiple rows/sources, fanout to several servers and a shared Qt Android
-frontend remain unfinished. USB/IP export, Android virtual receiving devices,
+The app now supports repeatable camera and microphone rows, with independent
+server addresses, ports and access codes, or one shared destination. The selected
+network at the top applies to new capture connections; each active row freezes
+its own route and destination. Different physical sources may connect to different
+servers concurrently, subject to Android's actual camera/audio hardware support.
+One display receiver remains supported. Sharing the same physical source to
+multiple destinations and a shared Qt Android frontend remain unfinished. USB/IP export, Android virtual receiving devices,
 display hosting and camera mirroring are not implemented. USB is visible but
 unavailable with an explanation; USB/Bluetooth keyboard input is separate from
 USB device export. No storage is detached by these Android changes.
@@ -191,3 +195,40 @@ To repeat the host-only Android checks in this checkout (no device needed):
 ```
 
 Android connection review: stopping camera/microphone leaves the checkbox unchecked and temporarily disabled until teardown finishes. Canceled admission requests release queue capacity and authentication errors discard the temporary code cache. After activity recreation, surviving capture sessions retain their own destination summaries; destination fields stay visible for new connections until their complete address/port/interface/network matches a known active target. Host checks cover this target-visibility rule, including unknown restored routes. Isolated APK/instrumentation compilation and lint passed again; no device tests were performed.
+
+
+## Repeatable capture connections
+
+Camera and microphone groups have Add and Disconnect all controls. Each row has
+its own source selector, enable checkbox, compact active summary and disconnect;
+microphone rows also have live mute. Disabling **Use one server for all resources**
+shows address, port and optional access-code fields on each capture row. The top
+address remains the display destination, and its selected network supplies new
+capture routes. Source inventories refresh when opened. An unavailable previously
+selected device becomes unselected rather than silently choosing a replacement.
+
+One camera foreground service and one microphone foreground service own all their
+respective workers. Their notifications stop all connections of that kind; closing
+the Activity does not implicitly end foreground capture. No capture starts merely
+by binding the service, restoring a row or restarting the process. Runtime camera,
+microphone and notification permissions remain separate. Permission prompts freeze
+the chosen device and destination, and canceling an attempt invalidates its reply.
+
+Service snapshots restore active rows without retaining access codes. Attempt
+identities reject delayed callbacks and old snapshots, including a previous failed
+attempt arriving during a new permission prompt. Source ownership remains exclusive
+through worker teardown. A separate per-device microphone lease remains held if
+vendor cleanup hangs or throws; other microphone devices can still be attempted.
+Android route changes and silenced recording remain explicit failures. Camera
+encoder cleanup restrictions also remain in place. No claim is made that every
+Android device supports simultaneous capture from multiple physical cameras or
+microphones.
+
+Isolated verification: configuration, admission lifecycle and capture ownership/
+generation host checks passed. The latter covers stopping one/all rows, ownership
+across service replacement, late completion, distinct microphone leases, stale
+permission replies and repeated terminal snapshots. ARM64/x86_64 APK compilation,
+instrumentation compilation and lint passed. Repeated capture rows, concurrent
+hardware access, foreground notifications and lifecycle behavior still require
+authorized Android-device testing. No device was connected or installed for these
+checks.

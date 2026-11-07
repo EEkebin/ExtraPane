@@ -26,30 +26,20 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private FrameLayout root,videoArea;
     private SurfaceView video;
     private LinearLayout setup,toolbar,destinationFields;
-    private ResourceCard displayCard,cameraCard,microphoneCard;
-    private TextView destinationSummary;private boolean changingChecks,displayConnected,cameraConnected,microphoneConnected,cameraRequested,microphoneRequested;
-    private boolean cameraStopping,microphoneStopping;
-    private String cameraTargetKey="",microphoneTargetKey="",displayTargetKey="";
-    private String displayDestination="",cameraDestination="",microphoneDestination="",cachedCode="",cachedDestination="";
+    private ResourceCard displayCard;
+    private TextView destinationSummary;private boolean changingChecks,displayConnected;
+    private String displayTargetKey="";
+    private String displayDestination="",cachedCode="",cachedDestination="";
     private final ArrayList<View> marked=new ArrayList<>();
     private final java.util.HashMap<View,android.graphics.drawable.Drawable> oldBackgrounds=new java.util.HashMap<>();
     private Spinner displayMode;private EditText displayWidth,displayHeight,displayFps;
-    private LinearLayout customDisplay;private CheckBox microphoneMute;
+    private LinearLayout customDisplay;
     private TextView status,stats,capabilities;
     private EditText server,port,accessCode;
     private Spinner routes;
-    private Spinner cameraChoices;private final ArrayList<CameraCapture.Choice> cameras=new ArrayList<>();
-    private Spinner microphoneChoices;private final ArrayList<MicrophoneCapture.Choice> microphones=new ArrayList<>();
-    private boolean microphoneBound,microphoneRunning;private MicrophoneShareService.LocalBinder microphoneBinder;
-    private final android.content.ServiceConnection microphoneConnection=new android.content.ServiceConnection(){
-        public void onServiceConnected(android.content.ComponentName name,android.os.IBinder binder){microphoneBinder=(MicrophoneShareService.LocalBinder)binder;microphoneBinder.listen((text,running,connected,target,detail)->resourceChanged(false,text,running,connected,target,detail));}
-        public void onServiceDisconnected(android.content.ComponentName name){microphoneBinder=null;microphoneStopping=false;microphoneTargetKey="";microphoneRunning=false;microphoneConnected=false;microphoneRequested=false;refreshState();}
-    };
-    private boolean cameraBound,cameraRunning,visible;private CameraShareService.LocalBinder cameraBinder;
-    private final android.content.ServiceConnection cameraConnection=new android.content.ServiceConnection(){
-        public void onServiceConnected(android.content.ComponentName name,android.os.IBinder binder){cameraBinder=(CameraShareService.LocalBinder)binder;cameraBinder.listen((text,running,connected,target,detail)->resourceChanged(true,text,running,connected,target,detail));}
-        public void onServiceDisconnected(android.content.ComponentName name){cameraBinder=null;cameraStopping=false;cameraTargetKey="";cameraRunning=false;cameraConnected=false;cameraRequested=false;refreshState();}
-    };
+    private boolean visible;
+    private CaptureRows cameraRows,microphoneRows;private CheckBox singleServer;
+    private Runnable permissionGranted,permissionDenied;
     private boolean surfaceReady,showStats,paused;
     private int streamWidth=16,streamHeight=9;
     private final ArrayList<Route> choices=new ArrayList<>();
@@ -102,8 +92,6 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         if(!ConnectionValidation.port(port.getText().toString()))mark(port);
         if(!ConnectionValidation.code(accessCode.getText().toString()))mark(accessCode);
         if(routes.getSelectedItemPosition()<0||routes.getSelectedItemPosition()>=choices.size())mark(routes);
-        if(resource.equals("camera")&&(cameras.isEmpty()||cameraChoices.getSelectedItemPosition()<0||cameraChoices.getSelectedItemPosition()>=cameras.size()))mark(cameraChoices);
-        if(resource.equals("microphone")&&(microphones.isEmpty()||microphoneChoices.getSelectedItemPosition()<0||microphoneChoices.getSelectedItemPosition()>=microphones.size()))mark(microphoneChoices);
         if(resource.equals("display")&&displayMode.getSelectedItemPosition()==1){
             int w=ConnectionValidation.number(displayWidth.getText().toString()),h=ConnectionValidation.number(displayHeight.getText().toString()),fps=ConnectionValidation.number(displayFps.getText().toString());
             if(!ConnectionValidation.dimension(w))mark(displayWidth);if(!ConnectionValidation.dimension(h))mark(displayHeight);
@@ -121,33 +109,40 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         String supplied=accessCode.getText().toString();if(!supplied.isEmpty()){cachedCode=supplied;cachedDestination=destination;}
         return destination.equals(cachedDestination)?cachedCode:supplied;
     }
-    private void resourceChanged(boolean camera,String text,boolean running,boolean connected,String target,String detail){
-        boolean previously=camera?cameraConnected:microphoneConnected;
-        if(!running){if(camera){cameraStopping=false;cameraTargetKey="";}else{microphoneStopping=false;microphoneTargetKey="";}}
-        if(camera){cameraRunning=running;cameraRequested=false;cameraConnected=connected;cameraDestination=target;cameraCard.summary.setTag(detail);cameraCard.status.setText(text);}
-        else{microphoneRunning=running;microphoneRequested=false;microphoneConnected=connected;microphoneDestination=target;microphoneCard.summary.setTag(detail);microphoneCard.status.setText(text);}
-        if(connected&&!previously&&visible)toast((camera?"Camera":"Microphone")+" connected to "+target);
-        if(!running)admissionError(text);
-        refreshState();
-    }
     private void admissionError(String reason){if(reason.toLowerCase(java.util.Locale.ROOT).matches(".*(access code|authentication|server access|admission).*")){cachedCode="";cachedDestination="";accessCode.setText("");mark(accessCode);destinationFields.setVisibility(View.VISIBLE);toast("Check the highlighted fields to connect.");handler.removeCallbacks(clearValidation);handler.postDelayed(clearValidation,5000);}}
+    private CaptureRows.Target captureTarget(){
+        int index=routes.getSelectedItemPosition();Route route=index>=0&&index<choices.size()?choices.get(index):new Route("","",null);
+        String address=server.getText().toString().trim();int number=ConnectionValidation.number(port.getText().toString());
+        String code=ConnectionValidation.ipv4(address)&&number>0&&index>=0&&index<choices.size()?connectionCode():accessCode.getText().toString();
+        return new CaptureRows.Target(address,number,route.address,route.network,code);
+    }
+    private void requestCapturePermission(boolean camera,Runnable granted,Runnable denied){
+        if(!visible||permissionGranted!=null){toast("Finish the current permission request first.");denied.run();return;}
+        String required=camera?android.Manifest.permission.CAMERA:android.Manifest.permission.RECORD_AUDIO;
+        Runnable ready=()->requestCaptureNotification(granted,denied);
+        if(checkSelfPermission(required)==android.content.pm.PackageManager.PERMISSION_GRANTED){ready.run();return;}
+        permissionGranted=ready;permissionDenied=denied;
+        requestPermissions(new String[]{required},camera?51:52);
+    }
+    private void requestCaptureNotification(Runnable granted,Runnable denied){
+        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&!getPreferences(0).getBoolean("captureNotificationsAsked",false)){
+            getPreferences(0).edit().putBoolean("captureNotificationsAsked",true).apply();permissionGranted=()->{granted.run();accessCode.setText("");};permissionDenied=denied;
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},53);return;
+        }
+        granted.run();accessCode.setText("");
+    }
     private void refreshState(){
-        if(displayCard==null||cameraCard==null||microphoneCard==null)return;
+        if(displayCard==null||cameraRows==null||microphoneRows==null)return;
         changingChecks=true;
         displayCard.state(session!=null,false,displayConnected,displayDestination,streamWidth+" x "+streamHeight+" @ "+(displayCard.summary.getTag()==null?"":displayCard.summary.getTag()),false);
-        cameraCard.state(cameraRunning,cameraRequested,cameraConnected,cameraDestination,cameraCard.summary.getTag()==null?"":cameraCard.summary.getTag().toString(),cameraStopping);
-        microphoneCard.state(microphoneRunning,microphoneRequested,microphoneConnected,microphoneDestination,microphoneCard.summary.getTag()==null?"":microphoneCard.summary.getTag().toString(),microphoneStopping);
-        if(microphoneMute!=null){microphoneMute.setChecked(microphoneBinder!=null&&microphoneBinder.muted());microphoneMute.setEnabled(microphoneRunning);}
-        changingChecks=false;
-        boolean connected=displayConnected||cameraConnected||microphoneConnected;
-        boolean matching=ConnectionValidation.sameTarget(targetKey(),displayConnected,displayTargetKey,cameraRunning,cameraTargetKey,microphoneRunning,microphoneTargetKey);
-        destinationFields.setVisibility(connected&&matching&&marked.isEmpty()?View.GONE:View.VISIBLE);destinationSummary.setVisibility(connected?View.VISIBLE:View.GONE);
-        destinationSummary.setText("Server: "+(displayConnected?displayDestination:cameraConnected?cameraDestination:microphoneDestination));
-        if(session==null&&!cameraRunning&&!microphoneRunning&&!cameraRequested&&!microphoneRequested){cachedCode="";cachedDestination="";}
+        changingChecks=false;cameraRows.refreshLayout();microphoneRows.refreshLayout();
+        boolean capture=cameraRows.active()||microphoneRows.active();
+        boolean matching=(!displayConnected||targetKey().equals(displayTargetKey))&&cameraRows.matches(captureTarget())&&microphoneRows.matches(captureTarget());
+        destinationFields.setVisibility((displayConnected||capture)&&singleServer.isChecked()&&matching&&marked.isEmpty()?View.GONE:View.VISIBLE);
+        destinationSummary.setVisibility(displayConnected?View.VISIBLE:View.GONE);destinationSummary.setText("Display server: "+displayDestination);
+        if(session==null&&!capture){cachedCode="";cachedDestination="";}
     }
-    private void stopCamera(){cameraRequested=false;if(cameraRunning){cameraStopping=true;startService(new android.content.Intent(this,CameraShareService.class).setAction(CameraShareService.STOP));}refreshState();}
-    private void stopMicrophone(){microphoneRequested=false;if(microphoneRunning){microphoneStopping=true;microphoneAction(MicrophoneShareService.STOP);}refreshState();}
-    private void disconnectAll(){disconnect();stopCamera();stopMicrophone();}
+    private void disconnectAll(){disconnect();cameraRows.stopAll();microphoneRows.stopAll();}
     private void showResources(){input.enable(false);paused=true;handler.removeCallbacks(hideToolbar);toolbar.setVisibility(View.GONE);stats.setVisibility(View.GONE);((View)setup.getTag()).setVisibility(View.VISIBLE);getWindow().getInsetsController().show(WindowInsets.Type.systemBars());}
     private void showDisplay(){if(session==null)return;((View)setup.getTag()).setVisibility(View.GONE);paused=false;video.requestFocus();getWindow().getInsetsController().hide(WindowInsets.Type.systemBars());reveal();}
     private void build(){
@@ -162,6 +157,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(setup);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));setup.setTag(scroll);
         setup.addView(text("ExtraPane",32,white));setup.addView(text("Share your devices",17,muted));
         setup.addView(text("Client",24,white));
+        singleServer=new CheckBox(this);singleServer.setText("Use one server for all resources");singleServer.setTextColor(white);singleServer.setChecked(true);singleServer.setOnCheckedChangeListener((b,value)->refreshState());setup.addView(singleServer);
         destinationFields=new LinearLayout(this);destinationFields.setOrientation(LinearLayout.VERTICAL);setup.addView(destinationFields);
         destinationFields.addView(text("Destination for new connections",16,white));
         server=field("Server IPv4 address",getPreferences(0).getString("server", ""));server.setInputType(android.text.InputType.TYPE_CLASS_PHONE);destinationFields.addView(server);
@@ -177,11 +173,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         for(EditText field:new EditText[]{displayWidth,displayHeight,displayFps}){field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);customDisplay.addView(field);}
         displayMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int position,long id){customDisplay.setVisibility(position==1?View.VISIBLE:View.GONE);}public void onNothingSelected(AdapterView<?> p){}});
         displayCard.body.addView(button("Show display",this::showDisplay));displayCard.disconnect.setOnClickListener(v->disconnect());
-        cameraCard=new ResourceCard("Cameras","Camera",()->{if(cameraCard.enable.isChecked()){cameraRequested=true;shareCamera();}else{cameraRequested=false;stopCamera();}});
-        cameraChoices=new RefreshSpinner(this,this::refreshCameras);cameraCard.configuration.addView(cameraChoices);refreshCameras();cameraCard.disconnect.setOnClickListener(v->stopCamera());
-        microphoneCard=new ResourceCard("Microphones","Microphone",()->{if(microphoneCard.enable.isChecked()){microphoneRequested=true;shareMicrophone();}else{microphoneRequested=false;stopMicrophone();}});
-        microphoneChoices=new RefreshSpinner(this,this::refreshMicrophones);microphoneCard.configuration.addView(microphoneChoices);refreshMicrophones();microphoneCard.disconnect.setOnClickListener(v->stopMicrophone());
-        microphoneMute=new CheckBox(this);microphoneMute.setText("Mute microphone");microphoneMute.setTextColor(white);microphoneMute.setOnCheckedChangeListener((b,value)->{if(!changingChecks&&microphoneRunning)microphoneAction(value?MicrophoneShareService.MUTE:MicrophoneShareService.UNMUTE);});microphoneCard.body.addView(microphoneMute);
+        cameraRows=new CaptureRows(this,true,group("Cameras"),this::captureTarget,()->singleServer.isChecked(),this::requestCapturePermission,this::refreshState,()->validate("capture"),(common,reason)->{cachedCode="";cachedDestination="";if(common)admissionError(reason);});
+        microphoneRows=new CaptureRows(this,false,group("Microphones"),this::captureTarget,()->singleServer.isChecked(),this::requestCapturePermission,this::refreshState,()->validate("capture"),(common,reason)->{cachedCode="";cachedDestination="";if(common)admissionError(reason);});
         LinearLayout unsupported=group("USBs");CheckBox usb=new CheckBox(this);usb.setText("USB device sharing");usb.setTextColor(muted);usb.setEnabled(false);unsupported.addView(usb);unsupported.addView(text("Unavailable: Android USB/IP export and exclusive device return are not implemented. USB keyboards and mice still work as Android input devices.",14,muted));
         setup.addView(text("Server hosting is not available on Android. Display, camera and microphone can connect together to a compatible server; each capture depends on Android permissions and hardware.",14,muted));
         setup.addView(button("About",()->new AlertDialog.Builder(this).setTitle("ExtraPane").setMessage("Running version: "+BuildConfig.VERSION_NAME+"\n\nA project-wide license has not been selected.").setPositiveButton("GitHub",(d,w)->startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse("https://github.com/EEkebin/ExtraPane")))).setNegativeButton("Close",null).show()));
@@ -226,55 +219,11 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         getWindow().getInsetsController().setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);getWindow().getInsetsController().hide(WindowInsets.Type.systemBars());
         stats.setVisibility(showStats?View.VISIBLE:View.GONE);video.requestFocus();reveal();next.start();
     }
-    private void refreshCameras(){
-        String previous=cameraChoices.getSelectedItemPosition()>=0&&cameraChoices.getSelectedItemPosition()<cameras.size()?cameras.get(cameraChoices.getSelectedItemPosition()).id():"";
-        cameras.clear();try{cameras.addAll(CameraCapture.choices(this));}catch(Exception error){if(status!=null)status.setText("Camera inventory unavailable: "+error.getMessage());}
-        ArrayList<String> labels=new ArrayList<>();for(CameraCapture.Choice camera:cameras)labels.add(camera.toString());if(labels.isEmpty())labels.add("No camera supports a compatible H.264 mode");
-        cameraChoices.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));for(int i=0;i<cameras.size();++i)if(cameras.get(i).id().equals(previous)){cameraChoices.setSelection(i);break;}
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){
+        super.onRequestPermissionsResult(request,permissions,grants);
+        if(request==51||request==52||request==53){Runnable accepted=permissionGranted,rejected=permissionDenied;permissionGranted=null;permissionDenied=null;if((request==53||(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED))&&visible){if(accepted!=null)accepted.run();}else if(rejected!=null)rejected.run();}
     }
-    private void bindCamera(){if(!cameraBound){cameraBound=bindService(new android.content.Intent(this,CameraShareService.class),cameraConnection,0);if(!cameraBound)cameraRunning=false;}}
-    private void shareCamera(){
-        if(!visible||!cameraRequested)return;if(cameraStopping){cameraRequested=false;refreshState();return;}if(cameraRunning||(cameraBound&&cameraBinder==null))return;
-        if(!validate("camera")){cameraRequested=false;refreshState();return;}
-        if(checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.CAMERA},41);return;}
-        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
-            // Notification denial does not remove Android's foreground-service
-            // task-manager indicator or the in-app Stop control.
-            if(!getPreferences(0).getBoolean("cameraNotificationAsked",false)){getPreferences(0).edit().putBoolean("cameraNotificationAsked",true).apply();requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},42);return;}
-        }
-        if(cameras.isEmpty())refreshCameras();
-        String address=server.getText().toString().trim();int number=Integer.parseInt(port.getText().toString());String code=connectionCode();
-        Route route=choices.get(routes.getSelectedItemPosition());CameraCapture.Choice camera=cameras.get(cameraChoices.getSelectedItemPosition());
-        cameraDestination=address+":"+number;cameraCard.summary.setTag(camera.toString());
-        android.content.Intent intent=new android.content.Intent(this,CameraShareService.class).putExtra("address",address).putExtra("port",number).putExtra("local",route.address).putExtra("network",route.network).putExtra("code",code)
-            .putExtra("camera",camera.id()).putExtra("cameraLabel",camera.label()).putExtra("width",camera.width()).putExtra("height",camera.height()).putExtra("fps",camera.fps());
-        try{startForegroundService(intent);accessCode.setText("");cameraRunning=true;cameraTargetKey=targetKey();refreshState();status.setText("Starting camera sharing…");bindCamera();}catch(RuntimeException error){cameraRunning=false;cameraRequested=false;refreshState();status.setText("Cannot start camera sharing: "+error.getMessage());}
-    }
-    private void refreshMicrophones(){
-        int previous=microphoneChoices.getSelectedItemPosition()>=0&&microphoneChoices.getSelectedItemPosition()<microphones.size()?microphones.get(microphoneChoices.getSelectedItemPosition()).id():-1;
-        microphones.clear();try{microphones.addAll(MicrophoneCapture.choices(this));}catch(RuntimeException error){status.setText("Microphone inventory unavailable: "+error.getMessage());}
-        ArrayList<String> labels=new ArrayList<>();for(MicrophoneCapture.Choice microphone:microphones)labels.add(microphone.label());if(labels.isEmpty())labels.add("No microphone input is connected");
-        microphoneChoices.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));for(int i=0;i<microphones.size();++i)if(microphones.get(i).id()==previous){microphoneChoices.setSelection(i);break;}
-    }
-    private void bindMicrophone(){if(!microphoneBound){microphoneBound=bindService(new android.content.Intent(this,MicrophoneShareService.class),microphoneConnection,0);if(!microphoneBound)microphoneRunning=false;}}
-    private void microphoneAction(String action){startService(new android.content.Intent(this,MicrophoneShareService.class).setAction(action));}
-    private void shareMicrophone(){
-        if(!visible||!microphoneRequested)return;if(microphoneStopping){microphoneRequested=false;refreshState();return;}if(microphoneRunning||(microphoneBound&&microphoneBinder==null))return;
-        if(!validate("microphone")){microphoneRequested=false;refreshState();return;}
-        if(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},43);return;}
-        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&!getPreferences(0).getBoolean("microphoneNotificationAsked",false)){
-            getPreferences(0).edit().putBoolean("microphoneNotificationAsked",true).apply();requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},44);return;
-        }
-        if(microphones.isEmpty())refreshMicrophones();
-        String address=server.getText().toString().trim();int number=Integer.parseInt(port.getText().toString());String code=connectionCode();
-        Route route=choices.get(routes.getSelectedItemPosition());MicrophoneCapture.Choice microphone=microphones.get(microphoneChoices.getSelectedItemPosition());
-        microphoneDestination=address+":"+number;microphoneCard.summary.setTag(microphone.label()+" - 48 kHz mono");
-        android.content.Intent intent=new android.content.Intent(this,MicrophoneShareService.class).putExtra("address",address).putExtra("port",number).putExtra("local",route.address).putExtra("network",route.network).putExtra("code",code)
-            .putExtra("microphone",microphone.id()).putExtra("microphoneLabel",microphone.label());
-        try{startForegroundService(intent);accessCode.setText("");microphoneRunning=true;microphoneTargetKey=targetKey();refreshState();status.setText("Starting microphone sharing...");bindMicrophone();}catch(RuntimeException error){microphoneRunning=false;microphoneRequested=false;refreshState();status.setText("Cannot start microphone sharing: "+error.getMessage());}
-    }
-    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==41){if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)shareCamera();else {cameraRequested=false;status.setText("Camera permission was denied");refreshState();}}else if(request==42)shareCamera();else if(request==43){if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)shareMicrophone();else {microphoneRequested=false;status.setText("Microphone permission was denied");refreshState();}}else if(request==44)shareMicrophone();}
-    @Override protected void onStart(){super.onStart();visible=true;bindCamera();bindMicrophone();}
+    @Override protected void onStart(){super.onStart();visible=true;cameraRows.resume();microphoneRows.resume();}
     private void fit(){int w=videoArea.getWidth(),h=videoArea.getHeight();if(w==0 || h==0)return;double scale=Math.min(w/(double)streamWidth,h/(double)streamHeight);FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)video.getLayoutParams();int nw=(int)(streamWidth*scale),nh=(int)(streamHeight*scale);if(p.width!=nw || p.height!=nh){p.width=nw;p.height=nh;p.gravity=Gravity.CENTER;video.setLayoutParams(p);}}
     private void reveal(){if(session==null)return;input.enable(false);toolbar.setVisibility(View.VISIBLE);handler.removeCallbacks(hideToolbar);if(!paused)handler.postDelayed(hideToolbar,5000);}
     private void settings(){paused=true;input.enable(false);handler.removeCallbacks(hideToolbar);new AlertDialog.Builder(this).setTitle("Client settings").setMessage(capabilities.getText()+"\n\nStylus: contact, hover, pressure, tilt, primary barrel button and eraser require support from the device and host. Barrel rotation and secondary stylus buttons are not forwarded. A passive capacitive stylus is touch input.\n\nUSB/Bluetooth keyboards use the host keyboard layout. IME composition and system-reserved keys are not forwarded.\n\nStatistics show received data and submitted decoder output, not end-to-end latency.")
@@ -289,7 +238,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         if(session!=null){int code=event.getKeyCode();if(code==KeyEvent.KEYCODE_F10 || code==KeyEvent.KEYCODE_F8 || (code==KeyEvent.KEYCODE_Q && event.isCtrlPressed() && event.isShiftPressed())){if(event.getAction()==KeyEvent.ACTION_DOWN){input.reset();if(code==KeyEvent.KEYCODE_Q)disconnectAll();else{paused=true;reveal();}}return true;}if(input.key(event))return true;}return super.dispatchKeyEvent(event);
     }
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(!focus)input.enable(false);else if(session!=null)input.enable(!paused && toolbar.getVisibility()!=View.VISIBLE);}
-    @Override protected void onStop(){visible=false;disconnect();if(cameraBinder!=null){cameraBinder.listen(null);cameraBinder=null;}if(cameraBound){unbindService(cameraConnection);cameraBound=false;}if(microphoneBinder!=null){microphoneBinder.listen(null);microphoneBinder=null;}if(microphoneBound){unbindService(microphoneConnection);microphoneBound=false;}super.onStop();}
+    @Override protected void onStop(){visible=false;disconnect();cameraRows.pause();microphoneRows.pause();super.onStop();}
     @Override protected void onDestroy(){disconnect();getSystemService(android.hardware.input.InputManager.class).unregisterInputDeviceListener(this);handler.removeCallbacksAndMessages(null);super.onDestroy();}
     public void surfaceCreated(SurfaceHolder holder){surfaceReady=true;}
     public void surfaceChanged(SurfaceHolder holder,int format,int width,int height){}

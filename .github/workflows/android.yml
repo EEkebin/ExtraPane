@@ -40,9 +40,10 @@ jobs:
         run: |
           mkdir -p out/android-host-checks
           source=apps/android/app/src/main/java/io/github/eekebin/extrapane
-          javac -d out/android-host-checks apps/android/tests/stubs/*.java "$source/AdmissionBroker.java" "$source/ConnectionValidation.java" apps/android/tests/AdmissionBrokerCheck.java apps/android/tests/ConnectionValidationCheck.java
+          javac -d out/android-host-checks apps/android/tests/stubs/*.java "$source/AdmissionBroker.java" "$source/ConnectionValidation.java" "$source/CaptureRegistry.java" "$source/CaptureAttempt.java" "$source/DeviceCaptureLease.java" apps/android/tests/AdmissionBrokerCheck.java apps/android/tests/ConnectionValidationCheck.java apps/android/tests/CaptureRegistryCheck.java
           java -cp out/android-host-checks io.github.eekebin.extrapane.AdmissionBrokerCheck
           java -cp out/android-host-checks io.github.eekebin.extrapane.ConnectionValidationCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.CaptureRegistryCheck
       - name: Build and lint
         working-directory: apps/android
         run: bash gradlew assembleDebug assembleDebugAndroidTest lintDebug assembleRelease --no-daemon --console=plain

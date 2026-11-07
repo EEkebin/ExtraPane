@@ -8,14 +8,12 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /** AudioRecord owns its native microphone on one worker; no UI audio IPC. */
 final class MicrophoneCapture implements AutoCloseable {
     record Choice(int id,String label){public String toString(){return label;}}
     record Packet(byte[] pcm,long position,boolean muted){}
     interface Failure{void failed(Exception error);}
-    private static final AtomicBoolean active=new AtomicBoolean();
     static List<Choice> choices(Context context){
         List<Choice> result=new ArrayList<>();
         for(AudioDeviceInfo device:context.getSystemService(AudioManager.class).getDevices(AudioManager.GET_DEVICES_INPUTS))
@@ -24,9 +22,9 @@ final class MicrophoneCapture implements AutoCloseable {
     }
     private final Context context;private final Choice choice;private final Failure failure;
     private final ArrayBlockingQueue<Packet> queue=new ArrayBlockingQueue<>(8);
-    private volatile boolean stopped,muted;private volatile Exception error;private Thread worker;
+    private volatile boolean stopped,muted;private volatile Exception error;private Thread worker;private DeviceCaptureLease sourceLease;
     MicrophoneCapture(Context context,Choice choice,Failure failure){this.context=context.getApplicationContext();this.choice=choice;this.failure=failure;}
-    synchronized void start(){if(worker!=null||stopped)throw new IllegalStateException("Create a new microphone generation");if(!active.compareAndSet(false,true))throw new IllegalStateException("Previous microphone cleanup is still pending");worker=new Thread(this::capture,"ExtraPane microphone capture");try{worker.start();}catch(RuntimeException error){active.set(false);throw error;}}
+    synchronized void start(){if(worker!=null||stopped)throw new IllegalStateException("Create a new microphone generation");sourceLease=DeviceCaptureLease.acquire("microphone:"+choice.id());worker=new Thread(this::capture,"ExtraPane microphone capture");try{worker.start();}catch(RuntimeException error){sourceLease.close();throw error;}}
     synchronized void mute(boolean value){muted=value;if(value){List<Packet> old=new ArrayList<>();queue.drainTo(old);for(Packet p:old)queue.offer(new Packet(new byte[960],p.position(),true));}}
     Packet next()throws Exception{if(error!=null)throw error;Packet packet=queue.poll(100,TimeUnit.MILLISECONDS);if(error!=null)throw error;return packet;}
     private void capture(){AudioRecord recorder=null;
@@ -62,7 +60,7 @@ final class MicrophoneCapture implements AutoCloseable {
                 }
             }
         }catch(Exception cause){if(!stopped){error=cause;failure.failed(cause);}}
-        finally{try{if(recorder!=null){try{if(recorder.getRecordingState()==AudioRecord.RECORDSTATE_RECORDING)recorder.stop();}catch(RuntimeException ignored){}recorder.release();}active.set(false);}catch(RuntimeException cleanup){error=cleanup;failure.failed(cleanup);}}
+        finally{try{if(recorder!=null){try{if(recorder.getRecordingState()==AudioRecord.RECORDSTATE_RECORDING)recorder.stop();}catch(RuntimeException ignored){}recorder.release();}sourceLease.close();}catch(RuntimeException cleanup){error=cleanup;failure.failed(cleanup);}}
     }
     public void close()throws IOException{
         stopped=true;queue.clear();Thread capture=worker;if(capture!=null){capture.interrupt();try{capture.join(2500);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("Interrupted microphone cleanup",e);}if(capture.isAlive())throw new IOException("Microphone driver cleanup is still pending");}
