@@ -43,7 +43,7 @@ permissions:
   contents: read
   pull-requests: read
 concurrency:
-  group: release-${{ github.ref }}-${{ github.event_name }}-${{ inputs.linux_only && 'linux' || 'all' }}
+  group: release-${{ github.ref }}-${{ github.event_name }}-${{ inputs.macos_only && 'macos' || inputs.android_only && 'android' || inputs.resource_platforms_only && 'resources' || inputs.linux_only && 'linux' || 'all' }}
   cancel-in-progress: false
 jobs:
   metadata:

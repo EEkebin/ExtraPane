@@ -38,3 +38,13 @@ camera/microphone endpoints must be visible to consumer applications. Do not mar
 these physical checks complete based only on compilation or API return values.
 
 See IMPLEMENTATION-CHECKLIST.md for incremental evidence and remaining limits.
+
+## Feasibility decisions (2026-11-07)
+
+Android same-source camera/microphone sharing is implemented in the development branch using a shared producer and independent destinations. Linux already uses this model. Physical multi-server delivery remains a validation gate.
+
+Linux USB is possible, but requires a narrowly scoped privileged helper, installed kernel USB/IP support, exact device ownership, unmount/eject/rebind and crash recovery. The AppImage-only deployment does not implement that installation lifecycle. Defer this separate integration rather than presenting file transfer as USB. See the Linux kernel USB/IP guide: https://docs.kernel.org/usb/usbip_protocol.html .
+
+An ordinary Android APK can request access to selected USB peripherals, but mounted-storage export needs safe filesystem detachment; Android's MOUNT_UNMOUNT_FILESYSTEMS permission is not available to third-party apps. Generic imported USB devices also require a system virtual-host integration not provided here. USB remains unavailable in the stock APK; no rooting or security changes are proposed. References: https://developer.android.com/develop/connectivity/usb/host and https://developer.android.com/reference/android/Manifest.permission#MOUNT_UNMOUNT_FILESYSTEMS .
+
+Proceed with native macOS camera/microphone sources and resource selection. Receiving a normal virtual camera needs a signed Core Media I/O system extension; a virtual microphone needs an installed Core Audio HAL plug-in. These are deployment gates beyond the current ad-hoc ZIP/DMG, not evidence that source capture is impossible. References: https://developer.apple.com/documentation/coremediaio/creating-a-camera-extension-with-core-media-i-o and https://developer.apple.com/documentation/coreaudio/creating-an-audio-server-driver-plug-in . Shared Qt frontend migration and complete resource parity remain unfinished.

@@ -41,6 +41,7 @@ void ResourceSession::run(){@autoreleasepool{
         payload=wire::encode_request({binding.resource,options_.kind,kind==resource::Kind::Camera?"camera":"microphone"});
         control.send({{wire::Operation::request,options_.kind,binding.resource,static_cast<uint32_t>(payload.size())},std::move(payload)});
         reply=control.receive();require(reply.header.operation==wire::Operation::grant&&reply.header.kind==options_.kind&&reply.header.resource_id==binding.resource&&reply.payload.empty(),"Server rejected this resource; check its receiving component");
+        require(!cancelled(),"Connection cancelled");
         resource::Capture capture(choice);media::Channel camera(binding,read,write);microphone_wire::Channel microphone(binding,read,write);
         bool announced=false;auto announce=[&]{if(!announced){announced=true;if(callbacks_.connected)callbacks_.connected(choice.width,choice.height,choice.fps);}};
         dm::linux_client::PcmPacketizer pcm(binding,[&](const auto& frame){microphone.send(frame);announce();});uint64_t sequence=0;

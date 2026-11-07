@@ -37,5 +37,3 @@ public final class CaptureFanoutCheck {
         System.out.println("Android shared capture fanout checks passed");
     }
 }
-
-
