@@ -263,3 +263,5 @@ The live consumer probe subsequently reported MF_E_INVALID_STATE_TRANSITION. Sou
 2026-11-07 group header hit area: empty space and title on each resource group header now toggle expansion, with header background pointer handling beneath the separate chevron/add/disconnect controls. Child actions remain independent. Included in finalpre19 UI check/package.
 
 2026-11-07 About branding: standard packaged ExtraPane icon added at upper-right of About heading with aspect ratio preserved. Included alongside scrollbar gutters and full-header collapse behavior in pre19.
+
+2026-11-07 collapsed sidebar alignment: menu, navigation and About icons now share the exact rail center, with explicit button padding and geometry instead of text-layout margins. Expanded labels retain consistent icon spacing. Final pre19 includes this adjustment.

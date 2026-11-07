@@ -99,11 +99,11 @@ ApplicationWindow {
             Rectangle { anchors.right: parent.right; height: parent.height; width: 1; color: "#1a2940" }
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 12; spacing: 8
-                RowLayout {
+                Item {
                     Layout.fillWidth: true; Layout.preferredHeight: 64
-                    Image { visible: !root.sidebarCollapsed; source: "qrc:/extrapane.png"; Layout.preferredWidth: 30; Layout.preferredHeight: 30; fillMode: Image.PreserveAspectFit }
-                    Label { visible: !root.sidebarCollapsed; text: "ExtraPane"; font.pixelSize: 20; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                    IconButton { objectName: "sidebarToggle"; symbol: "menu"; description: root.sidebarCollapsed ? "Expand navigation" : "Collapse navigation"; Layout.alignment: Qt.AlignHCenter; onClicked: root.sidebarCollapsed = !root.sidebarCollapsed }
+                    Image { id: brandIcon; visible: !root.sidebarCollapsed; source: "qrc:/extrapane.png"; width: 30; height: 30; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; fillMode: Image.PreserveAspectFit }
+                    Label { visible: !root.sidebarCollapsed; text: "ExtraPane"; font.pixelSize: 20; font.weight: Font.DemiBold; anchors.left: brandIcon.right; anchors.leftMargin: 6; anchors.verticalCenter: parent.verticalCenter }
+                    IconButton { objectName: "sidebarToggle"; symbol: "menu"; description: root.sidebarCollapsed ? "Expand navigation" : "Collapse navigation"; x: root.sidebarCollapsed ? (parent.width - width) / 2 : parent.width - width; anchors.verticalCenter: parent.verticalCenter; onClicked: root.sidebarCollapsed = !root.sidebarCollapsed }
                 }
                 Repeater {
                     model: [{name: "Server", icon: "server"}, {name: "Client", icon: "client"}, {name: "Settings", icon: "settings"}]
@@ -117,10 +117,10 @@ ApplicationWindow {
                         ToolTip.visible: root.sidebarCollapsed && hovered
                         ToolTip.text: modelData.name; ToolTip.delay: 400
                         onClicked: root.page = index
-                        contentItem: RowLayout {
-                            spacing: 14
-                            AppIcon { symbol: navigation.modelData.icon; stroke: root.page === navigation.index ? "#9ac4ff" : "#8fa2bf"; Layout.preferredWidth: 22; Layout.preferredHeight: 22; Layout.leftMargin: 10 }
-                            Label { visible: !root.sidebarCollapsed; text: navigation.modelData.name; color: root.page === navigation.index ? "#eaf2ff" : "#aabbd3"; font.weight: root.page === navigation.index ? Font.DemiBold : Font.Normal; Layout.fillWidth: true }
+                        padding: 0
+                        contentItem: Item {
+                            AppIcon { id: navIcon; symbol: navigation.modelData.icon; stroke: root.page === navigation.index ? "#9ac4ff" : "#8fa2bf"; width: 22; height: 22; x: root.sidebarCollapsed ? (parent.width - width) / 2 : 14; anchors.verticalCenter: parent.verticalCenter }
+                            Label { visible: !root.sidebarCollapsed; text: navigation.modelData.name; color: root.page === navigation.index ? "#eaf2ff" : "#aabbd3"; font.weight: root.page === navigation.index ? Font.DemiBold : Font.Normal; anchors.left: navIcon.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter }
                         }
                         background: Rectangle {
                             radius: 10
@@ -138,7 +138,11 @@ ApplicationWindow {
                     Accessible.name: "About"
                     ToolTip.visible: root.sidebarCollapsed && hovered; ToolTip.text: "About"
                     onClicked: root.page = 3
-                    contentItem: RowLayout { spacing: 14; AppIcon { symbol: "about"; Layout.preferredWidth: 22; Layout.preferredHeight: 22; Layout.leftMargin: 10; stroke: root.page === 3 ? "#9ac4ff" : "#8fa2bf" } Label { visible: !root.sidebarCollapsed; text: "About"; color: "#aabbd3"; Layout.fillWidth: true } }
+                    padding: 0
+                    contentItem: Item {
+                        AppIcon { id: aboutIcon; symbol: "about"; width: 22; height: 22; x: root.sidebarCollapsed ? (parent.width - width) / 2 : 14; anchors.verticalCenter: parent.verticalCenter; stroke: root.page === 3 ? "#9ac4ff" : "#8fa2bf" }
+                        Label { visible: !root.sidebarCollapsed; text: "About"; color: "#aabbd3"; anchors.left: aboutIcon.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter }
+                    }
                     background: Rectangle { radius: 10; color: root.page === 3 ? "#192e4b" : aboutNavigation.hovered ? "#132136" : "transparent" }
                 }
             }
