@@ -121,6 +121,20 @@ int main(int argc,char** argv){
         until([&]{return connections->connection(storage)["phase"]=="active";});runtime->toggle(storage2,true);require(connections->connection(storage2)["phase"]!="active"&&connections->connection(storage2)["status"].toString().contains("reserved"));
         runtime->disconnectAll();until([&]{return connections->connection(storage)["connectionEnabled"].toBool()&&connections->connection(storage)["status"].toString().contains("busy");});require(runtime->active());
         runtime->disconnectAll();until([&]{return !runtime->active();});require(connections->connection(storage)["status"].toString().contains("returned"));qunsetenv("EXTRAPANE_TEST_USB_BUSY");
+        // An interrupted-but-proven source return is not a clean-eject claim or
+        // unresolved recovery reservation. Both controllers retain its warning.
+        qputenv("EXTRAPANE_TEST_USB_INTERRUPTED","1");runtime->toggle(storage,true);
+        until([&]{return connections->connection(storage)["phase"]=="active";});runtime->disconnectAll();
+        until([&]{return connections->connection(storage)["status"].toString().contains("interrupted remote session");});
+        require(!connections->connection(storage)["connectionEnabled"].toBool()&&connections->connection(storage)["phase"]=="returning");
+        until([&]{return !runtime->active();});
+        require(connections->connection(storage)["phase"]=="idle"&&!connections->hasReservedResources()&&connections->connection(storage)["status"].toString().contains("check files for incomplete writes"));
+        model->select(3,true);controller.connectTo("192.0.2.1","0.0.0.0",false,0,0,43824,{});
+        until([&]{return status(model,3).startsWith("USB storage is shared");});controller.disconnectFromServer();
+        until([&]{return status(model,3).contains("interrupted remote session");});require(!model->selected(Kind::usb));
+        until([&]{return !controller.active();});
+        require(!running(model,3)&&!model->selected(Kind::usb)&&status(model,3).contains("check files for incomplete writes"));
+        qunsetenv("EXTRAPANE_TEST_USB_INTERRUPTED");
         std::cout<<"Persistent Windows controller fake-child lifecycle checks passed\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
 }

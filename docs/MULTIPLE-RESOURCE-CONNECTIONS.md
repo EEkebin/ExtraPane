@@ -6,7 +6,7 @@ Keep one ExtraPane installation and one server listener. Replace the client's
 fixed four resource rows with repeatable Display, Camera, Microphone and USB
 connection rows. Every row has a stable identity, source selection, independent
 enabled state, status, and lifecycle. Disconnect all stops every row, preserving
-USB safe-return/veto rules.
+USB exclusive-ownership and bounded-return rules.
 
 The user requested two destination modes:
 
@@ -110,9 +110,10 @@ The runtime uses `broker-camera` / `broker-microphone`, sends row-scoped `ADD` a
 `REMOVE` commands, and consumes `RESOURCE_EVENT` messages. Source-wide camera
 mirroring is synchronized across its rows; microphone mute is per recipient.
 Disconnecting one destination leaves recipients on other destinations running.
-Display and USB rows retain independent native helpers. USB return vetoes retain
-ownership and cancel that destination's pending disconnect; uncertain recovery
-is never treated as a freely reusable source.
+Display and USB rows retain independent native helpers. USB first requests
+receiver eject, then ends the exporter and reclaims the exact source on refusal
+or timeout when local ownership checks pass. Interrupted return keeps a visible
+incomplete-write warning. Unknown ownership is not treated as freely reusable.
 
 Each display row selects a current local monitor and opens an independent
 resizable receiver window. Custom requests use even dimensions from 2 to 4096,

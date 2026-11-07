@@ -110,11 +110,21 @@ Not implemented: system audio, microphone forwarding, Windows+K/Miracast, IPv6 t
 
 ## Uninstall
 
-- Uninstall **ExtraPane** to remove the per-user app. Its uninstaller offers **Remove saved settings on this PC**, unchecked by default. Settings are also used by portable copies.
-- Uninstall **ExtraPane Virtual Display Driver** separately to remove driver packages and certificate entries that its installer added. Administrator permission is required. Stop sessions first; other users and portable servers on this PC also depend on this driver.
-- Pre-existing driver packages and certificate trust are preserved. Development drivers installed with older manual scripts are not automatically adopted or removed.
+Uninstall **ExtraPane** from Windows Installed apps. The single uninstaller removes
+its managed display, camera, microphone and USB-source components, then clears
+current-account settings and the known legacy pairing. Administrator permission
+is required. Independently installed/shared drivers and pre-existing certificate
+trust are preserved; files and registrations with changed or unproven ownership
+are not deleted.
 
-The driver uninstaller keeps its files and ownership records if removal fails so you can retry. See [driver installation](docs/DRIVER-INSTALLATION.md) for logs, silent options and recovery.
+You do not need to reconnect a missing USB card just to update the application.
+The installer reuses an exact verified compatible USB backend without changing
+its bindings or recovery records. During uninstall, the USB helper can retire
+verified inactive ownership for an absent device, keeping an audit record; this
+is not a clean-eject claim and does not write to a replacement card. A live export,
+foreign registration or ambiguous ownership still stops removal with a useful
+message, while keeping the cleanup helpers available. See [USB lifecycle and
+setup](docs/USB.md) and [driver installation](docs/DRIVER-INSTALLATION.md).
 
 ## Build and verification
 

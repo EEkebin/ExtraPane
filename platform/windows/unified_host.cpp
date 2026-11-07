@@ -45,20 +45,21 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
     auto options=requested;options.timeout=std::chrono::milliseconds(250);
     net::TcpListener listener(options);Slots slots;
     std::atomic_bool quit_pending=false;
+    Clock::time_point quit_deadline{};
     std::unique_ptr<Lease> camera_lease;std::string camera_busy;
     try{camera_lease=std::make_unique<Lease>(L"Local\\ExtraPane.CameraServer");}catch(const std::exception& error){camera_busy=error.what();report("SERVER_RESOURCE_UNAVAILABLE kind=camera "+camera_busy);}
     struct Worker{std::thread thread;std::atomic_bool done=true;};std::array<Worker,16> workers;
     report("SERVER_STARTED resources=display,camera,microphone,usb");report("LISTENING "+listener.endpoints());
     auto events=[&](const std::string& text){
-        if(text.starts_with("USB_EJECT_BUSY")){control.quit=false;quit_pending=false;report("SERVER_STOP_BLOCKED USB storage is busy; close its files and retry Stop server.");}
-        else if(text.starts_with("USB_RETURN_FAILED")){control.quit=false;quit_pending=false;report("SERVER_STOP_BLOCKED USB return failed: "+text.substr(18)+". The device remains reserved; inspect USB diagnostics before retrying.");}
+        if(control.quit.load()&&(text.starts_with("USB_EJECT_BUSY")||text.starts_with("USB_RETURN_FAILED")))report("SERVER_STOPPING USB could not eject cleanly; ending the session so the source can reclaim its device. Writes may be incomplete.");
         report(text);
     };
     struct Join{std::array<Worker,16>& workers;Control& control;~Join(){control.stop=true;for(auto& w:workers)if(w.thread.joinable())w.thread.join();}}join{workers,control};
     while(!control.stop.load()){
         if(control.quit.load()){
             if(slots.stop_if_no_usb(control))break;
-            if(!quit_pending.exchange(true))control.eject_usb=true;
+            if(!quit_pending.exchange(true)){control.eject_usb=true;quit_deadline=Clock::now()+std::chrono::seconds(10);}
+            if(Clock::now()>=quit_deadline){report("SERVER_STOPPING USB eject timed out; ending the import session. Writes may be incomplete.");control.stop=true;break;}
         }
         try{
             auto socket=listener.accept();if(control.stop.load())break;

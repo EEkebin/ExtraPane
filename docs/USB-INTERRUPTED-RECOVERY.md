@@ -1,8 +1,27 @@
 # Explicit interrupted USB return
 
-This is an operator-only recovery procedure, not an ordinary disconnect action.
-The app and installer never invoke it. Use normal USB return whenever the
-receiving machine can still eject the device.
+The manual command below handles older interrupted records. Current sessions
+first attempt normal receiver eject, then revoke their own exporter and verify
+exclusive local ownership before restoring the exact source if needed. An
+interrupted return is never represented as a clean eject.
+
+## An unplugged source must not block uninstall
+
+`ExtraPane.UsbRecovery.exe --release-absent <journal-id>` checks the protected
+version 2 bound record, exact private binding and device instance, fresh device
+absence, and absence of an exporter. It archives the original record under
+`UsbRecoveryHistory` with `InterruptedAbsentRelease`, removes only that binding,
+and retires the active record. It does not open a disk or change its attributes.
+It cannot prove the absent medium's filesystem health or restore an offline bit
+on hardware that is not connected.
+
+Uninstall invokes `--prepare-uninstall` to reconcile eligible inactive records
+before checking/removing the backend. Compatible in-place upgrades verify and
+reuse the existing backend without changing bindings or recovery records.
+Foreign, active or ambiguous ownership is still a reason to stop cleanup with
+an actionable error. Do not delete these records manually.
+
+## Manual interrupted return for an attached source
 
 Version 2 `bound` journals cannot distinguish a failed startup from a device that
 was imported and written to. Seeing no imported disk now does not prove that

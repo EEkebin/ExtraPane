@@ -4,10 +4,14 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <stdexcept>
+#include <string_view>
 namespace dm::usb {
 struct Disk;
 struct PendingRecovery;
 struct HostDevice {std::wstring instance_id;std::string bus_id;std::wstring binding_id;bool forced=false,attached=false;};
+bool matches_import_port(std::string_view output,unsigned port,std::uint16_t local_port,
+    const std::string& bus,const std::string& serial,bool require_active);
 // Pure prerequisite policy. Native adoption additionally re-reads the protected
 // journal, proves the physical disk identity and checks the binding registry.
 extrapane::Availability ejected_binding_adoption_policy(const PendingRecovery& selected,
@@ -25,6 +29,8 @@ public:
     virtual extrapane::Availability adopt_ejected_binding(const Disk&,const PendingRecovery&){return {false,"This backend cannot adopt a verified ejected binding"};}
     virtual extrapane::Availability adopt_interrupted_binding(const Disk&,const PendingRecovery&){return {false,"This backend cannot adopt an explicitly acknowledged interrupted binding"};}
     virtual extrapane::Availability verify_idle_source(const Disk&){return {false,"This backend cannot prove an idle unbound source"};}
+    virtual std::wstring absent_binding_source(const PendingRecovery&){return {};}
+    virtual extrapane::Availability release_absent_binding(const PendingRecovery&,const std::wstring&){return {false,"Absent source release is unavailable"};}
     virtual extrapane::Availability start(const std::wstring& instance,const std::string& bus,std::uint16_t loopbackPort)=0;
     virtual void stop()noexcept=0;
     virtual void release()noexcept=0;
@@ -40,6 +46,9 @@ public:
     virtual bool verify_owned(unsigned port,std::uint16_t local_port,const std::string& bus,const std::string& serial)=0;
     // Caller must have completed a device-specific successful PnP eject first.
     virtual void detach_ejected(unsigned port,std::uint16_t local_port,const std::string& bus,const std::string& serial)=0;
+    // Interrupted teardown: exact process-owned port/URI/nonce only. This does
+    // not claim destination flush or authorize a clean-eject receipt.
+    virtual void detach_interrupted(unsigned,std::uint16_t,const std::string&,const std::string&){throw std::runtime_error("Interrupted import detach is unavailable");}
 };
 std::unique_ptr<ImportRunner> native_import_runner();
 }

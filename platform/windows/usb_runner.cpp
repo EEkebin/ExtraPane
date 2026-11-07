@@ -1,6 +1,7 @@
 #include <dm/usb_runner.hpp>
 #include <dm/usb_recovery.hpp>
 #include <windows.h>
+#include <cfgmgr32.h>
 #include <shlobj.h>
 #include <aclapi.h>
 #include <bcrypt.h>
@@ -98,8 +99,8 @@ std::wstring as_wide(const std::string& s){return {s.begin(),s.end()};}
 struct Process {
     HANDLE process=nullptr,output=nullptr,job=nullptr;
     ~Process(){stop();}
-    void stop()noexcept{if(job){CloseHandle(job);job=nullptr;}if(process){if(WaitForSingleObject(process,0)==WAIT_TIMEOUT){TerminateProcess(process,1);WaitForSingleObject(process,3000);}CloseHandle(process);process=nullptr;}if(output){CloseHandle(output);output=nullptr;}}
-    bool running()const noexcept{return process&&WaitForSingleObject(process,0)==WAIT_TIMEOUT;}
+    void stop()noexcept{if(job){CloseHandle(job);job=nullptr;}if(process){if(WaitForSingleObject(process,0)==WAIT_TIMEOUT){TerminateProcess(process,1);WaitForSingleObject(process,3000);}if(WaitForSingleObject(process,0)==WAIT_OBJECT_0){CloseHandle(process);process=nullptr;}}if(output){CloseHandle(output);output=nullptr;}}
+    bool running()const noexcept{return process&&WaitForSingleObject(process,0)!=WAIT_OBJECT_0;}
     std::string drain(){std::string result;DWORD available=0;while(output&&PeekNamedPipe(output,nullptr,0,nullptr,&available,nullptr)&&available){char bytes[4096];DWORD got=0;check(ReadFile(output,bytes,std::min<DWORD>(available,sizeof(bytes)),&got,nullptr)&&got,"Read USB host output failed");result.append(bytes,got);check(result.size()<=1024*1024,"USB host output exceeded limit");}return result;}
     void start(const fs::path& exe,const std::vector<std::wstring>& args){
         stop();SECURITY_ATTRIBUTES security{sizeof(security),nullptr,TRUE};HANDLE write=nullptr;check(CreatePipe(&output,&write,&security,0),"Cannot create USB host output pipe");Handle writer(write);check(SetHandleInformation(output,HANDLE_FLAG_INHERIT,0),"Cannot protect USB output pipe");Handle input(CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&security,OPEN_EXISTING,0,nullptr));check(input.value!=INVALID_HANDLE_VALUE,"Cannot open USB host input");
@@ -124,10 +125,31 @@ std::wstring registry_binding(const std::wstring& instance,bool external=false){
     for(DWORD i=0;i<1024;++i){wchar_t name[128];DWORD size=128;const auto code=RegEnumKeyExW(devices.value,i,name,&size,nullptr,nullptr,nullptr,nullptr);if(code==ERROR_NO_MORE_ITEMS)return result;check(code==ERROR_SUCCESS,"Malformed USB binding registry");Key key;check(RegOpenKeyExW(devices.value,name,0,KEY_QUERY_VALUE|KEY_WOW64_64KEY,&key.value)==ERROR_SUCCESS,"Cannot inspect USB binding");wchar_t value[4096]{};DWORD bytes=sizeof(value);check(RegGetValueW(key.value,nullptr,L"InstanceId",RRF_RT_REG_SZ,nullptr,value,&bytes)==ERROR_SUCCESS,"Missing USB binding identity");if(same(value,instance)){check(result.empty(),"Duplicate USB binding identity");result=canonical_guid(name);}}
     throw std::runtime_error("Too many USB bindings");
 }
+std::wstring private_binding_instance(const std::wstring& binding){
+    Key devices;const auto opened=RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE\\ExtraPane\\UsbHost\\Devices",0,KEY_ENUMERATE_SUB_KEYS|KEY_WOW64_64KEY,&devices.value);check(opened==ERROR_SUCCESS,"Private USB binding registry unavailable");std::wstring instance;
+    for(DWORD i=0;i<1024;++i){wchar_t name[128]{};DWORD length=128;const auto status=RegEnumKeyExW(devices.value,i,name,&length,nullptr,nullptr,nullptr,nullptr);if(status==ERROR_NO_MORE_ITEMS)return instance;check(status==ERROR_SUCCESS,"Cannot enumerate private bindings");
+        if(!same(canonical_guid(name),binding))continue;check(instance.empty(),"Duplicate exact private binding identity");Key key;check(RegOpenKeyExW(devices.value,name,0,KEY_QUERY_VALUE|KEY_WOW64_64KEY,&key.value)==ERROR_SUCCESS,"Cannot inspect exact private binding");wchar_t text[MAX_DEVICE_ID_LEN]{};DWORD size=sizeof text;
+        check(RegGetValueW(key.value,nullptr,L"InstanceId",RRF_RT_REG_SZ,nullptr,text,&size)==ERROR_SUCCESS&&instance_valid(text),"Invalid private binding source identity");instance=text;
+    }throw std::runtime_error("Private binding inventory exceeds bounds");
+}
+void require_absent_node(const std::wstring& instance){
+    check(instance_valid(instance),"Invalid absent USB identity");DEVINST node=0;const auto status=CM_Locate_DevNodeW(&node,const_cast<wchar_t*>(instance.c_str()),CM_LOCATE_DEVNODE_NORMAL);
+    check(status==CR_NO_SUCH_DEVNODE,"USB source is present or its absence cannot be verified; absent release refused");
+}
 class NativeRunner final:public HostRunner {
     Process server_;HANDLE claim_=nullptr;std::wstring instance_,owned_;fs::path exe_;
     template<class F>Availability attempt(F&& f){try{f();return {true,{}};}catch(const winrt::hresult_error&){return {false,"Malformed USB backend data or missing Windows JSON runtime"};}catch(const std::exception& e){return {false,e.what()};}}
     void no_server(){Handle mutex(OpenMutexW(SYNCHRONIZE,FALSE,L"Global\\usbipd-{A8256F62-728F-49B0-82BB-E5E48F83D28F}"));if(mutex.value)throw std::runtime_error("An independent USB host service is running; leave it unchanged and stop it explicitly before sharing");check(GetLastError()==ERROR_FILE_NOT_FOUND,"Cannot verify USB host service ownership");}
+    void check_absent(const std::wstring& instance,const std::wstring& binding,bool allow_binding){
+        no_server();require_absent_node(instance);unsigned matches=0;
+        for(const auto& device:devices()){
+            if(!device.binding_id.empty()&&same(device.binding_id,binding))check(same(device.instance_id,instance),"The journal binding now belongs to a different device");
+            if(!same(device.instance_id,instance))continue;++matches;check(matches==1&&!device.attached&&!device.forced&&device.bus_id.empty(),"USB source is active, present or ambiguous");
+            check(device.binding_id.empty()||(allow_binding&&same(device.binding_id,binding)),"Foreign binding on absent USB source");
+        }
+        const auto registered=registry_binding(instance);check(registered.empty()||(allow_binding&&same(registered,binding)),"Private binding identity changed");
+        check(registry_binding(instance,true).empty(),"An independently owned binding exists for this USB source");require_absent_node(instance);no_server();
+    }
 public:
     ~NativeRunner()override{stop();release();}
     Availability ready()override{return attempt([&]{exe_=verified_executable();backend_installed();});}
@@ -168,6 +190,22 @@ public:
         std::optional<HostDevice> device;for(const auto& current:devices())if(same(current.instance_id,instance_)){check(!device,"Ambiguous idle USB instance");device=current;}
         check(device&&device->binding_id.empty()&&!device->attached&&!device->forced&&registry_binding(instance_).empty(),"USB source is absent, bound or attached");
     });}
+    std::wstring absent_binding_source(const PendingRecovery& selected)override{
+        check(selected.record&&selected.error.empty()&&absent_release_policy(*selected.record).available,"This journal cannot release absent ownership");
+        bool found=false;for(const auto& current:pending_recoveries())if(current.journal_id==selected.journal_id){check(!found&&current.record==selected.record&&current.error.empty(),"Absent journal changed or is ambiguous");found=true;}check(found,"Absent recovery journal disappeared");
+        const auto binding=canonical_guid(as_wide(selected.record->binding_id));auto instance=private_binding_instance(binding);
+        if(instance.empty())instance=absent_release_instance(selected);check(!instance.empty(),"Exact absent binding is missing and no prior protected release audit identifies its source");
+        check_absent(instance,binding,true);return instance;
+    }
+    Availability release_absent_binding(const PendingRecovery& selected,const std::wstring& instance)override{return attempt([&]{
+        check(absent_release_authorized(selected,instance),"Absent ownership release has no protected authorization audit");
+        check(same(absent_binding_source(selected),instance),"Absent release source changed after selection");
+        const auto reserved=reserve(instance);check(reserved.available,reserved.reason.c_str());struct Release{NativeRunner& runner;~Release(){runner.release();}}release{*this};
+        const auto binding=canonical_guid(as_wide(selected.record->binding_id));check_absent(instance,binding,true);
+        const auto existing=registry_binding(instance);
+        if(!existing.empty()){check(same(existing,binding),"Refusing to remove a foreign absent binding");owned_=binding;const auto removed=unbind(binding);check(removed.available,removed.reason.c_str());}
+        check_absent(instance,binding,false);
+    });}
     Availability start(const std::wstring& instance,const std::string& bus,std::uint16_t port)override{auto result=attempt([&]{check(claim_&&same(instance,instance_)&&bus_valid(bus)&&port&&!running()&&!owned_.empty()&&same(registry_binding(instance_),owned_),"USB export has no exact owned binding");no_server();exe_=verified_executable();start_host_driver();server_.start(exe_,{L"server",L"usbipd:Port="+std::to_wstring(port),L"usbipd:AllowedBusId="+as_wide(bus),L"usbipd:AllowedInstanceId="+instance,L"Logging:LogLevel:Default=None"});std::string output;const auto deadline=GetTickCount64()+15000;while(server_.running()&&GetTickCount64()<deadline){output+=server_.drain();check(output.size()<=1024*1024,"USB exporter output exceeded limit");if(output.find("USBIPD_LOOPBACK_READY")!=std::string::npos)return;Sleep(25);}output+=server_.drain();server_.stop();auto detail=output.substr(0,2048);for(auto& c:detail)if(static_cast<unsigned char>(c)<32)c=' ';throw std::runtime_error("Private USB exporter did not confirm loopback readiness: "+detail);});if(!result.available)server_.stop();return result;}
     void stop()noexcept override{server_.stop();}
     void release()noexcept override{if(claim_){CloseHandle(claim_);claim_=nullptr;}instance_.clear();/* Binding deliberately retained for explicit recovery if unbind was not safe. */}
@@ -192,13 +230,19 @@ public:
     }
     bool verify_owned(unsigned port,std::uint16_t local,const std::string& bus,const std::string& serial)override{
         if(!owned_||port!=owned_||local!=local_||bus!=bus_||serial!=serial_)return false;
-        const auto output=command(exe_,{L"port",std::to_wstring(port)});const auto uri="-> usbip://127.0.0.1:"+std::to_string(local)+"/"+bus;const auto identity="-> serial: "+serial;
-        std::istringstream lines(output);std::string line;unsigned headers=0,uris=0,serials=0;const auto heading="Port "+(port<10?std::string("0"):std::string{})+std::to_string(port)+":";
-        while(std::getline(lines,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();const auto begin=line.find_first_not_of(' ');if(begin!=line.npos)line.erase(0,begin);if(line.starts_with("Port ")){if(!line.starts_with(heading+" device in use at "))return false;++headers;}if(line.starts_with("-> usbip://")){if(line!=uri)return false;++uris;}if(line.starts_with("-> serial:")){if(line!=identity)return false;++serials;}}
-        return headers==1&&uris==1&&serials==1;
+        const auto output=command(exe_,{L"port",std::to_wstring(port)});
+        return matches_import_port(output,port,local,bus,serial,true);
     }
     void detach_ejected(unsigned port,std::uint16_t local,const std::string& bus,const std::string& serial)override{
         check(verify_owned(port,local,bus,serial),"USB port no longer belongs to this session");command(exe_,{L"detach",L"--port",std::to_wstring(port)});owned_=0;
+    }
+    void detach_interrupted(unsigned port,std::uint16_t local,const std::string& bus,const std::string& serial)override{
+        check(owned_&&port==owned_&&local==local_&&bus==bus_&&serial==serial_,"Interrupted USB detach does not match this process's exact attachment");
+        const auto output=command(exe_,{L"port",std::to_wstring(port)});
+        // Error/disconnected descriptions may vary; exact original port,
+        // loopback URI and per-attachment nonce remain mandatory.
+        check(matches_import_port(output,port,local,bus,serial,false),"Interrupted import identity is absent or ambiguous; refusing detach");
+        command(exe_,{L"detach",L"--port",std::to_wstring(port)});owned_=0;
     }
 };
 

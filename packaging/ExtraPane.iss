@@ -1,4 +1,5 @@
 #define Role GetEnv("EXTRAPANE_ROLE")
+#define ProductName "ExtraPane"
 #define ReleaseVersion GetEnv("EXTRAPANE_VERSION")
 #define SourceDir GetEnv("EXTRAPANE_STAGE")
 #define OutputPath GetEnv("EXTRAPANE_DIST")
@@ -9,7 +10,7 @@
 [Setup]
 ; Stable identity recognizes installations made under the previous name.
 AppId=SideScreen
-AppName=ExtraPane
+AppName={#ProductName}
 AppVersion={#ReleaseVersion}
 VersionInfoVersion={#GetEnv("EXTRAPANE_NUMERIC_VERSION")}
 VersionInfoProductTextVersion={#ReleaseVersion}
@@ -29,6 +30,7 @@ OutputDir={#OutputPath}
 OutputBaseFilename=ExtraPane-{#ReleaseVersion}-Setup-win-x64
 SetupIconFile=..\assets\branding\ExtraPane.ico
 UninstallDisplayIcon={app}\{#Role}.exe
+UninstallDisplayName={#ProductName}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -177,6 +179,21 @@ begin
   end;
 end;
 
+procedure CaptureComponentOutput(const S: String; const Error, FirstLine: Boolean);
+begin
+  Log(S);
+  if Trim(S) <> '' then ComponentError := Copy(Trim(S), 1, 1024);
+end;
+
+function RunComponent(const Filename, Params, WorkingDir: String; var Code: Integer): Boolean;
+begin
+  Code := -1;
+  ComponentError := '';
+  Result := ExecAndLogOutput(Filename, Params, WorkingDir, SW_HIDE,
+    ewWaitUntilTerminated, Code, @CaptureComponentOutput);
+end;
+
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer;
 begin
@@ -230,28 +247,13 @@ begin
 #if HasUsbHost
   if (Result = '') and UsbHostChoice.Checked and not UsbHostInstalled then begin
     ExtractTemporaryFile('ExtraPane.UsbHostSetup.exe');
-    if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.UsbHostSetup.exe'),
-      '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+    if not RunComponent(ExpandConstant('{tmp}\ExtraPane.UsbHostSetup.exe'), '--install', '', Code) then
       Result := 'USB source setup could not start or administrator permission was canceled. Retry or clear the USB storage sharing option.'
     else if (Code <> 0) and (Code <> 3010) then
-      Result := 'USB source setup failed (exit ' + IntToStr(Code) + '). Existing shared drivers are not replaced or removed. Eject and recover any pending USB transfers before retrying; incompatible components need separate resolution.'
+      Result := 'USB source support could not be prepared (exit ' + IntToStr(Code) + '). ' + ComponentError + #13#10 + 'An exact compatible installed backend is reused without requiring a missing USB card. Existing bindings and recovery records are preserved; a changed or incomplete backend needs repair.'
     else begin UsbHostInstalled := True; if Code = 3010 then NeedsRestart := True; end;
   end;
 #endif
-end;
-
-procedure CaptureComponentOutput(const S: String; const Error, FirstLine: Boolean);
-begin
-  Log(S);
-  if Trim(S) <> '' then ComponentError := Copy(Trim(S), 1, 1024);
-end;
-
-function RunComponent(const Filename, Params, WorkingDir: String; var Code: Integer): Boolean;
-begin
-  Code := -1;
-  ComponentError := '';
-  Result := ExecAndLogOutput(Filename, Params, WorkingDir, SW_HIDE,
-    ewWaitUntilTerminated, Code, @CaptureComponentOutput);
 end;
 
 function RunDisplayManager(Action: String; var Code: Integer): Boolean;
@@ -349,11 +351,23 @@ begin
     SuppressibleMsgBox('ExtraPane could not finish shutting down. Close it and stop its server before uninstalling.', mbError, MB_OK, IDOK);
 end;
 
+procedure StopUninstall(const Detail: String);
+begin
+  Log('ExtraPane uninstall stopped: ' + Detail);
+  SuppressibleMsgBox('ExtraPane could not finish uninstalling.' + #13#10#13#10 +
+    Detail + #13#10#13#10 +
+    'Close any active ExtraPane USB transfer and retry. You can install the latest ExtraPane over this installation to repair its cleanup tools without reconnecting a missing card.',
+    mbError, MB_OK, IDOK);
+  { Abort is a documented silent exception from usUninstall: retain the app and
+    its cleanup helpers without showing a Pascal runtime-error dialog. }
+  Abort;
+end;
+
 procedure DeleteSettingsKey(Key: String);
 begin
   if RegKeyExists(HKCU, Key) then
     if not RegDeleteKeyIncludingSubkeys(HKCU, Key) then
-      RaiseException('Unable to remove ExtraPane settings: ' + Key);
+      StopUninstall('Unable to remove ExtraPane settings: ' + Key);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -364,44 +378,52 @@ var
   Helper, ComponentFolder: String;
 begin
   if CurUninstallStep = usUninstall then begin
-    { Only retire never-exported records whose source is already online locally.
-      This does not force a disk online or discard unresolved remote ownership. }
+    { Reconcile safe local records and retire verified inactive absent-device
+      ownership. The helper archives interrupted records; it does not pretend a
+      clean eject or write to missing/replacement media. Active/foreign state blocks. }
     if FileExists(ExpandConstant('{app}\ExtraPane.UsbRecovery.exe')) then begin
-      if not RunComponent(ExpandConstant('{app}\ExtraPane.UsbRecovery.exe'), '--reconcile-online', '', CameraCode) then
-        RaiseException('USB recovery check could not start. ExtraPane files were retained.');
+      if not RunComponent(ExpandConstant('{app}\ExtraPane.UsbRecovery.exe'), '--prepare-uninstall', '', CameraCode) then
+        StopUninstall('USB recovery check could not start. ExtraPane files were retained.');
       if CameraCode <> 0 then
-        RaiseException('USB storage still needs recovery: ' + ComponentError + #13#10 + 'ExtraPane files were retained for retry.');
+        StopUninstall('USB cleanup could not establish safe inactive ownership: ' + ComponentError + #13#10 + 'ExtraPane files were retained.');
     end;
-    { USB first: a busy source or unrecovered device stops removal while every
-      recovery helper is still present. Independently owned USB drivers remain. }
+    { Verify source removal before deleting any component payload. }
+    if FileExists(ExpandConstant('{app}\ExtraPane.UsbHostSetup.exe')) then begin
+      if not RunComponent(ExpandConstant('{app}\ExtraPane.UsbHostSetup.exe'), '--check-removal', '', CameraCode) then
+        StopUninstall('USB source removal check could not start. ExtraPane files were retained.');
+      if CameraCode <> 0 then
+        StopUninstall('USB source support is still in use or its ownership changed: ' + ComponentError);
+    end;
+    { USB first: validated inactive stale ownership was retired above. Unrelated
+      shared drivers and foreign registrations are always preserved. }
     for Component := 0 to 1 do begin
       if Component = 0 then begin Helper := 'ExtraPane.UsbHostSetup.exe'; ComponentFolder := 'UsbHost'; end
       else begin Helper := 'ExtraPane.UsbSetup.exe'; ComponentFolder := 'Microphone'; end;
       if FileExists(ExpandConstant('{app}\') + Helper) then begin
         if not RunComponent(ExpandConstant('{app}\') + Helper, '--remove', '', CameraCode) then
-          RaiseException('Component cleanup could not start: ' + Helper + '. ExtraPane files were retained.');
+          StopUninstall('Component cleanup could not start: ' + Helper + '. ExtraPane files were retained.');
         if CameraCode = 3010 then ComponentRestart := True;
         if (CameraCode <> 0) and (CameraCode <> 3010) then
-          RaiseException('Component cleanup failed: ' + Helper + ' (exit ' + IntToStr(CameraCode) + '). ' + ComponentError + #13#10 + 'ExtraPane files were retained for retry.');
+          StopUninstall('Component cleanup failed: ' + Helper + ' (exit ' + IntToStr(CameraCode) + '). ' + ComponentError + #13#10 + 'ExtraPane files were retained for retry.');
       end else if DirExists(ExpandConstant('{app}\Components\') + ComponentFolder) then
-        RaiseException('Missing cleanup helper for ' + ComponentFolder + '. Repair ExtraPane before uninstalling.');
+        StopUninstall('Missing cleanup helper for ' + ComponentFolder + '. Repair ExtraPane before uninstalling.');
     end;
   end;
   if (CurUninstallStep = usUninstall) and DirExists(ExpandConstant('{app}\Components\Display\state')) then begin
     if not FileExists(ExpandConstant('{app}\Components\Display\manage-driver.ps1')) then
-      RaiseException('The display driver manager is missing. Repair ExtraPane before uninstalling.');
+      StopUninstall('The display driver manager is missing. Repair ExtraPane before uninstalling.');
     if not RunDisplayManager('Remove', CameraCode) then
-      RaiseException('Display driver removal failed (exit ' + IntToStr(CameraCode) + '). ' + ComponentError + #13#10 + 'ExtraPane and its ownership records were retained for retry.');
+      StopUninstall('Display driver removal failed (exit ' + IntToStr(CameraCode) + '). ' + ComponentError + #13#10 + 'ExtraPane and its ownership records were retained for retry.');
   end;
   if (CurUninstallStep = usUninstall) and RemoveCamera and
      (FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe')) or
       DirExists(ExpandConstant('{app}\Components\Camera'))) then begin
     if not FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe')) then
-      RaiseException('Camera setup helper is missing. The shared camera component was not removed.');
+      StopUninstall('Camera setup helper is missing. The shared camera component was not removed.');
     if not RunComponent(ExpandConstant('{app}\ExtraPane.CameraSetup.exe'), '--remove', '', CameraCode) then
-      RaiseException('Camera removal could not start or administrator permission was canceled.');
+      StopUninstall('Camera removal could not start or administrator permission was canceled.');
     if (CameraCode <> 0) and (CameraCode <> 3010) then
-      RaiseException('Camera component removal failed (exit ' + IntToStr(CameraCode) + '). ' + ComponentError);
+      StopUninstall('Camera component removal failed (exit ' + IntToStr(CameraCode) + '). ' + ComponentError);
     if CameraCode = 3010 then ComponentRestart := True;
     if CameraCode = 3010 then
       SuppressibleMsgBox('The camera registration was removed. Restart Windows to finish deleting camera files currently loaded by Windows.', mbInformation, MB_OK, IDOK);
@@ -412,7 +434,7 @@ begin
     if not CredDelete('DM/peers/dm-lan', 1, 0) then begin
       ErrorCode := DLLGetLastError;
       if ErrorCode <> 1168 then
-        RaiseException('Unable to remove ExtraPane pairing: ' + SysErrorMessage(ErrorCode));
+        StopUninstall('Unable to remove ExtraPane pairing: ' + SysErrorMessage(ErrorCode));
     end;
     DeleteSettingsKey('Software\DM\Host');
     DeleteSettingsKey('Software\DM\Receiver');

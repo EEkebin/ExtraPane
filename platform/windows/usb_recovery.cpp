@@ -74,7 +74,9 @@ std::wstring audit_name(const Disk& disk,const RecoveryRecord& record){return ke
 DWORD audit_phase(HKEY key,const RecoveryRecord& expected){
     need(load(key)==expected,"Interrupted-return audit belongs to a different original record");
     DWORD authorization=0,phase=0,size=sizeof(DWORD),kind=0;
-    need(RegQueryValueExW(key,L"AcknowledgedUnflushedReceiver",nullptr,&kind,reinterpret_cast<BYTE*>(&authorization),&size)==ERROR_SUCCESS&&kind==REG_DWORD&&size==sizeof(DWORD)&&authorization==0x49525031,"Interrupted-return acknowledgment is missing or malformed");
+    auto authorized=RegQueryValueExW(key,L"AcknowledgedUnflushedReceiver",nullptr,&kind,reinterpret_cast<BYTE*>(&authorization),&size);
+    if(authorized==ERROR_FILE_NOT_FOUND){size=sizeof(DWORD);authorized=RegQueryValueExW(key,L"ResourceStopPolicy",nullptr,&kind,reinterpret_cast<BYTE*>(&authorization),&size);}
+    need(authorized==ERROR_SUCCESS&&kind==REG_DWORD&&size==sizeof(DWORD)&&authorization==0x49525031,"Interrupted-return authorization is missing or malformed");
     size=sizeof(DWORD);need(RegQueryValueExW(key,L"Phase",nullptr,&kind,reinterpret_cast<BYTE*>(&phase),&size)==ERROR_SUCCESS&&kind==REG_DWORD&&size==sizeof(DWORD)&&phase>=1&&phase<=3,"Interrupted-return audit phase is invalid");
     FILETIME timestamp{};size=sizeof(timestamp);need(RegQueryValueExW(key,L"AuthorizedAtUtc",nullptr,&kind,reinterpret_cast<BYTE*>(&timestamp),&size)==ERROR_SUCCESS&&kind==REG_BINARY&&size==sizeof(timestamp)&&(timestamp.dwLowDateTime||timestamp.dwHighDateTime),"Interrupted-return audit timestamp is missing");
     return phase;
@@ -83,7 +85,7 @@ void advance_audit(HKEY key,const RecoveryRecord& record,DWORD phase){
     const auto prior=audit_phase(key,record);need(phase>=prior&&phase<=3,"Interrupted-return audit cannot move backwards");
     need(RegSetValueExW(key,L"Phase",0,REG_DWORD,reinterpret_cast<const BYTE*>(&phase),sizeof phase)==ERROR_SUCCESS&&RegFlushKey(key)==ERROR_SUCCESS,"Persist interrupted-return audit phase failed");
 }
-Key authorize_interrupted(const Disk& disk,const RecoveryRecord& record){
+Key authorize_interrupted(const Disk& disk,const RecoveryRecord& record,bool resource_stop=false){
     auto parent=root(true,L"UsbRecoveryHistory");const auto name=audit_name(disk,record);Key existing;
     const auto opened=RegOpenKeyExW(parent.h,name.c_str(),REG_OPTION_OPEN_LINK,KEY_READ|KEY_WRITE|READ_CONTROL|KEY_WOW64_64KEY,&existing.h);
     if(opened==ERROR_SUCCESS){(void)audit_phase(existing.h,record);return existing;}
@@ -92,12 +94,13 @@ Key authorize_interrupted(const Disk& disk,const RecoveryRecord& record){
     const DWORD authorization=0x49525031,phase=1;FILETIME timestamp{};GetSystemTimeAsFileTime(&timestamp);
     need(RegSetValueExW(key.h,L"AuthorizedAtUtc",0,REG_BINARY,reinterpret_cast<const BYTE*>(&timestamp),sizeof timestamp)==ERROR_SUCCESS&&
         RegSetValueExW(key.h,L"Phase",0,REG_DWORD,reinterpret_cast<const BYTE*>(&phase),sizeof phase)==ERROR_SUCCESS&&
-        RegSetValueExW(key.h,L"AcknowledgedUnflushedReceiver",0,REG_DWORD,reinterpret_cast<const BYTE*>(&authorization),sizeof authorization)==ERROR_SUCCESS&&RegFlushKey(key.h)==ERROR_SUCCESS,"Persist interrupted-return acknowledgment failed");
+        RegSetValueExW(key.h,resource_stop?L"ResourceStopPolicy":L"AcknowledgedUnflushedReceiver",0,REG_DWORD,reinterpret_cast<const BYTE*>(&authorization),sizeof authorization)==ERROR_SUCCESS&&RegFlushKey(key.h)==ERROR_SUCCESS,"Persist interrupted-return authorization failed");
     return key;
 }
 struct Lease {
     Handle handle;bool acquired=false;
-    explicit Lease(const Disk& disk):handle(CreateMutexW(nullptr,FALSE,(L"Global\\ExtraPane.UsbRecovery."+key_name(disk)).c_str())){
+    explicit Lease(const Disk& disk):Lease(key_name(disk)){}
+    explicit Lease(const std::wstring& id):handle(CreateMutexW(nullptr,FALSE,(L"Global\\ExtraPane.UsbRecovery."+id).c_str())){
         need(handle.h,"Create USB quarantine ownership mutex failed");const auto value=WaitForSingleObject(handle.h,0);need(value==WAIT_OBJECT_0||value==WAIT_ABANDONED,"Another USB quarantine or recovery operation owns this disk");acquired=true;
     }
     ~Lease(){if(acquired)ReleaseMutex(handle.h);}
@@ -191,6 +194,36 @@ public:
         auto parent=root(false);RegCloseKey(key_.h);key_.h=nullptr;
         need(RegDeleteKeyExW(parent.h,key_name(disk).c_str(),KEY_WOW64_64KEY,0)==ERROR_SUCCESS,"Source returned but journal retirement failed");need(RegFlushKey(parent.h)==ERROR_SUCCESS,"Source-return journal retirement could not be flushed");
     });}
+    Availability restore_interrupted_source(const Disk& disk,const RecoveryReleaseVerifier& released)override{return attempt([&]{
+        owned_journal(disk);need(record_.version==2&&static_cast<bool>(released),"Interrupted return requires the exact live version 2 source generation");
+        need(live_interrupted_return_policy(record_).available,"This state requires its existing verified-eject recovery path");
+        {auto physical=open_disk(disk,false);need(stable_fingerprint(physical.h,disk)==record_.fingerprint,"Source medium changed before interrupted return");}
+        auto audit=authorize_interrupted(disk,record_,true);const auto phase=audit_phase(audit.h,record_);
+        const auto proof=released(record_);need(proof.available,proof.reason.c_str());
+        need(load(key_.h)==record_,"Source journal changed while revoking interrupted ownership");
+        if(phase<2)advance_audit(audit.h,record_,2);
+        auto physical=open_disk(disk,false);need(stable_fingerprint(physical.h,disk)==record_.fingerprint,"Source medium changed after interrupted binding release");
+        const bool priorOffline=(record_.prior_attributes&DISK_ATTRIBUTE_OFFLINE)!=0;
+        if(((attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE)!=0)!=priorOffline)offline(physical.h,priorOffline);
+        advance_audit(audit.h,record_,3);
+        auto parent=root(false);need(load(key_.h)==record_,"Source journal changed before interrupted return completion");
+        RegCloseKey(key_.h);key_.h=nullptr;need(RegDeleteKeyExW(parent.h,key_name(disk).c_str(),KEY_WOW64_64KEY,0)==ERROR_SUCCESS&&RegFlushKey(parent.h)==ERROR_SUCCESS,"Source returned but active journal retirement failed");
+        lease_.reset();
+    });}
+    Availability release_absent_source(const Disk& disk,const std::function<Availability(const PendingRecovery&)>& release)override{
+        try{
+            owned_journal(disk);need(static_cast<bool>(release)&&absent_release_policy(record_).available,"Absent return requires this exact bound source generation and a native absence verifier");
+            PendingRecovery pending;pending.journal_id=key_name(disk);pending.record=record_;
+            // The guarded public operation reacquires the named journal lease
+            // and compares the complete protected record before writing its
+            // audit. Do not retain a deleted registry handle or recursive lease.
+            RegCloseKey(key_.h);key_.h=nullptr;lease_.reset();
+            return release_absent_recovery(pending,disk.usb_instance_id,[&](const RecoveryRecord& current)->Availability{
+                if(current!=*pending.record)return {false,"Absent journal generation changed during source release"};
+                return release(pending);
+            });
+        }catch(const std::exception& error){return {false,error.what()};}
+    }
     // Default destruction only closes registry/mutex handles; never online,
     // remove journal, release a remote binding or undo persistent quarantine.
 private:
@@ -290,7 +323,7 @@ bool interrupted_return_authorized(const Disk& disk,const PendingRecovery& pendi
         auto parent=root(false,L"UsbRecoveryHistory");auto key=child(parent.h,audit_name(disk,*pending.record),false);(void)audit_phase(key.h,*pending.record);return true;
     }catch(...){return false;}
 }
-Availability recover_interrupted_disk(const Disk& disk,const PendingRecovery& pending,const RecoveryReleaseVerifier& released){
+Availability recover_interrupted_disk(const Disk& disk,const PendingRecovery& pending,const RecoveryReleaseVerifier& released,bool resource_stop_policy){
     try{
         need(static_cast<bool>(released)&&pending.record&&pending.error.empty()&&pending.journal_id==key_name(disk),"Explicit interrupted return requires an exact selected journal and trusted backend verifier");
         need(interrupted_return_policy(*pending.record).available,"This journal cannot use interrupted return");
@@ -298,19 +331,57 @@ Availability recover_interrupted_disk(const Disk& disk,const PendingRecovery& pe
         need(record==*pending.record&&record.disk_number==disk.disk_number,"Interrupted-return journal changed after selection");
         bool wasOffline=false;{auto physical=open_disk(disk,false);need(stable_fingerprint(physical.h,disk)==record.fingerprint,"Interrupted return refused: source medium identity changed");wasOffline=(attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE)!=0;}
         // No disk mutation precedes the durable, separately labeled audit.
-        auto audit=authorize_interrupted(disk,record);const auto phase=audit_phase(audit.h,record);
-        need(wasOffline||phase>=2,"An unacknowledged source online transition requires separate investigation");
+        auto audit=authorize_interrupted(disk,record,resource_stop_policy);const auto phase=audit_phase(audit.h,record);
+        need(wasOffline||phase>=2||resource_stop_policy,"An unacknowledged source online transition requires separate investigation");
         const auto proof=released(record);if(!proof.available)return proof;
         need(load(key.h)==record,"Bound journal changed during interrupted binding release");
         if(phase<2)advance_audit(audit.h,record,2);
         // Unbinding may have re-enumerated the disk; validate a fresh physical
         // handle rather than trusting the original handle across driver change.
         auto returned=open_disk(disk,false);need(stable_fingerprint(returned.h,disk)==record.fingerprint,"Source medium changed during interrupted binding release");
-        offline(returned.h,(record.prior_attributes&DISK_ATTRIBUTE_OFFLINE)!=0);
+        const bool priorOffline=(record.prior_attributes&DISK_ATTRIBUTE_OFFLINE)!=0;
+        if(((attributes(returned.h)&DISK_ATTRIBUTE_OFFLINE)!=0)!=priorOffline)offline(returned.h,priorOffline);
         advance_audit(audit.h,record,3);
         need(load(key.h)==record,"Bound journal changed before interrupted-return completion");
         RegCloseKey(key.h);key.h=nullptr;need(RegDeleteKeyExW(parent.h,key_name(disk).c_str(),KEY_WOW64_64KEY,0)==ERROR_SUCCESS&&RegFlushKey(parent.h)==ERROR_SUCCESS,"Source returned but active recovery journal retirement failed; audit was retained");
         return {true,{}};
+    }catch(const std::exception& error){return {false,error.what()};}
+}
+namespace {
+void valid_absent_record(const PendingRecovery& pending){
+    need(pending.record&&pending.error.empty()&&pending.journal_id.size()==64&&std::all_of(pending.journal_id.begin(),pending.journal_id.end(),[](wchar_t c){return(c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');}),"Invalid absent recovery journal selection");
+    need(absent_release_policy(*pending.record).available,"This recovery state cannot release absent ownership");
+}
+std::wstring absent_audit_name(const PendingRecovery& pending){return pending.journal_id+L"."+hex(pending.record->owner)+L".absent";}
+std::wstring load_absent_audit(HKEY key,const PendingRecovery& pending){
+    need(load(key)==*pending.record,"Absent release audit belongs to a different journal generation");
+    wchar_t action[64]{};DWORD bytes=sizeof(action),type=0;
+    need(RegQueryValueExW(key,L"Action",nullptr,&type,reinterpret_cast<BYTE*>(action),&bytes)==ERROR_SUCCESS&&type==REG_SZ&&bytes==sizeof(L"InterruptedAbsentRelease")&&std::wstring_view(action)==L"InterruptedAbsentRelease","Absent release audit action is invalid");
+    wchar_t instance[MAX_DEVICE_ID_LEN]{};bytes=sizeof(instance);
+    need(RegQueryValueExW(key,L"UsbInstance",nullptr,&type,reinterpret_cast<BYTE*>(instance),&bytes)==ERROR_SUCCESS&&type==REG_SZ&&bytes>=sizeof(wchar_t)&&bytes<=sizeof(instance)&&bytes%sizeof(wchar_t)==0&&instance[bytes/sizeof(wchar_t)-1]==0,"Absent release audit identity is invalid");
+    std::wstring value(instance);need(value.starts_with(L"USB\\")&&value.size()>8&&value.size()<MAX_DEVICE_ID_LEN&&(value.size()+1)*sizeof(wchar_t)==bytes,"Absent USB identity is invalid");
+    DWORD phase=0;bytes=sizeof(phase);need(RegQueryValueExW(key,L"Phase",nullptr,&type,reinterpret_cast<BYTE*>(&phase),&bytes)==ERROR_SUCCESS&&type==REG_DWORD&&bytes==sizeof(phase)&&phase>=1&&phase<=3,"Absent release audit phase is invalid");return value;
+}
+void absent_phase(HKEY key,DWORD phase){need(RegSetValueExW(key,L"Phase",0,REG_DWORD,reinterpret_cast<const BYTE*>(&phase),sizeof phase)==ERROR_SUCCESS&&RegFlushKey(key)==ERROR_SUCCESS,"Persist absent release audit failed");}
+}
+std::wstring absent_release_instance(const PendingRecovery& pending){
+    try{valid_absent_record(pending);auto parent=root(false,L"UsbRecoveryHistory");auto audit=child(parent.h,absent_audit_name(pending),false);return load_absent_audit(audit.h,pending);}catch(...){return {};}
+}
+bool absent_release_authorized(const PendingRecovery& pending,const std::wstring& instance){return !instance.empty()&&absent_release_instance(pending)==instance;}
+Availability release_absent_recovery(const PendingRecovery& pending,const std::wstring& instance,const RecoveryReleaseVerifier& release){
+    try{
+        valid_absent_record(pending);need(instance.starts_with(L"USB\\")&&instance.size()>8&&instance.size()<MAX_DEVICE_ID_LEN&&static_cast<bool>(release),"An exact locally proven absent USB instance and verifier are required");
+        Lease lease(pending.journal_id);auto parent=root(false);auto key=child(parent.h,pending.journal_id,false);need(load(key.h)==*pending.record,"Absent recovery journal changed");
+        auto history=root(true,L"UsbRecoveryHistory");const auto name=absent_audit_name(pending);Key audit;
+        const auto opened=RegOpenKeyExW(history.h,name.c_str(),REG_OPTION_OPEN_LINK,KEY_READ|KEY_WRITE|READ_CONTROL|KEY_WOW64_64KEY,&audit.h);
+        if(opened==ERROR_SUCCESS)need(load_absent_audit(audit.h,pending)==instance,"Absent audit identifies another USB source");
+        else{
+            need(opened==ERROR_FILE_NOT_FOUND,"Cannot inspect absent release history");audit=child(history.h,name,true,true);store(audit.h,*pending.record);
+            const wchar_t action[]=L"InterruptedAbsentRelease";FILETIME now{};GetSystemTimeAsFileTime(&now);
+            need(RegSetValueExW(audit.h,L"Action",0,REG_SZ,reinterpret_cast<const BYTE*>(action),sizeof action)==ERROR_SUCCESS&&RegSetValueExW(audit.h,L"UsbInstance",0,REG_SZ,reinterpret_cast<const BYTE*>(instance.c_str()),static_cast<DWORD>((instance.size()+1)*sizeof(wchar_t)))==ERROR_SUCCESS&&RegSetValueExW(audit.h,L"AuthorizedAtUtc",0,REG_BINARY,reinterpret_cast<const BYTE*>(&now),sizeof now)==ERROR_SUCCESS,"Persist absent recovery authorization failed");absent_phase(audit.h,1);
+        }
+        const auto proof=release(*pending.record);if(!proof.available)return proof;need(load(key.h)==*pending.record,"Absent journal changed during exact binding release");absent_phase(audit.h,2);
+        RegCloseKey(key.h);key.h=nullptr;need(RegDeleteKeyExW(parent.h,pending.journal_id.c_str(),KEY_WOW64_64KEY,0)==ERROR_SUCCESS&&RegFlushKey(parent.h)==ERROR_SUCCESS,"Absent ownership released but active journal retirement failed");absent_phase(audit.h,3);return {true,{}};
     }catch(const std::exception& error){return {false,error.what()};}
 }
 Availability recover_quarantined_disk(const Disk& disk,const RecoveryReleaseVerifier& released){

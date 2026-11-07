@@ -2,6 +2,7 @@
 #include <winioctl.h>
 #include "monitor_policy.hpp"
 #include "uninstall_policy.hpp"
+#include "install_policy.hpp"
 #include <shlobj.h>
 #include <sddl.h>
 #include <aclapi.h>
@@ -313,10 +314,37 @@ int check_removal(){
     registration_preflight(root);no_pending_recovery();removal_registration_preflight(ownership.value);
     remove_owned_driver(root,ownership.value,true);return 0;
 }
+bool reuse_exact_installation(const fs::path& root){
+    // App updates do not need to release a missing card or rewrite its backend.
+    // Reuse is a read-only path, and is allowed only for a complete, exact owned
+    // package. Incompatible/incomplete packages still take the guarded repair path.
+    struct Verification {
+        const fs::path& root;
+        bool has_manifest(){return fs::exists(root/manifest_name);}
+        void payload(){validate_tree(root,true);}
+        void ownership(){
+            Key key;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,setup_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&key.value)==ERROR_SUCCESS,"Installed USB host ownership is missing; repair requires an intact ownership record");
+            trusted_registry(key.value);
+            known_registry_contents(key.value,{}, {L"Source",L"State",L"StagedInf",L"CreatedInf",L"CreatedMonitor"});
+            check(string_value(key.value,L"Source")==setup::source&&string_value(key.value,L"State")==L"installed","Installed USB host ownership/version is not compatible with this package; existing state was preserved");
+        }
+        void registration(){
+            Key host;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,host_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&host.value)==ERROR_SUCCESS,"Installed USB host registration is missing");
+            trusted_registry(host.value);known_registry_contents(host.value,{L"Devices",L"Policy"},{L"APPLICATIONFOLDER"});
+            check(fs::path(string_value(host.value,L"APPLICATIONFOLDER"))==root,"Installed USB host registration points elsewhere; preserved");
+            for(const auto name:{L"Devices",L"Policy"}){Key child;check(RegOpenKeyExW(host.value,name,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&child.value)==ERROR_SUCCESS,"Installed USB host private registration is incomplete");trusted_registry(child.value);}
+        }
+        void monitor(){::monitor(root,false);}
+    } verification{root};
+    if(!setup::reuse_exact_backend(verification))return false;
+    std::cout<<"USB_HOST_REUSED exact compatible backend retained; existing bindings and recovery records were not changed\n";
+    return true;
+}
 int modify(bool install){
     check(IsUserAnAdmin(),"USB host setup requires administrator permission");SYSTEM_INFO system{};GetNativeSystemInfo(&system);check(system.wProcessorArchitecture==PROCESSOR_ARCHITECTURE_AMD64,"USB host setup requires native x64 Windows");
     Handle lock(CreateMutexW(nullptr,FALSE,L"Global\\ExtraPane.UsbHostSetup"));check(lock.value&&lock.value!=INVALID_HANDLE_VALUE,"USB host setup mutex unavailable");const auto acquired=WaitForSingleObject(lock.value,0);check(acquired==WAIT_OBJECT_0||acquired==WAIT_ABANDONED,"USB host setup is already running");struct Unlock{HANDLE h;~Unlock(){ReleaseMutex(h);}}unlock{lock.value};
     const auto root=component_root();for(const auto& item:setup::files)payload(item);
+    if(install&&reuse_exact_installation(root))return 0;
     if(fs::exists(legacy_root()))validate_tree(legacy_root(),false);
     registration_preflight(root);
     Key software,app,ownership;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE",0,KEY_READ|KEY_WRITE|KEY_WOW64_64KEY,&software.value)==ERROR_SUCCESS,"Administrator registry access required");protected_key(software.value,L"ExtraPane",app);protected_key(app.value,L"UsbHostSetup",ownership);

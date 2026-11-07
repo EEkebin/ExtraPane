@@ -54,6 +54,10 @@ int main(int argc,char** argv){
             std::cout<<"USB_RETURNING"<<std::endl;Sleep(200);
             if(notready){notready=false;std::cout<<"USB_RETURN_FAILED not-ready: exact disk missing; access code=123456"<<std::endl;continue;}
             if(veto){veto=false;std::cout<<"USB_STOP_BLOCKED receiver-busy"<<std::endl;continue;}
+            if(std::getenv("EXTRAPANE_TEST_USB_INTERRUPTED")){
+                std::cout<<"USB_REVOKING Returning after interrupted remote session."<<std::endl;Sleep(200);
+                std::cout<<"USB_RETURNED_INTERRUPTED USB returned after interruption; check files for incomplete writes."<<std::endl;return 0;
+            }
             std::cout<<"USB_RETURNED"<<std::endl;return 0;
         }
         return 0;

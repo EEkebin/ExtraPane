@@ -175,7 +175,7 @@ void reconcile_online(){
     }
     std::cout<<"{\"retired\":"<<retired<<"}\n";
 }
-void recover_interrupted(const std::wstring& id){
+void recover_interrupted(const std::wstring& id,bool resource_stop_policy=false){
     require(id.size()==64&&std::all_of(id.begin(),id.end(),[](wchar_t c){return(c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');}),"Use an exact journal ID from --list");
     std::optional<PendingRecovery> selected;for(const auto& item:pending_recoveries())if(item.journal_id==id){require(!selected,"Duplicate journal identity");selected=item;}
     require(selected&&selected->record&&selected->error.empty(),"Interrupted-return journal is missing or malformed");
@@ -210,9 +210,35 @@ void recover_interrupted(const std::wstring& id){
             if(std::chrono::steady_clock::now()>=deadline)return {false,"USB source has not returned with its exact medium identity and no active exporter/binding"};
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }while(true);
-    });
+    },resource_stop_policy);
     if(!result.available)throw std::runtime_error(result.reason);
     std::cout<<"{\"interruptedReturn\":"<<json(utf8(id))<<",\"cleanEjectClaimed\":false,\"auditRetained\":true}\n";
+}
+void release_absent(const std::wstring& id){
+    std::optional<PendingRecovery> selected;for(const auto& item:pending_recoveries())if(item.journal_id==id){require(!selected,"Duplicate absent journal identity");selected=item;}
+    require(selected&&selected->record&&selected->error.empty(),"Exact absent recovery journal is unavailable");
+    auto runner=native_host_runner();const auto ready=runner->ready();if(!ready.available)throw std::runtime_error(ready.reason);
+    const auto instance=runner->absent_binding_source(*selected);require(!instance.empty(),"Cannot prove exact source absence and stale private binding ownership");
+    const auto result=release_absent_recovery(*selected,instance,[&](const RecoveryRecord& record)->Availability{
+        if(record!=*selected->record)return {false,"Absent journal changed before backend cleanup"};return runner->release_absent_binding(*selected,instance);
+    });
+    if(!result.available)throw std::runtime_error(result.reason);
+    std::cout<<"{\"absentOwnershipReleased\":"<<json(utf8(id))<<",\"diskTouched\":false,\"cleanEjectClaimed\":false,\"auditRetained\":true}\n";
+}
+void prepare_uninstall(){
+    for(const auto& item:pending_recoveries()){
+        require(item.record&&item.error.empty(),"Malformed recovery journal retained for inspection");
+        if(absent_release_policy(*item.record).available){
+            try{release_absent(item.journal_id);}
+            catch(const std::exception& absent){
+                const std::string absent_reason=absent.what();
+                try{recover_interrupted(item.journal_id,true);}
+                catch(const std::exception& present){throw std::runtime_error("USB cleanup could not prove safe ownership release. Absent check: "+absent_reason+". Present check: "+present.what());}
+            }
+        }
+    }
+    reconcile_online(); // Remaining records must be never-exported and already online.
+    require(pending_recoveries().empty(),"Active or uncertain USB recovery records remain");
 }
 }
 int wmain(int argc,wchar_t** argv){
@@ -228,9 +254,12 @@ int wmain(int argc,wchar_t** argv){
         if(argc==3&&std::wstring_view(argv[1])==L"--recover"){recover(argv[2]);return 0;}
         if(argc==2&&std::wstring_view(argv[1])==L"--reconcile-online"){reconcile_online();return 0;}
         if(argc==4&&std::wstring_view(argv[1])==L"--recover-interrupted"&&std::wstring_view(argv[3])==L"--acknowledge-unflushed-receiver"){recover_interrupted(argv[2]);return 0;}
+        if(argc==3&&std::wstring_view(argv[1])==L"--release-absent"){release_absent(argv[2]);return 0;}
+        if(argc==2&&std::wstring_view(argv[1])==L"--prepare-uninstall"){prepare_uninstall();return 0;}
         if(argc==2&&std::wstring_view(argv[1])==L"--help"){
             std::cout<<"ExtraPane.UsbRecovery --list\nExtraPane.UsbRecovery --inspect <journal-id> (read-only)\nExtraPane.UsbRecovery --recover <journal-id>\nExtraPane.UsbRecovery --reconcile-online (retire never-exported already-online journals only)\n"
                 <<"ExtraPane.UsbRecovery --recover-interrupted <journal-id> --acknowledge-unflushed-receiver\n"
+                <<"ExtraPane.UsbRecovery --release-absent <journal-id> (release exact inactive absent ownership; no disk writes)\nExtraPane.UsbRecovery --prepare-uninstall\n"
                 <<"Ordinary recovery requires administrator rights, a verified local disk and durable eject/release evidence.\n"
                 <<"Interrupted return is an explicit operator-only action for a v2 bound journal after both endpoints stop. It cannot prove receiver writes were flushed and retains a protected acknowledgment audit; it never claims a clean eject.\n";return 0;
         }

@@ -54,6 +54,13 @@ public:
     virtual extrapane::Availability binding_released(const Disk&,const std::wstring& guid)=0;
     virtual extrapane::Availability restore_source(const Disk&,
         const std::function<extrapane::Availability(const RecoveryRecord&)>&){return {false,"Automatic source restoration is unavailable"};}
+    virtual extrapane::Availability restore_interrupted_source(const Disk&,
+        const std::function<extrapane::Availability(const RecoveryRecord&)>&){return {false,"Interrupted source restoration is unavailable"};}
+    // Unplugged source: retire only this exact bound generation after the
+    // backend freshly proves absence and releases its exact private binding.
+    // No disk is opened or brought online; archive remains explicitly absent.
+    virtual extrapane::Availability release_absent_source(const Disk&,
+        const std::function<extrapane::Availability(const PendingRecovery&)>&){return {false,"Absent source ownership release is unavailable"};}
 };
 using LockedDiskVerifier=std::function<extrapane::Availability(const Disk&)>;
 // Inert constructor. A trusted StorageHandles owner must prove volume locks and
@@ -74,13 +81,21 @@ extrapane::Availability assess_online_preexport(const Disk&,const PendingRecover
     const RecoveryReleaseVerifier& verify_no_binding);
 extrapane::Availability retire_online_preexport(const Disk&,const PendingRecovery&,
     const RecoveryReleaseVerifier& verify_no_binding);
-// Explicit operator recovery only. Never called by ordinary disconnect, UI or
-// uninstallation. Keeps an independently protected audit of the original bound
-// record and acknowledgment that receiver writes may not have been flushed.
+// Interrupted return retains the original bound record in a protected audit.
+// Explicit operator recovery and authorized resource-stop/uninstall policy use
+// separate audit labels; neither claims receiver writes were flushed.
 extrapane::Availability interrupted_return_policy(const RecoveryRecord&);
+extrapane::Availability live_interrupted_return_policy(const RecoveryRecord&);
 bool interrupted_return_authorized(const Disk&,const PendingRecovery&);
 extrapane::Availability recover_interrupted_disk(const Disk&,const PendingRecovery&,
-    const RecoveryReleaseVerifier& verify_exclusive_binding_release);
+    const RecoveryReleaseVerifier& verify_exclusive_binding_release,bool resource_stop_policy=false);
+// Explicit removal of stale ownership for an absent source: never opens or
+// changes a disk, and never claims destination flush or clean eject.
+extrapane::Availability absent_release_policy(const RecoveryRecord&);
+std::wstring absent_release_instance(const PendingRecovery&); // Protected prior audit, or empty.
+bool absent_release_authorized(const PendingRecovery&,const std::wstring& usb_instance);
+extrapane::Availability release_absent_recovery(const PendingRecovery&,const std::wstring& usb_instance,
+    const RecoveryReleaseVerifier& verify_absent_and_release_exact_binding);
 extrapane::Availability recover_quarantined_disk(const Disk& locally_selected,
     const RecoveryReleaseVerifier& verify_destination_ejected_and_binding_released);
 }

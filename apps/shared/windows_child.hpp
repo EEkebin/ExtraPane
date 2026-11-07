@@ -44,7 +44,7 @@ inline std::filesystem::path directory()
 struct Child
 {
     HANDLE process = nullptr, read = nullptr;
-    bool service=false,graceful_control=false;
+    bool service=false,graceful_control=false,storage_cleanup=false;
     Child() = default;
     Child(const Child &) = delete;
     Child &operator=(const Child &) = delete;
@@ -62,7 +62,21 @@ struct Child
             {
                 if(service && read){DWORD written=0;const char stop[]="Q\n";WriteFile(read,stop,graceful_control?2:1,&written,nullptr);WaitForSingleObject(process,graceful_control?15000:10000);}
                 else if(graceful_control&&input_write){DWORD written=0;const char stop[]="Q\n";WriteFile(input_write,stop,2,&written,nullptr);WaitForSingleObject(process,15000);}
-                if(WaitForSingleObject(process,0)==WAIT_TIMEOUT)TerminateProcess(process, 0);
+                if(storage_cleanup&&WaitForSingleObject(process,0)==WAIT_TIMEOUT){
+                    // End the export even when the receiver cannot acknowledge
+                    // eject. The native helper owns exact binding/disk cleanup;
+                    // killing it here would strand the source offline again.
+                    DWORD written=0;const char revoke[]="X\n";
+                    const auto control=service?read:input_write;
+                    if(control)WriteFile(control,revoke,2,&written,nullptr);
+                    WaitForSingleObject(process,15000);
+                    if(WaitForSingleObject(process,0)==WAIT_TIMEOUT){
+                        if(read){CloseHandle(read);read=nullptr;}
+                        if(input_write){CloseHandle(input_write);input_write=nullptr;}
+                        WaitForSingleObject(process,5000);
+                    }
+                }
+                if(!storage_cleanup&&WaitForSingleObject(process,0)==WAIT_TIMEOUT)TerminateProcess(process, 0);
                 WaitForSingleObject(process, 3000);
             }
             CloseHandle(process);
@@ -74,7 +88,7 @@ struct Child
             read = nullptr;
         }
         if(input_write){CloseHandle(input_write);input_write=nullptr;}
-        service=false;graceful_control=false;
+        service=false;graceful_control=false;storage_cleanup=false;
     }
     void start(const std::wstring &exe, const std::vector<std::wstring> &args,bool graceful=false)
     {
@@ -111,6 +125,7 @@ struct Child
         }
         process = pi.hProcess;
         graceful_control=graceful;
+        storage_cleanup=std::filesystem::path(exe).filename()==L"ExtraPane.Usb.exe";
         CloseHandle(pi.hThread);
     }
     void start_elevated(const std::wstring& filename,const std::vector<std::wstring>& options,bool lines=true) {
@@ -139,7 +154,7 @@ struct Child
         while(GetTickCount64()<until && WaitForSingleObject(process,0)==WAIT_TIMEOUT){if(ConnectNamedPipe(read,nullptr)||GetLastError()==ERROR_PIPE_CONNECTED){connected=true;break;}Sleep(25);}
         ULONG client=0;
         if(!connected||!GetNamedPipeClientProcessId(read,&client)||client!=GetProcessId(process)){stop();throw std::runtime_error("Driver helper could not connect securely");}
-        DWORD mode=PIPE_READMODE_BYTE|PIPE_WAIT;SetNamedPipeHandleState(read,&mode,nullptr,nullptr);service=true;graceful_control=lines;
+        DWORD mode=PIPE_READMODE_BYTE|PIPE_WAIT;SetNamedPipeHandleState(read,&mode,nullptr,nullptr);service=true;graceful_control=lines;storage_cleanup=filename==L"ExtraPane.Usb.exe";
     }
     void start_driver(bool input,bool debug,unsigned port=43824,bool require_code=false,std::wstring bind=L"auto") {
         std::vector<std::wstring> args{L"--port",std::to_wstring(port),L"--bind",std::move(bind)};

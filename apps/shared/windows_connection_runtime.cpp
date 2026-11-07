@@ -21,7 +21,7 @@ struct WindowsConnectionRuntime::Impl {
     struct Broker {QProcess* process=nullptr;QVariantMap target;QByteArray output,error;QString inflight;std::deque<QString> queue;bool ready=false,authenticated=false,closing=false,awaitingTicket=false;};
     struct Source {extrapane::windows_bridge::Child child;QString pending,kind,device;bool closing=false,mirror=false;};
     std::map<QString,std::unique_ptr<Source>> sources;
-    struct Row {extrapane::windows_bridge::Child child;QString broker,kind,pending,sharedSource;bool sharedActive=false,ended=false, stopping=false,failed=false,recovery=false,returned=false,input=true,mirror=false,muted=false;};
+    struct Row {extrapane::windows_bridge::Child child;QString broker,kind,pending,sharedSource,returnedStatus;bool sharedActive=false,ended=false, stopping=false,failed=false,recovery=false,returned=false,input=true,mirror=false,muted=false;};
     std::map<QString,std::unique_ptr<Broker>> brokers;
     std::map<QString,std::unique_ptr<Row>> rows;
     QSet<QString> scanning;
@@ -78,7 +78,7 @@ void WindowsConnectionRuntime::toggle(QString id,bool enabled,QString code,bool 
     if(model_.connection(id)["busy"].toBool())return;
     if(!model_.beginConnection(id))return;
     auto& row=impl_->rows[id];if(!row)row=std::make_unique<Impl::Row>();
-    const auto config=model_.connection(id);row->kind=config["resourceKind"].toString();row->input=input;row->pending.clear();row->failed=false;row->recovery=false;row->returned=false;row->stopping=false;
+    const auto config=model_.connection(id);row->kind=config["resourceKind"].toString();row->input=input;row->pending.clear();row->returnedStatus.clear();row->failed=false;row->recovery=false;row->returned=false;row->stopping=false;
     row->broker=broker(config["effectiveTarget"].toMap(),std::move(code));if(row->broker.isEmpty()){model_.setEnabled(id,false);model_.setState(id,State::failed,status_);return;}
     impl_->brokers[row->broker]->queue.push_back(id);advance(row->broker);emit changed();
 }
@@ -180,7 +180,8 @@ void WindowsConnectionRuntime::poll(){
             if(consumed){if(!row.stopping)model_.setState(id,State::active,line.startsWith("USB_WAITING")?"Waiting for USB storage on the server...":"Connected");if(b.inflight==id){b.inflight.clear();advance(row.broker);}}
             else if(line.startsWith("error:")){row.failed=true;model_.setState(id,State::returning,line.mid(6).trimmed());}
             else if(line.startsWith("USB_RECOVERY_REQUIRED")){row.recovery=true;model_.setState(id,State::recovery,line);}
-            else if(line.startsWith("USB_RETURNED")){row.returned=true;model_.setState(id,State::returning,"USB returned to this PC.");}
+            else if(line.startsWith("USB_RETURNED")){row.returned=true;row.recovery=false;row.returnedStatus=line.startsWith("USB_RETURNED_INTERRUPTED")?line.mid(24).trimmed():QString("USB returned to this PC.");model_.setState(id,State::returning,row.returnedStatus);}
+            else if(line.startsWith("USB_REVOKING")){row.stopping=true;model_.setEnabled(id,false);model_.setState(id,State::returning,line.mid(12).trimmed());}
             else if(line.startsWith("USB_NOT_READY"))model_.setState(id,State::active,"USB is not available on the server. "+line.mid(13).trimmed());
             else if(line.startsWith("USB_STOP_BLOCKED")||line.startsWith("USB_RETURN_FAILED")){
                 if(b.process&&b.ready){row.stopping=false;b.closing=false;model_.setEnabled(id,true);model_.setState(id,State::active,line.startsWith("USB_STOP_BLOCKED")?"USB is busy. Close its files on the server, then uncheck to retry.":"USB return failed; transfer remains reserved. "+line.mid(17).trimmed());}
@@ -188,7 +189,7 @@ void WindowsConnectionRuntime::poll(){
         }
         if(row.pending.size()>16384)row.pending.clear();
         if(row.ended||(row.child.process&&WaitForSingleObject(row.child.process,0)==WAIT_OBJECT_0)){row.child.stop();row.sharedActive=false;row.ended=false;const auto detail=model_.connection(id)["status"].toString();const bool restart=row.stopping&&model_.connection(id)["connectionEnabled"].toBool();row.stopping=false;
-            model_.setState(id,row.recovery?State::recovery:row.failed?State::failed:State::idle,row.returned?"USB returned to this PC.":row.failed||row.recovery?detail:QString{});
+            model_.setState(id,row.recovery?State::recovery:row.failed?State::failed:State::idle,row.returned?row.returnedStatus:row.failed||row.recovery?detail:QString{});
             if(!restart)model_.setEnabled(id,false);
             auto& b=*impl_->brokers[row.broker];if(b.inflight==id){b.inflight.clear();advance(row.broker);}closeIfIdle(row.broker);
             if(row.returned)refreshDevices("usb");if(restart&&!row.recovery&&!b.closing&&b.process)toggle(id,true,{},row.input);emit changed();

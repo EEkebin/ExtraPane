@@ -1,7 +1,22 @@
 #include "../apps/usb-host-setup/monitor_policy.hpp"
 #include "../apps/usb-host-setup/uninstall_policy.hpp"
+#include "../apps/usb-host-setup/install_policy.hpp"
 #include <stdexcept>
+#include <vector>
+struct ReuseCheck {
+    bool marker=true;int fail=0;std::vector<int> calls;
+    bool has_manifest(){return marker;}
+    void verify(int stage){calls.push_back(stage);if(fail==stage)throw std::runtime_error("verification refused");}
+    void payload(){verify(1);}void ownership(){verify(2);}void registration(){verify(3);}void monitor(){verify(4);}
+};
 int main(){using namespace extrapane::usb_monitor;
+// This executes the same install dispatch used by the Windows setup helper.
+// No bind/recovery-empty/mutation operation is available to the reuse branch.
+ReuseCheck absent;absent.marker=false;
+if(extrapane::usb_host_setup::reuse_exact_backend(absent)||!absent.calls.empty())throw std::runtime_error("missing marker must use guarded install path");
+ReuseCheck intact;
+if(!extrapane::usb_host_setup::reuse_exact_backend(intact)||intact.calls!=std::vector<int>{1,2,3,4})throw std::runtime_error("reuse needs every exact verification");
+for(int stage=1;stage<=4;++stage){ReuseCheck rejected;rejected.fail=stage;bool threw=false;try{extrapane::usb_host_setup::reuse_exact_backend(rejected);}catch(const std::runtime_error&){threw=true;}if(!threw||rejected.calls.size()!=stage)throw std::runtime_error("failed reuse verification must not fall through to repair");}
 if(!reviewed(legacy_7_2_2,L"bundle")||!reviewed(L"bundle",L"bundle")||reviewed(L"unknown",L"bundle"))throw std::runtime_error("only reviewed shared files");
 if(!compatible(5,0,8)||!compatible(5,1,8)||compatible(4,99,8)||compatible(6,0,8)||compatible(5,0,7)||compatible(5,0,9))throw std::runtime_error("exact version reply and supported ABI");
 using namespace extrapane::usb_uninstall;

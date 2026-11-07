@@ -12,13 +12,14 @@ struct State {
     bool running=false,failQuarantine=false,failJournal=false,failEjectJournal=false,busyEject=false,failHandoff=false,failOfflineVerify=false;
     unsigned reattachMisses=0;
     unsigned postUnbindMisses=0,restoreMisses=0;
-    bool failRestore=false,sourceReturned=false;
+    bool failRestore=false,sourceReturned=false,stuckExporter=false,absent=false;
+    std::string returnedReason;
 };
 class Runner final:public HostRunner {
 public:
     explicit Runner(State& state):s(state){}
     Availability ready()override{return {true,{}};}
-    std::vector<HostDevice> devices()override{if(s.reattachMisses){--s.reattachMisses;return {};}return {s.device};}
+    std::vector<HostDevice> devices()override{if(s.absent)return {};if(s.reattachMisses){--s.reattachMisses;return {};}return {s.device};}
     Availability reserve(const std::wstring&)override{s.events.push_back("reserve");return {true,{}};}
     Availability bind(const std::string& bus)override{
         require(bus==s.device.bus_id);s.events.push_back("bind");
@@ -31,8 +32,14 @@ public:
         require(instance==s.device.instance_id&&bus==s.device.bus_id&&port==43210);
         s.events.push_back("daemon-start");s.running=true;return {true,{}};
     }
-    void stop()noexcept override{s.running=false;s.events.push_back("daemon-stop");}
+    void stop()noexcept override{if(!s.stuckExporter)s.running=false;s.events.push_back("daemon-stop");}
     void release()noexcept override{s.events.push_back("release");}
+    std::wstring absent_binding_source(const PendingRecovery&)override{return s.absent&&!s.running?s.device.instance_id:std::wstring{};}
+    Availability release_absent_binding(const PendingRecovery&,const std::wstring& instance)override{
+        s.events.push_back("release-absent");require(has_release()&&!s.running&&s.absent&&instance==s.device.instance_id);
+        s.device.binding_id.clear();return {true,{}};
+    }
+    bool has_release()const{return std::find(s.events.begin(),s.events.end(),"release")!=s.events.end();}
     bool running()const noexcept override{return s.running;}
 private:State& s;
 };
@@ -51,6 +58,18 @@ public:
         if(s.restoreMisses){--s.restoreMisses;return {false,"Disk interface re-enumerating"};}
         return {!s.failRestore,"Medium identity changed"};
     }
+    Availability release_absent_source(const Disk&,const std::function<Availability(const PendingRecovery&)>& verifier)override{
+        s.events.push_back("absent-guard");RecoveryRecord record;record.version=2;record.state=RecoveryState::bound;record.bus_id="1-2";record.binding_id="{12345678-1234-1234-1234-123456789abc}";
+        PendingRecovery pending;pending.record=record;return verifier(pending);
+    }
+    Availability restore_interrupted_source(const Disk&,const RecoveryReleaseVerifier& verifier)override{
+        s.events.push_back("restore-interrupted");
+        if(s.failOfflineVerify)return {false,"Disk identity changed"};
+        RecoveryRecord record;record.state=RecoveryState::bound;record.bus_id="1-2";
+        const auto proof=verifier(record);if(!proof.available)return proof;
+        if(s.restoreMisses){--s.restoreMisses;return {false,"Disk interface re-enumerating"};}
+        return {!s.failRestore,"Medium identity changed"};
+    }
 private:State& s;
 };
 static auto backend(State& s){
@@ -59,7 +78,7 @@ static auto backend(State& s){
         [&]{s.events.push_back("tunnel-close");},
         [&]()->Availability{s.events.push_back("remote-eject");return {!s.busyEject,"Destination busy"};},
         [&](const Disk&)->Availability{s.events.push_back("handoff");return {!s.failHandoff,"Handoff failed"};},
-        [&](Availability result){s.sourceReturned=result.available;s.events.push_back("return-result");}
+        [&](Availability result){s.sourceReturned=result.available;s.returnedReason=result.reason;s.events.push_back("return-result");}
     };
     return usb_host_backend(std::make_unique<Runner>(s),std::make_unique<Guard>(s),std::move(transport),43210);
 }
@@ -85,8 +104,9 @@ int main(){
         {
             State s;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
             host->close_transport();host->stop_export();host->release_claim(true);
-            require(!has(s,"unbind")&&!s.device.binding_id.empty());
-            require(!s.sourceReturned&&!has(s,"restore-source"));
+            require(has(s,"unbind")&&s.device.binding_id.empty());
+            require(s.sourceReturned&&has(s,"restore-interrupted")&&!has(s,"journal-ejected"));
+            require(pos(s,"tunnel-close")<pos(s,"daemon-stop")&&pos(s,"daemon-stop")<pos(s,"unbind"));
         }
         {
             State s;s.failRestore=true;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
@@ -116,7 +136,7 @@ int main(){
             State s;s.failEjectJournal=true;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
             require(!host->flush_and_eject_remote().available);
             host->close_transport();host->stop_export();host->release_claim(true);
-            require(has(s,"journal-ejected")&&!has(s,"unbind")&&!s.device.binding_id.empty());
+            require(has(s,"journal-ejected")&&has(s,"unbind")&&s.sourceReturned&&!has(s,"journal-released"));
         }
         {
             State s;s.failQuarantine=true;auto host=backend(s);require(host->claim(disk).available);
@@ -125,7 +145,7 @@ int main(){
         {
             State s;s.failJournal=true;auto host=backend(s);require(host->claim(disk).available);
             require(!host->export_locked(disk).available&&has(s,"bind")&&!has(s,"daemon-start"));
-            host->release_claim(true);require(!has(s,"unbind"));
+            host->release_claim(true);require(has(s,"unbind")&&s.sourceReturned);
         }
         {
             State s;s.device.binding_id=L"{12345678-1234-1234-1234-123456789abc}";
@@ -134,6 +154,28 @@ int main(){
         {
             State s;auto host=backend(s);require(host->claim(disk).available);s.device.instance_id=L"USB\\REPLACEMENT";
             require(!host->export_locked(disk).available&&!has(s,"quarantine")&&!has(s,"bind"));
+        }
+        {
+            State s;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
+            s.stuckExporter=true;host->release_claim(true);
+            require(!s.sourceReturned&&!has(s,"unbind")&&!has(s,"restore-interrupted"));
+        }
+        {
+            State s;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
+            s.device.binding_id=L"{ffffffff-1234-1234-1234-123456789abc}";host->release_claim(true);
+            require(!s.sourceReturned&&!has(s,"unbind")&&!has(s,"journal-ejected"));
+        }
+        {
+            State s;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
+            s.postUnbindMisses=2;s.restoreMisses=2;s.busyEject=true;require(!host->flush_and_eject_remote().available);
+            host->release_claim(true);require(s.sourceReturned&&!has(s,"journal-ejected")&&!has(s,"journal-released"));
+            require(std::count(s.events.begin(),s.events.end(),"unbind")==1);
+        }
+        {
+            State s;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
+            s.absent=true;host->release_claim(true);
+            require(s.sourceReturned&&s.returnedReason.find("unplugged")!=std::string::npos&&has(s,"release-absent"));
+            require(pos(s,"release")<pos(s,"release-absent")&&!has(s,"journal-ejected")&&!has(s,"journal-released"));
         }
         std::cout<<"USB host backend fake lifecycle checks passed\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}

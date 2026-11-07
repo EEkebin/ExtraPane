@@ -420,7 +420,8 @@ void WindowsController::poll(){
             }
             else if(line.startsWith("USB_STARTED")){currentStatus=host?"USB storage connected. Close files and eject before disconnecting.":"USB storage is shared exclusively. Uncheck USB to return it safely to this PC.";}
             else if(line.startsWith("USB_RETURNING")){currentStatus="Returning USB to this PC; waiting for safe eject...";}
-            else if(line.startsWith("USB_RETURNED")){currentStatus="USB returned to this PC.";if(!host&&index==3)impl_->clients[3].returned=true;}
+            else if(line.startsWith("USB_REVOKING")){currentStatus=line.mid(12).trimmed();if(!host&&index==3){impl_->clients[3].stopping=true;resources_.select(3,false);}}
+            else if(line.startsWith("USB_RETURNED")){currentStatus=line.startsWith("USB_RETURNED_INTERRUPTED")?line.mid(24).trimmed():QString("USB returned to this PC.");if(!host&&index==3){impl_->clients[3].returned=true;failed=false;}}
             else if(line.startsWith("USB_STOP_BLOCKED")){
                 currentStatus="USB is still shared: close its files on the server, then uncheck USB to retry. "+line.mid(16).trimmed();
                 if(!host&&index==3&&impl_->sessionReady){const bool all=impl_->disconnectPending;impl_->clients[3].stopping=false;impl_->disconnectPending=false;resources_.select(3,true);status_=all?"Disconnect cancelled because USB is busy. Other resources have stopped.":"USB is busy and remains shared. Close its files on the server and retry.";}

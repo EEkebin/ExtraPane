@@ -14,22 +14,27 @@ Each display row has its own resizable preview window and fullscreen destination
 Closing the main window keeps it in the tray while a server or client connection
 is active; with no work it exits. Double-clicking the tray icon restores and
 focuses the main window for either role. Tray Exit requests normal disconnect
-and server stop, keeping USB return blockers visible rather than forcing return.
+and server stop, including the bounded USB ownership-return policy below.
 
 ## Automatic USB return (2026-11-07)
 
-Unchecking USB or choosing Disconnect all requests a graceful return: the
-receiver flushes and ejects the imported device before the source releases its
-owned binding and restores the verified disk's prior online state. A busy
-receiver keeps USB sharing active and reports the eject blocker. Transport loss
-without an eject receipt still requires recovery; it must not automatically
-mount storage that might remain in use remotely.
+The user superseded the previous indefinite-quarantine policy after an absent
+microSD reader blocked both upgrade and uninstall. Unchecking USB, disconnecting
+or exiting first requests receiver flush/eject. If that fails or the connection
+is lost, the source ends its own transport/exporter, releases only its exact
+binding, proves exclusive local ownership and restores the verified source's
+prior online state. Interrupted return is reported as such: it is not a clean
+eject and cannot recover writes remaining in the receiver's cache. Identity
+changes, foreign ownership or an exporter that cannot be stopped still prevent
+unsafe disk mutation.
 
-A stale pre-export journal may be retired when fresh checks establish that
-export was never authorized, no binding exists, and the source is already online
-locally. This removes bookkeeping only, without changing disk attributes or
-contents. Uninstall runs that check before removing USB components. Malformed,
-bound, missing-device or otherwise unresolved records retain the recovery tools.
+An absent source does not need to be plugged in to remove its inactive owned
+binding: archive the unchanged journal, prove device absence and no exporter,
+release the exact private binding, and retire the active journal. No disk is
+opened or modified. This is ownership cleanup, not proof of filesystem health.
+Upgrades may reuse an exactly verified compatible backend without modifying its
+bindings/journals. Uninstall attempts guarded cleanup before removal, with a
+clear error for genuinely unresolved ownership rather than a raw script error.
 Implementation and verification are tracked in IMPLEMENTATION-CHECKLIST.md.
 
 ## Live resource selection (2026-11-07)

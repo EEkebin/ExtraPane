@@ -30,8 +30,9 @@ accessibility metadata; it is not a complete modern touch-keyboard/IME bridge.
 
 With active server/client work, close the main window and double-click its tray
 icon: the main window should return and focus without disconnecting anything.
-With no work it should exit. Tray Exit requests normal shutdown; a USB eject
-blocker must remain visible and prevent forced storage return.
+With no work it should exit. Tray Exit requests normal shutdown; USB cleanup must
+finish or report an exact ownership/identity problem without killing its helper
+mid-cleanup. Interrupted return must retain its incomplete-write warning.
 
 ## Camera
 
@@ -64,18 +65,22 @@ blocker must remain visible and prevent forced storage return.
 3. Close source files, start the recipient, then connect the selected source.
    Confirm Windows sees the actual imported USB storage device. Use only test
    files for initial write/read/hash verification.
-4. With a destination file busy, uncheck USB on the source. It must report the
-   blocker, recheck USB and keep sharing alive. Close files and retry. Also test
-   Disconnect all: other resources stop, but a busy USB device keeps its session
-   until safe return succeeds. Eject USB on the receiver requests the same return.
+4. With expendable test data and a destination file busy, uncheck USB on the
+   source. It must attempt eject, then end its export and reclaim the exact local
+   source if eject fails or times out. It must leave USB unchecked and report
+   that writes may be incomplete. Disconnect all must finish after ownership
+   cleanup; a busy receiver must not silently recheck USB or cancel disconnect.
 5. After confirmed eject, wait for automatic return on the source. No separate
    recovery action should be needed. Verify the disk returns and test-file hashes
    match. Restoration must refuse a
-   changed identity or missing eject/release evidence.
+   changed identity, foreign ownership or a still-running exporter.
 6. Only after clean transfer/eject succeeds, separately authorize interrupted
-   connection/parent-exit tests. The source must remain offline. A bound or
-   uncertain recovery record requires administrator investigation; this app has
-   no force-online operation.
+   connection/parent-exit tests. The helper must stop its exporter, release its
+   exact binding and restore the verified source's prior online state, without
+   claiming clean eject. Also test unplugging: stale absent ownership must be
+   removable by uninstall without reconnecting the card or touching other disks.
+   Do not equate UI close with killing the USB helper or powering off Windows;
+   those cases need separate validation and may leave interrupted state.
 
 ## Current limits
 
@@ -83,7 +88,7 @@ The server accepts all supported resource types on the same port; there is no
 server resource selector. Clients can select resources before or after Connect. Also test Connect with nothing checked: the status should show connected without creating a monitor or capturing media.
 Check Display, Camera and Microphone together, choose both source devices, and
 verify that the server receives the camera/microphone while its extended desktop
-shows on the client. Uncheck one resource and confirm the others continue. Recheck it to restart; Disconnect all must clear every checkbox after any USB return completes (a busy USB veto leaves USB checked). Mute the
+shows on the client. Uncheck one resource and confirm the others continue. Recheck it to restart; Disconnect all must clear every checkbox after USB ownership return completes. Mute the
 microphone independently. For access-code mode, enter one fresh code for the
 connection; it issues fresh short-lived, single-use resource tickets when checkboxes start resources.
 Windows USB is one removable-storage session per receiver. Linux/macOS new media

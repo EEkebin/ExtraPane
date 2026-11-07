@@ -2,8 +2,30 @@
 #include <dm/usb_runner.hpp>
 #include <algorithm>
 #include <cwctype>
+#include <sstream>
 #include <stdexcept>
 namespace dm::usb {
+bool matches_import_port(std::string_view output,unsigned port,std::uint16_t local,const std::string& bus,const std::string& serial,bool active){
+    if(!port||port>255||!local||bus.empty()||serial.empty()||output.size()>1024*1024)return false;
+    const auto heading="Port "+(port<10?std::string("0"):std::string{})+std::to_string(port)+":";
+    const auto uri="-> usbip://127.0.0.1:"+std::to_string(local)+"/"+bus;const auto identity="-> serial: "+serial;
+    std::istringstream lines{std::string(output)};std::string line;unsigned headers=0,uris=0,serials=0;
+    while(std::getline(lines,line)){
+        if(!line.empty()&&line.back()=='\r')line.pop_back();const auto begin=line.find_first_not_of(' ');if(begin!=line.npos)line.erase(0,begin);
+        if(line.starts_with("Port ")){if(!line.starts_with(heading+(active?" device in use at ":" "))||line.size()>256)return false;++headers;}
+        if(line.starts_with("-> usbip://")){if(line!=uri)return false;++uris;}
+        if(line.starts_with("-> serial:")){if(line!=identity)return false;++serials;}
+    }
+    return headers==1&&uris==1&&serials==1;
+}
+extrapane::Availability live_interrupted_return_policy(const RecoveryRecord& record){
+    if(record.version!=2||(record.state!=RecoveryState::prepared&&record.state!=RecoveryState::offline&&record.state!=RecoveryState::binding_intent&&record.state!=RecoveryState::bound))return {false,"Live interrupted return requires this version 2 pre-export or bound generation"};
+    try{(void)encode_recovery(record);}catch(const std::exception& e){return {false,e.what()};}return {true,{}};
+}
+extrapane::Availability absent_release_policy(const RecoveryRecord& record){
+    if(record.version!=2||record.state!=RecoveryState::bound||record.binding_id.empty()||record.bus_id.empty())return {false,"Absent release requires an exact version 2 bound journal"};
+    try{(void)encode_recovery(record);}catch(const std::exception& e){return {false,e.what()};}return {true,{}};
+}
 extrapane::Availability interrupted_return_policy(const RecoveryRecord& record){
     if(record.version!=2||record.state!=RecoveryState::bound||(record.prior_attributes&1)||record.bus_id.empty()||record.binding_id.empty())
         return {false,"Interrupted return requires a version 2 bound record for an originally online disk"};

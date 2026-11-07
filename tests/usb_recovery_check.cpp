@@ -8,6 +8,17 @@ using namespace dm::usb;
 void require(bool value){if(!value)throw std::runtime_error("USB recovery policy check failed");}
 template<class F>void rejects(F f){try{f();}catch(const std::exception&){return;}throw std::runtime_error("Invalid recovery record accepted");}
 int main(){try{
+    const std::string activePort="Port 01: device in use at High Speed\n -> usbip://127.0.0.1:1234/1-2\n -> serial: ABC123\n";
+    const std::string stoppedPort="Port 01: device disconnected\n -> usbip://127.0.0.1:1234/1-2\n -> serial: ABC123\n";
+    require(matches_import_port(activePort,1,1234,"1-2","ABC123",true));
+    require(matches_import_port(stoppedPort,1,1234,"1-2","ABC123",false));
+    require(!matches_import_port(stoppedPort,1,1234,"1-2","ABC123",true));
+    require(!matches_import_port(stoppedPort,2,1234,"1-2","ABC123",false));
+    require(!matches_import_port(stoppedPort,1,1235,"1-2","ABC123",false));
+    require(!matches_import_port(stoppedPort,1,1234,"1-3","ABC123",false));
+    require(!matches_import_port(stoppedPort,1,1234,"1-2","OTHER",false));
+    require(!matches_import_port(stoppedPort+stoppedPort,1,1234,"1-2","ABC123",false));
+    require(!matches_import_port("Port 01: invalid device\n",1,1234,"1-2","ABC123",false));
     std::vector<std::uint8_t> medium(512*256);
     auto put=[&](std::size_t offset,std::uint64_t value,unsigned bytes){for(unsigned i=0;i<bytes;++i)medium[offset+i]=static_cast<std::uint8_t>(value>>(8*i));};
     medium[510]=0x55;medium[511]=0xaa;medium[450]=7;put(454,32,4);put(458,224,4);put(440,0x12345678,4);
@@ -65,6 +76,11 @@ int main(){try{
     RecoveryRecord record;record.disk_number=7;record.owner[0]=5;record.fingerprint[0]=8;record.prior_attributes=2;
     auto bytes=encode_recovery(record);require(bytes.size()==72);require(decode_recovery(bytes)==record);
     auto v2=record;v2.version=2;require(decode_recovery(encode_recovery(v2))==v2);
+    require(live_interrupted_return_policy(v2).available);v2.state=RecoveryState::offline;require(live_interrupted_return_policy(v2).available);
+    v2.state=RecoveryState::binding_intent;v2.bus_id="1-2";require(live_interrupted_return_policy(v2).available);
+    v2.state=RecoveryState::bound;v2.binding_id="{01234567-89ab-cdef-0123-456789abcdef}";require(live_interrupted_return_policy(v2).available);
+    v2.state=RecoveryState::ejected;require(!live_interrupted_return_policy(v2).available);v2.state=RecoveryState::released;require(!live_interrupted_return_policy(v2).available);
+    v2.version=1;v2.state=RecoveryState::bound;require(!live_interrupted_return_policy(v2).available);
     require(recovery_state_allows_restore(record).available);
     require(preexport_retirement_policy(record).available);
     auto preexport=record;preexport.state=RecoveryState::offline;require(preexport_retirement_policy(preexport).available);
@@ -97,6 +113,11 @@ int main(){try{
     require(!ejected_binding_adoption_policy(selected,selected,bound,L"USB\\OTHER").available);
     auto interrupted=selected;interrupted.record->state=RecoveryState::bound;interrupted.record->version=2;
     require(interrupted_return_policy(*interrupted.record).available);
+    require(absent_release_policy(*interrupted.record).available);
+    auto invalidAbsent=*interrupted.record;invalidAbsent.version=1;require(!absent_release_policy(invalidAbsent).available);
+    invalidAbsent=*interrupted.record;invalidAbsent.state=RecoveryState::ejected;require(!absent_release_policy(invalidAbsent).available);
+    invalidAbsent=*interrupted.record;invalidAbsent.binding_id.clear();require(!absent_release_policy(invalidAbsent).available);
+    invalidAbsent=*interrupted.record;invalidAbsent.owner.fill(0);require(!absent_release_policy(invalidAbsent).available);
     require(interrupted_binding_adoption_policy(interrupted,interrupted,bound,L"USB\\TEST",true).available);
     require(!interrupted_binding_adoption_policy(interrupted,interrupted,bound,L"USB\\TEST",false).available);
     require(!interrupted_binding_adoption_policy(interrupted,selected,bound,L"USB\\TEST",true).available);

@@ -89,16 +89,22 @@ before handoff, and it never clears the persistent offline bit.
 The host backend requires a durable recovery guard before binding or starting
 USB export. It records binding intent before the exact selected-device bind,
 records the resulting owned GUID, and verifies quarantine again before starting
-the private daemon and admitted tunnel. Busy destination eject leaves the
-session active. Verified destination eject is durably recorded as `ejected`
-before any unbind, so a crash between those steps does not lose the receipt.
-Cleanup waits up to five seconds for the source driver to return before trying
-the exact owned binding removal; otherwise explicit recovery can finish it.
-Unexpected transport loss does not authorize unbinding or
-bringing the source disk online. After a successful destination eject, it may
-remove only the binding GUID created by this session and confirmed by fresh
-local state. Normal return then restores the verified source disk automatically.
-Recovery controls are reserved for interrupted or incomplete returns.
+the private daemon and admitted tunnel. Normal stop requests a verified
+receiver flush/eject, recording its receipt before unbinding. If eject is vetoed,
+fails, or takes more than ten seconds, the source closes its transport and stops
+its own exporter before attempting local return. Transport loss and parent-app
+exit use the same interrupted-return cleanup.
+
+Interrupted return requires the live version 2 journal, the same physical medium,
+and fresh proof that the exact session binding was released and no import remains.
+It records a separate resource-stop audit, restores only the original offline bit,
+and retires the journal. It never fabricates a destination flush/eject receipt.
+The app reports that pending writes may not have been flushed. If the source
+has been unplugged, cleanup can instead retire only its exact inactive owned
+binding and protected journal after fresh absence checks. This opens no disk and
+reports ownership released with the device unplugged, not that it was brought online. Cleanup retries
+source re-enumeration for five seconds; changed media, foreign ownership, or an
+exporter that has not actually stopped remain errors requiring recovery.
 
 Holding volume handles alone is insufficient crash protection: usbipd can
 restore the source USB driver when the network stream closes, and driver
@@ -121,8 +127,9 @@ Quarantine requires the storage owner's locked-handle verifier, then rechecks th
 present SetupAPI disk/USB instances, disk number, descriptor and partition bytes
 through a fresh physical handle. It sets `DISK_ATTRIBUTE_OFFLINE` with
 `Persist=TRUE` and reads it back before recording the offline phase. Only the
-offline bit is changed; read-only and other attributes are preserved. Destruction,
-disconnect and an abandoned mutex never authorize bringing storage online.
+offline bit is changed; read-only and other attributes are preserved. An abandoned
+mutex alone never authorizes bringing storage online. Live session cleanup applies
+the verified interrupted-return policy described above.
 
 Explicit recovery requires trusted local destination-eject and exact backend
 binding-release verification. It rechecks the recorded identity, restores only
@@ -224,21 +231,24 @@ ambiguous installations are left unchanged and reported. Setup does not start
 that driver, install the upstream public server service, invoke the upstream MSI,
 add firewall rules, or bind any USB device.
 
-`--remove` refuses pending recovery journals, persisted bindings/policies or
-in-use executable files. It disables the private host registration and removes
-owned user-mode files. Shared driver-store packages, the monitor service and its
-protected driver files remain installed, even if ExtraPane originally created
-them, because another application may now depend on them. Protected ownership
-records permit an explicit same-version reinstall and retain partial setup state
-for diagnosis/retry. No driver or system-wide service is automatically stopped
-or uninstalled. Migration to different payload hashes needs an explicit upgrade
-path; this first helper refuses to overwrite mismatched managed files.
+`--install` first checks for an exact complete managed backend. It verifies the
+payload hashes, manifest, protected ownership/version, exact private registration
+and monitor compatibility. If all checks pass, it reuses that backend without
+changing bindings, recovery journals, services or driver files. A missing card
+therefore does not block an application update. Verification failures do not fall
+through to a destructive repair; mismatched payload migrations remain unsupported.
 
-The application uninstaller does not invoke USB component removal or uninstall
-shared USB drivers automatically. Finish any storage eject/recovery before
-uninstalling the app. If explicitly removing source components with the managed
-helper, a pending recovery journal prevents removal so the backend needed for
-recovery is preserved; driver-store and shared service retention still apply.
+The main ExtraPane uninstaller runs `ExtraPane.UsbRecovery --prepare-uninstall`
+then the USB source helper's read-only `--check-removal` before component deletion.
+The recovery helper can retire exact inactive absent-device ownership and safe
+never-exported already-online records, preserving an audit of interrupted state.
+It never invents an eject receipt or changes missing/replacement media. Live,
+foreign or ambiguous ownership remains a blocking error. `--remove` independently
+rechecks journals, private bindings/policies, file ownership and file use before
+removing managed payloads and registration. It removes an owned monitor/INF only
+when ownership is verified and no independent consumer needs it; shared packages
+are preserved. Failure displays a normal uninstall message and retains cleanup
+helpers, rather than exposing a Pascal script runtime error.
 
 Native compilation/linking and embedded-payload verification passed. Setup,
 service loading, device binding, uninstall and upgrade have not been executed on
@@ -301,12 +311,18 @@ The new export and automatic-return paths still require physical testing.
 
 ## Automatic return and stale pre-export records
 
-Unchecking USB asks the receiver to flush and safely eject its owned device. A
-busy-device refusal keeps the tunnel running and rechecks USB in the client.
-Disconnect all stops other resources but retains USB and its control connection
-until return succeeds; a busy refusal cancels the pending full disconnect.
-Only a verified eject receipt and exact owned-binding release authorize automatic
-source restoration. Network loss does not supply that proof.
+Unchecking USB first asks the receiver to flush and safely eject its owned device.
+Disconnect all and application Exit also return the source. A busy refusal no
+longer rechecks the box indefinitely: the source revokes its own export, then
+attempts exact local restoration, reporting interrupted writes when no clean
+receipt exists. The receiver removes only its session-owned import port after its
+worker has stopped; interrupted port removal does not claim flush or eject.
+
+The source helper watches parent exit and control-channel loss. The UI gives it
+time to clean up instead of terminating it during normal shutdown. There is no
+separate crash guardian: forcibly killing the USB helper itself, kernel failure,
+or power loss can leave a journal requiring recovery. These cases are not
+reported as successful automatic return.
 
 The bounded EPUT/EPUS v3 protocol carries readiness, return requests and distinct
 return-failure responses separately from USB/IP payload. Both endpoints require
@@ -326,5 +342,7 @@ is already online and a fresh backend check proves no binding or attachment.
 It neither asserts that a replacement card is the original medium nor changes
 disk attributes or contents. The client performs the same assessment for source
 selection and repeats it under an ownership reservation before a new export.
-Uninstall invokes reconciliation before removing components. Missing disks,
-malformed journals and any evidence of export remain blocked for recovery.
+Uninstall uses the broader guarded `--prepare-uninstall` path described above.
+Malformed records, active exporters and ambiguous/foreign ownership still block
+removal; a missing card with exact inactive owned state is no longer an automatic
+uninstall blocker.

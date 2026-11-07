@@ -54,8 +54,8 @@ public:
         if(!before||before->bus_id!=bus_||before->forced||before->attached||!before->binding_id.empty())return fail("USB device changed or became bound before export");
         // This durable guard must confirm persistent offline state, not merely
         // retain volume handles; usbipd can restore the source driver on loss.
-        auto result=step(recovery_->quarantine(selected_),"Preparing persistent USB quarantine");if(!result.available)return result;
         quarantined_=true;
+        auto result=step(recovery_->quarantine(selected_),"Preparing persistent USB quarantine");if(!result.available)return result;
         result=step(recovery_->verify(selected_),"Verifying disk after taking it offline");if(!result.available)return result;
         result=step(recovery_->binding_intent(selected_,bus_),"Recording USB binding intent");if(!result.available)return result;
         result=step(transport_.handoff_quarantined(selected_),"Handing off quarantined USB handles");if(!result.available)return result;
@@ -90,9 +90,9 @@ public:
     void stop_export()noexcept override{if(runner_)runner_->stop();}
     void release_claim(bool)noexcept override{
         if(!reserved_||!runner_)return;
-        Availability restored{false,"USB source return requires verified destination eject and exact binding release"};
-        // A lost connection is not eject proof. Leave the owned binding and
-        // durable offline journal intact for explicit local recovery.
+        close_transport();stop_export();
+        Availability restored{false,"USB source return requires stopped exporter and exact binding release"};
+        // Clean return records destination flush; interrupted return never fabricates it.
         if(eject_confirmed_&&!binding_.empty()&&!runner_->running()){
             const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
             bool unbindRequested=false,releaseRecorded=false;
@@ -120,7 +120,45 @@ public:
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }while(true);
         }
+        if(!eject_confirmed_&&!runner_->running()){
+            if(!quarantined_)restored={true,{}};
+            else {
+                const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+                do {
+                    try {
+                        restored=recovery_->restore_interrupted_source(selected_,[&](const RecoveryRecord& record)->Availability{
+                            if(runner_->running())return fail("Private USB exporter has not stopped");
+                            if(!record.bus_id.empty()&&record.bus_id!=bus_)return fail("USB journal bus identity changed");
+                            const auto device=find(selected_.usb_instance_id);
+                            if(!device||device->bus_id!=bus_||device->attached||device->forced)return fail("Exact USB source is not released yet");
+                            if(!device->binding_id.empty()){
+                                if(binding_.empty()||!equal_id(device->binding_id,binding_))return fail("USB binding belongs to another owner");
+                                const auto removed=runner_->unbind(binding_);if(!removed.available)return removed;
+                            }
+                            const auto current=find(selected_.usb_instance_id);
+                            if(!current||current->bus_id!=bus_||current->attached||current->forced||!current->binding_id.empty())return fail("USB source is re-enumerating after release");
+                            return {true,{}};
+                        });
+                        if(restored.available){binding_.clear();break;}
+                    }catch(const std::exception& error){restored={false,error.what()};}catch(...){restored=fail("USB source return failed");}
+                    if(std::chrono::steady_clock::now()>=deadline)break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }while(true);
+            }
+        }
         runner_->release();reserved_=false;
+        if(!restored.available&&!runner_->running()&&quarantined_&&!binding_.empty()){
+            try{
+                const auto absent=recovery_->release_absent_source(selected_,[&](const PendingRecovery& pending)->Availability{
+                    if(runner_->running()||!pending.record||pending.record->version!=2||pending.record->state!=RecoveryState::bound||pending.record->bus_id!=bus_||!equal_id(std::wstring(pending.record->binding_id.begin(),pending.record->binding_id.end()),binding_))
+                        return fail("Absent USB release does not match this stopped session");
+                    const auto source=runner_->absent_binding_source(pending);
+                    if(source.empty()||!equal_id(source,selected_.usb_instance_id))return fail("Exact USB source is not proven absent");
+                    return runner_->release_absent_binding(pending,source);
+                });
+                if(absent.available){binding_.clear();restored={true,"USB ownership released; device is unplugged. Interrupted writes may be incomplete."};}
+            }catch(...){ }
+        }
         try{if(transport_.source_restored)transport_.source_restored(restored);}catch(...){ }
     }
 private:

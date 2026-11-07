@@ -130,19 +130,26 @@ void send_storage(const net::Options& options,const std::string& id,std::atomic_
     StorageOperations operations(selected,current_inventory,usb_host_backend(native_host_runner(),std::move(recovery),transport,reserve_port()),std::move(handles));extrapane::usb::Transfer transfer(operations);
     check(!stop.load(),"USB source canceled before preparation");
     if(return_requested.load()){report("USB_RETURNED USB was canceled before export; the source disk was not changed.");return;}
-    const auto result=transfer.start(selected.facts.id,selected.facts.generation,true);if(!result.available){report("USB_RECOVERY_REQUIRED "+result.reason);throw std::runtime_error(result.reason);}
+    const auto result=transfer.start(selected.facts.id,selected.facts.generation,true);if(!result.available){report(source_restored.available?"USB_RETURNED USB source returned after setup failed.":"USB_RECOVERY_REQUIRED "+result.reason);throw std::runtime_error(result.reason);}
     try{
         remote.write(encode(offer),Clock::now()+std::chrono::seconds(5));expect(remote,3);report("USB_WAITING Waiting for the receiver to enumerate the storage disk.");pump_tunnel(remote,*local,false,offer.bus,stop,true,&return_requested,nullptr,[&](TunnelControl event){
             if(event==TunnelControl::storage_ready)report("USB_STARTED sending");
             else if(event==TunnelControl::storage_not_ready)report("USB_NOT_READY The receiver has an imported USB port, but its storage disk has not become available. Check receiver diagnostics.");
-            else if(event==TunnelControl::return_busy)report("USB_STOP_BLOCKED Windows vetoed eject on the receiver. Close its files and uncheck USB again to retry.");
-            else report("USB_RETURN_FAILED "+std::string(return_reason(event)));
+            else {report("USB_REVOKING "+std::string(return_reason(event))+" Revoking export before returning the source; pending writes may be interrupted.");stop=true;}
         });
         if(!stop.load()){std::array<std::uint8_t,32> proof_receipt{};remote.read(proof_receipt,Clock::now()+std::chrono::seconds(10));clean_eject=proof_receipt==receipt(offer);}
         if(clean_eject){const auto ejected=transfer.eject();check(ejected.available,ejected.reason.c_str());check(source_restored.available,source_restored.reason.c_str());report("USB_RETURNED USB safely returned to this computer.");}
-        else transfer.transport_lost();
-    }catch(...){transfer.transport_lost();report("USB_RECOVERY_REQUIRED USB return was not completed; source state retained for recovery");throw;}
-    if(!clean_eject)report("USB_RECOVERY_REQUIRED source remains quarantined");
+        else {remote.cancel();transfer.transport_lost();}
+    }catch(const std::exception& error){
+        report("USB_REVOKING "+clean(error.what())+" Closing export and returning the source.");
+        remote.cancel();transfer.transport_lost();
+        if(source_restored.available){report("USB_RETURNED_INTERRUPTED "+(source_restored.reason.empty()?std::string("USB returned to this computer. The transfer was interrupted; pending writes may not have been flushed."):source_restored.reason));return;}
+        report("USB_RECOVERY_REQUIRED "+source_restored.reason);throw;
+    }
+    if(!clean_eject){
+        if(source_restored.available)report("USB_RETURNED_INTERRUPTED "+(source_restored.reason.empty()?std::string("USB returned to this computer. The transfer was interrupted; pending writes may not have been flushed."):source_restored.reason));
+        else report("USB_RECOVERY_REQUIRED "+source_restored.reason);
+    }
 }
 void receive_storage_admitted(security::TlsStream& remote,std::atomic_bool& stop,std::atomic_bool& eject,const Report& report){
     Com com;check(IsUserAnAdmin(),"USB receiver requires explicit elevation");auto runner=native_import_runner();auto readiness=runner->ready();check(readiness.available,readiness.reason.c_str());
@@ -151,6 +158,14 @@ void receive_storage_admitted(security::TlsStream& remote,std::atomic_bool& stop
 Cancellation cancellation(remote,session_stop);expect(remote,0);remote.write(control(2),Clock::now()+std::chrono::seconds(5));std::array<std::uint8_t,64> packet{};remote.read(packet,Clock::now()+std::chrono::seconds(30));const auto offer=decode(packet);
     net::Options loopback{"127.0.0.1","",0,std::chrono::milliseconds(250)};net::TcpListener local_listener(loopback);const auto local_port=endpoint_port(local_listener.endpoints());const auto serial=virtual_serial();remote.write(control(3),Clock::now()+std::chrono::seconds(5));
     std::atomic_bool clean_eject=false,in_eject=false;std::atomic<TunnelControl> notice=TunnelControl::none;std::atomic_uint owned_port=0;
+    // Construct before the worker so its destructor joins before port teardown.
+    struct PortCleanup { std::function<void()> run; ~PortCleanup(){try{run();}catch(...){}} } port_cleanup{[&]{
+        remote.cancel();
+        if(const auto port=owned_port.load()){
+            try{runner->detach_interrupted(port,local_port,offer.bus,serial);report("USB_PORT_CLEANUP Session import port detached.");}
+            catch(const std::exception& error){report("USB_PORT_CLEANUP "+clean(error.what()));}
+        }
+    }};
     std::jthread importer([&](std::stop_token token){try{
         Com worker_com;const auto port=runner->attach(local_port,offer.bus,serial);owned_port=port;
         report("USB_WAITING Import port allocated; waiting for the owned storage disk.");
@@ -180,8 +195,8 @@ Cancellation cancellation(remote,session_stop);expect(remote,0);remote.write(con
         const auto limit=Clock::now()+std::chrono::seconds(2);
         while(local_failure&&in_eject.load()&&!clean_eject.load()&&Clock::now()<limit)std::this_thread::sleep_for(std::chrono::milliseconds(10));
         return clean_eject.load();});const auto wait=Clock::now()+std::chrono::seconds(5);while(in_eject.load()&&!clean_eject.load()&&Clock::now()<wait)std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        if(clean_eject.load()){remote.write(receipt(offer),Clock::now()+std::chrono::seconds(5));try{runner->detach_ejected(owned_port,local_port,offer.bus,serial);}catch(const std::exception& e){report("USB_PORT_CLEANUP "+std::string(e.what()));}}
-        else report("USB_DISCONNECTED no clean eject receipt; source recovery required");
+        if(clean_eject.load()){remote.write(receipt(offer),Clock::now()+std::chrono::seconds(5));try{runner->detach_ejected(owned_port,local_port,offer.bus,serial);owned_port=0;}catch(const std::exception& e){report("USB_PORT_CLEANUP "+std::string(e.what()));}}
+        else report("USB_DISCONNECTED no clean eject receipt; source will revoke export and attempt local return");
     }catch(...){session_stop=true;throw;}
     importer.request_stop();
 }
