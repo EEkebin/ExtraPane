@@ -94,7 +94,7 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
         if(!common){options.target.address=self.address.stringValue.UTF8String;options.target.port=portValue(self.port.stringValue);options.code=self.code.stringValue.UTF8String;}
         bool valid=true;if(!dm::mac::ipv4(options.target.address.c_str())){if(!common)invalid(self.address);valid=false;}if(!options.target.port||options.target.port>65535){if(!common)invalid(self.port);valid=false;}if(!options.code.empty()&&!dm::access::validCode(options.code)){if(!common)invalid(self.code);valid=false;}
         const auto index=self.source.indexOfSelectedItem-1;if(index<0||size_t(index)>=devices.size()||!devices[size_t(index)].available){invalid(self.source);valid=false;}
-        if(!valid){[self.owner notify:common?@"Complete the server address, port, access code and selected source.":@"Check the highlighted connection fields."];[self render];return;}
+        if(!valid){if(common&&self.owner.highlightInvalidTarget)self.owner.highlightInvalidTarget();[self.owner notify:common?@"Complete the server address, port, access code and selected source.":@"Check the highlighted connection fields."];[self render];return;}
         const auto selected=devices[size_t(index)];options.sourceId=selected.id;options.width=selected.width;options.height=selected.height;options.fps=selected.fps;
         self.pending=YES;self.stopping=NO;const NSUInteger generation=++self.generation;
         self.summary.stringValue=[NSString stringWithFormat:@"Connecting to %s:%u — %s",options.target.address.c_str(),options.target.port,selected.label.c_str()];self.status.stringValue=@"Waiting for capture permission…";[self render];[self.owner update];
@@ -127,7 +127,7 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
         [stack addArrangedSubview:[NSStackView stackViewWithViews:@[action(@"Cameras ▾",self,@selector(toggleCameras:)),action(@"+ Add camera",self,@selector(addCamera:)),action(@"Disconnect cameras",self,@selector(stopCameras:),true)]]];[stack addArrangedSubview:self.cameras];
         [stack addArrangedSubview:[NSStackView stackViewWithViews:@[action(@"Microphones ▾",self,@selector(toggleMicrophones:)),action(@"+ Add microphone",self,@selector(addMicrophone:)),action(@"Disconnect microphones",self,@selector(stopMicrophones:),true)]]];[stack addArrangedSubview:self.microphones];
         [stack addArrangedSubview:[NSTextField wrappingLabelWithString:@"USB sharing and virtual camera/microphone receiving are not available on macOS yet. Each capture uses the selected network above."]];
-        auto* scroll=[NSScrollView new];scroll.hasVerticalScroller=YES;scroll.drawsBackground=NO;scroll.documentView=stack;stack.translatesAutoresizingMaskIntoConstraints=NO;[stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active=YES;[scroll.heightAnchor constraintEqualToConstant:210].active=YES;self.view=scroll;
+        auto* scroll=[NSScrollView new];scroll.hasVerticalScroller=YES;scroll.drawsBackground=NO;scroll.documentView=stack;stack.translatesAutoresizingMaskIntoConstraints=NO;[stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active=YES;[scroll.heightAnchor constraintGreaterThanOrEqualToConstant:140].active=YES;auto* preferredHeight=[scroll.heightAnchor constraintEqualToConstant:210];preferredHeight.priority=NSLayoutPriorityDefaultHigh;preferredHeight.active=YES;self.view=scroll;
         [self addCamera:nil];[self addMicrophone:nil];
     }return self;
 }

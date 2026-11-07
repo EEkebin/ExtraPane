@@ -7,6 +7,7 @@
 @interface EPResourcePanel : NSObject
 @property(nonatomic,readonly) NSView* view;
 @property(nonatomic,readonly) BOOL active;
+@property(nonatomic,copy) void (^highlightInvalidTarget)(void);
 - (instancetype)initWithTarget:(std::function<dm::mac::ResourceOptions()>)target changed:(void (^)(void))changed;
 - (void)stopAll;
 @end

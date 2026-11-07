@@ -1,9 +1,11 @@
 """Check the distributable Universal app without launching a host or creating monitors."""
 import hashlib
 import os
+import plistlib
 from pathlib import Path
 import subprocess
 import tempfile
+from macos_package_checks import verify_disk_image
 
 root = Path(__file__).resolve().parents[1]
 version = os.environ['EXTRAPANE_VERSION']
@@ -14,11 +16,18 @@ for extension in ('.zip', '.dmg'):
     expected = artifact.with_suffix(extension + '.sha256').read_text().split()[0]
     if hashlib.sha256(artifact.read_bytes()).hexdigest() != expected:
         raise RuntimeError(f'Checksum mismatch: {artifact.name}')
-subprocess.run(['hdiutil', 'verify', str(dist / (stem + '.dmg'))], check=True)
+verify_disk_image(dist / (stem + '.dmg'))
 with tempfile.TemporaryDirectory(prefix='ExtraPane-package-') as temporary:
     subprocess.run(['ditto', '-x', '-k', str(dist / (stem + '.zip')), temporary], check=True)
     app = Path(temporary) / 'ExtraPane.app'
     binary = app / 'Contents/MacOS/ExtraPane'
+    with (app / 'Contents/Info.plist').open('rb') as source:
+        info = plistlib.load(source)
+    for key in ('NSCameraUsageDescription', 'NSMicrophoneUsageDescription', 'NSLocalNetworkUsageDescription'):
+        if not isinstance(info.get(key), str) or not info[key].strip():
+            raise RuntimeError(f'Missing privacy description: {key}')
+    if not (app / 'Contents/Resources/Documentation/MACOS.md').is_file():
+        raise RuntimeError('Missing macOS setup guide')
     subprocess.run(['lipo', str(binary), '-verify_arch', 'arm64', 'x86_64'], check=True)
     subprocess.run(['codesign', '--verify', '--strict', '--verbose=2', str(app)], check=True)
     for name in ('boringssl', 'mbedtls', 'tf-psa-crypto'):

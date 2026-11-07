@@ -25,6 +25,7 @@ class AdmissionBroker {
             stream->connect();
             auto exchange=[&](access::ControlOperation op,unsigned kind=0){
                 stream->write(access::control_request(op,kind));auto bytes=stream->read(128,15);access::ControlReply reply{};
+                struct ReplyWipe{std::vector<uint8_t>& bytes;access::ControlReply& reply;~ReplyWipe(){std::fill(bytes.begin(),bytes.end(),0);std::fill(reply.begin(),reply.end(),0);}} guard{bytes,reply};
                 std::copy(bytes.begin(),bytes.end(),reply.begin());auto credential=access::control_credential(reply,op,kind,true);
                 std::fill(bytes.begin(),bytes.end(),0);std::fill(reply.begin(),reply.end(),0);return credential;
             };
