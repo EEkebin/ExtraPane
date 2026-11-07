@@ -23,7 +23,7 @@ connection per server. USB sharing remains exclusive.
 Each display row opens a separate resizable window. Custom virtual monitor mode
 requires no local monitor selection. Alternatively, choose Match local monitor
 for native mode and fullscreen placement. Custom even resolutions must remain within
-4096 pixels per dimension, 8,847,360 pixels total and 1–60 FPS. The physical
+4096 pixels per dimension, 8,847,360 pixels total and 1–360 FPS. The physical
 panel's refresh rate is not changed. Check arrangement restoration, fullscreen,
 the top-center Controls handle, and the Keyboard action. Automatic keyboard
 opening uses Windows On-Screen Keyboard for remote fields exposing supported

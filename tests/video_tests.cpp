@@ -36,7 +36,13 @@ int main() {
         preference=wire::take_client_display(request);
         require(preference.exact_mode&&preference.width==1600&&preference.hz==48&&request==wire::request,"Exact custom mode roundtrip failed");
         rejects([&]{wire::set_client_display(request,{1601,1000,48,true});});
-        rejects([&]{wire::set_client_display(request,{1600,1000,120,true});});
+        rejects([&]{wire::set_client_display(request,{1600,1000,361,true});});
+        for(unsigned hz:{120u,240u,360u}){
+            wire::set_client_display(request,{1920,1080,hz,true});
+            const auto high=wire::take_client_display(request);
+            require(high.hz==hz&&high.exact_mode&&request==wire::request,"High-rate custom preference was clamped or lost");
+            require(wire::decode_offer(wire::encode_offer({1920,1080,hz,0,wire::Codec::h264})).fps==hz,"High-rate H264 negotiation failed");
+        }
         rejects([&]{wire::set_client_display(request,{4096,4096,60,true});});
         auto invalidFlags=wire::request;invalidFlags[28]=2;
         rejects([&]{wire::take_client_display(invalidFlags);});
@@ -52,7 +58,7 @@ int main() {
         rejects([] { (void)wire::encode_offer({1279,720,30,180,wire::Codec::h264}); });
         require(wire::decode_offer(wire::encode_offer({3000,2000,60,3600,wire::Codec::h264})).height==2000,"Native mode lost");
         rejects([] { (void)wire::encode_offer({4096,4096,60,180,wire::Codec::h264}); });
-        rejects([] { (void)wire::encode_offer({3000,2000,61,180,wire::Codec::h264}); });
+        rejects([] { (void)wire::encode_offer({3000,2000,361,180,wire::Codec::h264}); });
         require(wire::decode_offer(wire::encode_offer({3000,2000,60,0,wire::Codec::h264})).frames==0,"Continuous session lost");
         auto unknown_codec=offer; unknown_codec[6]=255;
         rejects([&] { (void)wire::decode_offer(unknown_codec); });

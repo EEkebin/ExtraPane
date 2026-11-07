@@ -58,7 +58,7 @@ bool ConnectionModel::validDisplay(const QVariantMap& mode){
     if(!keys(mode,{"mode","monitorId","width","height","fps"})||mode.size()!=5)return false;
     const auto type=mode.value("mode").toString();const auto monitor=mode.value("monitorId").toString();
     return (type=="native"||type=="custom")&&monitor.size()<=8192&&!monitor.contains(QChar(0))&&!monitor.contains('\n')&&!monitor.contains('\r')
-        &&integer(mode.value("width"),2,4096)&&integer(mode.value("height"),2,4096)&&mode.value("width").toInt()%2==0&&mode.value("height").toInt()%2==0&&mode.value("width").toLongLong()*mode.value("height").toLongLong()<=8847360&&integer(mode.value("fps"),1,60);
+        &&integer(mode.value("width"),2,4096)&&integer(mode.value("height"),2,4096)&&mode.value("width").toInt()%2==0&&mode.value("height").toInt()%2==0&&mode.value("width").toLongLong()*mode.value("height").toLongLong()<=8847360&&integer(mode.value("fps"),1,360);
 }
 bool ConnectionModel::setDisplayMode(QString id,QVariantMap mode){const auto i=find(id);if(i<0||rows_[i].kind!="display"||busy(rows_[i].state)||!validDisplay(mode))return false;if(mode.value("mode")=="custom")mode["monitorId"]=QString{};rows_[i].display=std::move(mode);changed(i);return true;}
 QVariantMap ConnectionModel::connection(QString id)const{const auto i=find(id);if(i<0)return {};QVariantMap result;const auto roles=roleNames();for(auto it=roles.begin();it!=roles.end();++it)result.insert(QString::fromLatin1(it.value()),data(index(i),it.key()));return result;}

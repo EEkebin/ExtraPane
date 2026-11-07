@@ -27,7 +27,7 @@
     <SignMode>Off</SignMode>
   </PropertyGroup>
   <ItemDefinitionGroup>
-    <Inf><SpecifyDriverVerDirectiveVersion>true</SpecifyDriverVerDirectiveVersion><TimeStamp>0.8.0.0</TimeStamp></Inf>
+    <Inf><SpecifyDriverVerDirectiveVersion>true</SpecifyDriverVerDirectiveVersion><TimeStamp>0.9.0.0</TimeStamp></Inf>
     <ClCompile>
       <WppEnabled>true</WppEnabled><WppRecorderEnabled>true</WppRecorderEnabled>
       <WppScanConfigurationData>Trace.h</WppScanConfigurationData>

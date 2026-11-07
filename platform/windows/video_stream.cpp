@@ -114,7 +114,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 if(current!=display::current_mode(selected_source))throw std::runtime_error("Display mode is still settling");
                 mode=current;
-                if(extend){width=current.width;height=current.height;fps=std::min(target_fps,std::clamp(current.hz,1u,60u));}
+                if(extend){width=current.width;height=current.height;fps=std::min(target_fps,std::clamp(current.hz,1u,360u));}
             }
             capture=std::make_unique<DesktopCapture>(selected_source,width,height);
             frame=codec==wire::Codec::h264?capture->next_gpu():capture->next();
@@ -175,7 +175,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
                 auto current=display::current_mode(selected_source);
                 std::this_thread::sleep_for(std::chrono::milliseconds(150));
                 if(current!=display::current_mode(selected_source))continue;
-                fps=std::min(target_fps,std::clamp(current.hz,1u,60u));
+                fps=std::min(target_fps,std::clamp(current.hz,1u,360u));
                 (void)wire::encode_offer({current.width,current.height,fps,frames,codec});
                 capture=std::make_unique<DesktopCapture>(selected_source,current.width,current.height);
                 frame=capture->next_gpu();scale_frame();

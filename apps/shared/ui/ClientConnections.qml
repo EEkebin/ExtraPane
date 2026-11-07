@@ -115,11 +115,11 @@ ScrollView {
                             SpinBox { id: widthSpin; from: 2; to: 4096; stepSize: 2; value: row.displayMode.width; editable: true; onValueModified: parent.parent.saveDisplay() }
                             Label { text: "×" }
                             SpinBox { id: heightSpin; from: 2; to: 4096; stepSize: 2; value: row.displayMode.height; editable: true; onValueModified: parent.parent.saveDisplay() }
-                            SpinBox { id: fpsSpin; from: 1; to: 60; value: Math.min(60, row.displayMode.fps); editable: true; onValueModified: parent.parent.saveDisplay() }
+                            SpinBox { id: fpsSpin; from: 1; to: 360; value: Math.min(360, row.displayMode.fps); editable: true; onValueModified: parent.parent.saveDisplay() }
                             Label { text: "FPS" }
                         }
                         Label { visible: !row.displayOptionsValid; text: "This custom mode is outside the current engine limits. Use even dimensions and stay below the total-pixel limit."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#f0c66e" }
-                        Label { text: "Each display opens a resizable window. Current engine: up to 4096 × 4096 and 60 FPS, subject to host support. This does not change the physical monitor's refresh rate."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
+                        Label { text: "Each display opens a resizable window. Current engine: up to 4096 × 4096 and 360 target FPS, subject to encoder, decoder and network support. This does not change the physical monitor's refresh rate."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
                     }
                     CheckBox { visible: row.resourceKind === "camera" && row.busy; text: "Mirror camera (all connections using this source)"; checked: panel.runtime.mirrorStates[row.sourceId] === true; onClicked: panel.runtime.setMirror(row.connectionId, checked) }
                     CheckBox { visible: row.resourceKind === "microphone" && row.busy; text: "Mute microphone for this connection"; onClicked: panel.runtime.setMuted(row.connectionId, checked) }

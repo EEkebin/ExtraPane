@@ -98,7 +98,7 @@ Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsi
     DEVMODEW m{};m.dmSize=sizeof(m);
     for(DWORD i=0;EnumDisplaySettingsW(source.c_str(),i,&m);++i) {
         if(m.dmDisplayOrientation>3 || m.dmPelsWidth>4096 || m.dmPelsHeight>4096 ||
-           m.dmPelsWidth%2 || m.dmPelsHeight%2 || m.dmDisplayFrequency>60 || !m.dmDisplayFrequency ||
+           m.dmPelsWidth%2 || m.dmPelsHeight%2 || m.dmDisplayFrequency>360 || !m.dmDisplayFrequency ||
            static_cast<unsigned long long>(m.dmPelsWidth)*m.dmPelsHeight>8847360)continue;
         const auto native_width=(m.dmDisplayOrientation&1)?m.dmPelsHeight:m.dmPelsWidth;
         const auto native_height=(m.dmDisplayOrientation&1)?m.dmPelsWidth:m.dmPelsHeight;
@@ -106,7 +106,7 @@ Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsi
             const auto w=rotation?native_height:native_width,h=rotation?native_width:native_height;
             const double aspect=std::abs(std::log((double(w)/h)/(double(width)/height)));
             const double size=std::abs(std::log((double(w)*h)/(double(width)*height)));
-            const double rate=std::abs(double(m.dmDisplayFrequency)-std::min(hz,60u))/60;
+            const double rate=std::abs(double(m.dmDisplayFrequency)-std::min(hz,360u))/60;
             const double candidate=aspect*8+size+rate;
             if(candidate<score){score=candidate;best={w,h,m.dmDisplayFrequency,rotation,0,0};}
         }
@@ -116,7 +116,7 @@ Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsi
 }
 void configure_virtual(const std::wstring& source,const Mode& value) {
     bool owned=false;for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
-    if(!owned || value.width<2 || value.height<2 || value.width>4096 || value.height>4096 || value.rotation>3 || value.hz<1 || value.hz>60)throw std::runtime_error("Invalid DM mode configuration");
+    if(!owned || value.width<2 || value.height<2 || value.width>4096 || value.height>4096 || value.rotation>3 || value.hz<1 || value.hz>360)throw std::runtime_error("Invalid DM mode configuration");
     DEVMODEW mode{};mode.dmSize=sizeof(mode);
     mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION|DM_POSITION;
     mode.dmPelsWidth=value.width;mode.dmPelsHeight=value.height;mode.dmDisplayFrequency=value.hz;mode.dmDisplayOrientation=value.rotation;mode.dmPosition={value.x,value.y};
@@ -208,7 +208,7 @@ struct VirtualMonitor::State {
 VirtualMonitor::VirtualMonitor(unsigned slot,Mode desired):state_(std::make_unique<State>()) {
     const bool custom=desired.width||desired.height||desired.hz;
     ExtraPane::DisplayRequest::Request request{1,desired.width,desired.height,desired.hz};
-    if(custom&&!ExtraPane::DisplayRequest::Valid(request))throw std::invalid_argument("Custom virtual display mode requires even dimensions 2..4096, at most 8847360 pixels and 1..60 Hz");
+    if(custom&&!ExtraPane::DisplayRequest::Valid(request))throw std::invalid_argument("Custom virtual display mode requires even dimensions 2..4096, at most 8847360 pixels and 1..360 Hz");
     auto& s=*state_;s.slot=slot;if(slot)s.baseline=active_monitors();
     if(!s.event) throw std::runtime_error("Cannot create device completion event");
     // Slot zero retains the diagnostic identity; server slots are independent adapters.

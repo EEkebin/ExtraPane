@@ -119,7 +119,7 @@ Each display row opens an independent resizable receiver window. It defaults to
 a custom virtual display at 1920x1080 and 60 FPS without a local monitor selection.
 Match local monitor is an optional alternative. Checking the resource establishes
 the connection; the separate Connect button has been removed. Custom requests use even dimensions from 2 to 4096,
-at most 8,847,360 total pixels, and 1–60 target FPS. The native host still validates
+at most 8,847,360 total pixels, and 1–360 target FPS. The native host still validates
 the actual requested mode. These controls do not change physical monitor refresh.
 Current Windows receiving limits are four displays, four cameras, four microphone
 endpoints, and one USB storage connection per server. A camera source broker
@@ -147,7 +147,7 @@ disk recovery, new USB sharing tests, or removal of its recovery record.
 The host can construct `VirtualMonitor(slot, desiredMode)` with an explicit
 client-requested width, height and refresh rate. The launcher passes a versioned
 binary property to that software-device instance. The driver validates even
-dimensions from 2 through 4096, at most 8,847,360 pixels, and 1–60 Hz. Malformed or
+dimensions from 2 through 4096, at most 8,847,360 pixels, and 1–360 Hz. Malformed or
 out-of-range properties fail device initialization instead of silently falling
 back to a nearby resolution.
 

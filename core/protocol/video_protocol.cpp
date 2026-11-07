@@ -15,7 +15,7 @@ std::uint32_t get32(std::span<const std::uint8_t> in, std::size_t offset) {
 void validate(const Offer& offer) {
     if(offer.codec==Codec::jpeg && (offer.width>1280 || offer.height>720))throw std::runtime_error("JPEG is limited to 1280x720");
     if (!offer.width || offer.width > 4096 || !offer.height || offer.height > 4096 || static_cast<std::uint64_t>(offer.width)*offer.height > 8847360 ||
-        !offer.fps || offer.fps > 60 || offer.frames > 36000) throw std::runtime_error("Video offer exceeds supported limits");
+        !offer.fps || offer.fps > (offer.codec==Codec::h264?360u:60u) || offer.frames > 36000) throw std::runtime_error("Video offer exceeds supported limits");
     if (offer.codec!=Codec::jpeg && offer.codec!=Codec::h264) throw std::runtime_error("Unsupported video codec");
     if (offer.codec==Codec::h264 && (offer.width%2 || offer.height%2)) throw std::runtime_error("H264 requires even video dimensions");
     if(offer.input_caps>15 || (offer.input_caps!=0)!=(offer.input_epoch!=0))throw std::runtime_error("Invalid input grant");
@@ -25,7 +25,7 @@ void set_client_display(std::span<std::uint8_t> bytes, ClientDisplay display) {
     if(bytes.size()!=request.size() || ((display.width||display.height||display.hz) &&
        (!display.width || !display.height || !display.hz || display.width>16384 || display.height>16384 || display.hz>1000)))
         throw std::runtime_error("Invalid client display preference");
-    if(display.exact_mode && (!display.width || display.width>4096 || display.height>4096 || display.width%2 || display.height%2 || display.hz>60 || static_cast<std::uint64_t>(display.width)*display.height>8847360))
+    if(display.exact_mode && (!display.width || display.width>4096 || display.height>4096 || display.width%2 || display.height%2 || display.hz>360 || static_cast<std::uint64_t>(display.width)*display.height>8847360))
         throw std::runtime_error("Custom display mode exceeds supported limits");
     put32(bytes,16,display.width);put32(bytes,20,display.height);put32(bytes,24,display.hz);bytes[28]=display.exact_mode?1:0;
 }

@@ -43,7 +43,7 @@ struct Runtime {
     ~Runtime() { MFShutdown(); CoUninitialize(); }
 };
 void dimensions(unsigned width, unsigned height, unsigned fps) {
-    if (width < 2 || height < 2 || width > 4096 || height > 4096 || static_cast<std::uint64_t>(width)*height > 8847360 || width % 2 || height % 2 || !fps || fps > 60) throw std::invalid_argument("H264 requires even dimensions within 4096 per axis, 8847360 pixels and 1-60 fps");
+    if (width < 2 || height < 2 || width > 4096 || height > 4096 || static_cast<std::uint64_t>(width)*height > 8847360 || width % 2 || height % 2 || !fps || fps > 360) throw std::invalid_argument("H264 requires even dimensions within 4096 per axis, 8847360 pixels and 1-360 fps");
 }
 ComPtr<IMFMediaType> media_type(const GUID& subtype, unsigned width, unsigned height, unsigned fps) {
     ComPtr<IMFMediaType> type;

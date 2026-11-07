@@ -364,3 +364,7 @@ for upgrades and retain exact driver ownership records during migration. Indepen
 usbipd-win/USBip installations are not ExtraPane-owned and must remain untouched.
 A retained legacy rollback folder is an incomplete cleanup step, not proof of full
 consolidation. Installation, upgrade and unified removal need end-to-end validation.
+
+## Custom Windows display refresh target (2026-11-07)
+
+Custom display targets accept 1?360 FPS/Hz; the default remains 60. This is a requested mode and stream target, not a delivery guarantee. Capture, encoder, decoder, network and presentation hardware must support the requested rate. Driver 0.9 extends the private mode descriptor to three hexadecimal refresh digits, preserving legacy descriptor decoding. Camera and JPEG limits are unchanged.

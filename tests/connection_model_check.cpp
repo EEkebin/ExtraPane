@@ -32,7 +32,9 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);try{
     auto stale=custom();stale["monitorId"]="old-monitor";require(model.setDisplayMode(display,stale)&&model.connection(display)["displayMode"].toMap()["monitorId"].toString().isEmpty());
     require(model.setDisplayMode(display,custom())&&!model.setDisplayMode(mic,custom()));
     require(!model.setDisplayMode(display,custom(0))&&!model.setDisplayMode(display,custom(2560,1440,0)));
-    require(!model.setDisplayMode(display,custom(4096,4096,60))&&!model.setDisplayMode(display,custom(2561,1440,60))&&!model.setDisplayMode(display,custom(2560,1440,61)));
+    require(!model.setDisplayMode(display,custom(4096,4096,60))&&!model.setDisplayMode(display,custom(2561,1440,60))&&!model.setDisplayMode(display,custom(2560,1440,361)));
+    require(model.setDisplayMode(display,custom(1920,1080,360)));
+    require(model.connection(display)["displayMode"].toMap()["fps"].toInt()==360);
     require(model.beginConnection(display));require(!model.setDisplayMode(display,custom(1920,1080,60)));
     require(!model.setState(mic,ConnectionModel::State::active));
     require(!model.setState(display,ConnectionModel::State::recovery));

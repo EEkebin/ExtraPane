@@ -130,7 +130,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
         EnumDisplayMonitors(nullptr,nullptr,[](HMONITOR monitor,HDC,LPRECT,LPARAM context)->BOOL{auto& choice=*reinterpret_cast<MonitorChoice*>(context);MONITORINFOEXW info{};info.cbSize=sizeof(info);if(GetMonitorInfoW(monitor,&info)&&_wcsicmp(info.szDevice,choice.name.c_str())==0){choice.handle=monitor;return FALSE;}return TRUE;},reinterpret_cast<LPARAM>(&choice));
         if(!choice.handle)throw std::runtime_error("The selected local monitor is disconnected; select an attached monitor");
     }
-    if((preview.width==0)!=(preview.height==0)||preview.width>4096||preview.height>4096||(preview.width&&(preview.width<2||preview.height<2||preview.width%2||preview.height%2))||preview.fps>60)throw std::invalid_argument("Unsupported custom display mode");
+    if((preview.width==0)!=(preview.height==0)||preview.width>4096||preview.height>4096||(preview.width&&(preview.width<2||preview.height<2||preview.width%2||preview.height%2))||preview.fps>360)throw std::invalid_argument("Unsupported custom display mode");
     input::ReceiverInput input_capture(control);
     PreviewWindow state;state.input=&input_capture;state.quality.store(quality);state.requested=renderer;
     WNDCLASSW cls{};

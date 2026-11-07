@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
                          "  dm-view opengl-check [adapter-index]\n"
                          "  dm-view renderer-info\n"
                          "  dm-view host --lan --bind <local-ipv4> --allow-screen [--extend | --display <GDI-name>] [--allow-input] [--frames 0] [--fps 30] [--width 1280 --height 720] [--codec h264|jpeg]\n"
-                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality native|75|50] [--renderer d3d11|d3d12|vulkan|opengl] [--monitor GDI-NAME] [--width N --height N] [--fps 1..60]\n"
+                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality native|75|50] [--renderer d3d11|d3d12|vulkan|opengl] [--monitor GDI-NAME] [--width N --height N] [--fps 1..360]\n"
                          "  Common options: --port 43824 --timeout-ms 15000\n"
                          "Pairs: dm-session. Displays: dm-display list. Default source: primary output.\n"
                          "--extend requires separately installed signed DM driver and an administrator token.\n";
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
                 else if(args.at("--codec")!="h264") throw std::invalid_argument("Unknown codec; choose h264 or jpeg");
             }
             const auto frames = args.contains("--frames") ? number(args.at("--frames"),36000,true) : 0;
-            const auto fps = args.contains("--fps") ? number(args.at("--fps"),60) : 30;
+            const auto fps = args.contains("--fps") ? number(args.at("--fps"),360) : 30;
             std::wstring source;
             if(args.contains("--display")) {
                 const auto& text=args.at("--display");
@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
             if(headless&&(args.contains("--width")||args.contains("--height")||args.contains("--fps")))throw std::invalid_argument("Custom display mode requires a preview window");
             if(args.contains("--width")!=args.contains("--height"))throw std::invalid_argument("Custom resolution requires both --width and --height");
             if(args.contains("--width")){preview.width=number(args.at("--width"),4096);preview.height=number(args.at("--height"),4096);if(preview.width<2||preview.height<2||preview.width%2||preview.height%2)throw std::invalid_argument("Custom display dimensions must be even and between 2 and 4096");}
-            if(args.contains("--fps"))preview.fps=number(args.at("--fps"),60);
+            if(args.contains("--fps"))preview.fps=number(args.at("--fps"),360);
             if(args.contains("--monitor")){const auto& name=args.at("--monitor");if(headless||!name.starts_with("\\\\.\\DISPLAY")||name.size()>32||name.size()<=11||!std::all_of(name.begin()+11,name.end(),[](char c){return c>='0'&&c<='9';}))throw std::invalid_argument("Select an attached Windows monitor device name");preview.monitor.assign(name.begin(),name.end());}
             options.peer = args.at("--peer");
             std::optional<unsigned> adapter;
