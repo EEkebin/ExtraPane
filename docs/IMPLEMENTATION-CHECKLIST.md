@@ -7,12 +7,12 @@ release verification. Keep this file consistent with RESOURCE-SHARING.md.
 
 ## Current target
 
-First testable camera-sharing build: Android phone to Windows, selectable as a
-camera in a normal application. Implementation and isolated checks are complete for this first device-test slice; application delivery remains unverified.
-Continue independent implementation and isolated validation; ask before device
+Complete camera (including Windows sender UI), microphone and USB implementation
+before requesting any device tests, per the user's updated direction. The first
+Android-to-Windows camera slice has passed isolated checks; this does not mean the
+combined product is ready. Continue isolated builds/checks only. Ask before device
 connections, camera/GPU tests, installation or system changes. iOS, renaming and
 speaker forwarding remain deferred.
-
 ## Shared interface and connections
 
 - [x] Shared Qt/QML shell foundation and resource checklist.
@@ -36,6 +36,7 @@ speaker forwarding remain deferred.
 - [x] Isolated synthetic delivery, COM lifetime and failure-cleanup checks.
 - [x] Managed Windows camera setup, upgrade, rollback and removal implemented (physical verification pending).
 - [x] Android camera selection/permission/status and Windows camera host/setup UI.
+- [x] Windows Client camera picker, explicit asynchronous refresh, share/stop and status UI; isolated Windows/Linux QML checks passed.
 - [x] Camera-only connection implemented without allocating a monitor.
 - [x] Android Camera2/H.264 forwarding and foreground lifecycle implemented (device verification pending).
 - [ ] Linux camera sources/endpoints.
@@ -55,6 +56,9 @@ speaker forwarding remain deferred.
 - [ ] Application-level recording and reconnect tests.
 
 ## USB
+
+- [x] Platform-independent storage eligibility, exclusive ownership and recovery lifecycle with synthetic checks.
+- [ ] Connect that lifecycle to native storage operations and encrypted USB/IP.
 
 - [ ] Windows/Linux USB forwarding through admitted encrypted transport.
 - [ ] Safe per-device selection, exclusions and exclusive ownership.
@@ -87,5 +91,6 @@ speaker forwarding remain deferred.
 | `0b11798` | COM DLL, local transport, registration backend | Unregistered DLL delivery and lifetime checks; Windows registration not run. |
 | `2631915` | Decoder-to-camera receiver integration | Build and synthetic-decoder delivery checks; real GPU path not run. |
 | 2026-11-07 camera preview | Windows setup and live receiver, Android sender, shared host UI and installer shutdown | 11 Windows checks and 4 core checks passed; APK/Android lint and packet checks passed. No device installation or camera/GPU tests. |
+| 2026-11-07 Windows sender | Windows camera picker/share/stop UI and USB ownership foundation | Offscreen camera/fallback UI and 5 core suites pass; no physical device access. |
 
-Concurrent implementation is authorized. Next gate: user-approved Android-to-Windows camera test; see [CAMERA-TEST.md](CAMERA-TEST.md).
+Concurrent implementation is authorized. Device testing is deferred until camera, microphone and USB implementation is complete. CAMERA-TEST.md is a future test guide, not a request to test now.

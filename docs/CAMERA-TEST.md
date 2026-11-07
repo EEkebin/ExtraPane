@@ -1,6 +1,8 @@
 # Android to Windows camera preview
 
-This development build is ready for its first controlled device test. It is not
+Device testing is deferred until camera, microphone and USB implementation is
+complete, per the user's updated direction. This guide is for that later test.
+The camera development build has passed isolated checks. It is not
 a verified camera release. Isolated checks cannot establish Windows Frame Server
 activation, phone capture, GPU decoding or delivery in Discord/a browser.
 
@@ -30,6 +32,15 @@ It does not deliberately detach the source camera, but Android may enforce
 exclusive access when another app is using it.
 
 ## Lifecycle checks after the first picture
+
+For Windows-to-Windows camera sharing, use Camera (preview) on the receiving
+computer's Server page. On the sending computer, open Client, choose Camera,
+click Refresh cameras and select the device explicitly. Enter the receiving
+computer's address/port/code and share. Only the receiving computer needs Camera
+setup. The initial Windows sender requests 1280x720 at 30 FPS and reports an error
+if the selected camera cannot supply that format. Stop sharing releases the
+session; no source device is deliberately detached. Windows privacy settings and
+another application's exclusive camera ownership may still prevent capture.
 
 - Stop sharing from Android, then reconnect. The Windows server should remain
   listening, and the previous camera session should release its resources.

@@ -1,5 +1,29 @@
 # Decisions, assumptions, and evidence
 
+## Device-sharing completion before testing (2026-11-07)
+
+The user requested camera (including Windows sender controls), microphone and
+USB implementation before any further physical device testing. Isolated builds
+and synthetic checks remain authorized. Track increments in
+IMPLEMENTATION-CHECKLIST.md; do not present the camera-only package as completion
+of this expanded milestone.
+
+Investigate a local USB Audio Class endpoint through the existing signed
+usbip-win2 driver for Windows microphones. This can avoid a new kernel audio
+driver/signing dependency while still exposing a normal recording endpoint.
+The C++20 app and native capture remain unchanged; an isolated Rust helper is a
+concrete integration exception for the MIT usbip-audio library, pinned to
+58032ab0664ffec1d0c178f40a3a69359c21f597. Its upstream tests are not our device
+verification. Managed driver setup, identity, lifecycle and application delivery
+remain gates; never substitute speaker loopback and call it a microphone.
+
+Raw USB storage must remain behind admitted encrypted transport. Stock usbipd-win
+starts an additional listener and persistent bindings, so bundling its installer
+unchanged does not satisfy this design. Require local ownership, complete disk
+classification, source volume locks/dismount, destination eject, and explicit
+recovery after interrupted transfer. Preserve independently installed USB/IP
+components and never detach unrelated virtual ports.
+
 ## Shared interface and resources (2026-11-07)
 
 The user approved Qt Quick with native C++ engines, one managed installation and

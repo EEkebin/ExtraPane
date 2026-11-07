@@ -106,8 +106,8 @@ struct Child
         if (!ok)
         {
             stop();
-            throw std::runtime_error("Cannot start display engine (Windows error " + std::to_string(error) +
-                                     "). Keep the app and dm-view.exe in the same folder.");
+            throw std::runtime_error("Cannot start the native engine (Windows error " + std::to_string(error) +
+                                     "). Keep the app and its packaged native helpers in the same folder.");
         }
         process = pi.hProcess;
         graceful_control=graceful;

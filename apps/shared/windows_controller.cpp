@@ -7,9 +7,11 @@
 #include <QNetworkInterface>
 #include <QSettings>
 #include <QTimer>
+#include <QProcess>
+#include <QSet>
 
 using extrapane::windows_bridge::Child;
-struct WindowsController::Impl {Child host,client;QString hostPending,clientPending,cameraProblem;bool hostFailed=false,clientFailed=false;quint64 codeExpires=0;HANDLE setup=nullptr;~Impl(){if(setup)CloseHandle(setup);}};
+struct WindowsController::Impl {QProcess* inventory=nullptr; QByteArray inventoryOutput; bool inventoryFailed=false; Child host,client;QString hostPending,clientPending,cameraProblem;bool hostFailed=false,clientFailed=false;quint64 codeExpires=0;HANDLE setup=nullptr;~Impl(){if(setup)CloseHandle(setup);}};
 WindowsController::WindowsController(QObject* parent):QObject(parent),impl_(std::make_unique<Impl>()){
     const auto dir=QCoreApplication::applicationDirPath();
     if(!QFileInfo::exists(dir+"/dm-view.exe"))unavailable_="The native display engine is missing from this installation.";
@@ -20,6 +22,56 @@ WindowsController::WindowsController(QObject* parent):QObject(parent),impl_(std:
     connect(timer,&QTimer::timeout,this,&WindowsController::poll);timer->start();
 }
 WindowsController::~WindowsController(){shutdown();}
+QString WindowsController::availability()const{
+    if(clientMode_=="camera")return QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Resources.exe")?QString{}:QString("The camera connection engine is missing from this installation.");
+    return unavailable_;
+}
+void WindowsController::setClientMode(QString mode){
+    if(active()||cameraScanRunning()||(mode!="display"&&mode!="camera")||mode==clientMode_)return;
+    clientMode_=std::move(mode);status_="Ready";emit changed();
+}
+bool WindowsController::cameraScanRunning()const{return impl_->inventory!=nullptr;}
+void WindowsController::setSelectedCamera(QString id){
+    if(active()||cameraScanRunning())return;
+    if(!id.isEmpty()&&std::none_of(cameras_.begin(),cameras_.end(),[&](const QVariant& v){return v.toMap()["id"].toString()==id;}))return;
+    selectedCamera_=std::move(id);emit camerasChanged();
+}
+void WindowsController::refreshCameras(){
+    if(active()||cameraScanRunning()||clientMode_!="camera")return;
+    if(!availability().isEmpty()){cameraStatus_=availability();emit camerasChanged();return;}
+    auto* process=new QProcess(this);impl_->inventory=process;impl_->inventoryOutput.clear();impl_->inventoryFailed=false;
+    cameraStatus_="Listing cameras...";emit camerasChanged();
+    process->setProcessChannelMode(QProcess::MergedChannels);
+    auto finish=[this,process](bool success){
+        if(impl_->inventory!=process)return;
+        impl_->inventoryOutput+=process->readAll();
+        QVariantList found;QSet<QString> ids;bool done=false;
+        bool valid=success&&!impl_->inventoryFailed&&impl_->inventoryOutput.size()<=1024*1024;
+        if(valid)for(auto line:impl_->inventoryOutput.split('\n')){
+            if(line.endsWith('\r'))line.chop(1);if(line.isEmpty())continue;
+            if(line=="CAMERA_LIST_DONE"){if(done)valid=false;done=true;continue;}
+            const auto fields=line.split('\t');
+            if(done||fields.size()!=4||fields[0]!="CAMERA_DEVICE_V1"||fields[1]!=QByteArray::number(found.size())||fields[2].isEmpty()||fields[2].size()>2048||fields[3].isEmpty()||fields[3].size()>8192||fields[3].size()%2||found.size()>=128){valid=false;break;}
+            const auto id=fields[3];
+            if(std::any_of(id.begin(),id.end(),[](char c){return !((c>='0'&&c<='9')||(c>='a'&&c<='f'));})){valid=false;break;}
+            const auto decoded=QByteArray::fromHex(id);const auto value=QString::fromUtf8(decoded);const auto label=QString::fromUtf8(fields[2]);
+            if(value.toUtf8()!=decoded||label.toUtf8()!=fields[2]||decoded.contains('\n')||decoded.contains('\r')||decoded.contains('\0')||ids.contains(QString::fromLatin1(id))){valid=false;break;}
+            ids.insert(QString::fromLatin1(id));found.push_back(QVariantMap{{"label",label},{"id",QString::fromLatin1(id)}});
+        }
+        impl_->inventory=nullptr;impl_->inventoryOutput.clear();process->deleteLater();
+        if(valid&&done){cameras_=found;if(!ids.contains(selectedCamera_))selectedCamera_.clear();cameraStatus_=found.isEmpty()?"No cameras found. Check camera permissions and reconnect the device, then refresh.":"Select a camera. Sharing uses 1280 x 720 at 30 FPS; unsupported camera modes report an error.";}
+        else{cameras_.clear();selectedCamera_.clear();cameraStatus_="Camera listing failed or timed out. Check camera permissions and the installation, then refresh.";}
+        emit camerasChanged();
+    };
+    connect(process,&QProcess::readyRead,this,[this,process]{
+        if(impl_->inventory!=process)return;impl_->inventoryOutput+=process->readAll();
+        if(impl_->inventoryOutput.size()>1024*1024){impl_->inventoryFailed=true;impl_->inventoryOutput.clear();process->kill();}
+    });
+    connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[finish](int code,QProcess::ExitStatus state){finish(code==0&&state==QProcess::NormalExit);});
+    connect(process,&QProcess::errorOccurred,this,[finish](QProcess::ProcessError error){if(error==QProcess::FailedToStart)finish(false);});
+    QTimer::singleShot(10000,process,[this,process]{if(impl_->inventory==process){impl_->inventoryFailed=true;process->kill();}});
+    process->start(QCoreApplication::applicationDirPath()+"/ExtraPane.Resources.exe",QStringList{"list-cameras"});
+}
 QString WindowsController::version()const{return QString::fromUtf8(EXTRAPANE_VERSION);}
 bool WindowsController::hosting()const{return impl_->host.process!=nullptr;}
 bool WindowsController::active()const{return impl_->client.process!=nullptr;}
@@ -63,24 +115,34 @@ void WindowsController::refreshAddresses(){
     }emit addressesChanged();
 }
 void WindowsController::connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex,unsigned port,QString code){
-    if(active())return;
+    if(active()||cameraScanRunning())return;
+    const bool camera=clientMode_=="camera";
     const QHostAddress address(server.trimmed());
-    if(!resources_.canConnect()||address.protocol()!=QAbstractSocket::IPv4Protocol||address.isNull()||address.isMulticast()||address.isLoopback()||address.toIPv4Address()==0xffffffffu||!port||port>65535||scale>2){status_="Select a display and enter a valid server IPv4 address and port.";emit changed();return;}
+    if((!camera&&!resources_.canConnect())||address.protocol()!=QAbstractSocket::IPv4Protocol||address.isNull()||address.isMulticast()||address.isLoopback()||address.toIPv4Address()==0xffffffffu||!port||port>65535||scale>2){status_="Select a resource and enter a valid server IPv4 address and port.";emit changed();return;}
+    if(!availability().isEmpty()){status_=availability();emit changed();return;}
+    if(camera&&(selectedCamera_.isEmpty()||std::none_of(cameras_.begin(),cameras_.end(),[&](const QVariant& v){return v.toMap()["id"].toString()==selectedCamera_;}))){status_="Refresh cameras and select a local camera.";emit changed();return;}
     if(!code.isEmpty()&&(code.size()!=6||std::any_of(code.begin(),code.end(),[](QChar c){return c<'0'||c>'9';}))){status_="Access code must contain six digits.";emit changed();return;}
     bool valid=interfaceIndex==0&&local=="0.0.0.0";
     for(const auto& item:addresses_){auto entry=item.toMap();if(entry["address"].toString()==local&&entry["index"].toUInt()==interfaceIndex)valid=true;}
     if(!valid){status_="Refresh and select a connected local address.";emit changed();return;}
     try{
         impl_->clientFailed=false;impl_->clientPending.clear();
+        if(camera){
+            std::vector<std::wstring> args{L"send-camera",L"--bind",local=="0.0.0.0"?L"auto":local.toStdWString(),L"--peer",address.toString().toStdWString(),L"--port",std::to_wstring(port),L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--device-stdin"};
+            if(!code.isEmpty())args.push_back(L"--access-stdin");
+            impl_->client.start((extrapane::windows_bridge::directory()/L"ExtraPane.Resources.exe").wstring(),args,true);
+            impl_->client.send_control(QByteArray::fromHex(selectedCamera_.toLatin1()).toStdString()+"\n");
+        }else{
         auto renderer=QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).value("Renderer","d3d11").toString();
         if(renderer!="d3d11"&&renderer!="d3d12"&&renderer!="vulkan"&&renderer!="opengl")renderer="d3d11";
         std::vector<std::wstring> args{L"receive",L"--lan",L"--bind",local=="0.0.0.0"?L"auto":local.toStdWString(),L"--peer",address.toString().toStdWString(),L"--port",std::to_wstring(port),L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--quality",scale==1?L"75":scale==2?L"50":L"native",L"--renderer",renderer.toStdWString()};
         if(input)args.push_back(L"--control");if(!code.isEmpty())args.push_back(L"--access-stdin");
         impl_->client.start((extrapane::windows_bridge::directory()/L"dm-view.exe").wstring(),args);
+        }
         if(!code.isEmpty()){auto bytes=code.toLatin1();impl_->client.send_control(bytes.toStdString()+"\n");bytes.fill('\0');code.fill(QChar(0));}
         QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).setValue("Peer",address.toString());
-        resources_.setLocked(true);status_="Connecting in the native display window…";
-    }catch(const std::exception& e){impl_->client.stop();status_=QString::fromUtf8(e.what());}
+        resources_.setLocked(true);status_=camera?"Connecting camera; capture starts after acceptance...":"Connecting in the native display window…";
+    }catch(const std::exception& e){impl_->client.stop();resources_.setLocked(false);status_=QString::fromUtf8(e.what());}
     emit changed();
 }
 void WindowsController::disconnectFromServer(){impl_->client.stop();resources_.setLocked(false);status_="Disconnected";emit changed();}
@@ -128,7 +190,7 @@ void WindowsController::poll(){
             if(line.startsWith("error:")){(host?impl_->hostFailed:impl_->clientFailed)=true;(host?hostStatus_:status_)=line.mid(6).trimmed();}
             else if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")){(host?hostStatus_:status_)="Connected";}
             else if(line.startsWith("LISTENING")||line.startsWith("HOST_LISTENING")){if(host)hostStatus_="Listening";}
-            else if(line.startsWith("CAMERA_STARTED")){if(host){impl_->cameraProblem.clear();hostStatus_="Camera connected — select ExtraPane Camera in your application.";}}
+            else if(line.startsWith("CAMERA_STARTED")){if(!host)status_="Sharing camera. Select ExtraPane Camera in an app on the server.";if(host){impl_->cameraProblem.clear();hostStatus_="Camera connected — select ExtraPane Camera in your application.";}}
             else if(line.startsWith("CAMERA_SESSION_ERROR")){if(host){impl_->cameraProblem=line.section(' ',2);hostStatus_="Camera connection failed; server still listening. "+impl_->cameraProblem;}}
             else if(line.startsWith("CAMERA_DISCONNECTED")){if(host)hostStatus_=impl_->cameraProblem.isEmpty()?"Listening — camera client disconnected.":"Listening. Last camera error: "+impl_->cameraProblem;}
             if(host)emit hostChanged();else emit changed();
@@ -139,4 +201,4 @@ void WindowsController::poll(){
     drain(impl_->host,impl_->hostPending,true);drain(impl_->client,impl_->clientPending,false);
     if(impl_->codeExpires&&GetTickCount64()>=impl_->codeExpires){impl_->codeExpires=0;code_="Code expired. Generate a new code.";emit hostChanged();}
 }
-void WindowsController::shutdown(){impl_->host.stop();impl_->client.stop();resources_.setLocked(false);}
+void WindowsController::shutdown(){if(impl_->inventory){auto* process=impl_->inventory;impl_->inventory=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}impl_->host.stop();impl_->client.stop();resources_.setLocked(false);}

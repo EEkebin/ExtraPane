@@ -1,4 +1,4 @@
-# Shared interface and resource sharing
+﻿# Shared interface and resource sharing
 
 Track completed increments and remaining work in
 [IMPLEMENTATION-CHECKLIST.md](IMPLEMENTATION-CHECKLIST.md).
@@ -69,8 +69,8 @@ authorized device test; the checks below do not establish physical interoperabil
 - Native enumeration, asynchronous NV12 capture and the hardware H.264 source
   adapter compile. Encoded frames use a three-frame queue; overflow ends the
   resource instead of dropping encoded reference frames. The Windows sender is
-  available through the native helper; its camera-source selection is not yet
-  integrated into the shared Windows Client page.
+  available through the native helper; camera-source selection is now
+  integrated into the shared Windows Client page. Refresh is explicit and asynchronous; startup and isolated UI checks do not enumerate devices.
 - The receiving resource connects framed messages to the existing hardware
   decoder, packs negotiated NV12 pixels without a BGRA conversion, and forwards
   them over the native pipe. Its worker owns decoder, endpoint and COM lifetimes.
@@ -124,8 +124,7 @@ authorized device test; the checks below do not establish physical interoperabil
 - Windows Server mode now selects Display or Camera (preview). Camera mode uses
   the internal resource helper and displays installation, listener, connection and
   per-client failure status. Camera-only hosting does not start the display driver.
-  Installed camera-component presence is checked before hosting. Native camera-source selection
-  on the Windows Client page, general multi-resource UI and macOS/Android Qt
+  Installed camera-component presence is checked before hosting. General multi-resource UI and macOS/Android Qt
   migration remain unfinished.
 - Development staging includes the shared app/runtime and can include resource
   and camera-setup helpers. Offscreen UI checks do not launch a connection or

@@ -23,6 +23,7 @@ ApplicationWindow {
     palette.toolTipBase: "#253349"
     palette.toolTipText: "#edf1f8"
     palette.placeholderText: "#aab8cc"
+    property bool cameraClient: receiver.platformLabel === "Windows" ? receiver.clientMode === "camera" : false
     property bool inputPaused: false
     component ToolbarButton: ToolButton {
         id: control
@@ -58,8 +59,9 @@ ApplicationWindow {
     }
     property int nextScale: 0
     property bool toolbarVisible: true
-    property bool fullscreen: visibility === Window.FullScreen
+    property bool fullscreen: !cameraClient && visibility === Window.FullScreen
     function toggleFullscreen() {
+        if (cameraClient) return
         receiver.releaseInput()
         if (fullscreen) showNormal(); else showFullScreen()
         revealToolbar()
@@ -67,8 +69,8 @@ ApplicationWindow {
     function revealToolbar() { toolbarVisible = true; hideToolbar.restart() }
     Shortcut { sequence: "Ctrl+Shift+Q"; onActivated: receiver.disconnectFromServer() }
     Shortcut { sequence: "F11"; onActivated: root.toggleFullscreen() }
-    Shortcut { sequence: "F10"; onActivated: root.pauseInput() }
-    Shortcut { sequence: "F8"; onActivated: root.toggleInput() }
+    Shortcut { enabled: !root.cameraClient; sequence: "F10"; onActivated: root.pauseInput() }
+    Shortcut { enabled: !root.cameraClient; sequence: "F8"; onActivated: root.toggleInput() }
     onActiveChanged: { if (!active) receiver.releaseInput() }
     Timer {
         id: hideToolbar
@@ -153,6 +155,39 @@ ApplicationWindow {
                     anchors.margins: root.fullscreen ? 0 : 24
                     spacing: root.fullscreen ? 0 : 12
                     Label { visible: !root.fullscreen; text: "Client"; font.pixelSize: 30; font.bold: true }
+                    ComboBox {
+                        visible: receiver.platformLabel === "Windows" && !root.fullscreen
+                        enabled: !receiver.active && (receiver.platformLabel === "Windows" ? !receiver.cameraScanRunning : true)
+                        model: ["Display", "Camera (preview)"]
+                        currentIndex: root.cameraClient ? 1 : 0
+                        onActivated: receiver.clientMode = currentIndex === 1 ? "camera" : "display"
+                    }
+                    ColumnLayout {
+                        objectName: "cameraClientPanel"
+                        visible: root.cameraClient && !root.fullscreen
+                        Layout.fillWidth: true
+                        Label { text: "Send a local camera to a Windows camera server. Display and camera use separate connections in this preview."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ComboBox {
+                                id: cameraSourcePicker; objectName: "cameraSourcePicker"; Layout.fillWidth: true
+                                enabled: root.cameraClient && !receiver.active && !receiver.cameraScanRunning
+                                model: root.cameraClient ? receiver.cameras : []
+                                textRole: "label"; valueRole: "id"
+                                currentIndex: root.cameraClient ? model.findIndex(item => item.id === receiver.selectedCamera) : -1
+                                displayText: currentIndex < 0 ? "Select a camera" : currentText
+                                onActivated: receiver.selectedCamera = currentValue
+                            }
+                            Button {
+                                objectName: "cameraRefreshButton"; text: root.cameraClient && receiver.cameraScanRunning ? "Listing..." : "Refresh cameras"
+                                enabled: root.cameraClient && !receiver.active && !receiver.cameraScanRunning
+                                onClicked: receiver.refreshCameras()
+                            }
+                        }
+                        Label { text: root.cameraClient ? receiver.cameraStatus : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Button { objectName: "cameraDisconnectButton"; text: "Stop sharing camera"; visible: receiver.active; onClicked: receiver.disconnectFromServer() }
+                    }
+
                     RowLayout {
                         visible: !receiver.active && !root.fullscreen
                         TextField { id: clientPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } Layout.preferredWidth: 100 }
@@ -166,7 +201,8 @@ ApplicationWindow {
                             onAccepted: connectButton.clicked()
                         }
                         Button {
-                            id: connectButton; text: "Connect"; enabled: receiver.resources.canConnect
+                            id: connectButton; objectName: "connectButton"; text: "Connect"
+                            enabled: !receiver.active && receiver.availability.length === 0 && (root.cameraClient ? !receiver.cameraScanRunning && receiver.selectedCamera.length > 0 && receiver.cameras.some(item => item.id === receiver.selectedCamera) : receiver.resources.canConnect)
                             onClicked: {
                                 const selected = receiver.addresses[localAddress.currentIndex]
                                 receiver.connectTo(serverAddress.text, selected ? selected.address : "0.0.0.0", inputAllowed.checked, root.nextScale, selected ? selected.index : 0, Number(clientPort.text), clientCode.text)
@@ -187,7 +223,7 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
                     Rectangle {
-                        id: viewport; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
+                        id: viewport; visible: !root.cameraClient; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
                         ScrollView {
                             anchors.fill: parent; anchors.margins: 18
                             visible: !receiver.active
@@ -195,7 +231,8 @@ ApplicationWindow {
                             ResourcePicker { width: parent.width; resourceModel: receiver.resources }
                         }
                         Loader {
-                            anchors.fill: parent; active: receiver.availability.length === 0; visible: receiver.active; source: "qrc:/Video.qml"
+                            objectName: "clientVideoLoader"
+                            anchors.fill: parent; active: !root.cameraClient && receiver.availability.length === 0; visible: receiver.active; source: "qrc:/Video.qml"
                             onLoaded: item.inputPaused = Qt.binding(function() { return root.inputPaused || root.toolbarVisible || settingsMenu.opened })
                         }
                         Item {
@@ -243,7 +280,7 @@ ApplicationWindow {
                         }
                     }
                     Label { visible: !root.fullscreen; text: receiver.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { visible: !root.fullscreen; text: "F8 pauses input | Ctrl+Shift+Q disconnects · F11 toggles fullscreen · F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { visible: !root.fullscreen; text: root.cameraClient ? "Ctrl+Shift+Q stops camera sharing" : "F8 pauses input | Ctrl+Shift+Q disconnects · F11 toggles fullscreen · F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
             Pane {

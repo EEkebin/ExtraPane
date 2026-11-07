@@ -24,7 +24,7 @@ std::wstring wide(const std::string& value){
     if(!size)throw std::invalid_argument("Camera identifier is not valid UTF-8");std::wstring result(size,L'\0');
     if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),result.data(),size))throw std::invalid_argument("Camera identifier conversion failed");return result;
 }
-std::string utf8(const std::wstring& value){const auto size=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);if(!size)return {};std::string result(size,'\0');WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),result.data(),size,nullptr,nullptr);for(auto& c:result)if(c=='\t'||c=='\r'||c=='\n')c=' ';return result;}
+std::string utf8(const std::wstring& value){const auto size=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);if(!size)return {};std::string result(size,'\0');WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),result.data(),size,nullptr,nullptr);return result;}
 struct Threads{std::thread parent,status;~Threads(){stopped=true;if(parent.joinable())parent.join();if(status.joinable())status.join();}};
 }
 int main(int argc,char** argv){try{
@@ -42,7 +42,14 @@ int main(int argc,char** argv){try{
         if(argc!=2)throw std::invalid_argument("list-cameras takes no options");
         const auto initialized=CoInitializeEx(nullptr,COINIT_MULTITHREADED);if(FAILED(initialized))throw std::runtime_error("Camera enumeration COM failed");
         struct Cleanup{~Cleanup(){CoUninitialize();}} cleanup;
-        unsigned index=0;for(const auto& device:dm::camera::enumerate())report("CAMERA_DEVICE\t"+std::to_string(index++)+"\t"+utf8(device.name)+"\t"+utf8(device.id));
+        unsigned index=0;for(const auto& device:dm::camera::enumerate()){
+            if(index>=128)throw std::runtime_error("Too many camera devices");
+            auto name=utf8(device.name),id=utf8(device.id);
+            if(name.empty()||name.size()>2048||id.empty()||id.size()>4096||id.find_first_of("\r\n")!=std::string::npos||id.find('\0')!=std::string::npos)throw std::runtime_error("Unsupported camera identifier or label");
+            for(auto& c:name)if(static_cast<unsigned char>(c)<32)c=' ';
+            std::string hex;for(unsigned char c:id){hex+="0123456789abcdef"[c>>4];hex+="0123456789abcdef"[c&15];}
+            report("CAMERA_DEVICE_V1\t"+std::to_string(index++)+"\t"+name+"\t"+hex);
+        }
         report("CAMERA_LIST_DONE");return 0;
     }
     const bool server=command=="serve-camera";

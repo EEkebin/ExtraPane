@@ -15,7 +15,12 @@ class WindowsController final:public QObject {
     Q_PROPERTY(bool cameraSetupRunning READ cameraSetupRunning NOTIFY hostChanged)
     Q_PROPERTY(bool active READ active NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
-    Q_PROPERTY(QString availability READ availability CONSTANT)
+    Q_PROPERTY(QString availability READ availability NOTIFY changed)
+    Q_PROPERTY(QString clientMode READ clientMode WRITE setClientMode NOTIFY changed)
+    Q_PROPERTY(QVariantList cameras READ cameras NOTIFY camerasChanged)
+    Q_PROPERTY(bool cameraScanRunning READ cameraScanRunning NOTIFY camerasChanged)
+    Q_PROPERTY(QString cameraStatus READ cameraStatus NOTIFY camerasChanged)
+    Q_PROPERTY(QString selectedCamera READ selectedCamera WRITE setSelectedCamera NOTIFY camerasChanged)
     Q_PROPERTY(QString savedAddress READ savedAddress CONSTANT)
     Q_PROPERTY(QVariantList addresses READ addresses NOTIFY addressesChanged)
     Q_PROPERTY(QString statistics READ statistics NOTIFY changed)
@@ -36,7 +41,15 @@ public:
     bool active()const;
     QString hostStatus()const{return hostStatus_;}
     QString status()const{return status_;}
-    QString availability()const{return unavailable_;}
+    QString availability()const;
+    QString clientMode()const{return clientMode_;}
+    void setClientMode(QString mode);
+    QVariantList cameras()const{return cameras_;}
+    bool cameraScanRunning()const;
+    QString cameraStatus()const{return cameraStatus_;}
+    QString selectedCamera()const{return selectedCamera_;}
+    void setSelectedCamera(QString id);
+    Q_INVOKABLE void refreshCameras();
     QString hostAvailability()const;
     QString hostMode()const{return hostMode_;}
     void setHostMode(QString mode);
@@ -62,12 +75,13 @@ public:
     Q_INVOKABLE void releaseInput(){}
     void shutdown();
 signals:
-    void changed();void hostChanged();void addressesChanged();
+    void changed();void hostChanged();void addressesChanged();void camerasChanged();
 private:
     void poll();
     struct Impl;std::unique_ptr<Impl> impl_;
     ResourceModel resources_;
     QVariantList addresses_;
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
-    QString hostMode_="display";
+    QString hostMode_="display",clientMode_="display",selectedCamera_,cameraStatus_="Click Refresh cameras to list local cameras. Capture starts only after connection is accepted.";
+    QVariantList cameras_;
 };

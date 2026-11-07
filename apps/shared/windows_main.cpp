@@ -81,6 +81,7 @@ int main(int argc,char** argv){
     if(!window)return 1;
     if(checkUi){
         controller.setHostMode("camera");
+        controller.setClientMode("camera");
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane server");
