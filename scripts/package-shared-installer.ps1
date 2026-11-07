@@ -13,7 +13,7 @@ foreach($path in @($stagePath,$destinationPath)) {
         throw 'Development installer paths must stay under this checkout out directory.'
     }
 }
-foreach($name in @('ExtraPane.exe','Components/Display/manage-driver.ps1','Components/Display/package/manifest.json','ExtraPane.CameraSetup.exe','ExtraPane.UsbSetup.exe','ExtraPane.MicrophoneEndpoint.exe','ExtraPane.Usb.exe','ExtraPane.Session.exe')) {
+foreach($name in @('ExtraPane.exe','Components/Display/manage-driver.ps1','Components/Display/package/manifest.json','ExtraPane.CameraSetup.exe','ExtraPane.UsbSetup.exe','ExtraPane.UsbHostSetup.exe','ExtraPane.MicrophoneEndpoint.exe','ExtraPane.Usb.exe','ExtraPane.Session.exe')) {
     if(-not (Test-Path -LiteralPath (Join-Path $stagePath $name))) {throw "Missing staged output: $name"}
 }
 if(-not $Compiler) {$Compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'}
@@ -40,6 +40,7 @@ try {
 ExtraPane shared-resource development build
 
 All choices install the app in Program Files/ExtraPane with administrator approval.
+Both roles include USB source support automatically.
 Client only does not install receiving drivers.
 Server + Client installs the same app, virtual-display driver, camera source,
 and microphone/USB receiving components.

@@ -7,6 +7,9 @@
 #define HasCamera FileExists(SourceDir + "\ExtraPane.CameraSetup.exe")
 #define HasUsb FileExists(SourceDir + "\ExtraPane.UsbSetup.exe")
 #define HasUsbHost FileExists(SourceDir + "\ExtraPane.UsbHostSetup.exe")
+#if !HasUsbHost
+#error Mandatory USB source component is missing from the installer payload
+#endif
 [Setup]
 ; Stable identity recognizes installations made under the previous name.
 AppId=SideScreen
@@ -86,14 +89,16 @@ Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch ExtraPa
 [Code]
 var
   RemoveUserData: Boolean;
-  RoleChoice, DriverConsent: TInputOptionWizardPage;
+  RoleChoice: TInputOptionWizardPage;
+  DriverConsent: TOutputMsgWizardPage;
+  DriverConsentAccepted: Boolean;
+  StandardNextLeft, StandardNextWidth, StandardBackLeft: Integer;
   DriverInstalled, DriverInstallFailed: Boolean;
   CameraInstalled, RemoveCamera: Boolean;
   MicrophoneInstalled: Boolean;
   UsbHostInstalled: Boolean;
   ComponentRestart: Boolean;
   ComponentError: String;
-  UsbHostChoice: TNewCheckBox;
 
 #include "shutdown.iss"
 
@@ -105,41 +110,23 @@ begin
 end;
 
 procedure InitializeWizard;
-var UsbHostDescription: TNewStaticText;
 begin
   RoleChoice := CreateInputOptionPage(wpWelcome, 'How will you use this PC?',
     'All choices install the same ExtraPane app.',
-    'Client only needs no virtual-display driver. Server + Client can also host displays and requires that driver. USB source sharing is a separate option below when its component is bundled.', True, False);
+    'Client only needs no virtual-display driver. Server + Client can also host displays and requires that driver.', True, False);
   RoleChoice.Add('Client only');
   RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
   RoleChoice.SelectedValueIndex := 0;
   if ExpandConstant('{param:SERVER|}') = '1' then RoleChoice.SelectedValueIndex := 1
   else if (ExpandConstant('{param:SERVER|}') = '') and not WizardSilent and
     (GetPreviousData('ServerInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 1;
-#if HasUsbHost
-  { Independent of the receiving role: storage is shared FROM this PC. }
-  RoleChoice.CheckListBox.Height := RoleChoice.CheckListBox.Height - ScaleY(70);
-  UsbHostChoice := TNewCheckBox.Create(RoleChoice);
-  UsbHostChoice.Parent := RoleChoice.Surface;
-  UsbHostChoice.SetBounds(RoleChoice.CheckListBox.Left,
-    RoleChoice.CheckListBox.Top + RoleChoice.CheckListBox.Height + ScaleY(6),
-    RoleChoice.CheckListBox.Width, ScaleY(22));
-  UsbHostChoice.Caption := 'Enable USB storage sharing from this PC (administrator permission)';
-  UsbHostChoice.Checked := ExpandConstant('{param:USBHOST|0}') = '1';
-  UsbHostDescription := TNewStaticText.Create(RoleChoice);
-  UsbHostDescription.Parent := RoleChoice.Surface;
-  UsbHostDescription.SetBounds(UsbHostChoice.Left,
-    UsbHostChoice.Top + UsbHostChoice.Height + ScaleY(2),
-    UsbHostChoice.Width, ScaleY(40));
-  UsbHostDescription.AutoSize := False;
-  UsbHostDescription.WordWrap := True;
-  UsbHostDescription.Caption := 'Installs USB source support and signed drivers. Receiving USB devices uses the separate shared USB/IP component. No storage device is selected or shared during setup.';
-#endif
-  DriverConsent := CreateInputOptionPage(RoleChoice.ID, 'Required server driver',
+  DriverConsent := CreateOutputMsgPage(RoleChoice.ID, 'Required server driver',
     'Server setup includes a machine-wide virtual-display driver.',
-    'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver is managed by the ExtraPane uninstaller. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.', False, False);
-  DriverConsent.Add('I agree to install the driver and trust its development certificate on this PC.');
-  DriverConsent.Values[0] := ExpandConstant('{param:ACCEPTDEVELOPMENTCERT|0}') = '1';
+    'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver is managed by the ExtraPane uninstaller. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.' + #13#10 + #13#10 + 'Select I agree - Next to install the driver and trust its development certificate. Otherwise, go Back and choose Client only.');
+  StandardBackLeft := WizardForm.BackButton.Left;
+  StandardNextLeft := WizardForm.NextButton.Left;
+  StandardNextWidth := WizardForm.NextButton.Width;
+  DriverConsentAccepted := ExpandConstant('{param:ACCEPTDEVELOPMENTCERT|0}') = '1';
 end;
 
 procedure RegisterPreviousData(PreviousDataKey: Integer);
@@ -159,14 +146,9 @@ begin
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the machine-wide camera receiving component.';
 #endif
 #if HasUsb
-  if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the shared USB/IP microphone receiving component. Existing compatible installations are preserved.';
+  if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the microphone receiving component. Existing compatible installations are preserved.';
 #endif
-#if HasUsbHost
-  if UsbHostChoice.Checked then
-    Result := Result + NewLine + 'USB source sharing: install the bundled native backend and signed driver package with administrator approval. Existing compatible shared drivers are preserved. No USB device is bound, no public server service or firewall rule is added, and the monitor driver is not started by setup.'
-  else
-    Result := Result + NewLine + 'USB source sharing: not requested; existing source components are left unchanged.';
-#endif
+
   Result := Result + NewLine + NewLine + MemoGroupInfo + NewLine + MemoTasksInfo;
 end;
 
@@ -178,10 +160,8 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
-  if (CurPageID = DriverConsent.ID) and not DriverConsent.Values[0] then begin
-    SuppressibleMsgBox('The server requires this driver. Accept the certificate change, or go Back and choose Client only.', mbInformation, MB_OK, IDOK);
-    Result := False;
-  end;
+  if (CurPageID = DriverConsent.ID) and not WizardSilent then
+    DriverConsentAccepted := True;
 end;
 
 procedure CaptureComponentOutput(const S: String; const Error, FirstLine: Boolean);
@@ -206,18 +186,13 @@ begin
   if CompareText(ExpandConstant('{app}'), ExpandConstant('{autopf}\ExtraPane')) <> 0 then begin
     Result := 'ExtraPane must be installed in Program Files\ExtraPane.'; Exit;
   end;
-#if !HasUsbHost
-  if ExpandConstant('{param:USBHOST|0}') = '1' then begin
-    Result := 'USB source sharing was requested, but this installer does not contain its component.';
-    Exit;
-  end;
-#endif
+
   if not StopRunningExtraPane then begin
     Result := 'ExtraPane is still running. Close it and stop its driver before continuing.';
     Exit;
   end;
   if (RoleChoice.SelectedValueIndex = 1) and not DriverInstalled then begin
-    if not DriverConsent.Values[0] then begin
+    if not DriverConsentAccepted then begin
       Result := 'Server setup requires development certificate consent. Silent installs need /SERVER=1 /ACCEPTDEVELOPMENTCERT=1.';
       Exit;
     end;
@@ -250,10 +225,10 @@ begin
   end;
 #endif
 #if HasUsbHost
-  if (Result = '') and UsbHostChoice.Checked and not UsbHostInstalled then begin
+  if (Result = '') and not UsbHostInstalled then begin
     ExtractTemporaryFile('ExtraPane.UsbHostSetup.exe');
     if not RunComponent(ExpandConstant('{tmp}\ExtraPane.UsbHostSetup.exe'), '--install', '', Code) then
-      Result := 'USB source setup could not start or administrator permission was canceled. Retry or clear the USB storage sharing option.'
+      Result := 'USB source setup could not start or administrator permission was canceled. Please retry setup.'
     else if (Code <> 0) and (Code <> 3010) then
       Result := 'USB source support could not be prepared (exit ' + IntToStr(Code) + '). ' + ComponentError + #13#10 + 'An exact compatible installed backend is reused without requiring a missing USB card. Existing bindings and recovery records are preserved; a changed or incomplete backend needs repair.'
     else begin UsbHostInstalled := True; if Code = 3010 then NeedsRestart := True; end;
@@ -284,6 +259,20 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
+  WizardForm.BackButton.Left := StandardBackLeft;
+  WizardForm.NextButton.Width := StandardNextWidth;
+  WizardForm.NextButton.Left := StandardNextLeft;
+  if CurPageID = DriverConsent.ID then begin
+    WizardForm.NextButton.Width := ScaleX(140);
+    WizardForm.NextButton.Left := StandardNextLeft + StandardNextWidth - WizardForm.NextButton.Width;
+    WizardForm.BackButton.Left := StandardBackLeft - (WizardForm.NextButton.Width - StandardNextWidth);
+    WizardForm.NextButton.Caption := 'I agree - Next >';
+  end else if CurPageID = wpReady then
+    WizardForm.NextButton.Caption := SetupMessage(msgButtonInstall)
+  else if CurPageID = wpFinished then
+    WizardForm.NextButton.Caption := SetupMessage(msgButtonFinish)
+  else
+    WizardForm.NextButton.Caption := SetupMessage(msgButtonNext);
   if (CurPageID = wpFinished) and DriverInstallFailed then begin
     WizardForm.FinishedHeadingLabel.Caption := 'Server driver installation failed';
     WizardForm.FinishedLabel.Caption := 'ExtraPane remains installed for repair or removal, but the server driver is not ready. Check Program Files\ExtraPane\Components\Display\driver-setup.log and run this installer again to repair it. No boot-security settings were changed.';

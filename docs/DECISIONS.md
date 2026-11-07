@@ -380,3 +380,7 @@ group titles with separate compact icon actions, accessible names and tooltips.
 The desktop navigation can collapse into an icon rail; collapsing navigation or
 a resource group never changes connections. Keep actionable status visible and
 move general usage limits out of the primary connection workflow.
+
+## Installer role and consent flow (2026-11-07)
+
+Role choice is Client only or Server + Client. USB source support is mandatory in both roles, with no checkbox or separate optional setup flow. Driver certificate information remains explicit; the driver page uses an I agree - Next action instead of a checkbox. Silent server deployment still requires /ACCEPTDEVELOPMENTCERT=1. Installation never selects or exports storage automatically.

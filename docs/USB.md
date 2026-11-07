@@ -198,18 +198,15 @@ local device and ownership checks before changing anything.
 
 ### Managed Windows host setup
 
-When the source helper is bundled, the single Windows installer shows a separate
-**Enable USB storage sharing from this PC** checkbox on its role page. This
-unchecked-by-default option applies to the source computer, including a PC using
-the Client role; it is independent of which receiving role is selected. Setup
-invokes the elevated source helper only when this option is selected. Silent
-deployment must explicitly supply `/USBHOST=1`; requesting it from a package
-without the component fails before other component installation. The Ready page
-lists the requested source setup and its machine-wide changes. Merely installing
-or updating the app leaves existing USB source components alone when unchecked.
+The Windows installer includes USB source support automatically for both Client
+only and Server + Client. There is no USB setup checkbox or opt-in command-line
+flag. The source helper is mandatory in the installer payload and setup prepares
+it with administrator permission. Exact compatible installations are reused;
+foreign components and active ownership remain protected.
 
 Receiving USB devices uses the shared USB/IP receiving component, also used by
-the microphone endpoint. It is distinct from the optional source/export backend.
+the microphone endpoint, installed with Server + Client. It is distinct from
+the source/export backend bundled with both roles.
 Installing either component does not select or transfer a storage device.
 
 `ExtraPane.UsbHostSetup.exe` is an internal component helper, not another product
