@@ -9,6 +9,8 @@ public:
     H264Encoder(unsigned width, unsigned height, unsigned fps,ID3D11Device* gpu_device=nullptr,unsigned bitrate=0);
     ~H264Encoder();
     std::vector<std::uint8_t> encode(const Frame& frame, std::uint64_t sequence);
+    // Explicit CPU NV12 path for native camera buffers; never reads GPU surfaces.
+    std::vector<std::uint8_t> encode_nv12(std::span<const std::uint8_t> pixels, std::uint64_t sequence);
     std::string description() const;
 private:
     struct State;

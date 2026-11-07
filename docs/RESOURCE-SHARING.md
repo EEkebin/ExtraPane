@@ -60,7 +60,17 @@ bounded channels must be bound to the admitted session and use the configured po
   extracting the shared process bridge. The helper accepts a selected bind address
   and scopes its firewall rule to that interface; live operation is untested. This
   is not a release package or a completed device-sharing product.
-- Camera/microphone adapters, endpoints and USB integration remain unimplemented.
+- Windows camera enumeration, async Media Foundation NV12 capture, source-resource
+  lifecycle, native buffer packing and an H.264 source adapter are implemented and
+  compile. The source adapter feeds a caller-provided bounded network sink; no
+  live camera channel or virtual-camera endpoint is wired yet. Camera controls
+  therefore remain disabled. No physical camera has been opened for this work.
+- Camera checks cover format validation, inert construction/stop and synthetic
+  CPU NV12 buffers. They do not prove permission handling, device cancellation,
+  real capture, encoder delivery or interoperability. Initial encoding uses a
+  CPU NV12 copy into the existing hardware encoder, not a zero-copy camera path.
+- Other camera platforms, microphone adapters, virtual endpoints and USB
+  integration remain unimplemented.
 
 The lifecycle API is not authorization. Callers must authenticate and validate
 explicit client selections before constructing adapters. Adapters must be inert

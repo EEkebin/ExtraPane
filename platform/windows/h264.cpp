@@ -222,6 +222,18 @@ struct H264Encoder::State {
 };
 H264Encoder::H264Encoder(unsigned w,unsigned h,unsigned fps,ID3D11Device* device,unsigned bitrate):state_(std::make_unique<State>(w,h,fps,device,bitrate)){}
 H264Encoder::~H264Encoder()=default;
+std::vector<std::uint8_t> H264Encoder::encode_nv12(std::span<const std::uint8_t> pixels,std::uint64_t sequence) {
+    auto& s=*state_;
+    if(s.device || pixels.size()!=static_cast<std::size_t>(s.width)*s.height*3/2 || sequence>922337203685ULL)
+        throw std::runtime_error("Invalid CPU NV12 encode input");
+    const auto sample=memory_sample(pixels,static_cast<LONGLONG>(sequence)*10000000/s.fps,10000000/s.fps);
+    s.wait_for(false);
+    check(s.transform->ProcessInput(0,sample.Get(),0),"Submit camera NV12 encode sample");--s.input_ready;
+    s.wait_for(true);
+    Output output(s.transform.Get());DWORD status=0;
+    check(s.transform->ProcessOutput(0,1,&output.data,&status),"Read camera H264 sample");--s.output_ready;
+    return sample_bytes(output.data.pSample);
+}
 std::string H264Encoder::description() const { return state_->name + " hardware-MFT low-latency "+(state_->device ? "D3D11-NV12-surface-input" : "CPU-NV12-input"); }
 std::vector<std::uint8_t> H264Encoder::encode(const Frame& frame,std::uint64_t sequence) {
     auto& s=*state_;
