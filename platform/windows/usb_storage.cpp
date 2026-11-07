@@ -1,4 +1,5 @@
 #include <dm/usb_storage.hpp>
+#include <dm/usb_recovery.hpp>
 #include <windows.h>
 #include <winioctl.h>
 #include <cfgmgr32.h>
@@ -49,6 +50,7 @@ public:
         physical_=Handle(CreateFileW(disk.interface_path.c_str(),0,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr));
         if(physical_.value==INVALID_HANDLE_VALUE){close();return fail("Cannot open the selected storage device");}
         const auto valid=validate(disk);if(!valid.available){close();return valid;}
+        try{partition_identity_=stable_recovery_fingerprint(disk);}catch(const std::exception& error){close();return {false,error.what()};}
         for(auto path:disk.volumes){
             if(!path.empty()&&path.back()==L'\\')path.pop_back();
             Handle volume(CreateFileW(path.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr));
@@ -73,8 +75,14 @@ public:
         if(value.DeviceType!=FILE_DEVICE_DISK||value.DeviceNumber!=disk.disk_number)return fail("Storage handle identity changed");
         STORAGE_PROPERTY_QUERY request{};request.PropertyId=StorageDeviceProperty;request.QueryType=PropertyStandardQuery;
         const auto descriptor=query(physical_.value,IOCTL_STORAGE_QUERY_PROPERTY,&request,sizeof request);
-        const auto layout=query(physical_.value,IOCTL_DISK_GET_DRIVE_LAYOUT_EX);
-        if(!descriptor||!layout||*descriptor!=disk.descriptor_bytes||*layout!=disk.layout_bytes)return fail("Storage descriptor or partitions changed");
+        if(!descriptor||*descriptor!=disk.descriptor_bytes)return fail("Storage descriptor changed");
+        if(partition_identity_){
+            try{if(stable_recovery_fingerprint(disk)!=*partition_identity_)return fail("Raw storage partition identity changed");}
+            catch(const std::exception& error){return {false,error.what()};}
+        }else{
+            const auto layout=query(physical_.value,IOCTL_DISK_GET_DRIVE_LAYOUT_EX);
+            if(!layout||*layout!=disk.layout_bytes)return fail("Storage partitions changed");
+        }
         if(invalidated())return fail("USB source changed during validation");
         return {true,{}};
     }
@@ -120,13 +128,14 @@ private:
     void close()noexcept{
         if(notification_){CM_Unregister_Notification(notification_);notification_=nullptr;}
         if(locked_)for(auto& volume:volumes_)control(volume.value,FSCTL_UNLOCK_VOLUME);
-        locked_=false;volumes_.clear();physical_.close();
+        locked_=false;volumes_.clear();physical_.close();partition_identity_.reset();
     }
     std::atomic<bool> invalid_{false};
     HCMNOTIFICATION notification_=nullptr;
     Handle physical_;
     std::vector<Handle> volumes_;
     bool locked_=false;
+    std::optional<std::array<std::uint8_t,32>> partition_identity_;
 };
 }
 

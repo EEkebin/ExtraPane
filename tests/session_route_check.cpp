@@ -32,7 +32,8 @@ int main(){try{
     display[7]=1;route(display,ResourceKind::display);
     const auto camera=extrapane::camera_wire::encode({1280,720,30,{1,17}});route(camera,ResourceKind::camera);
     const auto microphone=extrapane::microphone_wire::encode_offer({2,91});route(microphone,ResourceKind::microphone);
-    const std::array<std::uint8_t,8> usb{'E','P','U','S',1,0,0,0};route(usb,ResourceKind::usb);
+    const std::array<std::uint8_t,8> usb{'E','P','U','S',2,0,0,0};route(usb,ResourceKind::usb);
+    {auto legacy=usb;legacy[4]=1;rejects([&]{extrapane::classify_session_prefix(legacy);});}
     for(const auto* original:std::array<const std::uint8_t*,4>{display.data(),camera.data(),microphone.data(),usb.data()}){
         std::array<std::uint8_t,8> bytes{};std::copy_n(original,8,bytes.begin());++bytes[4];rejects([&]{extrapane::classify_session_prefix(bytes);});
         rejects([&]{extrapane::classify_session_prefix(std::span(bytes).first(7));});

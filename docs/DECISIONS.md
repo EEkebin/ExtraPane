@@ -1,5 +1,21 @@
 # Decisions, assumptions, and evidence
 
+## Automatic USB return (2026-11-07)
+
+Unchecking USB or choosing Disconnect all requests a graceful return: the
+receiver flushes and ejects the imported device before the source releases its
+owned binding and restores the verified disk's prior online state. A busy
+receiver keeps USB sharing active and reports the eject blocker. Transport loss
+without an eject receipt still requires recovery; it must not automatically
+mount storage that might remain in use remotely.
+
+A stale pre-export journal may be retired when fresh checks establish that
+export was never authorized, no binding exists, and the source is already online
+locally. This removes bookkeeping only, without changing disk attributes or
+contents. Uninstall runs that check before removing USB components. Malformed,
+bound, missing-device or otherwise unresolved records retain the recovery tools.
+Implementation and verification are tracked in IMPLEMENTATION-CHECKLIST.md.
+
 ## Live resource selection (2026-11-07)
 
 The client must be able to connect with no resources selected. While connected,

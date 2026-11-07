@@ -24,10 +24,10 @@ extrapane::ResourceKind resourceKind(int i){return static_cast<extrapane::Resour
 const wchar_t* helper(int i){return i==0?L"dm-view.exe":i==1?L"ExtraPane.Resources.exe":i==2?L"ExtraPane.Microphone.exe":L"ExtraPane.Usb.exe";}
 }
 struct WindowsController::Impl {
-    struct Client{Child child;QProcess* inventory=nullptr;QByteArray inventoryOutput;bool inventoryFailed=false,failed=false,stopping=false,ticketPending=false;QString pending,format,status="Ready";};
+    struct Client{Child child;QProcess* inventory=nullptr;QByteArray inventoryOutput;bool inventoryFailed=false,failed=false,stopping=false,ticketPending=false,returned=false;QString pending,format,status="Ready";};
     struct Request{QString server,local;unsigned port=0,scale=0;bool input=false;std::array<bool,4> selected{};} request;
     std::array<Client,4> clients;
-    QProcess* admission=nullptr;QByteArray admissionOutput,admissionError;bool admissionFailed=false,sessionReady=false,sessionAuthenticated=false,reconciling=false;
+    QProcess* admission=nullptr;QByteArray admissionOutput,admissionError;bool admissionFailed=false,sessionReady=false,sessionAuthenticated=false,reconciling=false,disconnectPending=false;
     QProcess* recoveryScan=nullptr;QByteArray recoveryOutput;bool recoveryInvalid=false,recovering=false;
     Child host;QString hostPending,cameraProblem;bool hostFailed=false;quint64 codeExpires=0;HANDLE setup=nullptr;
     bool preparing=false,setupAttempted=false;int component=0;QProcess* probe=nullptr;QByteArray probeOutput;
@@ -75,7 +75,7 @@ void WindowsController::refreshDevices(QString key){
             ids.insert(QString::fromLatin1(id));found.push_back(QVariantMap{{"label",available?label:label+" - "+reason},{"id",QString::fromLatin1(id)},{"available",available}});
         }
         state.inventory=nullptr;state.inventoryOutput.clear();process->deleteLater();
-        const QString message=valid&&done?(found.isEmpty()?"No devices found. Check privacy settings and reopen this list to scan again.":i==1?"Choose a camera; its supported resolution and frame rate are selected automatically.":i==2?"Choose a microphone; supported sources use 48 kHz mono/stereo.":"Choose eligible removable storage. Eject on the server before stopping."):"Device listing failed or timed out. Check privacy settings; for USB, run the installer with USB storage sharing enabled.";
+        const QString message=valid&&done?(found.isEmpty()?"No devices found. Check privacy settings and reopen this list to scan again.":i==1?"Choose a camera; its supported resolution and frame rate are selected automatically.":i==2?"Choose a microphone; supported sources use 48 kHz mono/stereo.":"Choose removable storage. Uncheck USB to safely return it to this PC."):"Device listing failed or timed out. Check privacy settings; for USB, run the installer with USB storage sharing enabled.";
         resources_.setDevices(resourceKind(i),valid&&done?found:QVariantList{},resources_.selectedDevice(resourceKind(i)),message,false);emit changed();
     };
     connect(process,&QProcess::readyRead,this,[this,process,i]{auto& state=impl_->clients[i];if(state.inventory!=process)return;state.inventoryOutput+=process->readAll();if(state.inventoryOutput.size()>1024*1024){state.inventoryFailed=true;state.inventoryOutput.clear();process->kill();}});
@@ -189,7 +189,7 @@ void WindowsController::connectTo(QString server,QString local,bool input,unsign
             }
             if(!valid){line.fill('\0');impl_->admissionFailed=true;impl_->admissionError="Invalid server session response. Use matching builds on both PCs.";process->kill();return;}
             auto& state=impl_->clients[i];state.ticketPending=false;
-            if(resources_.selected(resourceKind(i))&&!state.child.process&&!state.stopping){
+            if(!impl_->disconnectPending&&resources_.selected(resourceKind(i))&&!state.child.process&&!state.stopping){
                 impl_->request.selected.fill(false);impl_->request.selected[i]=true;
                 std::array<std::string,4> credentials;if(fields[2]!="-")credentials[i]=fields[2].toStdString();
                 startClients(std::move(credentials));
@@ -203,6 +203,12 @@ void WindowsController::connectTo(QString server,QString local,bool input,unsign
         impl_->admissionError+=process->readAllStandardError();
         const auto detail=QString::fromUtf8(impl_->admissionError).trimmed().left(1000);
         impl_->admission=nullptr;impl_->sessionReady=false;impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();process->deleteLater();
+        impl_->disconnectPending=false;
+        auto& usb=impl_->clients[3];
+        if(usb.child.process){
+            usb.stopping=true;usb.status="Server session lost; USB is stopping. Recovery may be required.";
+            try{usb.child.send_control("X\n");}catch(const std::exception& error){usb.failed=true;usb.status=QString::fromUtf8(error.what());}
+        }
         for(int i=0;i<4;++i){impl_->clients[i].ticketPending=false;resources_.select(i,false);stopResource(resourceNames[i]);}
         status_=detail.isEmpty()?"Server connection ended. Connect again to resume sharing.":detail;emit changed();
     };
@@ -218,7 +224,7 @@ void WindowsController::reconcileResources(){
     for(int i=0;i<4;++i){
         auto& state=impl_->clients[i];
         if(!resources_.selected(resourceKind(i))){if(!state.stopping)stopResource(resourceNames[i]);continue;}
-        if(!impl_->sessionReady||!impl_->admission||state.child.process||state.ticketPending||state.stopping)continue;
+        if(impl_->disconnectPending||!impl_->sessionReady||!impl_->admission||state.child.process||state.ticketPending||state.stopping)continue;
         if(i&& (resources_.selectedDevice(resourceKind(i)).isEmpty()||resources_.scanning(resourceKind(i)))){
             state.status="Choose a source device to start sharing.";resources_.setSessionState(resourceKind(i),false,state.status);continue;
         }
@@ -229,7 +235,7 @@ void WindowsController::reconcileResources(){
 }
 void WindowsController::startClients(std::array<std::string,4> credentials){
     const auto request=impl_->request;
-    for(int i=0;i<4;++i){if(!request.selected[i])continue;auto& state=impl_->clients[i];state.failed=false;state.stopping=false;state.pending.clear();state.format.clear();
+    for(int i=0;i<4;++i){if(!request.selected[i])continue;auto& state=impl_->clients[i];state.failed=false;state.stopping=false;state.returned=false;state.pending.clear();state.format.clear();
         try{
             std::vector<std::wstring> args;
             if(i==0){
@@ -239,8 +245,11 @@ void WindowsController::startClients(std::array<std::string,4> credentials){
             }else args={i==1?L"send-camera":i==2?L"send-microphone":L"send-usb",L"--device-stdin"};
             args.insert(args.end(),{L"--bind",request.local=="0.0.0.0"?L"auto":request.local.toStdWString(),L"--peer",request.server.toStdWString(),L"--port",std::to_wstring(request.port)});
             if(!credentials[i].empty())args.push_back(L"--access-stdin");
+#ifndef EXTRAPANE_CONTROLLER_TEST_CHILDREN
             if(i==3)state.child.start_elevated(L"ExtraPane.Usb.exe",args);
-            else{args.insert(args.end(),{L"--parent-pid",std::to_wstring(GetCurrentProcessId())});state.child.start((extrapane::windows_bridge::directory()/helper(i)).wstring(),args,i!=0);}
+            else
+#endif
+            {args.insert(args.end(),{L"--parent-pid",std::to_wstring(GetCurrentProcessId())});state.child.start((extrapane::windows_bridge::directory()/helper(i)).wstring(),args,i!=0);}
             if(i)state.child.send_control(QByteArray::fromHex(resources_.selectedDevice(resourceKind(i)).toLatin1()).toStdString()+"\n");
             if(!credentials[i].empty())state.child.send_control(credentials[i]+"\n");
             if(i==1)state.child.send_control(cameraMirrored_?"MIRROR 1\n":"MIRROR 0\n");
@@ -251,16 +260,21 @@ void WindowsController::startClients(std::array<std::string,4> credentials){
     status_="Connected. Use the checkboxes to start or stop sharing.";emit changed();
 }
 void WindowsController::cancelAdmission(){
-    impl_->sessionReady=false;for(auto& state:impl_->clients)state.ticketPending=false;
+    impl_->disconnectPending=false;impl_->sessionReady=false;for(auto& state:impl_->clients)state.ticketPending=false;
     if(!impl_->admission)return;auto* process=impl_->admission;impl_->admission=nullptr;process->disconnect(this);process->write("Q\n");process->closeWriteChannel();if(!process->waitForFinished(1000)){process->kill();process->waitForFinished(1000);}process->deleteLater();impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();
 }
 void WindowsController::stopResource(QString key){
-    const auto i=resourceIndex(key);if(i<0)return;auto& state=impl_->clients[i];if(!state.child.process){resources_.setSessionState(resourceKind(i),false,state.failed?state.status:"Disconnected");return;}if(state.stopping)return;
-    try{if(i==0){state.child.stop();state.status="Disconnected";}else{state.child.send_control("Q\n");state.stopping=true;state.status=i==3?"Stopping USB; source recovery may be required unless the server already ejected it.":"Stopping...";}}
+    const auto i=resourceIndex(key);if(i<0)return;auto& state=impl_->clients[i];if(!state.child.process){resources_.setSessionState(resourceKind(i),false,(state.failed||state.returned)?state.status:"Disconnected");return;}if(state.stopping)return;
+    try{if(i==0){state.child.stop();state.status="Disconnected";}else{state.child.send_control("Q\n");state.stopping=true;state.status=i==3?"Returning USB to this PC; waiting for the server to safely eject it...":"Stopping...";}}
     catch(const std::exception& e){state.status=QString::fromUtf8(e.what());}
     resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,i==2&&microphoneMuted_);emit changed();
 }
-void WindowsController::disconnectFromServer(){cancelAdmission();for(int i=0;i<4;++i){resources_.select(i,false);stopResource(resourceNames[i]);}status_=active()?"Stopping resources...":"Disconnected";emit changed();}
+void WindowsController::disconnectFromServer(){
+    impl_->disconnectPending=true;
+    for(int i=0;i<4;++i){resources_.select(i,false);stopResource(resourceNames[i]);}
+    if(!impl_->clients[3].child.process)cancelAdmission();
+    status_=impl_->disconnectPending?"Returning USB before disconnecting...":active()?"Stopping resources...":"Disconnected";emit changed();
+}
 void WindowsController::startHost(QString address,unsigned port,bool requireCode){
     if(hosting()||cameraSetupRunning())return;
     if(!hostAvailability().isEmpty()){hostStatus_=hostAvailability();emit hostChanged();return;}
@@ -364,7 +378,13 @@ void WindowsController::poll(){
             else if(line.startsWith("SERVER_STOPPING")){if(host)hostStatus_="Stopping server...";}
             else if(line.startsWith("SERVER_SESSION_ERROR")){if(host)hostStatus_="Listening; a resource connection ended: "+line.mid(21).trimmed();}
             else if(line.startsWith("USB_SESSION_ERROR")){currentStatus="USB session ended; server continues listening. "+line.mid(18);}
-            else if(line.startsWith("USB_STARTED")){currentStatus=host?"USB storage connected. Close files and eject before disconnecting.":"USB storage is shared exclusively. Eject it on the receiving PC to return it safely.";}
+            else if(line.startsWith("USB_STARTED")){currentStatus=host?"USB storage connected. Close files and eject before disconnecting.":"USB storage is shared exclusively. Uncheck USB to return it safely to this PC.";}
+            else if(line.startsWith("USB_RETURNING")){currentStatus="Returning USB to this PC; waiting for safe eject...";}
+            else if(line.startsWith("USB_RETURNED")){currentStatus="USB returned to this PC.";if(!host&&index==3)impl_->clients[3].returned=true;}
+            else if(line.startsWith("USB_STOP_BLOCKED")){
+                currentStatus="USB is still shared: close its files on the server, then uncheck USB to retry. "+line.mid(16).trimmed();
+                if(!host&&index==3&&impl_->sessionReady){const bool all=impl_->disconnectPending;impl_->clients[3].stopping=false;impl_->disconnectPending=false;resources_.select(3,true);status_=all?"Disconnect cancelled because USB is busy. Other resources have stopped.":"USB is busy and remains shared. Close its files on the server and retry.";}
+            }
             else if(line.startsWith("USB_EJECT_BUSY")){currentStatus="USB is busy; close files and try eject again. "+line.mid(14);}
             else if(line.startsWith("USB_RECOVERY_REQUIRED")){failed=true;currentStatus="USB recovery required on the source PC. "+line.mid(21);}
             else if(line.startsWith("USB_EJECTED")){currentStatus="USB safely ejected. "+line.mid(11);}
@@ -380,9 +400,10 @@ void WindowsController::poll(){
             if(host)emit hostChanged();else{if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("USB_STARTED"))status_="Resources are active. Manage each one below.";resources_.setSessionState(resourceKind(index),true,currentStatus,index==2&&microphoneMuted_);emit changed();}
         }
         if(pending.size()>16384)pending.clear();
-        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{if(!failed&&index!=3)currentStatus="Disconnected";auto& state=impl_->clients[index];const bool restart=state.stopping&&resources_.selected(resourceKind(index))&&impl_->sessionReady;state.stopping=false;resources_.setSessionState(resourceKind(index),false,currentStatus,false);if(!restart)resources_.select(index,false);else reconcileResources();status_=impl_->sessionReady?"Connected. Check resources to start sharing.":"All resources have stopped.";emit changed();}}
+        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{if(!failed&&index!=3)currentStatus="Disconnected";auto& state=impl_->clients[index];const bool restart=state.stopping&&resources_.selected(resourceKind(index))&&impl_->sessionReady&&!impl_->disconnectPending;state.stopping=false;resources_.setSessionState(resourceKind(index),false,currentStatus,false);if(!restart)resources_.select(index,false);if(index==3&&state.returned)refreshDevices("usb");if(restart)reconcileResources();status_=impl_->sessionReady?"Connected. Check resources to start sharing.":"All resources have stopped.";emit changed();}}
     };
     drain(impl_->host,impl_->hostPending,true);for(int i=0;i<4;++i)drain(impl_->clients[i].child,impl_->clients[i].pending,false,i);
+    if(impl_->disconnectPending&&!impl_->clients[3].child.process){cancelAdmission();status_=active()?"Stopping resources...":"Disconnected";emit changed();}
     if(impl_->codeExpires&&GetTickCount64()>=impl_->codeExpires){impl_->codeExpires=0;code_="Code expired. Generate a new code.";emit hostChanged();}
 }
 void WindowsController::shutdown(){

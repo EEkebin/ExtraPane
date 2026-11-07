@@ -11,6 +11,8 @@ struct State {
     HostDevice device{L"USB\\VID_LOCAL", "1-2", {}, false, false};
     bool running=false,failQuarantine=false,failJournal=false,failEjectJournal=false,busyEject=false,failHandoff=false,failOfflineVerify=false;
     unsigned reattachMisses=0;
+    unsigned postUnbindMisses=0,restoreMisses=0;
+    bool failRestore=false,sourceReturned=false;
 };
 class Runner final:public HostRunner {
 public:
@@ -23,7 +25,7 @@ public:
         s.device.binding_id=L"{12345678-1234-1234-1234-123456789abc}";return {true,{}};
     }
     Availability unbind(const std::wstring& guid)override{
-        require(guid==s.device.binding_id);s.events.push_back("unbind");s.device.binding_id.clear();return {true,{}};
+        require(guid==s.device.binding_id);s.events.push_back("unbind");s.device.binding_id.clear();s.reattachMisses=s.postUnbindMisses;return {true,{}};
     }
     Availability start(const std::wstring& instance,const std::string& bus,std::uint16_t port)override{
         require(instance==s.device.instance_id&&bus==s.device.bus_id&&port==43210);
@@ -43,6 +45,12 @@ public:
     Availability binding_acquired(const Disk&,const std::wstring&)override{s.events.push_back("journal-bound");return {!s.failJournal,"Journal write failed"};}
     Availability destination_ejected(const Disk&)override{s.events.push_back("journal-ejected");return {!s.failEjectJournal,"Eject journal write failed"};}
     Availability binding_released(const Disk&,const std::wstring&)override{s.events.push_back("journal-released");return {true,{}};}
+    Availability restore_source(const Disk&,const RecoveryReleaseVerifier& verifier)override{
+        s.events.push_back("restore-source");RecoveryRecord record;record.state=RecoveryState::released;record.bus_id="1-2";
+        const auto proof=verifier(record);if(!proof.available)return proof;
+        if(s.restoreMisses){--s.restoreMisses;return {false,"Disk interface re-enumerating"};}
+        return {!s.failRestore,"Medium identity changed"};
+    }
 private:State& s;
 };
 static auto backend(State& s){
@@ -50,7 +58,8 @@ static auto backend(State& s){
         [&](const std::string& bus,std::uint16_t port)->Availability{require(bus=="1-2"&&port==43210);s.events.push_back("tunnel-start");return {true,{}};},
         [&]{s.events.push_back("tunnel-close");},
         [&]()->Availability{s.events.push_back("remote-eject");return {!s.busyEject,"Destination busy"};},
-        [&](const Disk&)->Availability{s.events.push_back("handoff");return {!s.failHandoff,"Handoff failed"};}
+        [&](const Disk&)->Availability{s.events.push_back("handoff");return {!s.failHandoff,"Handoff failed"};},
+        [&](Availability result){s.sourceReturned=result.available;s.events.push_back("return-result");}
     };
     return usb_host_backend(std::make_unique<Runner>(s),std::make_unique<Guard>(s),std::move(transport),43210);
 }
@@ -67,14 +76,23 @@ int main(){
             require(pos(s,"journal-intent")<pos(s,"handoff")&&pos(s,"handoff")<pos(s,"bind"));
             s.busyEject=true;require(!host->flush_and_eject_remote().available);require(s.running&&!has(s,"unbind"));
             s.busyEject=false;require(host->flush_and_eject_remote().available);
-            host->close_transport();host->stop_export();s.reattachMisses=2;host->release_claim(true);
+            host->close_transport();host->stop_export();s.reattachMisses=2;s.postUnbindMisses=2;s.restoreMisses=2;host->release_claim(true);
             require(has(s,"unbind")&&has(s,"journal-released")&&s.device.binding_id.empty());
+            require(s.sourceReturned&&pos(s,"journal-released")<pos(s,"restore-source")&&pos(s,"restore-source")<pos(s,"return-result"));
+            require(std::count(s.events.begin(),s.events.end(),"unbind")==1&&std::count(s.events.begin(),s.events.end(),"journal-released")==1);
             require(pos(s,"remote-eject")<pos(s,"journal-ejected")&&pos(s,"journal-ejected")<pos(s,"unbind"));
         }
         {
             State s;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
             host->close_transport();host->stop_export();host->release_claim(true);
             require(!has(s,"unbind")&&!s.device.binding_id.empty());
+            require(!s.sourceReturned&&!has(s,"restore-source"));
+        }
+        {
+            State s;s.failRestore=true;auto host=backend(s);require(host->claim(disk).available);require(host->export_locked(disk).available);
+            require(host->flush_and_eject_remote().available);host->close_transport();host->stop_export();host->release_claim(true);
+            require(!s.sourceReturned&&has(s,"restore-source")&&has(s,"journal-released"));
+            require(std::count(s.events.begin(),s.events.end(),"unbind")==1);
         }
         {
             State s;s.failHandoff=true;auto host=backend(s);require(host->claim(disk).available);

@@ -2,10 +2,54 @@
 #include <algorithm>
 #include <stdexcept>
 namespace dm::usb {
+namespace detail {
+std::vector<std::uint8_t> partition_metadata(const SectorReader& read,std::uint32_t sector,std::uint64_t size){
+    auto need=[](bool ok){if(!ok)throw std::invalid_argument("USB partition metadata is unsupported, corrupt or changed");};
+    need(read&&sector>=512&&sector<=4096&&(sector&(sector-1))==0&&size>=sector*4ull&&size%sector==0);
+    auto le=[&](std::span<const std::uint8_t> b,std::size_t off,unsigned n){need(off<=b.size()&&n<=b.size()-off);std::uint64_t value=0;for(unsigned i=0;i<n;++i)value|=std::uint64_t(b[off+i])<<(8*i);return value;};
+    auto crc=[](std::span<const std::uint8_t> b){std::uint32_t value=~0u;for(auto c:b){value^=c;for(unsigned i=0;i<8;++i)value=(value>>1)^(0xedb88320u&static_cast<std::uint32_t>(-static_cast<int>(value&1)));}return ~value;};
+    auto fetch=[&](std::uint64_t offset,std::uint32_t count){need(count&&count<=1024*1024&&offset<=size&&count<=size-offset&&offset%sector==0&&count%sector==0);auto b=read(offset,count);need(b.size()==count);return b;};
+    const auto mbr=fetch(0,sector);need(mbr[510]==0x55&&mbr[511]==0xaa);
+    unsigned count=0,protective=0;std::vector<std::pair<std::uint64_t,std::uint64_t>> ranges;
+    for(unsigned i=0;i<4;++i){const auto p=446+16*i;const auto type=mbr[p+4];const auto start=le(mbr,p+8,4),length=le(mbr,p+12,4);
+        if(!type){need(!start&&!length);continue;}++count;
+        need(start&&length&&start<size/sector&&length<=size/sector-start);
+        need(type!=0x05&&type!=0x0f&&type!=0x85); // Extended chains need their own bounded parser.
+        if(type==0xee)++protective;ranges.emplace_back(start,start+length);
+    }
+    need(count>0); // Never fingerprint writable superfloppy filesystem bytes.
+    std::sort(ranges.begin(),ranges.end());for(std::size_t i=1;i<ranges.size();++i)need(ranges[i-1].second<=ranges[i].first);
+    std::vector<std::uint8_t> result(mbr.begin()+440,mbr.begin()+512);
+    if(!protective)return result;
+    need(protective==1&&count==1);
+    auto primary=fetch(sector,sector);need(std::equal(primary.begin(),primary.begin()+8,"EFI PART"));
+    const auto headerSize=le(primary,12,4);need(headerSize>=92&&headerSize<=sector&&le(primary,24,8)==1&&le(primary,32,8)==size/sector-1);
+    auto validateHeader=[&](std::vector<std::uint8_t> b){const auto length=le(b,12,4);need(length>=92&&length<=sector);const auto expected=le(b,16,4);std::fill_n(b.begin()+16,4,0);need(crc(std::span(b).first(static_cast<std::size_t>(length)))==expected);};
+    validateHeader(primary);
+    const auto entries=le(primary,80,4),entrySize=le(primary,84,4),lba=le(primary,72,8);
+    need(entries>0&&entries<=4096&&entrySize>=128&&entrySize<=1024&&entrySize%128==0&&entries*entrySize<=1024*1024-8192);
+    const auto bytes=entries*entrySize,rounded=((bytes+sector-1)/sector)*sector;
+    need(lba>=2&&lba<size/sector&&rounded<=size-lba*sector);
+    auto table=fetch(lba*sector,static_cast<std::uint32_t>(rounded));need(crc(std::span(table).first(static_cast<std::size_t>(bytes)))==le(primary,88,4));
+    const auto first=le(primary,40,8),last=le(primary,48,8);need(first>=lba+rounded/sector&&first<=last&&last<size/sector-1);
+    ranges.clear();
+    for(std::uint64_t i=0;i<entries;++i){const auto offset=static_cast<std::size_t>(i*entrySize);
+        if(std::all_of(table.begin()+offset,table.begin()+offset+16,[](auto b){return b==0;}))continue;
+        const auto start=le(table,offset+32,8),end=le(table,offset+40,8);need(start>=first&&end>=start&&end<=last);ranges.emplace_back(start,end+1);
+    }
+    need(!ranges.empty());std::sort(ranges.begin(),ranges.end());for(std::size_t i=1;i<ranges.size();++i)need(ranges[i-1].second<=ranges[i].first);
+    auto backup=fetch(size-sector,sector);validateHeader(backup);need(std::equal(backup.begin(),backup.begin()+8,"EFI PART")&&le(backup,24,8)==size/sector-1&&le(backup,32,8)==1);
+    need(le(backup,40,8)==first&&le(backup,48,8)==last&&std::equal(primary.begin()+56,primary.begin()+72,backup.begin()+56)&&le(backup,80,4)==entries&&le(backup,84,4)==entrySize&&le(backup,88,4)==le(primary,88,4));
+    const auto backupLba=le(backup,72,8);need(backupLba>last&&backupLba<size/sector&&rounded<=size-sector-backupLba*sector);
+    auto backupTable=fetch(backupLba*sector,static_cast<std::uint32_t>(rounded));need(std::equal(table.begin(),table.begin()+static_cast<std::size_t>(bytes),backupTable.begin()));
+    result.insert(result.end(),primary.begin(),primary.begin()+static_cast<std::size_t>(headerSize));result.insert(result.end(),table.begin(),table.begin()+static_cast<std::size_t>(bytes));
+    return result;
+}
+}
 namespace {
 void valid(const RecoveryRecord& r){
     const auto state=static_cast<unsigned>(r.state);
-    if(state<1||state>7||r.disk_number==0xffffffffu||r.bus_id.size()>64||r.binding_id.size()>38||
+    if((r.version!=1&&r.version!=2)||state<1||state>7||r.disk_number==0xffffffffu||r.bus_id.size()>64||r.binding_id.size()>38||
        std::all_of(r.fingerprint.begin(),r.fingerprint.end(),[](auto b){return b==0;})||
        std::all_of(r.owner.begin(),r.owner.end(),[](auto b){return b==0;}))throw std::invalid_argument("Invalid USB recovery journal");
     if(!r.bus_id.empty()){
@@ -34,13 +78,13 @@ bool valid_recovery_transition(RecoveryState from,RecoveryState to)noexcept{
         ((from==RecoveryState::prepared||from==RecoveryState::offline||from==RecoveryState::released||from==RecoveryState::restored)&&to==RecoveryState::restored);
 }
 std::vector<std::uint8_t> encode_recovery(const RecoveryRecord& r){
-    valid(r);std::vector<std::uint8_t> b(72+r.bus_id.size()+r.binding_id.size());b[0]='E';b[1]='P';b[2]='U';b[3]='R';b[5]=1;b[6]=static_cast<std::uint8_t>(r.state);
+    valid(r);std::vector<std::uint8_t> b(72+r.bus_id.size()+r.binding_id.size());b[0]='E';b[1]='P';b[2]='U';b[3]='R';b[5]=r.version;b[6]=static_cast<std::uint8_t>(r.state);
     put(b,8,r.disk_number,4);put(b,12,r.prior_attributes,8);std::copy(r.fingerprint.begin(),r.fingerprint.end(),b.begin()+20);std::copy(r.owner.begin(),r.owner.end(),b.begin()+52);
     b[68]=static_cast<std::uint8_t>(r.bus_id.size());b[69]=static_cast<std::uint8_t>(r.binding_id.size());std::copy(r.bus_id.begin(),r.bus_id.end(),b.begin()+72);std::copy(r.binding_id.begin(),r.binding_id.end(),b.begin()+72+r.bus_id.size());return b;
 }
 RecoveryRecord decode_recovery(std::span<const std::uint8_t> b){
-    if(b.size()<72||b.size()>174||b[0]!='E'||b[1]!='P'||b[2]!='U'||b[3]!='R'||b[4]||b[5]!=1||b[7]||b[70]||b[71]||b.size()!=72u+b[68]+b[69])throw std::invalid_argument("Malformed USB recovery journal");
-    RecoveryRecord r;r.state=static_cast<RecoveryState>(b[6]);r.disk_number=static_cast<std::uint32_t>(get(b,8,4));r.prior_attributes=get(b,12,8);std::copy_n(b.begin()+20,32,r.fingerprint.begin());std::copy_n(b.begin()+52,16,r.owner.begin());
+    if(b.size()<72||b.size()>174||b[0]!='E'||b[1]!='P'||b[2]!='U'||b[3]!='R'||b[4]||(b[5]!=1&&b[5]!=2)||b[7]||b[70]||b[71]||b.size()!=72u+b[68]+b[69])throw std::invalid_argument("Malformed USB recovery journal");
+    RecoveryRecord r;r.version=b[5];r.state=static_cast<RecoveryState>(b[6]);r.disk_number=static_cast<std::uint32_t>(get(b,8,4));r.prior_attributes=get(b,12,8);std::copy_n(b.begin()+20,32,r.fingerprint.begin());std::copy_n(b.begin()+52,16,r.owner.begin());
     r.bus_id.assign(b.begin()+72,b.begin()+72+b[68]);r.binding_id.assign(b.begin()+72+b[68],b.end());valid(r);return r;
 }
 }

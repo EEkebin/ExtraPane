@@ -105,11 +105,25 @@ void present(const Disk& disk){
         }throw std::runtime_error("USB device ancestry exceeds bounds");
     }throw std::runtime_error("Selected local disk interface is no longer present");
 }
-void validate_handle(HANDLE handle,const Disk& disk){
+void validate_handle(HANDLE handle,const Disk& disk,bool checkLayout=true){
     present(disk);const auto bytes=query(handle,IOCTL_STORAGE_GET_DEVICE_NUMBER);need(bytes.size()>=sizeof(STORAGE_DEVICE_NUMBER),"Disk number is unavailable");STORAGE_DEVICE_NUMBER number{};std::memcpy(&number,bytes.data(),sizeof(number));
     need(number.DeviceType==FILE_DEVICE_DISK&&number.DeviceNumber==disk.disk_number,"Selected physical disk number changed");
     STORAGE_PROPERTY_QUERY request{};request.PropertyId=StorageDeviceProperty;request.QueryType=PropertyStandardQuery;
-    need(query(handle,IOCTL_STORAGE_QUERY_PROPERTY,&request,sizeof(request))==disk.descriptor_bytes&&query(handle,IOCTL_DISK_GET_DRIVE_LAYOUT_EX)==disk.layout_bytes,"Disk descriptor or partition identity changed");
+    need(query(handle,IOCTL_STORAGE_QUERY_PROPERTY,&request,sizeof(request))==disk.descriptor_bytes&&(!checkLayout||query(handle,IOCTL_DISK_GET_DRIVE_LAYOUT_EX)==disk.layout_bytes),"Disk descriptor or partition identity changed");
+}
+std::array<std::uint8_t,32> stable_fingerprint(HANDLE handle,const Disk& disk){
+    validate_handle(handle,disk,false);
+    const auto geometryBytes=query(handle,IOCTL_DISK_GET_DRIVE_GEOMETRY),lengthBytes=query(handle,IOCTL_DISK_GET_LENGTH_INFO);
+    need(geometryBytes.size()>=sizeof(DISK_GEOMETRY)&&lengthBytes.size()>=sizeof(GET_LENGTH_INFORMATION),"Cannot read physical disk geometry");
+    DISK_GEOMETRY geometry{};GET_LENGTH_INFORMATION length{};std::memcpy(&geometry,geometryBytes.data(),sizeof geometry);std::memcpy(&length,lengthBytes.data(),sizeof length);
+    need(length.Length.QuadPart>0,"Invalid physical disk length");
+    auto metadata=detail::partition_metadata([&](std::uint64_t offset,std::uint32_t count){
+        LARGE_INTEGER position{};position.QuadPart=static_cast<LONGLONG>(offset);need(SetFilePointerEx(handle,position,nullptr,FILE_BEGIN),"Cannot seek USB partition metadata");
+        std::vector<std::uint8_t> bytes(count);DWORD read=0;need(ReadFile(handle,bytes.data(),count,&read,nullptr)&&read==count,"Cannot read USB partition metadata");return bytes;
+    },geometry.BytesPerSector,static_cast<std::uint64_t>(length.Length.QuadPart));
+    for(unsigned i=0;i<8;++i)metadata.push_back(static_cast<std::uint8_t>(static_cast<std::uint64_t>(length.Length.QuadPart)>>(i*8)));
+    for(unsigned i=0;i<4;++i)metadata.push_back(static_cast<std::uint8_t>(geometry.BytesPerSector>>(i*8)));
+    Disk snapshot=disk;snapshot.layout_bytes=std::move(metadata);return fingerprint(snapshot);
 }
 std::uint64_t attributes(HANDLE handle){GET_DISK_ATTRIBUTES data{};DWORD returned=0;need(DeviceIoControl(handle,IOCTL_DISK_GET_DISK_ATTRIBUTES,nullptr,0,&data,sizeof(data),&returned,nullptr)&&returned>=sizeof(data)&&data.Version==sizeof(data),"Cannot read persistent disk attributes");return data.Attributes;}
 void offline(HANDLE handle,bool value){
@@ -117,7 +131,7 @@ void offline(HANDLE handle,bool value){
     need(DeviceIoControl(handle,IOCTL_DISK_SET_DISK_ATTRIBUTES,&data,sizeof(data),nullptr,0,&returned,nullptr),"Windows refused persistent disk offline/online change; the journal requires recovery");
     need(((attributes(handle)&DISK_ATTRIBUTE_OFFLINE)!=0)==value,"Disk offline state did not match the requested persistent change");
 }
-Handle open_disk(const Disk& disk){present(disk);Handle h(CreateFileW(disk.interface_path.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));if(h.h==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot open selected disk for persistent quarantine (Windows error "+std::to_string(GetLastError())+")");validate_handle(h.h,disk);return h;}
+Handle open_disk(const Disk& disk,bool checkLayout=true){present(disk);Handle h(CreateFileW(disk.interface_path.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));if(h.h==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot open selected disk for persistent quarantine (Windows error "+std::to_string(GetLastError())+")");validate_handle(h.h,disk,checkLayout);return h;}
 std::string guid(const std::wstring& value){std::string result;for(wchar_t c:value){need(c<128,"Invalid USB binding identifier");result+=static_cast<char>(c);}return result;}
 class NativeGuard final:public RecoveryGuard {
 public:
@@ -128,23 +142,37 @@ public:
         need(!has_pending_recovery(disk,pending_recoveries()),"This USB disk has a pending ExtraPane recovery record. Restore the source disk before exporting it again.");
         auto proof=locked_(disk);need(proof.available,"Source volume locks or locked physical identity cannot be verified");
         auto physical=open_disk(disk);const auto prior=attributes(physical.h);need(!(prior&DISK_ATTRIBUTE_OFFLINE),"A disk that was already offline cannot be claimed for export");
-        auto parent=root(true);key_=child(parent.h,key_name(disk),true,true);record_.disk_number=disk.disk_number;record_.prior_attributes=prior;record_.fingerprint=fingerprint(disk);
+        const auto identity=stable_fingerprint(physical.h,disk);
+        auto parent=root(true);key_=child(parent.h,key_name(disk),true,true);record_.version=2;record_.disk_number=disk.disk_number;record_.prior_attributes=prior;record_.fingerprint=identity;snapshot_identity_=fingerprint(disk);
         need(BCryptGenRandom(nullptr,record_.owner.data(),static_cast<ULONG>(record_.owner.size()),BCRYPT_USE_SYSTEM_PREFERRED_RNG)>=0,"USB recovery owner identity unavailable");store(key_.h,record_);
         // The durable PREPARED record precedes every disk mutation. Recheck the
         // independently held volume locks and same physical handle immediately.
         proof=locked_(disk);need(proof.available,"Source volume locks changed before offline");validate_handle(physical.h,disk);offline(physical.h,true);transition(RecoveryState::offline);
     });}
-    Availability verify(const Disk& disk)override{return attempt([&]{owned(disk);need(record_.state!=RecoveryState::prepared&&record_.state!=RecoveryState::restored,"Disk quarantine was not completed");auto physical=open_disk(disk);need((attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE)!=0,"Source disk is no longer offline; export is forbidden");});}
-    Availability binding_intent(const Disk& disk,const std::string& bus)override{return attempt([&]{owned(disk);need(record_.state==RecoveryState::offline,"USB binding intent requires completed quarantine");auto physical=open_disk(disk);need(attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE,"Disk must stay offline before binding");auto next=record_;next.bus_id=bus;next.state=RecoveryState::binding_intent;persist(next);});}
-    Availability binding_acquired(const Disk& disk,const std::wstring& binding)override{return attempt([&]{owned(disk);auto next=record_;next.binding_id=guid(binding);next.state=RecoveryState::bound;persist(next);});}
-    Availability destination_ejected(const Disk& disk)override{return attempt([&]{owned(disk);transition(RecoveryState::ejected);});}
-    Availability binding_released(const Disk& disk,const std::wstring& binding)override{return attempt([&]{owned(disk);need(guid(binding)==record_.binding_id,"USB backend released a different binding");transition(RecoveryState::released);});}
+    Availability verify(const Disk& disk)override{return attempt([&]{owned(disk);need(record_.state!=RecoveryState::prepared&&record_.state!=RecoveryState::restored,"Disk quarantine was not completed");auto physical=open_disk(disk,record_.version==1);need((attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE)!=0,"Source disk is no longer offline; export is forbidden");});}
+    Availability binding_intent(const Disk& disk,const std::string& bus)override{return attempt([&]{owned(disk);need(record_.state==RecoveryState::offline,"USB binding intent requires completed quarantine");auto physical=open_disk(disk,record_.version==1);need(attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE,"Disk must stay offline before binding");auto next=record_;next.bus_id=bus;next.state=RecoveryState::binding_intent;persist(next);});}
+    Availability binding_acquired(const Disk& disk,const std::wstring& binding)override{return attempt([&]{owned_journal(disk);auto next=record_;next.binding_id=guid(binding);next.state=RecoveryState::bound;persist(next);});}
+    // During native USB attachment the source disk interface may be absent. A
+    // trusted backend's eject receipt advances only this protected generation;
+    // physical medium validation remains mandatory before returning it online.
+    Availability destination_ejected(const Disk& disk)override{return attempt([&]{owned_journal(disk);transition(RecoveryState::ejected);});}
+    Availability binding_released(const Disk& disk,const std::wstring& binding)override{return attempt([&]{owned_journal(disk);need(guid(binding)==record_.binding_id,"USB backend released a different binding");transition(RecoveryState::released);});}
+    Availability restore_source(const Disk& disk,const RecoveryReleaseVerifier& released)override{return attempt([&]{
+        owned(disk);need(record_.state==RecoveryState::released&&static_cast<bool>(released),"Automatic return requires durable eject and exact binding release");
+        const auto proof=released(record_);need(proof.available,"USB backend absence could not be verified for automatic return");
+        auto physical=open_disk(disk,record_.version==1);need(stable_fingerprint(physical.h,disk)==record_.fingerprint,"Source medium changed before automatic return");
+        need(load(key_.h)==record_,"Journal changed before automatic return");
+        offline(physical.h,(record_.prior_attributes&DISK_ATTRIBUTE_OFFLINE)!=0);transition(RecoveryState::restored);
+        auto parent=root(false);RegCloseKey(key_.h);key_.h=nullptr;
+        need(RegDeleteKeyExW(parent.h,key_name(disk).c_str(),KEY_WOW64_64KEY,0)==ERROR_SUCCESS,"Source returned but journal retirement failed");need(RegFlushKey(parent.h)==ERROR_SUCCESS,"Source-return journal retirement could not be flushed");
+    });}
     // Default destruction only closes registry/mutex handles; never online,
     // remove journal, release a remote binding or undo persistent quarantine.
 private:
-    LockedDiskVerifier locked_;std::unique_ptr<Lease> lease_;Key key_;RecoveryRecord record_;
+    LockedDiskVerifier locked_;std::unique_ptr<Lease> lease_;Key key_;RecoveryRecord record_;std::array<std::uint8_t,32> snapshot_identity_{};
     template<class F>Availability attempt(F action){try{action();return {true,{}};}catch(const std::exception& error){return {false,error.what()};}}
-    void owned(const Disk& disk){need(key_.h&&lease_&&record_.disk_number==disk.disk_number&&record_.fingerprint==fingerprint(disk),"USB quarantine generation or identity mismatch");need(load(key_.h)==record_,"USB recovery journal changed or belongs to another owner");}
+    void owned_journal(const Disk& disk){need(key_.h&&lease_&&record_.disk_number==disk.disk_number&&snapshot_identity_==fingerprint(disk),"USB quarantine generation or selected identity mismatch");need(load(key_.h)==record_,"USB recovery journal changed or belongs to another owner");}
+    void owned(const Disk& disk){owned_journal(disk);need(record_.fingerprint==(record_.version==1?fingerprint(disk):stable_recovery_fingerprint(disk)),"USB source medium identity changed");}
     void persist(const RecoveryRecord& next){need(valid_recovery_transition(record_.state,next.state),"Invalid USB recovery journal transition");need(load(key_.h)==record_,"USB recovery journal changed before persistence");store(key_.h,next);record_=next;}
     void transition(RecoveryState state){auto next=record_;next.state=state;persist(next);}
 };
@@ -182,8 +210,12 @@ bool has_pending_recovery(const Disk& disk,std::span<const PendingRecovery> pend
     return std::any_of(pending.begin(),pending.end(),[&](const auto& item){return item.journal_id==id;});
 }
 std::array<std::uint8_t,32> recovery_fingerprint(const Disk& disk){return fingerprint(disk);}
+std::array<std::uint8_t,32> stable_recovery_fingerprint(const Disk& disk){
+    present(disk);Handle physical(CreateFileW(disk.interface_path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+    need(physical.h!=INVALID_HANDLE_VALUE,"Cannot open USB partition metadata for identity verification");return stable_fingerprint(physical.h,disk);
+}
 bool matches_recovery(const Disk& disk,const PendingRecovery& pending){
-    try{return pending.record&&key_name(disk)==pending.journal_id&&pending.record->disk_number==disk.disk_number&&pending.record->fingerprint==fingerprint(disk);}
+    try{return pending.record&&key_name(disk)==pending.journal_id&&pending.record->disk_number==disk.disk_number&&pending.record->fingerprint==(pending.record->version==1?fingerprint(disk):stable_recovery_fingerprint(disk));}
     catch(...){return false;}
 }
 Availability recovery_state_allows_restore(const RecoveryRecord& record){
@@ -194,22 +226,56 @@ Availability recovery_state_allows_restore(const RecoveryRecord& record){
     if(record.state==RecoveryState::released||record.state==RecoveryState::restored||record.state==RecoveryState::ejected)return {true,{}};
     return {false,"Destination eject and exact owned binding release have not been confirmed; keep this disk offline"};
 }
+Availability preexport_retirement_policy(const RecoveryRecord& record){
+    if((record.state!=RecoveryState::prepared&&record.state!=RecoveryState::offline)||
+       !record.bus_id.empty()||!record.binding_id.empty()||(record.prior_attributes&DISK_ATTRIBUTE_OFFLINE))
+        return {false,"Only a never-exported, originally online journal can be retired without restoring a disk"};
+    return {true,{}};
+}
+Availability assess_online_preexport(const Disk& disk,const PendingRecovery& pending,const RecoveryReleaseVerifier& absent){
+    try{
+        need(pending.record&&pending.error.empty()&&pending.journal_id==key_name(disk)&&pending.record->disk_number==disk.disk_number,"Pre-export journal does not identify this local disk slot");
+        need(preexport_retirement_policy(*pending.record).available,"Journal has export or binding history; automatic retirement refused");
+        need(static_cast<bool>(absent),"Fresh local backend ownership verification is required");
+        // Read-only handle: assessment neither writes the journal nor changes a
+        // disk. A different card in the same reader is not asserted identical.
+        present(disk);Handle physical(CreateFileW(disk.interface_path.c_str(),0,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+        need(physical.h!=INVALID_HANDLE_VALUE,"Cannot inspect selected disk attributes");validate_handle(physical.h,disk);
+        need(!(attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE),"Source disk is still offline; verified restoration is required");
+        const auto proof=absent(*pending.record);if(!proof.available)return proof;
+        validate_handle(physical.h,disk);need(!(attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE),"Source disk went offline during reconciliation");
+        return {true,{}};
+    }catch(const std::exception& error){return {false,error.what()};}
+}
+Availability retire_online_preexport(const Disk& disk,const PendingRecovery& pending,const RecoveryReleaseVerifier& absent){
+    try{
+        Lease lease(disk);auto parent=root(false);auto key=child(parent.h,key_name(disk),false);
+        need(pending.record&&load(key.h)==*pending.record,"Pre-export journal changed before reconciliation");
+        const auto proof=assess_online_preexport(disk,pending,absent);if(!proof.available)return proof;
+        need(load(key.h)==*pending.record,"Pre-export journal changed during reconciliation");
+        RegCloseKey(key.h);key.h=nullptr;
+        need(RegDeleteKeyExW(parent.h,key_name(disk).c_str(),KEY_WOW64_64KEY,0)==ERROR_SUCCESS,"Cannot retire already-online pre-export journal");
+        need(RegFlushKey(parent.h)==ERROR_SUCCESS,"Pre-export journal retirement could not be flushed");
+        return {true,{}};
+    }catch(const std::exception& error){return {false,error.what()};}
+}
 Availability recover_quarantined_disk(const Disk& disk,const RecoveryReleaseVerifier& released){
     try{
         need(static_cast<bool>(released),"Explicit trusted destination eject and binding release verification is required");Lease lease(disk);auto parent=root(false);auto key=child(parent.h,key_name(disk),false);auto record=load(key.h);
-        need(record.disk_number==disk.disk_number&&record.fingerprint==fingerprint(disk),"Recovery refused: disk number, descriptor or partitions no longer match the journal");
+        need(record.disk_number==disk.disk_number&&record.fingerprint==(record.version==1?fingerprint(disk):stable_recovery_fingerprint(disk)),"Recovery refused: disk number, descriptor or partitions no longer match the journal");
         need(recovery_state_allows_restore(record).available,"Journal does not contain sufficient pre-export or verified eject evidence for recovery");
         // Verify local identity and offline state before a recovery verifier may
         // finish removing this journal's exact owned binding after clean eject.
-        auto physical=open_disk(disk);
+        auto physical=open_disk(disk,record.version==1);
         if(record.state==RecoveryState::ejected)need(attributes(physical.h)&DISK_ATTRIBUTE_OFFLINE,"An ejected disk lost its offline quarantine; recovery refused");
         const auto proof=released(record);need(proof.available,"Destination eject or exact USB backend release is unconfirmed; disk remains offline");
         need(load(key.h)==record,"USB recovery journal changed during release verification");
         if(record.state==RecoveryState::ejected){record.state=RecoveryState::released;store(key.h,record);}
-        validate_handle(physical.h,disk);
+        validate_handle(physical.h,disk,record.version==1);
+        if(record.version==2)need(stable_fingerprint(physical.h,disk)==record.fingerprint,"USB medium changed during recovery");
         // Set only OFFLINE, preserving read-only and all unrelated current bits.
         const bool priorOffline=(record.prior_attributes&DISK_ATTRIBUTE_OFFLINE)!=0;
-        offline(physical.h,priorOffline);validate_handle(physical.h,disk);
+        offline(physical.h,priorOffline);validate_handle(physical.h,disk,record.version==1);
         record.state=RecoveryState::restored;store(key.h,record);
         // Deletion is explicit recovery's final action. A crash before deletion
         // leaves a journal that prevents new export until recovery is repeated.

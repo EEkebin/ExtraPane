@@ -35,11 +35,13 @@ USB test, and use expendable test data on the selected removable drive.
 3. Close source files, start the recipient, then connect the selected source.
    Confirm Windows sees the actual imported USB storage device. Use only test
    files for initial write/read/hash verification.
-4. With a destination file busy, try Eject USB. It must refuse while keeping the
-   transfer alive. Close files and retry. Stop server also requests safe eject.
-5. After confirmed eject, wait for the source session to finish. On the source
-   select Refresh recovery, then the matching record and Restore selected disk.
-   Verify the disk returns and test-file hashes match. Restoration must refuse a
+4. With a destination file busy, uncheck USB on the source. It must report the
+   blocker, recheck USB and keep sharing alive. Close files and retry. Also test
+   Disconnect all: other resources stop, but a busy USB device keeps its session
+   until safe return succeeds. Eject USB on the receiver requests the same return.
+5. After confirmed eject, wait for automatic return on the source. No separate
+   recovery action should be needed. Verify the disk returns and test-file hashes
+   match. Restoration must refuse a
    changed identity or missing eject/release evidence.
 6. Only after clean transfer/eject succeeds, separately authorize interrupted
    connection/parent-exit tests. The source must remain offline. A bound or
@@ -52,7 +54,7 @@ The server accepts all supported resource types on the same port; there is no
 server resource selector. Clients can select resources before or after Connect. Also test Connect with nothing checked: the status should show connected without creating a monitor or capturing media.
 Check Display, Camera and Microphone together, choose both source devices, and
 verify that the server receives the camera/microphone while its extended desktop
-shows on the client. Uncheck one resource and confirm the others continue. Recheck it to restart; Disconnect all must clear every checkbox. Mute the
+shows on the client. Uncheck one resource and confirm the others continue. Recheck it to restart; Disconnect all must clear every checkbox after any USB return completes (a busy USB veto leaves USB checked). Mute the
 microphone independently. For access-code mode, enter one fresh code for the
 connection; it issues fresh short-lived, single-use resource tickets when checkboxes start resources.
 Windows USB is one removable-storage session per receiver. Linux/macOS new media

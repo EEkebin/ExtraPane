@@ -90,20 +90,28 @@ public:
     void stop_export()noexcept override{if(runner_)runner_->stop();}
     void release_claim(bool)noexcept override{
         if(!reserved_||!runner_)return;
+        Availability restored{false,"USB source return requires verified destination eject and exact binding release"};
         // A lost connection is not eject proof. Leave the owned binding and
         // durable offline journal intact for explicit local recovery.
         if(eject_confirmed_&&!binding_.empty()&&!runner_->running()){
             const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+            bool unbindRequested=false,releaseRecorded=false;
             do{
                 try{
                     const auto device=find(selected_.usb_instance_id);
-                    if(device&&device->bus_id==bus_&&equal_id(device->binding_id,binding_)&&!device->attached&&!device->forced&&
-                       recovery_->verify(selected_).available){
-                        const auto removed=runner_->unbind(binding_);
-                        const auto after=find(selected_.usb_instance_id);
-                        if(removed.available&&after&&after->binding_id.empty()&&!after->attached&&!after->forced&&
-                           recovery_->binding_released(selected_,binding_).available)binding_.clear();
-                        break;
+                    if(device&&device->bus_id==bus_&&!device->attached&&!device->forced){
+                        if(!unbindRequested&&equal_id(device->binding_id,binding_)&&recovery_->verify(selected_).available){
+                            const auto removed=runner_->unbind(binding_);unbindRequested=removed.available;
+                        }else if(unbindRequested&&device->binding_id.empty()){
+                            if(!releaseRecorded){const auto released=recovery_->binding_released(selected_,binding_);if(!released.available){restored=released;break;}releaseRecorded=true;}
+                            restored=recovery_->restore_source(selected_,[&](const RecoveryRecord& record)->Availability{
+                                const auto current=find(selected_.usb_instance_id);
+                                if(record.state!=RecoveryState::released||record.bus_id!=bus_||!current||current->bus_id!=bus_||current->attached||current->forced||!current->binding_id.empty())
+                                    return fail("Source backend ownership changed before automatic return");
+                                return {true,{}};
+                            });
+                            if(restored.available){binding_.clear();break;}
+                        }
                     }
                     // Changed binding identity is not an asynchronous reattach.
                     if(device&&(!device->binding_id.empty()&&!equal_id(device->binding_id,binding_)))break;
@@ -113,8 +121,7 @@ public:
             }while(true);
         }
         runner_->release();reserved_=false;
-        // Deliberately no disk-online call. Even clean eject requires a separate
-        // explicit recovery action with fresh physical identity verification.
+        try{if(transport_.source_restored)transport_.source_restored(restored);}catch(...){ }
     }
 private:
     std::optional<HostDevice> find(const std::wstring& identity){

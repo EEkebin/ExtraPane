@@ -21,10 +21,23 @@ int main(int argc,char** argv){
         }
         return 0;
     }
+    if(args.find("list-storage")!=args.npos){std::cout<<"USB_DEVICE_V1\t757362\tFake returned disk\tavailable\nUSB_LIST_DONE"<<std::endl;return 0;}
     if(args.find("receive")!=args.npos){std::cout<<"VIDEO_RECEIVING"<<std::endl;Sleep(INFINITE);return 0;}
     std::string line;std::getline(std::cin,line);
     if(args.find("send-microphone")!=args.npos&&std::getenv("EXTRAPANE_TEST_MIC_FAIL")){
         std::cout<<"error: simulated microphone rejection"<<std::endl;return 1;
+    }
+    if(args.find("send-usb")!=args.npos){
+        bool veto=std::getenv("EXTRAPANE_TEST_USB_BUSY")!=nullptr;
+        std::cout<<"USB_STARTED"<<std::endl;
+        while(std::getline(std::cin,line)){
+            if(line=="X"){std::cout<<"USB_RECOVERY_REQUIRED simulated forced session loss"<<std::endl;return 0;}
+            if(line!="Q")return 3;
+            std::cout<<"USB_RETURNING"<<std::endl;Sleep(200);
+            if(veto){veto=false;std::cout<<"USB_STOP_BLOCKED receiver-busy"<<std::endl;continue;}
+            std::cout<<"USB_RETURNED"<<std::endl;return 0;
+        }
+        return 0;
     }
     std::cout<<(args.find("send-camera")!=args.npos?"CAMERA_STARTED":"MICROPHONE_STARTED")<<std::endl;
     while(std::getline(std::cin,line))if(line=="Q"){Sleep(150);return 0;}

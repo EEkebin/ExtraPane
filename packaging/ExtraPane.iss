@@ -364,6 +364,14 @@ var
   Helper, ComponentFolder: String;
 begin
   if CurUninstallStep = usUninstall then begin
+    { Only retire never-exported records whose source is already online locally.
+      This does not force a disk online or discard unresolved remote ownership. }
+    if FileExists(ExpandConstant('{app}\ExtraPane.UsbRecovery.exe')) then begin
+      if not RunComponent(ExpandConstant('{app}\ExtraPane.UsbRecovery.exe'), '--reconcile-online', '', CameraCode) then
+        RaiseException('USB recovery check could not start. ExtraPane files were retained.');
+      if CameraCode <> 0 then
+        RaiseException('USB storage still needs recovery: ' + ComponentError + #13#10 + 'ExtraPane files were retained for retry.');
+    end;
     { USB first: a busy source or unrecovered device stops removal while every
       recovery helper is still present. Independently owned USB drivers remain. }
     for Component := 0 to 1 do begin

@@ -97,7 +97,8 @@ the exact owned binding removal; otherwise explicit recovery can finish it.
 Unexpected transport loss does not authorize unbinding or
 bringing the source disk online. After a successful destination eject, it may
 remove only the binding GUID created by this session and confirmed by fresh
-local state; restoring source disk access remains a separate recovery action.
+local state. Normal return then restores the verified source disk automatically.
+Recovery controls are reserved for interrupted or incomplete returns.
 
 Holding volume handles alone is insufficient crash protection: usbipd can
 restore the source USB driver when the network stream closes, and driver
@@ -257,7 +258,8 @@ The Windows session now composes the native inventory, locked/offline handoff,
 private exporter, encrypted tunnel, imported-device identity and destination
 flush/eject. Child processes are job-owned. Verified eject is journaled before
 binding removal so explicit recovery can resume after a crash. The app exposes
-source setup/selection, receiving setup/eject and recovery controls.
+source selection and live USB checkboxes, receiving eject, and advanced recovery
+controls. Setup is handled by the installer.
 
 These are development implementations, not physical verification. Installation,
 lock-to-driver handoff, actual imported storage, eject/reconnect and recovery still
@@ -280,10 +282,40 @@ journal. Reconnecting the same reader and card restored local exFAT access, but
 the saved v1 fingerprint still did not match. The record was preserved and no
 forced recovery or partition change was performed.
 
-Pending records now make the disk unavailable in the USB picker and reject a new
+Unresolved records make the disk unavailable in the USB picker and reject a new
 export before network admission or disk mutation. `ExtraPane.UsbRecovery --inspect
 <journal-id>` is read-only and exposes the recorded/current fingerprints and disk
 metadata for diagnosis. It does not authorize recovery. Do not retry export on
-this adapter yet. A versioned identity based on stable media metadata readable
-while offline is needed; relaxing the existing v1 fingerprint would permit an
-uncertain card to be restored.
+this adapter with older builds. Version 2 journals now fingerprint bounded raw
+partition-table metadata, disk geometry and device identity, avoiding Windows'
+synthetic offline layout. Basic partitioned MBR and GPT are supported; extended
+MBR chains and unpartitioned/superfloppy media are rejected. Filesystem data is
+excluded so ordinary file writes do not invalidate the fingerprint. GPT headers,
+table checksums, backup consistency and partition bounds are checked. Cloned
+cards with identical metadata cannot be distinguished by this fingerprint.
+Version 1 restoration retains its original strict comparison.
+
+The tested Surface's never-exported record was retired by the guarded
+already-online reconciliation. Its card remained Online/Healthy as D: exFAT.
+The new export and automatic-return paths still require physical testing.
+
+## Automatic return and stale pre-export records
+
+Unchecking USB asks the receiver to flush and safely eject its owned device. A
+busy-device refusal keeps the tunnel running and rechecks USB in the client.
+Disconnect all stops other resources but retains USB and its control connection
+until return succeeds; a busy refusal cancels the pending full disconnect.
+Only a verified eject receipt and exact owned-binding release authorize automatic
+source restoration. Network loss does not supply that proof.
+
+The bounded EPUT/EPUS v2 protocol carries return requests and busy responses
+separately from USB/IP payload. Both endpoints require matching builds.
+
+`ExtraPane.UsbRecovery --reconcile-online` retires only protected `prepared` or
+`offline` journals with no binding history when the identified local disk slot
+is already online and a fresh backend check proves no binding or attachment.
+It neither asserts that a replacement card is the original medium nor changes
+disk attributes or contents. The client performs the same assessment for source
+selection and repeats it under an ownership reservation before a new export.
+Uninstall invokes reconciliation before removing components. Missing disks,
+malformed journals and any evidence of export remain blocked for recovery.

@@ -28,9 +28,30 @@ std::string hex(std::span<const std::uint8_t> bytes){std::string out;for(auto b:
 std::string virtual_serial(){std::string value;while(value.size()<15){std::array<std::uint8_t,32> bytes{};check(BCryptGenRandom(nullptr,bytes.data(),static_cast<ULONG>(bytes.size()),BCRYPT_USE_SYSTEM_PREFERRED_RNG)>=0,"Cannot create imported device identity");for(auto byte:bytes)if(byte<252&&value.size()<15)value+="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[byte%36];}return value;}
 std::string clean(std::string text){for(auto& c:text)if(static_cast<unsigned char>(c)<32)c=' ';return text.substr(0,1024);}
 Inventory current_inventory(){auto runner=native_host_runner();const auto devices=runner->devices();return inventory([&](const std::wstring& id)->std::optional<bool>{std::optional<bool> result;for(const auto& d:devices)if(same(id,d.instance_id)){if(result)return {};result=d.forced||d.attached||!d.binding_id.empty();}return result;});}
+// Already-online records from a failed preparation may be retired without
+// claiming that the card is unchanged or taking a disk online. Exported/bound
+// histories stay blocked until their own durable recovery proof is satisfied.
+extrapane::Availability reconcile_preexport(const Disk& disk,std::span<const PendingRecovery> pending,bool mutate){
+    auto runner=native_host_runner();bool reserved=false;
+    struct Release{HostRunner& runner;bool& reserved;~Release(){if(reserved)runner.release();}}release{*runner,reserved};
+    for(const auto& item:pending){
+        if(!has_pending_recovery(disk,std::span(&item,1)))continue;
+        if(mutate&&!reserved){const auto claim=runner->reserve(disk.usb_instance_id);if(!claim.available)return claim;reserved=true;}
+        auto absent=[&](const RecoveryRecord& record)->extrapane::Availability{
+            if(!item.record||record!=*item.record)return {false,"USB recovery record changed"};
+            bool found=false;for(const auto& device:runner->devices())if(same(device.instance_id,disk.usb_instance_id)){
+                if(found||device.attached||device.forced||!device.binding_id.empty())return {false,"USB device is bound, attached or ambiguous"};found=true;
+            }
+            return found?extrapane::Availability{true,{}}:extrapane::Availability{false,"USB device absent from fresh backend inventory"};
+        };
+        const auto result=mutate?retire_online_preexport(disk,item,absent):assess_online_preexport(disk,item,absent);
+        if(!result.available)return result;
+    }
+    return {true,{}};
+}
 std::uint16_t endpoint_port(const std::string& endpoint){const auto at=endpoint.rfind(':');check(at!=std::string::npos,"Invalid local USB listener");unsigned value=0;const auto text=endpoint.substr(at+1);const auto [end,error]=std::from_chars(text.data(),text.data()+text.size(),value);check(error==std::errc{}&&end==text.data()+text.size()&&value&&value<=65535,"Invalid local USB port");return static_cast<std::uint16_t>(value);}
 std::uint16_t reserve_port(){net::Options options{"127.0.0.1","",0,std::chrono::milliseconds(250)};net::TcpListener listener(options);return endpoint_port(listener.endpoints());}
-std::array<std::uint8_t,8> control(unsigned kind){return {'E','P','U','S',1,static_cast<std::uint8_t>(kind),0,0};}
+std::array<std::uint8_t,8> control(unsigned kind){return {'E','P','U','S',2,static_cast<std::uint8_t>(kind),0,0};}
 void expect(security::TlsStream& stream,unsigned kind,std::chrono::seconds timeout=std::chrono::seconds(15)){std::array<std::uint8_t,8> packet{};stream.read(packet,Clock::now()+timeout);check(packet==control(kind),"USB resource negotiation failed");}
 struct Offer{std::array<std::uint8_t,16> nonce{};std::uint16_t vendor=0,product=0;std::string bus;};
 std::array<std::uint8_t,64> encode(const Offer& offer){check(!offer.bus.empty()&&offer.bus.size()<16,"Invalid selected bus");std::array<std::uint8_t,64> bytes{};auto prefix=control(1);std::copy(prefix.begin(),prefix.end(),bytes.begin());std::copy(offer.nonce.begin(),offer.nonce.end(),bytes.begin()+8);bytes[24]=offer.vendor>>8;bytes[25]=offer.vendor;bytes[26]=offer.product>>8;bytes[27]=offer.product;bytes[28]=static_cast<std::uint8_t>(offer.bus.size());std::copy(offer.bus.begin(),offer.bus.end(),bytes.begin()+29);return bytes;}
@@ -69,26 +90,28 @@ void eject_owned(ImportRunner& runner,unsigned port,std::uint16_t local,const Of
     check(CM_Request_Device_EjectW(node,&veto,name,512,0)==CR_SUCCESS,"Destination is busy or Windows vetoed safe eject; close its files and retry");
 }
 }
-void list_storage(const Report& report){Com com;const auto all=current_inventory();check(all.errors.empty()&&all.disks.size()<=128,"USB ownership inventory is incomplete or exceeds the device limit");const auto pending=pending_recoveries();for(const auto& disk:all.disks){check(!disk.facts.id.empty()&&disk.facts.id.size()<=4096,"USB inventory identifier exceeds limit");const auto eligibility=has_pending_recovery(disk,pending)?extrapane::Availability{false,"Recovery required: restore this source disk before sharing again"}:extrapane::usb::eligible(disk.facts);report("USB_DEVICE_V1\t"+hex(std::span(reinterpret_cast<const std::uint8_t*>(disk.facts.id.data()),disk.facts.id.size()))+"\t"+clean(disk.label)+"\t"+(eligibility.available?"available":clean(eligibility.reason)));}report("USB_LIST_DONE");}
-void send_storage(const net::Options& options,const std::string& id,std::atomic_bool& stop,const Report& report){
+void list_storage(const Report& report){Com com;const auto all=current_inventory();check(all.errors.empty()&&all.disks.size()<=128,"USB ownership inventory is incomplete or exceeds the device limit");const auto pending=pending_recoveries();for(const auto& disk:all.disks){check(!disk.facts.id.empty()&&disk.facts.id.size()<=4096,"USB inventory identifier exceeds limit");auto eligibility=extrapane::usb::eligible(disk.facts);if(eligibility.available&&has_pending_recovery(disk,pending))eligibility=reconcile_preexport(disk,pending,false);report("USB_DEVICE_V1\t"+hex(std::span(reinterpret_cast<const std::uint8_t*>(disk.facts.id.data()),disk.facts.id.size()))+"\t"+clean(disk.label)+"\t"+(eligibility.available?"available":clean(eligibility.reason)));}report("USB_LIST_DONE");}
+void send_storage(const net::Options& options,const std::string& id,std::atomic_bool& stop,std::atomic_bool& return_requested,const Report& report){
     Com com;check(IsUserAnAdmin(),"USB source requires explicit elevation");const auto all=current_inventory();check(all.errors.empty(),"USB ownership inventory incomplete");const auto found=std::find_if(all.disks.begin(),all.disks.end(),[&](const Disk& d){return d.facts.id==id;});check(found!=all.disks.end()&&extrapane::usb::eligible(found->facts).available,"Select an eligible current local USB storage device");const Disk selected=*found;
-    check(!has_pending_recovery(selected,pending_recoveries()),"This USB disk has a pending ExtraPane recovery record. Restore the source disk before exporting it again.");
+    const auto reconciled=reconcile_preexport(selected,pending_recoveries(),true);check(reconciled.available,reconciled.reason.c_str());
     security::TlsStream remote(net::connect_stream(options),false,"");Cancellation cancellation(remote,stop);remote.handshake(Clock::now()+std::chrono::seconds(15));remote.write(control(0),Clock::now()+std::chrono::seconds(5));expect(remote,2);
     Offer offer;check(BCryptGenRandom(nullptr,offer.nonce.data(),16,BCRYPT_USE_SYSTEM_PREFERRED_RNG)>=0,"Cannot create USB session nonce");offer.vendor=static_cast<std::uint16_t>(id_word(selected.usb_instance_id,L"VID_"));offer.product=static_cast<std::uint16_t>(id_word(selected.usb_instance_id,L"PID_"));
-    auto handles=std::make_unique<ProvenHandles>();auto* proof=handles.get();auto recovery=native_recovery_guard([proof](const Disk& disk){if(!proof->locked||!proof->dismounted)return extrapane::Availability{false,"Source volume locks are not proven"};return proof->verify_locked(disk);});std::unique_ptr<net::TcpStream> local;bool clean_eject=false;
+    auto handles=std::make_unique<ProvenHandles>();auto* proof=handles.get();auto recovery=native_recovery_guard([proof](const Disk& disk){if(!proof->locked||!proof->dismounted)return extrapane::Availability{false,"Source volume locks are not proven"};return proof->verify_locked(disk);});std::unique_ptr<net::TcpStream> local;bool clean_eject=false;extrapane::Availability source_restored{false,"Source backend has not confirmed automatic return"};
     HostTransport transport;
+    transport.source_restored=[&](extrapane::Availability result){source_restored=std::move(result);};
     transport.start=[&](const std::string& bus,std::uint16_t port){offer.bus=bus;local=std::make_unique<net::TcpStream>(net::connect_stream({"127.0.0.1","127.0.0.1",port,std::chrono::seconds(5)}));return extrapane::Availability{true,{}};};
     transport.handoff_quarantined=[proof](const Disk& disk){return proof->handoff_quarantined(disk);};
     transport.close=[&]{if(local)local->cancel();};transport.flush_and_eject=[&]{return extrapane::Availability{clean_eject,clean_eject?"":"Destination has not provided a verified session eject receipt"};};
     StorageOperations operations(selected,current_inventory,usb_host_backend(native_host_runner(),std::move(recovery),transport,reserve_port()),std::move(handles));extrapane::usb::Transfer transfer(operations);
     check(!stop.load(),"USB source canceled before preparation");
+    if(return_requested.load()){report("USB_RETURNED USB was canceled before export; the source disk was not changed.");return;}
     const auto result=transfer.start(selected.facts.id,selected.facts.generation,true);if(!result.available){report("USB_RECOVERY_REQUIRED "+result.reason);throw std::runtime_error(result.reason);}
     try{
-        remote.write(encode(offer),Clock::now()+std::chrono::seconds(5));expect(remote,3);report("USB_STARTED sending");pump_tunnel(remote,*local,false,offer.bus,stop,true);
+        remote.write(encode(offer),Clock::now()+std::chrono::seconds(5));expect(remote,3);report("USB_STARTED sending");pump_tunnel(remote,*local,false,offer.bus,stop,true,&return_requested,nullptr,[&]{report("USB_STOP_BLOCKED Destination is busy; close its files and uncheck USB again to retry.");});
         if(!stop.load()){std::array<std::uint8_t,32> proof_receipt{};remote.read(proof_receipt,Clock::now()+std::chrono::seconds(10));clean_eject=proof_receipt==receipt(offer);}
-        if(clean_eject){const auto ejected=transfer.eject();check(ejected.available,ejected.reason.c_str());report("USB_EJECTED Use Restore source disk to bring the source disk online after verified recovery");}
+        if(clean_eject){const auto ejected=transfer.eject();check(ejected.available,ejected.reason.c_str());check(source_restored.available,source_restored.reason.c_str());report("USB_RETURNED USB safely returned to this computer.");}
         else transfer.transport_lost();
-    }catch(...){transfer.transport_lost();report("USB_RECOVERY_REQUIRED source remains quarantined after connection loss");throw;}
+    }catch(...){transfer.transport_lost();report("USB_RECOVERY_REQUIRED USB return was not completed; source state retained for recovery");throw;}
     if(!clean_eject)report("USB_RECOVERY_REQUIRED source remains quarantined");
 }
 void receive_storage_admitted(security::TlsStream& remote,std::atomic_bool& stop,std::atomic_bool& eject,const Report& report){
@@ -97,13 +120,18 @@ void receive_storage_admitted(security::TlsStream& remote,std::atomic_bool& stop
     std::jthread parent_cancel([&](std::stop_token token){while(!token.stop_requested()&&!session_stop.load()&&!stop.load())std::this_thread::sleep_for(std::chrono::milliseconds(25));if(stop.load())session_stop=true;});
 Cancellation cancellation(remote,session_stop);expect(remote,0);remote.write(control(2),Clock::now()+std::chrono::seconds(5));std::array<std::uint8_t,64> packet{};remote.read(packet,Clock::now()+std::chrono::seconds(30));const auto offer=decode(packet);
     net::Options loopback{"127.0.0.1","",0,std::chrono::milliseconds(250)};net::TcpListener local_listener(loopback);const auto local_port=endpoint_port(local_listener.endpoints());const auto serial=virtual_serial();remote.write(control(3),Clock::now()+std::chrono::seconds(5));
-    std::atomic_bool clean_eject=false,in_eject=false;std::atomic_uint owned_port=0;
+    std::atomic_bool clean_eject=false,in_eject=false,return_busy=false;std::atomic_uint owned_port=0;
     std::jthread importer([&](std::stop_token token){try{Com worker_com;const auto port=runner->attach(local_port,offer.bus,serial);owned_port=port;report("USB_STARTED receiving");while(!token.stop_requested()&&!session_stop.load()){
-        if(eject.exchange(false)){in_eject=true;try{eject_owned(*runner,port,local_port,offer,serial);clean_eject=true;in_eject=false;report("USB_EJECTED receiving");return;}catch(const std::exception& e){in_eject=false;report("USB_EJECT_BUSY "+std::string(e.what()));}}std::this_thread::sleep_for(std::chrono::milliseconds(50));}
+        if(eject.exchange(false)){in_eject=true;try{eject_owned(*runner,port,local_port,offer,serial);clean_eject=true;in_eject=false;report("USB_EJECTED receiving");return;}catch(const std::exception& e){in_eject=false;return_busy=true;report("USB_EJECT_BUSY "+std::string(e.what()));}}std::this_thread::sleep_for(std::chrono::milliseconds(50));}
     }catch(const std::exception& e){report("error: "+std::string(e.what()));session_stop=true;}});
     std::unique_ptr<net::TcpStream> local;const auto deadline=Clock::now()+std::chrono::seconds(20);while(!session_stop.load()&&Clock::now()<deadline){try{local=std::make_unique<net::TcpStream>(local_listener.accept());break;}catch(const std::exception& e){if(std::string(e.what())!="Accept timed out")throw;}}
     check(local!=nullptr,"USB driver did not connect to its private tunnel");
-    try{pump_tunnel(remote,*local,true,"",session_stop,true);const auto wait=Clock::now()+std::chrono::seconds(5);while(in_eject.load()&&!clean_eject.load()&&Clock::now()<wait)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    try{pump_tunnel(remote,*local,true,"",session_stop,true,&eject,&return_busy,{},[&](bool local_failure){
+        // Device eject may close/reset its loopback socket before the PnP call
+        // returns. Only a completed successful eject authorizes the receipt.
+        const auto limit=Clock::now()+std::chrono::seconds(2);
+        while(local_failure&&in_eject.load()&&!clean_eject.load()&&Clock::now()<limit)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return clean_eject.load();});const auto wait=Clock::now()+std::chrono::seconds(5);while(in_eject.load()&&!clean_eject.load()&&Clock::now()<wait)std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if(clean_eject.load()){remote.write(receipt(offer),Clock::now()+std::chrono::seconds(5));try{runner->detach_ejected(owned_port,local_port,offer.bus,serial);}catch(const std::exception& e){report("USB_PORT_CLEANUP "+std::string(e.what()));}}
         else report("USB_DISCONNECTED no clean eject receipt; source recovery required");
     }catch(...){session_stop=true;throw;}

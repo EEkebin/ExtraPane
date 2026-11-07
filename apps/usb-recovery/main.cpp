@@ -1,6 +1,7 @@
 #include <dm/usb_recovery.hpp>
 #include <dm/usb_runner.hpp>
 #include <windows.h>
+#include <objbase.h>
 #include <winioctl.h>
 #include <algorithm>
 #include <iostream>
@@ -135,14 +136,54 @@ void recover(const std::wstring& id){
     if(!result.available)throw std::runtime_error(result.reason);
     std::cout<<"{\"restored\":"<<json(utf8(id))<<"}\n";
 }
+void reconcile_online(){
+    const auto pending=pending_recoveries();
+    if(pending.empty()){std::cout<<"{\"retired\":0}\n";return;}
+    auto runner=native_host_runner();const auto ready=runner->ready();if(!ready.available)throw std::runtime_error(ready.reason);
+    unsigned retired=0;
+    for(const auto& item:pending){
+        require(item.record&&item.error.empty(),"Malformed USB recovery journal retained");
+        const auto policy=preexport_retirement_policy(*item.record);if(!policy.available)throw std::runtime_error(policy.reason);
+        const auto devices=runner->devices();
+        const auto snapshot=inventory([&](const std::wstring& instance)->std::optional<bool>{
+            std::optional<bool> owned;for(const auto& device:devices)if(equal_id(device.instance_id,instance)){
+                if(owned)return {};owned=device.attached||device.forced||!device.binding_id.empty();
+            }return owned;
+        });
+        require(snapshot.errors.empty(),"Local disk inventory is incomplete; journal retained");
+        std::optional<Disk> disk;
+        for(const auto& candidate:snapshot.disks)if(has_pending_recovery(candidate,std::span(&item,1))&&candidate.disk_number==item.record->disk_number){
+            require(!disk,"Ambiguous local disk identity; journal retained");disk=candidate;
+        }
+        require(disk.has_value(),"Pre-export source disk is absent; journal retained");
+        const auto reserved=runner->reserve(disk->usb_instance_id);if(!reserved.available)throw std::runtime_error(reserved.reason);
+        struct Release {HostRunner& runner;~Release(){runner.release();}} release{*runner};
+        const auto result=retire_online_preexport(*disk,item,[&](const RecoveryRecord& record)->Availability{
+            if(record!=*item.record)return {false,"Journal changed after selection"};
+            bool found=false;for(const auto& device:runner->devices())if(equal_id(device.instance_id,disk->usb_instance_id)){
+                if(found||device.attached||device.forced||!device.binding_id.empty())return {false,"USB device is bound, attached or ambiguous"};found=true;
+            }
+            return found?Availability{true,{}}:Availability{false,"USB device absent from fresh backend inventory"};
+        });
+        if(!result.available)throw std::runtime_error(result.reason);++retired;
+    }
+    std::cout<<"{\"retired\":"<<retired<<"}\n";
+}
 }
 int wmain(int argc,wchar_t** argv){
     try{
+        // Keep the apartment alive across repeated backend state reads. The
+        // backend's WinRT JSON activation factories may be cached; tearing COM
+        // down between inventory and the final fresh ownership check is unsafe.
+        const auto initialized=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+        require(SUCCEEDED(initialized),"Cannot initialize the USB recovery Windows runtime");
+        struct Apartment {~Apartment(){CoUninitialize();}} apartment;
         if(argc==2&&std::wstring_view(argv[1])==L"--list"){list();return 0;}
         if(argc==3&&std::wstring_view(argv[1])==L"--inspect"){inspect(argv[2]);return 0;}
         if(argc==3&&std::wstring_view(argv[1])==L"--recover"){recover(argv[2]);return 0;}
+        if(argc==2&&std::wstring_view(argv[1])==L"--reconcile-online"){reconcile_online();return 0;}
         if(argc==2&&std::wstring_view(argv[1])==L"--help"){
-            std::cout<<"ExtraPane.UsbRecovery --list\nExtraPane.UsbRecovery --inspect <journal-id> (read-only)\nExtraPane.UsbRecovery --recover <journal-id>\n"
+            std::cout<<"ExtraPane.UsbRecovery --list\nExtraPane.UsbRecovery --inspect <journal-id> (read-only)\nExtraPane.UsbRecovery --recover <journal-id>\nExtraPane.UsbRecovery --reconcile-online (retire never-exported already-online journals only)\n"
                 <<"Recovery requires administrator rights, a verified local disk and durable eject/release evidence.\n";return 0;
         }
         throw std::runtime_error("Use --list, --inspect <journal-id>, --recover <journal-id>, or --help. No --force mode exists.");

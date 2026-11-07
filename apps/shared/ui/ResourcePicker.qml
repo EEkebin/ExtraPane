@@ -125,10 +125,14 @@ ColumnLayout {
                     visible: picker.controller !== null && card.resourceSelected && card.resourceKey === "usb"
                     Layout.fillWidth: true
                     Label {
-                        text: "USB storage is shared exclusively. Close its files first and use Eject USB on the receiving PC before stopping. An interrupted transfer may require source recovery."
+                        text: "USB storage is shared exclusively. Uncheck USB or use Disconnect all to safely return it to this PC. Close files on the server if it reports that the disk is busy."
                         wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#f0c66e"
                     }
-                    Label { text: "USB recovery"; font.bold: true }
+                    CheckBox { id: showRecovery; text: "Advanced: interrupted USB transfer recovery" }
+                    ColumnLayout {
+                    visible: showRecovery.checked
+                    Layout.fillWidth: true
+                    Label { text: "Use only if USB did not return after an interrupted connection."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label {
                         text: picker.controller !== null ? picker.controller.recoveryStatus : ""
                         wrapMode: Text.WordWrap; Layout.fillWidth: true
@@ -151,6 +155,7 @@ ColumnLayout {
                             enabled: picker.controller !== null && !picker.controller.active && !picker.controller.hosting && !picker.controller.recoveryBusy && recoveryPicker.currentIndex >= 0 && picker.controller.usbRecoveries[recoveryPicker.currentIndex].available
                             onClicked: picker.controller.recoverUsb(recoveryPicker.currentValue)
                         }
+                    }
                     }
                 }
             }
