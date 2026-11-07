@@ -16,6 +16,16 @@ int main(){
         std::memcpy(bytes.data(),&desc,sizeof desc);std::memcpy(bytes.data()+sizeof desc,"Flash storage",14);
         auto parsed=dm::usb::detail::descriptor(bytes);
         require(parsed&&parsed->usb&&parsed->removable&&parsed->label=="Flash storage");
+        require(!parsed->stable_serial);
+        auto serialBytes=bytes;serialBytes.resize(bytes.size()+16,0);
+        auto serialDesc=desc;serialDesc.Size=static_cast<DWORD>(serialBytes.size());serialDesc.SerialNumberOffset=static_cast<DWORD>(bytes.size());
+        std::memcpy(serialBytes.data(),&serialDesc,sizeof serialDesc);
+        std::memcpy(serialBytes.data()+serialDesc.SerialNumberOffset,"A1234567",9);
+        auto withSerial=dm::usb::detail::descriptor(serialBytes);require(withSerial&&withSerial->stable_serial);
+        std::memcpy(serialBytes.data()+serialDesc.SerialNumberOffset,"00000000",9);
+        withSerial=dm::usb::detail::descriptor(serialBytes);require(withSerial&&!withSerial->stable_serial);
+        serialDesc.SerialNumberOffset=serialDesc.Size;std::memcpy(serialBytes.data(),&serialDesc,sizeof serialDesc);
+        require(!dm::usb::detail::descriptor(serialBytes));
         desc.ProductIdOffset=desc.Size;std::memcpy(bytes.data(),&desc,sizeof desc);
         require(!dm::usb::detail::descriptor(bytes));
         desc.ProductIdOffset=sizeof desc;std::memcpy(bytes.data(),&desc,sizeof desc);

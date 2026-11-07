@@ -1,0 +1,119 @@
+#include <dm/usb_recovery.hpp>
+#include <dm/usb_runner.hpp>
+#include <windows.h>
+#include <algorithm>
+#include <iostream>
+#include <stdexcept>
+
+using namespace dm::usb;
+using extrapane::Availability;
+namespace {
+std::string utf8(const std::wstring& value){
+    const auto length=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);
+    if(!length&&!value.empty())throw std::runtime_error("Invalid local recovery identifier");
+    std::string text(length,0);if(length)WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),text.data(),length,nullptr,nullptr);return text;
+}
+std::string json(const std::string& value){
+    std::string text="\"";constexpr char digits[]="0123456789abcdef";
+    for(const unsigned char c:value){
+        if(c=='"'||c=='\\'){text+='\\';text+=static_cast<char>(c);}
+        else if(c<32){text+="\\u00";text+=digits[c>>4];text+=digits[c&15];}
+        else text+=static_cast<char>(c);
+    }
+    return text+'"';
+}
+const char* state_name(RecoveryState state){
+    switch(state){case RecoveryState::prepared:return "prepared";case RecoveryState::offline:return "offline";
+    case RecoveryState::binding_intent:return "binding-intent";case RecoveryState::bound:return "bound";
+    case RecoveryState::released:return "released";case RecoveryState::restored:return "restored";case RecoveryState::ejected:return "ejected";default:return "invalid";}
+}
+void require(bool value,const char* message){if(!value)throw std::runtime_error(message);}
+bool equal_id(const std::wstring& a,const std::wstring& b){return _wcsicmp(a.c_str(),b.c_str())==0;}
+void list(){
+    const auto pending=pending_recoveries();std::cout<<"{\"journals\":[";bool first=true;
+    for(const auto& item:pending){
+        if(!first)std::cout<<',';first=false;
+        std::cout<<"{\"id\":"<<json(utf8(item.journal_id));
+        if(item.record){
+            const auto policy=recovery_state_allows_restore(*item.record);
+            std::cout<<",\"disk\":"<<item.record->disk_number<<",\"state\":"<<json(state_name(item.record->state))
+                <<",\"canAttemptRecovery\":"<<(policy.available?"true":"false")<<",\"reason\":"<<json(policy.reason);
+        }else std::cout<<",\"state\":\"invalid\",\"canAttemptRecovery\":false,\"reason\":"<<json(item.error);
+        std::cout<<'}';
+    }
+    std::cout<<"]}\n";
+}
+void recover(const std::wstring& id){
+    require(id.size()==64&&std::all_of(id.begin(),id.end(),[](wchar_t c){return (c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');}),"Use an exact journal ID from --list, not a disk path or number");
+    const auto pending=pending_recoveries();std::optional<PendingRecovery> selected;
+    for(const auto& item:pending)if(item.journal_id==id){require(!selected,"Duplicate recovery journal identity");selected=item;}
+    require(selected&&selected->record,"The selected journal is missing or corrupt; no disk state was changed");
+    const auto policy=recovery_state_allows_restore(*selected->record);
+    if(!policy.available)throw std::runtime_error(policy.reason);
+    auto runner=native_host_runner();const auto ready=runner->ready();if(!ready.available)throw std::runtime_error(ready.reason);
+    const auto devices=runner->devices();
+    const auto snapshot=inventory([&](const std::wstring& instance)->std::optional<bool>{
+        std::optional<bool> owned;
+        for(const auto& device:devices)if(equal_id(device.instance_id,instance)){
+            if(owned)return {};
+            const bool ownEjectedBinding=selected->record->state==RecoveryState::ejected&&
+                _stricmp(utf8(device.binding_id).c_str(),selected->record->binding_id.c_str())==0&&device.bus_id==selected->record->bus_id;
+            owned=(!device.binding_id.empty()&&!ownEjectedBinding)||device.attached||device.forced;
+        }
+        return owned;
+    });
+    require(snapshot.errors.empty(),"Current local storage inventory is incomplete");
+    std::optional<Disk> disk;
+    for(const auto& candidate:snapshot.disks)if(matches_recovery(candidate,*selected)){
+        require(!disk,"More than one local disk matches this journal");disk=candidate;
+    }
+    require(disk.has_value(),"The original disk identity, number, or partition layout changed; recovery was refused");
+    require(extrapane::usb::eligible(disk->facts).available,"Current storage inventory is protected, incomplete, or still owned; recovery was refused");
+    const auto reserved=runner->reserve(disk->usb_instance_id);if(!reserved.available)throw std::runtime_error(reserved.reason);
+    struct Release {HostRunner& runner;~Release(){runner.release();}} release{*runner};
+    const auto result=recover_quarantined_disk(*disk,[&](const RecoveryRecord& record)->Availability{
+        if(record!=*selected->record)return {false,"Recovery journal changed after selection"};
+        auto allowed=recovery_state_allows_restore(record);if(!allowed.available)return allowed;
+        std::optional<HostDevice> device;
+        for(const auto& current:runner->devices()){
+            if(!record.binding_id.empty()&&_stricmp(utf8(current.binding_id).c_str(),record.binding_id.c_str())==0&&
+               !equal_id(current.instance_id,disk->usb_instance_id))return {false,"The journal's USB binding identifies a different device"};
+            if(equal_id(current.instance_id,disk->usb_instance_id)){
+                if(device)return {false,"USB instance identity is ambiguous"};device=current;
+            }
+        }
+        if(!device||device->forced||device->attached)return {false,"Source USB device is missing or still attached"};
+        if(!device->binding_id.empty()){
+            if(record.state!=RecoveryState::ejected||device->bus_id!=record.bus_id||
+               _stricmp(utf8(device->binding_id).c_str(),record.binding_id.c_str())!=0)return {false,"Source USB binding does not match this verified eject journal"};
+            const auto removed=runner->unbind(device->binding_id);if(!removed.available)return removed;
+            bool found=false;
+            for(const auto& after:runner->devices()){
+                if(_stricmp(utf8(after.binding_id).c_str(),record.binding_id.c_str())==0)return {false,"Owned USB binding removal is incomplete"};
+                if(equal_id(after.instance_id,disk->usb_instance_id)){
+                    if(found||after.attached||after.forced||!after.binding_id.empty())return {false,"Source USB identity or ownership changed during release"};
+                    found=true;
+                }
+            }
+            if(!found)return {false,"Source USB disappeared during binding release; keep it offline"};
+        }
+        // Released is a protected durable receipt produced only after native
+        // destination eject and exact owned GUID removal. Pre-export states have
+        // never authorized a binding. No remote/UI boolean can substitute here.
+        return {true,{}};
+    });
+    if(!result.available)throw std::runtime_error(result.reason);
+    std::cout<<"{\"restored\":"<<json(utf8(id))<<"}\n";
+}
+}
+int wmain(int argc,wchar_t** argv){
+    try{
+        if(argc==2&&std::wstring_view(argv[1])==L"--list"){list();return 0;}
+        if(argc==3&&std::wstring_view(argv[1])==L"--recover"){recover(argv[2]);return 0;}
+        if(argc==2&&std::wstring_view(argv[1])==L"--help"){
+            std::cout<<"ExtraPane.UsbRecovery --list\nExtraPane.UsbRecovery --recover <journal-id>\n"
+                <<"Recovery requires administrator rights, a verified local disk and durable eject/release evidence.\n";return 0;
+        }
+        throw std::runtime_error("Use --list, --recover <journal-id>, or --help. No --force mode exists.");
+    }catch(const std::exception& error){std::cout<<"{\"error\":"<<json(error.what())<<"}\n";return 1;}
+}

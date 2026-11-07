@@ -19,6 +19,7 @@ public:
     Availability verify_locked(const Disk&)override{return {!s.invalidate,"Device removed"};}
     Availability lock_all()override{s.events.push_back("lock-all");return {!s.failLock,"Volume busy"};}
     Availability dismount_all()override{s.events.push_back("dismount-all");return {!s.failDismount,"Dismount failed"};}
+    Availability handoff_quarantined(const Disk&)override{s.events.push_back("handoff");return {true,{}};}
     bool invalidated()const noexcept override{return s.invalidate;}
     void release(bool unlock)noexcept override{s.events.push_back(unlock?"unlock":"retain-locks");}
 private:State& s;

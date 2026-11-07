@@ -21,8 +21,17 @@ public:
     Q_INVOKABLE void releaseInput(){}
     Q_INVOKABLE void refreshCameras(){++refreshRequests;}
     Q_INVOKABLE void disconnectFromServer(){++disconnectRequests;}
+    Q_INVOKABLE void setupCamera(){++setupRequests;}
+    Q_INVOKABLE void setupMicrophone(){++setupRequests;}
+    Q_INVOKABLE void setupUsbSource(){++setupRequests;}
+    Q_INVOKABLE void refreshUsbRecovery(){++recoveryRefreshRequests;}
+    Q_INVOKABLE void recoverUsb(QString id){++recoveryRequests;recoveredId=std::move(id);}
+    Q_INVOKABLE void startHost(QString,int,bool){++hostStartRequests;}
+    Q_INVOKABLE void ejectUsb(){++ejectRequests;}
     int refreshRequests=0;
     int disconnectRequests=0;
+    int setupRequests=0,recoveryRefreshRequests=0,recoveryRequests=0,hostStartRequests=0,ejectRequests=0;
+    QString recoveredId;
 };
 static QObject* named(QObject* root,const char* name){
     auto* object=root->findChild<QObject*>(QString::fromLatin1(name));
@@ -87,6 +96,9 @@ int main(int argc,char** argv){
         camera.insert("cameraScanRunning",false);
         camera.insert("cameraStatus",QString("No cameras found"));
         camera.insert("selectedCamera",QString{});
+        camera.insert("usbRecoveries",QVariantList{});
+        camera.insert("recoveryStatus",QString{});
+        camera.insert("recoveryBusy",false);
         QQmlApplicationEngine cameraEngine;
         QObject::connect(&cameraEngine,&QQmlEngine::warnings,&app,[&](const QList<QQmlError>& errors){
             warnings=true;for(const auto& error:errors)std::cerr<<error.toString().toStdString()<<'\n';
@@ -95,6 +107,7 @@ int main(int argc,char** argv){
         cameraEngine.load(QUrl("qrc:/Main.qml"));
         require(!cameraEngine.rootObjects().isEmpty());
         app.processEvents();
+        require(camera.refreshRequests==0&&camera.setupRequests==0&&camera.hostStartRequests==0&&camera.recoveryRefreshRequests==0);
         auto* cameraRoot=cameraEngine.rootObjects().first();
         auto* panel=named(cameraRoot,"cameraClientPanel");
         auto* picker=named(cameraRoot,"cameraSourcePicker");
@@ -147,6 +160,63 @@ int main(int argc,char** argv){
         cameraRoot->setProperty("page",0);app.processEvents();
         cameraRoot->setProperty("page",2);app.processEvents();
         cameraRoot->setProperty("page",3);app.processEvents();
+        require(!warnings);
+        // Load directly into USB mode to catch accidental startup enumeration,
+        // setup, recovery, or host creation. Every action here is a fake counter.
+        TestController usb;
+        for(const auto& key:camera.keys())usb.insert(key,camera.value(key));
+        usb.insert("clientMode",QString("usb"));usb.insert("hostMode",QString("usb"));
+        usb.insert("cameraStatus",QString("Choose local storage"));
+        const QVariantList storage{
+            QVariantMap{{"label","System disk (blocked)"},{"id","blocked"},{"available",false}},
+            QVariantMap{{"label","Removable storage"},{"id","safe"},{"available",true}}
+        };
+        usb.insert("cameras",storage);usb.insert("selectedCamera",QString("blocked"));
+        const QString blockedJournal(64,'a'),releasedJournal(64,'b');
+        usb.insert("usbRecoveries",QVariantList{
+            QVariantMap{{"label","Disk 7 — bound; eject not verified"},{"id",blockedJournal},{"available",false}},
+            QVariantMap{{"label","Disk 8 — released"},{"id",releasedJournal},{"available",true}}
+        });
+        QQmlApplicationEngine usbEngine;
+        QObject::connect(&usbEngine,&QQmlEngine::warnings,&app,[&](const QList<QQmlError>& errors){
+            warnings=true;for(const auto& error:errors)std::cerr<<error.toString().toStdString()<<'\n';
+        });
+        usbEngine.rootContext()->setContextProperty("receiver",&usb);
+        usbEngine.load(QUrl("qrc:/Main.qml"));require(!usbEngine.rootObjects().isEmpty());app.processEvents();
+        require(usb.refreshRequests==0&&usb.setupRequests==0&&usb.hostStartRequests==0&&usb.recoveryRefreshRequests==0&&usb.recoveryRequests==0&&usb.ejectRequests==0);
+        auto* usbRoot=usbEngine.rootObjects().first();
+        auto* usbConnect=named(usbRoot,"connectButton");
+        auto* usbPicker=named(usbRoot,"cameraSourcePicker");
+        auto* usbRefresh=named(usbRoot,"cameraRefreshButton");
+        auto* setup=named(usbRoot,"usbSourceSetupButton");
+        auto* recoveryPicker=named(usbRoot,"usbRecoveryPicker");
+        auto* recoveryRefresh=named(usbRoot,"usbRecoveryRefreshButton");
+        auto* restore=named(usbRoot,"usbRecoveryRestoreButton");
+        require(!named(usbRoot,"clientVideoLoader")->property("active").toBool());
+        require(usbPicker->property("count").toInt()==2&&!usbConnect->property("enabled").toBool());
+        require(recoveryPicker->property("count").toInt()==2);
+        recoveryPicker->setProperty("currentIndex",0);app.processEvents();
+        require(!restore->property("enabled").toBool());
+        usb.insert("selectedCamera",QString("safe"));app.processEvents();
+        require(usbConnect->property("enabled").toBool());
+        usb.insert("cameraScanRunning",true);app.processEvents();
+        require(!usbConnect->property("enabled").toBool()&&!usbPicker->property("enabled").toBool());
+        usb.insert("cameraScanRunning",false);usb.insert("availability",QString("USB source component is missing"));app.processEvents();
+        require(!usbConnect->property("enabled").toBool());
+        usb.insert("availability",QString{});usb.insert("selectedCamera",QString("removed-device"));app.processEvents();
+        require(!usbConnect->property("enabled").toBool());
+        usb.insert("selectedCamera",QString("safe"));
+        recoveryPicker->setProperty("currentIndex",1);app.processEvents();require(restore->property("enabled").toBool());
+        require(QMetaObject::invokeMethod(restore,"clicked"));require(usb.recoveryRequests==1&&usb.recoveredId==releasedJournal);
+        usb.insert("recoveryBusy",true);app.processEvents();
+        require(!restore->property("enabled").toBool()&&!recoveryRefresh->property("enabled").toBool()&&!recoveryPicker->property("enabled").toBool());
+        usb.insert("recoveryBusy",false);usb.insert("active",true);app.processEvents();
+        require(!usbConnect->property("enabled").toBool()&&!usbRefresh->property("enabled").toBool()&&!setup->property("enabled").toBool()&&!restore->property("enabled").toBool());
+        usb.insert("active",false);usb.insert("hosting",true);app.processEvents();
+        require(!restore->property("enabled").toBool()&&!recoveryRefresh->property("enabled").toBool()&&!setup->property("enabled").toBool());
+        usb.insert("hosting",false);app.processEvents();
+        require(QMetaObject::invokeMethod(recoveryRefresh,"clicked"));require(usb.recoveryRefreshRequests==1);
+        require(usb.refreshRequests==0&&usb.setupRequests==0&&usb.hostStartRequests==0&&usb.ejectRequests==0);
         require(!warnings);
         std::cout<<"Shared UI model and offscreen shell checks passed\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

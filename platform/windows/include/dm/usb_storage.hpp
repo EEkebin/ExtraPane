@@ -28,6 +28,10 @@ public:
     virtual extrapane::Availability verify_locked(const Disk&)=0;
     virtual extrapane::Availability lock_all()=0;
     virtual extrapane::Availability dismount_all()=0;
+    // Trusted backend calls only after durable offline quarantine is verified.
+    // Transfers removal supervision to the exact-device USB backend before its
+    // expected driver re-enumeration; it never brings the source disk online.
+    virtual extrapane::Availability handoff_quarantined(const Disk&)=0;
     virtual bool invalidated() const noexcept=0;
     // Once dismount begins, closing locks is explicit recovery, not disconnect
     // cleanup. Keep this owner alive while recovery_required() remains true.

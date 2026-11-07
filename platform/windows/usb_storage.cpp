@@ -102,6 +102,13 @@ public:
         }
         return invalidated()?fail("USB source changed during dismount"):Availability{true,{}};
     }
+    Availability handoff_quarantined(const Disk& disk)override{
+        auto result=verify_locked(disk);if(!result.available)return result;
+        // The protected journal/offline guard, not these temporary handles,
+        // now owns source-access safety. USBIP's selected-device handle owns
+        // subsequent removal notifications during the driver handoff.
+        close();return invalidated()?fail("USB source changed during quarantine handoff"):Availability{true,{}};
+    }
     bool invalidated()const noexcept override{return invalid_.load();}
     void release(bool permitUnlock)noexcept override{if(permitUnlock)close();}
 private:

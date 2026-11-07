@@ -92,7 +92,7 @@ std::optional<std::wstring> property(DEVINST node,ULONG key){
 }
 // Stop at the physical USB VID/PID node, not its hub, so sibling ports do not
 // make a single-function device look composite. Any uncertain tree is rejected.
-struct UsbParent {bool composite;std::wstring identity;};
+struct UsbParent {bool composite;std::wstring identity;bool unique;};
 std::optional<UsbParent> composite(DEVINST node){
     bool multi=false;
     for(unsigned depth=0;depth<32;++depth){
@@ -112,7 +112,9 @@ std::optional<UsbParent> composite(DEVINST node){
                 if(next==CR_SUCCESS)multi=true;
                 else if(next!=CR_NO_SUCH_DEVNODE)return {};
             }else if(children!=CR_NO_SUCH_DEVNODE)return {};
-            return UsbParent{multi,identity};
+            ULONG caps=0,kind=0,bytes=sizeof(caps);
+            if(CM_Get_DevNode_Registry_PropertyW(node,CM_DRP_CAPABILITIES,&kind,&caps,&bytes,0)!=CR_SUCCESS||kind!=REG_DWORD||bytes!=sizeof(caps))return {};
+            return UsbParent{multi,identity,(caps&CM_DEVCAP_UNIQUEID)!=0};
         }
         DEVINST parent=0;if(CM_Get_Parent(&parent,node,0)!=CR_SUCCESS)return {};node=parent;
     }
@@ -133,6 +135,15 @@ std::optional<detail::Descriptor> detail::descriptor(std::span<const unsigned ch
         for(auto& ch:part)if(static_cast<unsigned char>(ch)<32||static_cast<unsigned char>(ch)>126)ch='?';
         while(!part.empty()&&part.back()==' ')part.pop_back();
         if(!part.empty()){if(!result.label.empty())result.label+=' ';result.label+=part;}
+    }
+    if(value->SerialNumberOffset){
+        const auto offset=value->SerialNumberOffset;
+        if(offset<offsetof(STORAGE_DEVICE_DESCRIPTOR,RawDeviceProperties)||offset>=value->Size)return {};
+        auto end=offset;while(end<value->Size&&bytes[end])++end;
+        if(end==value->Size||end-offset>256)return {};
+        bool nontrivial=false;
+        for(auto i=offset;i<end;++i){if(bytes[i]<32||bytes[i]>126)return {};if(bytes[i]!=' '&&bytes[i]!='0')nontrivial=true;}
+        result.stable_serial=nontrivial;
     }
     return result;
 }
@@ -228,7 +239,8 @@ Inventory inventory(const OwnershipProbe& owned_elsewhere){
         else disk.facts.system_disk=*protection;
         const auto compositeDevice=composite(device.DevInst);
         if(!compositeDevice)disk.unresolved.push_back("USB ancestry or composite status unavailable");
-        else{disk.facts.composite=compositeDevice->composite;disk.usb_instance_id=compositeDevice->identity;}
+        else{disk.facts.composite=compositeDevice->composite;disk.usb_instance_id=compositeDevice->identity;disk.unique_identity=compositeDevice->unique&&description&&description->stable_serial;}
+        if(!disk.unique_identity)disk.unresolved.push_back("USB device lacks a unique physical identity and usable storage serial");
         if(!system)disk.unresolved.push_back("Windows volume disk mapping unavailable");
         else disk.facts.boot_disk=system->contains(disk.disk_number);
         if(!paging.complete)disk.unresolved.push_back("Paging-file disk mapping unavailable");
@@ -259,6 +271,7 @@ Inventory inventory(const OwnershipProbe& owned_elsewhere){
         const auto append=[&](const std::string& value){fingerprint+=std::to_string(value.size())+":"+value;};
         append(utf8(disk.interface_path));append(std::to_string(disk.disk_number));
         append(utf8(disk.usb_instance_id));
+        fingerprint+=disk.unique_identity?'1':'0';
         for(const auto flag:{disk.facts.inventory_complete,disk.facts.removable_storage,disk.facts.composite,
             disk.facts.system_disk,disk.facts.boot_disk,disk.facts.paging_disk,disk.facts.owned_elsewhere})fingerprint+=flag?'1':'0';
         std::sort(disk.volumes.begin(),disk.volumes.end());
