@@ -16,6 +16,8 @@
 #include <cstring>
 #include "usb_host_payload.hpp"
 #include <setupapi.h>
+#include <initguid.h>
+#include <devpkey.h>
 #include <wintrust.h>
 #include <softpub.h>
 #include <map>
@@ -274,6 +276,38 @@ fs::path removable_inf(HKEY ownership){
     check(sha256(read_file(store))==setup::files[4].digest&&sha256(read_file(store.parent_path()/L"VBoxUSB.cat"))==setup::files[5].digest,"Installed USB package identity differs; preserved");
     signed_file(store.parent_path()/L"VBoxUSB.cat");return path;
 }
+void remove_owned_phantom_stubs(const fs::path& inf){
+    const auto devices=SetupDiGetClassDevsW(nullptr,L"USB",nullptr,DIGCF_ALLCLASSES);
+    check(devices!=INVALID_HANDLE_VALUE,"Cannot inspect USB package device references");
+    struct Cleanup { HDEVINFO value; ~Cleanup(){SetupDiDestroyDeviceInfoList(value);} } cleanup{devices};
+    auto property=[&](SP_DEVINFO_DATA& device,const DEVPROPKEY& key){
+        wchar_t text[1024]{};DEVPROPTYPE type=0;DWORD size=0;
+        if(!SetupDiGetDevicePropertyW(devices,&device,&key,&type,reinterpret_cast<PBYTE>(text),sizeof(text),&size,0))return std::wstring{};
+        if(type!=DEVPROP_TYPE_STRING||size<sizeof(wchar_t)||size>sizeof(text)||text[size/sizeof(wchar_t)-1]!=0)return std::wstring{};
+        return std::wstring(text);
+    };
+    auto eligible=[&](SP_DEVINFO_DATA& device){
+        wchar_t id[1024]{};
+        if(!SetupDiGetDeviceInstanceIdW(devices,&device,id,1024,nullptr))return false;
+        DEVPROPTYPE type=0;DEVPROP_BOOLEAN present=DEVPROP_TRUE;DWORD size=0;
+        const bool known=SetupDiGetDevicePropertyW(devices,&device,&DEVPKEY_Device_IsPresent,&type,reinterpret_cast<PBYTE>(&present),sizeof(present),&size,0)&&type==DEVPROP_TYPE_BOOLEAN&&size==sizeof(present);
+        return extrapane::usb_uninstall::removable_stub(
+            _wcsnicmp(id,L"USB\\VID_80EE&PID_CAFE\\",22)==0,
+            _wcsicmp(property(device,DEVPKEY_Device_DriverInfPath).c_str(),inf.filename().c_str())==0,
+            _wcsicmp(property(device,DEVPKEY_Device_Service).c_str(),L"VBoxUSB")==0,
+            known,present!=DEVPROP_FALSE);
+    };
+    for(DWORD i=0;;++i){
+        SP_DEVINFO_DATA device{sizeof(device)};
+        if(!SetupDiEnumDeviceInfo(devices,i,&device)){check(GetLastError()==ERROR_NO_MORE_ITEMS,"Cannot enumerate USB package references");break;}
+        if(!eligible(device))continue;
+        SP_REMOVEDEVICE_PARAMS parameters{};parameters.ClassInstallHeader.cbSize=sizeof(SP_CLASSINSTALL_HEADER);parameters.ClassInstallHeader.InstallFunction=DIF_REMOVE;parameters.Scope=DI_REMOVEDEVICE_GLOBAL;
+        check(SetupDiSetClassInstallParamsW(devices,&device,&parameters.ClassInstallHeader,sizeof(parameters)),"Cannot prepare absent USB stub cleanup");
+        check(eligible(device),"USB stub changed before cleanup; preserved");
+        check(SetupDiCallClassInstaller(DIF_REMOVE,devices,&device),"Cannot remove absent owned USB stub");
+        std::cout<<"Removed disconnected stub referencing the exact owned USB driver package.\n";
+    }
+}
 void remove_owned_driver(const fs::path& root,HKEY ownership,bool inspect=false){
     Service manager(OpenSCManagerW(nullptr,nullptr,SC_MANAGER_CONNECT));check(manager.value,"Open service manager failed");
     Service service(OpenServiceW(manager.value,L"VBoxUSBMon",SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS));
@@ -317,7 +351,10 @@ void remove_owned_driver(const fs::path& root,HKEY ownership,bool inspect=false)
         check(status.dwCurrentState==SERVICE_STOPPED,"Owned USB monitor is busy; retry uninstall after stopping USB sessions");
         check(DeleteService(writable.value),"Remove owned USB monitor failed");
     }
-    if(!inf.empty())check(SetupUninstallOEMInfW(inf.filename().c_str(),0,nullptr),"USB driver package is still in use; retained for recovery, retry uninstall after ejecting USB devices");
+    if(!inf.empty()){
+        remove_owned_phantom_stubs(inf);
+        check(SetupUninstallOEMInfW(inf.filename().c_str(),0,nullptr),"USB driver package still has active or unrecognized device references; preserved");
+    }
 }
 int check_removal(){
     const auto root=component_root();

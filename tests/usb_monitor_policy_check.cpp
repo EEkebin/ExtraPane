@@ -20,6 +20,10 @@ for(int stage=1;stage<=4;++stage){ReuseCheck rejected;rejected.fail=stage;bool t
 if(!reviewed(legacy_7_2_2,L"bundle")||!reviewed(L"bundle",L"bundle")||reviewed(L"unknown",L"bundle"))throw std::runtime_error("only reviewed shared files");
 if(!compatible(5,0,8)||!compatible(5,1,8)||compatible(4,99,8)||compatible(6,0,8)||compatible(5,0,7)||compatible(5,0,9))throw std::runtime_error("exact version reply and supported ABI");
 using namespace extrapane::usb_uninstall;
+for(unsigned bits=0;bits<32;++bits){
+    const bool eligible=removable_stub(bits&1,bits&2,bits&4,bits&8,bits&16);
+    if(eligible!=(bits==15))throw std::runtime_error("only absent exact owned USB stubs may be removed");
+}
 if(independent_service(L"VBoxUSB",true)||!independent_service(L"VBoxUSB",false))throw std::runtime_error("exact owned USB device driver must not count as foreign monitor consumer");
 for(auto name:{L"usbipd",L"VBoxSup",L"VBoxDrv"})if(!independent_service(name,true)||!independent_service(name,false))throw std::runtime_error("independent services always block owned monitor deletion");
 for(unsigned bits=0;bits<32;++bits){

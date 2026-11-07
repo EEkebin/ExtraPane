@@ -1,6 +1,9 @@
 #pragma once
 #include <string_view>
 namespace extrapane::usb_uninstall {
+constexpr bool removable_stub(bool stub_id,bool exact_owned_inf,bool usb_service,bool presence_known,bool present) {
+    return stub_id&&exact_owned_inf&&usb_service&&presence_known&&!present;
+}
 constexpr bool independent_service(std::wstring_view name,bool exact_owned_usb_driver) {
     return name != L"VBoxUSB" || !exact_owned_usb_driver;
 }
