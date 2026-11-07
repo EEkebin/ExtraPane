@@ -69,6 +69,11 @@ Type: files; Name: "{userprograms}\SideScreen\SideScreen.lnk"
 ; uninstaller. They run only after the main removal callback succeeds.
 Type: filesandordirs; Name: "{app}\Components\Display\state"
 Type: files; Name: "{app}\Components\Display\driver-setup.log"
+; Helpers can create component directories outside the installer file manifest.
+; Remove only empty directories after successful component cleanup.
+Type: dirifempty; Name: "{app}\Components\Display"
+Type: dirifempty; Name: "{app}\Components"
+Type: dirifempty; Name: "{app}"
 [Tasks]
 Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 [Icons]
