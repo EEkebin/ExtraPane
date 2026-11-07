@@ -3,6 +3,7 @@
 #define SourceDir GetEnv("EXTRAPANE_STAGE")
 #define OutputPath GetEnv("EXTRAPANE_DIST")
 #define HasDriver FileExists(SourceDir + "\ExtraPane.DriverSetup.exe")
+#define HasCamera FileExists(SourceDir + "\ExtraPane.CameraSetup.exe")
 [Setup]
 ; Stable identity recognizes installations made under the previous name.
 AppId=SideScreen
@@ -39,6 +40,9 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 #if HasDriver
 Source: "{#SourceDir}\ExtraPane.DriverSetup.exe"; Flags: dontcopy
 #endif
+#if HasCamera
+Source: "{#SourceDir}\ExtraPane.CameraSetup.exe"; Flags: dontcopy
+#endif
 ; Remove only known legacy app files after graceful shutdown; preserve data.
 [InstallDelete]
 Type: files; Name: "{app}\SideScreen.exe"
@@ -65,6 +69,7 @@ var
   RemoveUserData: Boolean;
   RoleChoice, DriverConsent: TInputOptionWizardPage;
   DriverInstalled: Boolean;
+  CameraInstalled, RemoveCamera: Boolean;
 
 #include "shutdown.iss"
 
@@ -82,10 +87,18 @@ begin
     'Client only receives another PC''s display and needs no virtual-display driver. Server + Client can also host displays and requires the driver on this PC.', True, False);
   RoleChoice.Add('Client only');
   RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
+#if HasCamera
+  RoleChoice.Add('Camera host + Client (administrator permission; no virtual-display driver)');
+#endif
   RoleChoice.SelectedValueIndex := 0;
   if ExpandConstant('{param:SERVER|}') = '1' then RoleChoice.SelectedValueIndex := 1
   else if (ExpandConstant('{param:SERVER|}') = '') and not WizardSilent and
     (GetPreviousData('ServerInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 1;
+#if HasCamera
+  if (ExpandConstant('{param:CAMERA|}') = '1') and (ExpandConstant('{param:SERVER|}') <> '1') then RoleChoice.SelectedValueIndex := 2
+  else if (ExpandConstant('{param:SERVER|}') = '') and (ExpandConstant('{param:CAMERA|}') = '') and not WizardSilent and
+    (RoleChoice.SelectedValueIndex = 0) and (GetPreviousData('CameraInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 2;
+#endif
   DriverConsent := CreateInputOptionPage(RoleChoice.ID, 'Required server driver',
     'Server setup includes a machine-wide virtual-display driver.',
     'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver has its own Windows uninstall entry. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.', False, False);
@@ -97,19 +110,25 @@ procedure RegisterPreviousData(PreviousDataKey: Integer);
 begin
   if RoleChoice.SelectedValueIndex = 1 then SetPreviousData(PreviousDataKey, 'ServerInstall', '1')
   else SetPreviousData(PreviousDataKey, 'ServerInstall', '0');
+  if CameraInstalled then SetPreviousData(PreviousDataKey, 'CameraInstall', '1')
+  else SetPreviousData(PreviousDataKey, 'CameraInstall', '0');
 end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
   Result := MemoDirInfo + NewLine + NewLine;
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + 'Use: Server + Client (virtual-display driver required)'
+  else if RoleChoice.SelectedValueIndex = 2 then Result := Result + 'Use: Camera host + Client (machine-wide camera component, no virtual-display driver)'
   else Result := Result + 'Use: Client only (no driver installation)';
+#if HasCamera
+  if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the machine-wide camera receiving component.';
+#endif
   Result := Result + NewLine + NewLine + MemoGroupInfo + NewLine + MemoTasksInfo;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := (PageID = DriverConsent.ID) and (RoleChoice.SelectedValueIndex = 0);
+  Result := (PageID = DriverConsent.ID) and (RoleChoice.SelectedValueIndex <> 1);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -146,6 +165,17 @@ begin
     Result := 'This setup does not contain the required driver installer. Server setup cannot continue.';
 #endif
   end;
+#if HasCamera
+  if (Result = '') and (RoleChoice.SelectedValueIndex <> 0) and not CameraInstalled then begin
+    ExtractTemporaryFile('ExtraPane.CameraSetup.exe');
+    if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.CameraSetup.exe'),
+      '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+      Result := 'Camera component setup could not start or administrator permission was canceled.'
+    else if Code <> 0 then
+      Result := 'The camera component could not be installed (exit ' + IntToStr(Code) + '). Existing foreign registrations are not overwritten. Retry or choose Client only.'
+    else CameraInstalled := True;
+  end;
+#endif
 end;
 
 function CredDelete(Target: String; CredType, Flags: LongWord): Boolean;
@@ -154,11 +184,12 @@ function CredDelete(Target: String; CredType, Flags: LongWord): Boolean;
 function InitializeUninstall: Boolean;
 var
   Dialog: TSetupForm;
-  Choice: TNewCheckBox;
+  Choice, CameraChoice: TNewCheckBox;
   Description: TNewStaticText;
   ConfirmButton, CancelButton: TNewButton;
 begin
   RemoveUserData := ExpandConstant('{param:REMOVEUSERDATA|0}') = '1';
+  RemoveCamera := ExpandConstant('{param:REMOVECAMERA|0}') = '1';
   Result := True;
   if UninstallSilent then begin
     Result := StopRunningExtraPane;
@@ -167,9 +198,9 @@ begin
 #if Ver < EncodeVer(6, 6, 0)
   Dialog := CreateCustomForm;
   Dialog.ClientWidth := ScaleX(460);
-  Dialog.ClientHeight := ScaleY(180);
+  Dialog.ClientHeight := ScaleY(220);
 #else
-  Dialog := CreateCustomForm(460, 180, True, True);
+  Dialog := CreateCustomForm(460, 220, True, True);
 #endif
   try
     Dialog.Caption := 'Uninstall ExtraPane';
@@ -184,20 +215,27 @@ begin
     Choice.SetBounds(ScaleX(20), ScaleY(90), ScaleX(420), ScaleY(25));
     Choice.Caption := 'Remove saved settings on this PC';
     Choice.Checked := RemoveUserData;
+    CameraChoice := TNewCheckBox.Create(Dialog);
+    CameraChoice.Parent := Dialog;
+    CameraChoice.SetBounds(ScaleX(20), ScaleY(120), ScaleX(420), ScaleY(35));
+    CameraChoice.Caption := 'Remove the machine-wide camera component (affects all users)';
+    CameraChoice.Checked := RemoveCamera;
+    CameraChoice.Enabled := FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe'));
     ConfirmButton := TNewButton.Create(Dialog);
     ConfirmButton.Parent := Dialog;
-    ConfirmButton.SetBounds(ScaleX(230), ScaleY(130), ScaleX(100), ScaleY(28));
+    ConfirmButton.SetBounds(ScaleX(230), ScaleY(170), ScaleX(100), ScaleY(28));
     ConfirmButton.Caption := 'Uninstall';
     ConfirmButton.ModalResult := mrOk;
     ConfirmButton.Default := True;
     CancelButton := TNewButton.Create(Dialog);
     CancelButton.Parent := Dialog;
-    CancelButton.SetBounds(ScaleX(340), ScaleY(130), ScaleX(100), ScaleY(28));
+    CancelButton.SetBounds(ScaleX(340), ScaleY(170), ScaleX(100), ScaleY(28));
     CancelButton.Caption := 'Cancel';
     CancelButton.ModalResult := mrCancel;
     CancelButton.Cancel := True;
     Result := Dialog.ShowModal = mrOk;
     RemoveUserData := Result and Choice.Checked;
+    RemoveCamera := Result and CameraChoice.Enabled and CameraChoice.Checked;
   finally
     Dialog.Free;
   end;
@@ -218,7 +256,18 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ErrorCode: LongWord;
+  CameraCode: Integer;
 begin
+  if (CurUninstallStep = usUninstall) and RemoveCamera then begin
+    if not FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe')) then
+      RaiseException('Camera setup helper is missing. The shared camera component was not removed.');
+    if not ShellExec('runas', ExpandConstant('{app}\ExtraPane.CameraSetup.exe'), '--remove', '', SW_HIDE, ewWaitUntilTerminated, CameraCode) then
+      RaiseException('Camera removal could not start or administrator permission was canceled.');
+    if (CameraCode <> 0) and (CameraCode <> 3010) then
+      RaiseException('Camera component removal failed (exit ' + IntToStr(CameraCode) + ').');
+    if CameraCode = 3010 then
+      SuppressibleMsgBox('The camera registration was removed. Restart Windows to finish deleting camera files currently loaded by Windows.', mbInformation, MB_OK, IDOK);
+  end;
   { Run after the app mutex check, before files are removed. Cancel never resets data. }
   if (CurUninstallStep = usUninstall) and RemoveUserData then begin
     { This is the single shared pairing used by both UI roles. }

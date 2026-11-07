@@ -10,6 +10,7 @@ template<class F> bool rejects(F action) {try {action();return false;} catch(con
 int main() {try {
     Frame f{{7,9},0,-100,{1,2,3}};
     const auto header=encode_header(f);
+    check(header==encode_header(f.binding,f.sequence,f.timestamp,f.payload.size()));
     auto decoded=decode_header(header);
     check(decoded.binding==f.binding && decoded.timestamp==-100 && decoded.payload.size()==3);
     for(std::size_t n=0;n<header.size();++n)

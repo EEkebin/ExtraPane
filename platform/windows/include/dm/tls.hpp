@@ -17,6 +17,9 @@ public:
     void write(std::span<const std::uint8_t> bytes, std::chrono::steady_clock::time_point deadline);
     void read(std::span<std::uint8_t> bytes, std::chrono::steady_clock::time_point deadline);
     void close(std::chrono::steady_clock::time_point deadline);
+    // Cross-thread cancellation only shuts down the native socket. The caller
+    // must keep this stream alive until the canceling thread has joined.
+    void cancel() noexcept;
     std::string description() const;
 private:
     void read_raw(std::span<std::uint8_t>,std::chrono::steady_clock::time_point);

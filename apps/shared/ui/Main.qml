@@ -107,6 +107,13 @@ ApplicationWindow {
                     anchors.fill: parent; anchors.margins: 24; spacing: 16
                     Label { text: "Server"; font.pixelSize: 30; font.bold: true }
                     Label { text: "Accept connections from your other devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    ComboBox {
+                        visible: receiver.platformLabel === "Windows"
+                        model: ["Display", "Camera (preview)"]
+                        currentIndex: receiver.platformLabel === "Windows" && receiver.hostMode === "camera" ? 1 : 0
+                        enabled: !receiver.hosting
+                        onActivated: if (receiver.platformLabel === "Windows") receiver.hostMode = currentIndex === 1 ? "camera" : "display"
+                    }
                     Label {
                         text: receiver.hostAvailability.length ? receiver.hostAvailability : receiver.hostDescription
                         color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true
@@ -119,6 +126,12 @@ ApplicationWindow {
                         text: receiver.hosting ? "Stop server" : "Start server"
                         enabled: receiver.hostAvailability.length === 0
                         onClicked: { if (receiver.hosting) receiver.stopHost(); else { const selected=receiver.addresses[hostAddress.currentIndex]; receiver.startHost(selected ? selected.address : "0.0.0.0", Number(hostPort.text), requireCode.checked) } }
+                    }
+                    Button {
+                        visible: receiver.platformLabel === "Windows" && receiver.hostMode === "camera"
+                        text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing camera component..." : "Camera setup"
+                        enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
+                        onClicked: receiver.setupCamera()
                     }
                     TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } enabled: !receiver.hosting }
                     CheckBox { id: requireCode; text: "Require access code"; enabled: !receiver.hosting }

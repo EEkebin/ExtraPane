@@ -1,5 +1,8 @@
 # Shared interface and resource sharing
 
+Track completed increments and remaining work in
+[IMPLEMENTATION-CHECKLIST.md](IMPLEMENTATION-CHECKLIST.md).
+
 Approved direction: retain ExtraPane and C++20 native engines; migrate the four
 interfaces to Qt Quick/QML. This supersedes the Windows-only UI selection in
 STACK.md. Existing platform apps remain the production path until migration
@@ -28,101 +31,119 @@ bounded channels must be bound to the admitted session and use the configured po
 
 ## Implementation status
 
-- Initial local lifecycle library exists in core/session; no production app uses it yet.
-- Device metadata, resource request/status and adapter ownership interfaces exist.
-- Independent start/stop, startup failure cleanup and session-close cleanup are implemented.
-- Isolated lifecycle, lease, server restart/capacity and capability checks pass
-  locally with MSVC C++20. Shared UI/model checks pass offscreen at desktop and
-  phone-sized window dimensions using Qt 6.8.3.
-- Local device leases, server listener/session lifecycle and direction-aware
-  capability intersection are implemented but not yet wired to platform adapters.
-- Bounded resource-control envelope serialization exists separately from the
-  legacy display protocol. It has not been connected to the live transport.
-- Capability/request payload codecs and a bounded control-channel adapter are
-  implemented. Negotiation rejects unsupported requests before adapter creation,
-  requires capability exchange, and isolates malformed peers. Transport failures
-  through serve_one release that session's resources and preserve the listener.
-- In-memory integration with the existing access-code encrypted Stream passes
-  capability exchange, grant, wrong-code and tamper cleanup checks. No sockets,
-  capture devices or drivers are used by those tests. The live display transport
-  has not been migrated to this protocol.
-- Live transport integration, format negotiation, state notifications,
-  mute/interruption behavior and worker scheduling are not implemented here.
-- Camera media framing has a 2 MiB access-unit limit, resource/generation binding
-  and monotonically increasing sequence validation. Its encrypted-stream adapter
-  permanently closes after framing or transport failure. The Windows camera
-  source now has a three-frame native queue for a network worker to drain.
-  Overflow stops that camera resource instead of dropping H.264 reference frames;
-  restarting requires a new resource generation and encoder. This is not yet
-  connected to sockets or a virtual-camera endpoint. Isolated tests cover malformed
-  lengths, stale generations, truncated streams, overflow and cancellation.
-- A native Windows receiving-side Media Foundation source implements sample
-  requests, NV12 delivery, request tokens, start/stop/restart and shutdown. It
-  retains one pending decoded image and at most four pending sample requests.
-  Synthetic in-process consumer checks pass, including token delivery, replacing
-  an older pending raw frame, clearing requests on stop and waking a waiting
-  consumer on shutdown. This is not yet a registered system camera.
-- ExtraPane.CameraSource.dll implements the COM class factory and MF activation
-  object. Activation validates local pipe/format attributes; the source connects
-  only when an application starts it. Stop/shutdown cancels pipe I/O, and a broken
-  pipe reports a native media error instead of silently retaining a frozen image.
-  DetachObject transfers shutdown responsibility to the consumer. An isolated test
-  loads the actual DLL without registering it and verifies sample delivery,
-  disconnect errors, ownership and DLL unload eligibility.
-- Local Frame Server transport uses a fresh random named pipe per resource,
-  rejects remote pipe clients and configures access for the current user, Local
-  Service and System. It checks the reader SID before sending frames; identification
-  impersonation prevents the pipe server from acting as the reader. Raw-frame
-  storage keeps the latest image plus one in-flight transfer. Tests exercise the
-  current-user path only; service-account activation remains unverified.
-- The Windows registration backend compiles with session lifetime/current-user
-  access, requires the installed COM source, and tears down partial startup on
-  failure. It has not been run or installed. Lifecycle tests substitute a fake
-  registration backend while exercising real local pipes and MF samples.
-  Installer registration, live session integration and actual Frame Server
-  activation remain unfinished. Discord/browser delivery has not been tested.
-- The Windows receiving resource now connects framed camera messages to the
-  existing hardware H.264 decoder and camera endpoint. Its new NV12 output path
-  strips row/coded-height padding without a BGRA round trip, and sends decoded
-  images directly to the native pipe. Capture timestamps are normalized per
-  resource; wrong bindings, missing/duplicate sequences, backwards clocks,
-  unexpected decoder output and transport failures stop that resource. All work
-  belongs on one COM-initialized native session executor.
-  The hardware path and existing display executable compile. Isolated checks
-  substitute the decoder and registration backend, but exercise real frame
-  serialization, pipes and MF sample consumption, plus padded NV12 packing and
-  cleanup. They do not run the GPU decoder or prove real H.264 camera delivery,
-  color correctness, hardware performance or live network integration.
-- The existing Linux QML shell now lives in apps/shared/ui and is consumed by the
-  Linux package through the same resource URL. Video.qml remains platform-specific.
-  A shared resource checklist is connected to the Linux controller. The Windows
-  Qt shell adapter launches the existing native receiver/helper, preserves access
-  code input through pipes and supports tray hosting. It builds locally; native
-  connections have not been tested. macOS/Android shell adapters remain pending.
-  A staged Windows development package passes an offscreen startup check, includes
-  the VC runtime and the offscreen test plugin, and refuses a headless check if
-  that plugin is missing. Native host/receiver/helper targets also build after
-  extracting the shared process bridge. The helper accepts a selected bind address
-  and scopes its firewall rule to that interface; live operation is untested. This
-  is not a release package or a completed device-sharing product.
-- Windows camera enumeration, async Media Foundation NV12 capture, source-resource
-  lifecycle, native buffer packing and an H.264 source adapter are implemented and
-  compile. The source adapter feeds a caller-provided bounded network sink; no
-  live camera channel or virtual-camera endpoint is wired yet. Camera controls
-  therefore remain disabled. No physical camera has been opened for this work.
-- Camera checks cover format validation, inert construction/stop and synthetic
-  CPU NV12 buffers. They do not prove permission handling, device cancellation,
-  real capture, encoder delivery or interoperability. Initial encoding uses a
-  CPU NV12 copy into the existing hardware encoder, not a zero-copy camera path.
-- Other camera platforms, microphone adapters, virtual endpoints and USB
-  integration remain unimplemented.
+This development branch now contains the first Android-to-Windows camera-only
+test slice. It is not a published release or a completed cross-platform
+device-sharing product. Follow [CAMERA-TEST.md](CAMERA-TEST.md) for the first
+authorized device test; the checks below do not establish physical interoperability.
 
-The lifecycle API is not authorization. Callers must authenticate and validate
-explicit client selections before constructing adapters. Adapters must be inert
-until prepare, release partial preparation on stop, and run on a serialized session
-executor. Use one DeviceClaims registry per local device-owning process across
-sessions; the local Session alone cannot enforce that rule. Never use untrusted
-remote peer IDs as local hardware claim keys.
+### Resource connections
+
+- The core/session lifecycle library handles resource ownership, capability
+  intersection, independent cleanup, startup failures and admitted-session limits.
+  Isolated lifecycle, lease, restart and malformed-message checks pass.
+- The native Windows camera helper uses the existing TLS/access-code admission
+  before the bounded camera offer, capability exchange and request/grant. The
+  offer selects geometry and a connection-scoped resource/generation binding.
+  No monitor is allocated for a camera connection. Up to four receiving workers
+  have independent local camera slots; one client's failure does not stop the
+  listener.
+- Camera frames use bounded H.264 framing, contiguous sequence numbers and
+  capture timestamps. Broken transport, stale bindings, sequence gaps, format
+  changes and decoder failures release that camera resource. The first frame
+  allows camera startup time; socket shutdown interrupts waits when the app stops
+  or its launcher exits. Workers own their native resources until cleanup finishes.
+- A Windows-session-local listener lease prevents duplicate camera helpers; a
+  hashed source-device lease prevents another helper in that Windows session from
+  sharing the same physical source. Cross-Windows-session coordination is still
+  unfinished. Remote device strings are never interpreted as local hardware paths.
+- The initial live flow is camera-only. Display mode retains the legacy engine;
+  display and camera listeners cannot occupy the same address/port simultaneously.
+  Multiplexing display, camera, microphone and USB in one connection remains
+  unfinished. See [CAMERA-SESSION-PROTOCOL.md](CAMERA-SESSION-PROTOCOL.md).
+- Protocol checks cover bounded offers and version rejection. In-memory encrypted
+  checks cover admission, capability/grant exchange, wrong codes and tampering.
+  Live socket cancellation and network/device interoperability remain unverified.
+
+### Windows camera path and setup
+
+- Native enumeration, asynchronous NV12 capture and the hardware H.264 source
+  adapter compile. Encoded frames use a three-frame queue; overflow ends the
+  resource instead of dropping encoded reference frames. The Windows sender is
+  available through the native helper; its camera-source selection is not yet
+  integrated into the shared Windows Client page.
+- The receiving resource connects framed messages to the existing hardware
+  decoder, packs negotiated NV12 pixels without a BGRA conversion, and forwards
+  them over the native pipe. Its worker owns decoder, endpoint and COM lifetimes.
+  Isolated tests substitute the decoder and registration backend; they validate
+  actual serialization, pipes, MF sample consumption, stride handling and cleanup.
+- ExtraPane.CameraSource.dll implements the COM factory, activation object and
+  receiving MF source. Consumers receive native sample events and request tokens.
+  The source retains one pending raw image and at most four sample requests.
+  Stop/restart reconnects its pipe; transport failure reports a native media error.
+  Unregistered DLL checks cover delivery, detach/shutdown and unload eligibility.
+- The local pipe rejects remote clients and restricts access to the current user,
+  Local Service and System, checking the connected reader's identity before sending
+  pixels. Tests cover the current-user path; actual Frame Server service-account
+  activation still requires validation.
+- The registration backend uses session-lifetime/current-user virtual cameras,
+  starts only after a valid request and removes partial startup on failure.
+  Registering its COM component alone does not create a camera.
+- The setup helper embeds the matching DLL, installs it under a protected
+  machine location, checks registration ownership, and implements update rollback
+  and owned removal. Installer integration adds a camera-host role without the
+  virtual-display driver and an explicit machine-component removal option.
+  The shared Windows UI exposes Camera setup. See
+  [CAMERA-SETUP.md](CAMERA-SETUP.md) for paths, ownership and rollback limitations.
+  Isolated setup policy/payload checks are distinct from elevated installation,
+  upgrade/removal and actual Frame Server validation, which have not been run.
+- No physical Windows camera or GPU codec has been exercised for this work.
+  Real capture, permissions, color, latency, hot unplug and application delivery
+  remain unverified. Initial Windows camera encoding includes a CPU NV12 copy;
+  it is not a zero-copy claim.
+
+### Android camera source
+
+- The existing Android app now contains camera selection and permission handling,
+  Camera2 capture into MediaCodec H.264, bounded packets and the shared camera
+  protocol. It opens the selected camera only after the server grants the request.
+- A user-started camera foreground service provides ongoing status and a Stop
+  notification. It uses the selected route/address, port and optional access code.
+  Camera sharing does not deliberately detach the physical camera from Android;
+  OS policy or another application's camera ownership can still prevent capture.
+- The Android development APK builds. This remains the native Android interface,
+  not the completed shared Qt UI.
+  Actual camera permission prompts, foreground/background restrictions, encoder
+  compatibility and Android-to-Windows picture/reconnect behavior require a
+  physical-device test. Built-in microphone forwarding is not included.
+
+### Shared UI and packaging limits
+
+- The Linux QML shell is shared through apps/shared/ui, with native video remaining
+  platform-specific. The Windows Qt adapter retains the existing display engine,
+  secure code input, bind selection and tray hosting.
+- Windows Server mode now selects Display or Camera (preview). Camera mode uses
+  the internal resource helper and displays installation, listener, connection and
+  per-client failure status. Camera-only hosting does not start the display driver.
+  Installed camera-component presence is checked before hosting. Native camera-source selection
+  on the Windows Client page, general multi-resource UI and macOS/Android Qt
+  migration remain unfinished.
+- Development staging includes the shared app/runtime and can include resource
+  and camera-setup helpers. Offscreen UI checks do not launch a connection or
+  install anything. Compiling an installer does not verify installed behavior.
+  Windows installer compilation is currently blocked; the development portable
+  package and its embedded camera-setup helper are the initial test path.
+  The camera helper does not automatically change firewall rules; an existing
+  display-engine rule may not cover the new executable.
+- Linux/macOS camera endpoints and sources, microphone forwarding/endpoints and
+  USB integration remain unimplemented. Windows audio-driver and macOS extension
+  signing/distribution gates remain open.
+
+The lifecycle API is not an authentication boundary. Product automatic LAN mode
+accepts reachable peers without pairing/approval, as requested; optional access
+codes add the existing admission step. Always complete the configured admission
+and validate explicit selections before allocation. Adapters remain inert until
+prepare and must release partial setup on stop. Local process/session leases are
+not evidence of machine-wide ownership across all login sessions.
 
 ## Platform and distribution decisions
 

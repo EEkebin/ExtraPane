@@ -1,0 +1,91 @@
+﻿# Resource-sharing implementation checklist
+
+This is the working checklist for the shared ExtraPane app and device-sharing
+features. Update it after every completed increment, in the same change as the
+implementation. A checked implementation item does not imply physical-device or
+release verification. Keep this file consistent with RESOURCE-SHARING.md.
+
+## Current target
+
+First testable camera-sharing build: Android phone to Windows, selectable as a
+camera in a normal application. Implementation and isolated checks are complete for this first device-test slice; application delivery remains unverified.
+Continue independent implementation and isolated validation; ask before device
+connections, camera/GPU tests, installation or system changes. iOS, renaming and
+speaker forwarding remain deferred.
+
+## Shared interface and connections
+
+- [x] Shared Qt/QML shell foundation and resource checklist.
+- [x] Windows adapter for the existing native display engine.
+- [x] Development package Qt startup repair and offscreen checks.
+- [x] Resource lifecycle, ownership, capability negotiation and bounded framing.
+- [x] Isolated encrypted negotiation and tamper-rejection checks.
+- [x] Camera-only live protocol integrated into Windows and Android app sessions.
+- [x] Camera format negotiation and connection/status/error UI.
+- [ ] Shared UI migration and display regression checks across all four platforms.
+
+## Camera
+
+- [x] Windows enumeration, native capture and H.264 source adapter implemented.
+- [x] Bounded encoded-frame queues and resource/generation validation.
+- [x] Native receiver connects framed messages to H.264 decoding and NV12 output.
+- [x] Windows camera-source DLL, COM factory and activation implemented.
+- [x] Restricted local pipe and receiving-side MF sample delivery.
+- [x] Session-lifetime virtual-camera registration backend implemented.
+- [x] Resource cleanup for transport/decoder errors, stop and restart.
+- [x] Isolated synthetic delivery, COM lifetime and failure-cleanup checks.
+- [x] Managed Windows camera setup, upgrade, rollback and removal implemented (physical verification pending).
+- [x] Android camera selection/permission/status and Windows camera host/setup UI.
+- [x] Camera-only connection implemented without allocating a monitor.
+- [x] Android Camera2/H.264 forwarding and foreground lifecycle implemented (device verification pending).
+- [ ] Linux camera sources/endpoints.
+- [ ] macOS camera sources/endpoints.
+- [ ] Physical Windows capture and GPU encode/decode verification.
+- [ ] Actual Windows Frame Server registration/service-account verification.
+- [ ] Android-to-Windows picture, color, latency and reconnect verification.
+- [ ] Camera selectable and usable in browser/Discord.
+
+## Microphone
+
+- [ ] Native capture and Opus transport.
+- [ ] Normal recording-device endpoints on receiving computers.
+- [ ] Independent mute, permission and interruption handling.
+- [ ] Android foreground/background lifecycle.
+- [ ] Windows audio-driver signing/distribution solution.
+- [ ] Application-level recording and reconnect tests.
+
+## USB
+
+- [ ] Windows/Linux USB forwarding through admitted encrypted transport.
+- [ ] Safe per-device selection, exclusions and exclusive ownership.
+- [ ] Source unmount and destination flush/eject handling.
+- [ ] Disconnect cleanup without forced or automatic storage reattachment.
+- [ ] Managed dependency installation, upgrades and removal.
+- [ ] Physical removable-storage validation.
+
+## Packaging and release
+
+- [x] Shared Windows development staging and isolated startup check.
+- [x] CI definitions for isolated resource and camera checks.
+- [x] Windows camera installer integration source and graceful app shutdown protocol.
+- [ ] Compile and verify the new installer; compiler staging was blocked by automatic approval review.
+- [ ] Complete single-installer workflow for all new components.
+- [ ] Cross-platform package, upgrade and uninstall verification.
+- [ ] Resolve macOS extension signing and other distribution prerequisites.
+- [ ] User-authorized device tests.
+- [ ] Publish a testable prerelease after required checks.
+
+## Increment log
+
+| Increment | Result | Verification / remaining limit |
+| --- | --- | --- |
+| `4a4aae2` | Resource foundation and shared Qt display shell | Isolated UI/model checks; platform migration incomplete. |
+| `c1179ff` | Bounded resource negotiation | In-memory encrypted admission checks; no live session integration. |
+| `0c06ab2` | Windows camera source and encode adapter | Compiled; synthetic NV12 checks, no physical camera. |
+| `b478091` | Camera framing and bounded queues | Isolated bounds, encryption and cancellation checks. |
+| `1cae15f` | Receiving MF camera source | Synthetic native sample/lifecycle checks. |
+| `0b11798` | COM DLL, local transport, registration backend | Unregistered DLL delivery and lifetime checks; Windows registration not run. |
+| `2631915` | Decoder-to-camera receiver integration | Build and synthetic-decoder delivery checks; real GPU path not run. |
+| 2026-11-07 camera preview | Windows setup and live receiver, Android sender, shared host UI and installer shutdown | 11 Windows checks and 4 core checks passed; APK/Android lint and packet checks passed. No device installation or camera/GPU tests. |
+
+Concurrent implementation is authorized. Next gate: user-approved Android-to-Windows camera test; see [CAMERA-TEST.md](CAMERA-TEST.md).

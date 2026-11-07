@@ -44,7 +44,7 @@ inline std::filesystem::path directory()
 struct Child
 {
     HANDLE process = nullptr, read = nullptr;
-    bool service=false;
+    bool service=false,graceful_control=false;
     Child() = default;
     Child(const Child &) = delete;
     Child &operator=(const Child &) = delete;
@@ -61,6 +61,7 @@ struct Child
             if (WaitForSingleObject(process, 0) == WAIT_TIMEOUT)
             {
                 if(service && read){DWORD written=0;const char stop='Q';WriteFile(read,&stop,1,&written,nullptr);WaitForSingleObject(process,10000);}
+                else if(graceful_control&&input_write){DWORD written=0;const char stop[]="Q\n";WriteFile(input_write,stop,2,&written,nullptr);WaitForSingleObject(process,15000);}
                 if(WaitForSingleObject(process,0)==WAIT_TIMEOUT)TerminateProcess(process, 0);
                 WaitForSingleObject(process, 3000);
             }
@@ -73,9 +74,9 @@ struct Child
             read = nullptr;
         }
         if(input_write){CloseHandle(input_write);input_write=nullptr;}
-        service=false;
+        service=false;graceful_control=false;
     }
-    void start(const std::wstring &exe, const std::vector<std::wstring> &args)
+    void start(const std::wstring &exe, const std::vector<std::wstring> &args,bool graceful=false)
     {
         stop();
         SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
@@ -109,6 +110,7 @@ struct Child
                                      "). Keep the app and dm-view.exe in the same folder.");
         }
         process = pi.hProcess;
+        graceful_control=graceful;
         CloseHandle(pi.hThread);
     }
     void start_driver(bool input,bool debug,unsigned port=43824,bool require_code=false,std::wstring bind=L"auto") {

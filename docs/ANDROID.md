@@ -1,6 +1,6 @@
 # Android client
 
-Development is on `feat/android-client`. The first slice is an Android receiver for Windows or Linux hosts using protocol 9. Android hosting, audio, microphone and on-screen keyboard forwarding are not implemented in this slice.
+The existing Android display receiver uses protocol 9 with Windows or Linux hosts. Development on `feat/shared-resources` adds a separate camera-only client described below. Android display hosting, audio, microphone and on-screen keyboard forwarding remain unimplemented.
 
 ## Architecture
 
@@ -14,6 +14,8 @@ Development is on `feat/android-client`. The first slice is an Android receiver 
 - Native multi-touch, mouse, physical keyboard and stylus capture. Only host-granted input families are sent. Stylus events are never converted into mouse events.
 - Aspect-fit SurfaceView coordinates match input mapping. Native touch pressure/contact area is sent when available; fidelity needs physical application verification.
 - Backgrounding, lock, surface loss and disconnect close the connection. Focus loss and toolbar interaction reset owned input. No foreground/background streaming service.
+
+That background behavior describes display sessions. Camera sessions use a separate user-started camera foreground service; they do not forward input or allocate a monitor.
 
 ## Controls
 
@@ -78,3 +80,19 @@ A future Android host could share the device screen or one app through MediaProj
 ## Access-code connections
 
 Code-enabled builds add a TCP port (default 43824) and optional six-digit access code on the Client page. Use matching releases. Android remains a client only. See [access-code setup and security](ACCESS-CODES.md) for expiry, retry limits and reachable internet endpoints. No-code mode is still restricted to trusted-network use.
+
+## Camera-sharing development slice
+
+The app now has a camera picker, **Share selected camera**, and **Stop camera sharing** controls. Enter the Windows camera listener's IPv4 address and port, select the local route if needed, and optionally enter its access code. This preview uses a separate camera-only connection; stop the display session first. The existing display receiver remains available. Starting a camera session requests no virtual monitor or remote input.
+
+Camera permission is requested before starting a non-exported `camera` foreground service from the visible Activity. The service provides a Stop action in its persistent notification and is `START_NOT_STICKY`: Android/process restarts never automatically reopen the camera. Notification permission is requested on Android 13+; if denied, Android's foreground-service task manager and ExtraPane's in-app Stop control remain available. Background operation is subject to Android's permission, privacy and device policies. Physical background/lock behavior has not been verified.
+
+Camera2 sends images directly to a MediaCodec input surface. Native hardware H.264 encoding is preferred when available; MediaCodec software encoding may be selected if necessary. Camera/encoder-supported 1280×720 at 30 FPS is preferred, followed by 640×480 or 1920×1080. The first implementation transmits sensor-native landscape orientation, without automatic rotation or front-camera mirroring. It does not detach hardware; another application's exclusive camera use can make opening fail and is reported.
+
+The camera opens only after TLS/access admission, camera capability exchange and the server's resource grant. The shared C++ serializers produce the EPCM format preamble, EPRS control messages and EPMF media headers. Encoded H.264 buffers stay on worker threads, with a three-frame queue and 2 MiB packet limit; queue overflow closes the connection rather than dropping reference frames. Each connection uses fresh resource/generation identifiers and sequence zero. Codec configuration is attached to key frames, AVCC four-byte NAL lengths are converted to Annex B when encountered, and presentation timestamps use 100 ns units on the wire. TLS admission and writes have absolute deadlines; cancellation closes the socket to interrupt I/O.
+
+Camera, session, codec and surface cleanup belongs to native API workers. A vendor codec that fails to return within the cleanup deadline retains its own buffers until its drain thread exits; the app reports pending cleanup and blocks another encoder start rather than releasing memory still in use. Real vendor-codec cancellation remains a device-test requirement.
+
+On 2026-11-07 the ARM64/x86_64 debug APK, instrumentation APK and lint build passed without installation or device access. Host-side Java checks passed for buffer bounds, AVCC-to-Annex-B normalization and packet size limits. These are compile/synthetic checks only: actual capture, H.264 interoperability, color/orientation, foreground-service backgrounding, revocation, reconnect and Discord/browser camera use remain unverified. The new slice is not a released feature.
+
+Android lifecycle references: [camera foreground-service requirements](https://developer.android.com/develop/background-work/services/fgs/service-types#camera) and [while-in-use permission restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start).

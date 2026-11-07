@@ -23,4 +23,10 @@ Read README.md and docs/DECISIONS.md first, then the documents relevant to the t
 
 ## Implementation workflow after design
 
+Keep docs/IMPLEMENTATION-CHECKLIST.md updated after every completed implementation
+increment, including verification evidence and remaining limits. The user requests
+continued work until the first device-sharing build is ready to test and authorizes
+concurrent agents. Isolated checks/builds are allowed; request permission before
+device connections, GPU/camera tests, installation or system-setting changes.
+
 Resolve the relevant decision and feasibility gate first. Prefer narrow vertical slices with observable behavior. Test meaningful state transitions and actual delivery to applications, not just successful API return codes. Pin dependencies and document build commands only when the toolchain is selected. Driver signing, packaging, and rollback are release work, not afterthoughts. Do not install drivers, change network addresses, or alter system security settings merely to validate planning documents.

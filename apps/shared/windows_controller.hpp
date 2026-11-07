@@ -10,7 +10,9 @@ class WindowsController final:public QObject {
     Q_PROPERTY(QString accessCode READ accessCode NOTIFY hostChanged)
     Q_PROPERTY(bool hosting READ hosting NOTIFY hostChanged)
     Q_PROPERTY(QString hostStatus READ hostStatus NOTIFY hostChanged)
-    Q_PROPERTY(QString hostAvailability READ hostAvailability CONSTANT)
+    Q_PROPERTY(QString hostAvailability READ hostAvailability NOTIFY hostChanged)
+    Q_PROPERTY(QString hostMode READ hostMode WRITE setHostMode NOTIFY hostChanged)
+    Q_PROPERTY(bool cameraSetupRunning READ cameraSetupRunning NOTIFY hostChanged)
     Q_PROPERTY(bool active READ active NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString availability READ availability CONSTANT)
@@ -22,7 +24,7 @@ class WindowsController final:public QObject {
     Q_PROPERTY(unsigned sourceWidth READ sourceWidth CONSTANT)
     Q_PROPERTY(unsigned sourceHeight READ sourceHeight CONSTANT)
     Q_PROPERTY(QString platformLabel READ platformLabel CONSTANT)
-    Q_PROPERTY(QString hostDescription READ hostDescription CONSTANT)
+    Q_PROPERTY(QString hostDescription READ hostDescription NOTIFY hostChanged)
     Q_PROPERTY(QString inputDescription READ inputDescription CONSTANT)
     Q_PROPERTY(QString rendererDescription READ rendererDescription CONSTANT)
 public:
@@ -35,7 +37,10 @@ public:
     QString hostStatus()const{return hostStatus_;}
     QString status()const{return status_;}
     QString availability()const{return unavailable_;}
-    QString hostAvailability()const{return hostUnavailable_;}
+    QString hostAvailability()const;
+    QString hostMode()const{return hostMode_;}
+    void setHostMode(QString mode);
+    bool cameraSetupRunning()const;
     QString savedAddress()const;
     QVariantList addresses()const{return addresses_;}
     QString statistics()const{return {};}
@@ -44,7 +49,7 @@ public:
     unsigned sourceWidth()const{return 1280;}
     unsigned sourceHeight()const{return 720;}
     QString platformLabel()const{return "Windows";}
-    QString hostDescription()const{return "Creates a virtual monitor when a display client connects. The display driver must be installed. Supports up to four clients.";}
+    QString hostDescription()const;
     QString inputDescription()const{return "Mouse, keyboard, touch and pen use the native Windows receiver. Its window contains fullscreen and input controls.";}
     QString rendererDescription()const{return "The native receiver uses the saved Windows renderer preference. Its statistics are available in the receiver toolbar.";}
     Q_INVOKABLE void refreshAddresses();
@@ -53,6 +58,7 @@ public:
     Q_INVOKABLE void startHost(QString address,unsigned port,bool requireCode);
     Q_INVOKABLE void stopHost();
     Q_INVOKABLE void generateAccessCode();
+    Q_INVOKABLE void setupCamera();
     Q_INVOKABLE void releaseInput(){}
     void shutdown();
 signals:
@@ -63,4 +69,5 @@ private:
     ResourceModel resources_;
     QVariantList addresses_;
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
+    QString hostMode_="display";
 };

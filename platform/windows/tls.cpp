@@ -121,6 +121,7 @@ TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair
     erase();
 }
 TlsStream::~TlsStream() = default;
+void TlsStream::cancel() noexcept { state_->socket.cancel(); }
 void TlsStream::handshake(Deadline deadline) {
     for (;;) {
         check_deadline(deadline);

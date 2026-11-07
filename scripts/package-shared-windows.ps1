@@ -2,7 +2,8 @@ param(
     [string]$UiBuild = 'out/shared-ui',
     [string]$EngineBuild = 'out/shared-engine',
     [string]$QtRoot = 'out/qt-sdk/6.8.3/msvc2022_64',
-    [string]$Destination = 'out/shared-portable'
+    [string]$Destination = 'out/shared-portable',
+    [switch]$IncludeCamera
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -24,6 +25,9 @@ if (-not $redistVersion) { throw 'MSVC redistributable files are missing.' }
 $crt = Get-ChildItem -LiteralPath (Join-Path $redistVersion.FullName 'x64') -Directory | Where-Object { $_.Name -like 'Microsoft.VC*.CRT' } | Select-Object -First 1
 if (-not $crt) { throw 'MSVC x64 runtime files are missing.' }
 $files = @((Join-Path $uiPath 'ExtraPane.exe'), (Join-Path $enginePath 'dm-view.exe'), (Join-Path $enginePath 'ExtraPane.Service.exe'))
+if ($IncludeCamera) {
+    $files += (Join-Path $enginePath 'ExtraPane.Resources.exe'), (Join-Path $enginePath 'ExtraPane.CameraSetup.exe')
+}
 foreach ($file in $files) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" } }
 New-Item -ItemType Directory -Path $destinationPath | Out-Null
 foreach ($file in $files) { Copy-Item -LiteralPath $file -Destination $destinationPath }
@@ -34,5 +38,6 @@ Get-ChildItem -LiteralPath $crt.FullName -Filter '*.dll' | ForEach-Object { Copy
 # package check explicitly selects offscreen and must not open an error dialog.
 Copy-Item -LiteralPath (Join-Path $qtPath 'plugins/platforms/qoffscreen.dll') -Destination (Join-Path $destinationPath 'platforms/qoffscreen.dll')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/RESOURCE-SHARING.md') -Destination (Join-Path $destinationPath 'DEVELOPMENT-STATUS.md')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/IMPLEMENTATION-CHECKLIST.md') -Destination (Join-Path $destinationPath 'IMPLEMENTATION-CHECKLIST.md')
 Write-Host "Staged development display shell: $destinationPath"
 Write-Host 'No app was launched, no driver installed, and no connection was attempted.'

@@ -17,13 +17,16 @@ std::uint64_t get(std::span<const std::uint8_t> h, std::size_t offset, std::size
 }
 }
 Header encode_header(const Frame& f) {
-    valid_binding(f.binding);
-    if (f.payload.empty() || f.payload.size()>max_frame_bytes) throw std::invalid_argument("Invalid camera frame size");
+    return encode_header(f.binding,f.sequence,f.timestamp,f.payload.size());
+}
+Header encode_header(Binding binding,std::uint64_t sequence,std::int64_t timestamp,std::size_t payload_bytes) {
+    valid_binding(binding);
+    if (!payload_bytes || payload_bytes>max_frame_bytes) throw std::invalid_argument("Invalid camera frame size");
     Header h{};
     h[0]='E'; h[1]='P'; h[2]='M'; h[3]='F'; h[5]=1; h[6]=1; // v1, H.264
-    put(h,8,f.binding.resource,8); put(h,16,f.binding.generation,8);
-    put(h,24,f.sequence,8); put(h,32,std::bit_cast<std::uint64_t>(f.timestamp),8);
-    put(h,40,f.payload.size(),4);
+    put(h,8,binding.resource,8); put(h,16,binding.generation,8);
+    put(h,24,sequence,8); put(h,32,std::bit_cast<std::uint64_t>(timestamp),8);
+    put(h,40,payload_bytes,4);
     return h;
 }
 Frame decode_header(std::span<const std::uint8_t> h) {

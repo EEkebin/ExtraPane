@@ -29,6 +29,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private TextView status,stats,capabilities;
     private EditText server,port,accessCode;
     private Spinner routes;
+    private Spinner cameraChoices;private final ArrayList<CameraCapture.Choice> cameras=new ArrayList<>();
+    private boolean cameraBound,cameraRunning,visible;private CameraShareService.LocalBinder cameraBinder;
+    private final android.content.ServiceConnection cameraConnection=new android.content.ServiceConnection(){
+        public void onServiceConnected(android.content.ComponentName name,android.os.IBinder binder){cameraBinder=(CameraShareService.LocalBinder)binder;cameraBinder.listen((text,running)->{cameraRunning=running;status.setText(text);});}
+        public void onServiceDisconnected(android.content.ComponentName name){cameraBinder=null;cameraRunning=false;}
+    };
     private boolean surfaceReady,showStats,paused;
     private int streamWidth=16,streamHeight=9;
     private final ArrayList<Route> choices=new ArrayList<>();
@@ -61,6 +67,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         setup.addView(text("Connect through",14,muted));routes=new Spinner(this);setup.addView(routes);refreshRoutes();
         setup.addView(button("Refresh network addresses",this::refreshRoutes));
         setup.addView(button("Connect",this::connect));status=text("Ready",14,accent);setup.addView(status);
+        setup.addView(text("Share a camera",22,white));cameraChoices=new Spinner(this);setup.addView(cameraChoices);refreshCameras();
+        setup.addView(button("Refresh cameras",this::refreshCameras));setup.addView(button("Share selected camera",this::shareCamera));
+        setup.addView(button("Stop camera sharing",()->startService(new android.content.Intent(this,CameraShareService.class).setAction(CameraShareService.STOP))));
+        setup.addView(text("Camera-only preview: connect to the server's camera listener port. Hold the phone in landscape; automatic rotation is not implemented. Camera sharing continues in a foreground service until you stop it or Android withdraws access.",14,muted));
         setup.addView(text("Encrypted LAN connection. Peer identity is not verified; use a trusted network.",14,muted));
         setup.addView(text("Touch, mouse, USB/Bluetooth keyboard and compatible active stylus input. On-screen keyboard, audio and Android hosting are not available yet.",14,muted));
         setup.addView(button("About",()->new AlertDialog.Builder(this).setTitle("ExtraPane").setMessage("Running version: "+BuildConfig.VERSION_NAME+"\nAndroid client development build\n\nC++ protocol • Android MediaCodec\nA project-wide license has not been selected.").setPositiveButton("GitHub",(d,w)->startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse("https://github.com/EEkebin/ExtraPane")))).setNegativeButton("Close",null).show()));
@@ -84,6 +94,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels);routes.setAdapter(adapter);
     }
     private void connect(){
+        if(cameraRunning||(cameraBound&&cameraBinder==null)){status.setText("Stop camera sharing before starting the display in this preview");return;}
         if(session!=null)return;if(!surfaceReady){status.setText("Video surface is not ready");return;}
         String address=server.getText().toString().trim();try{ClientSession.ipv4(address);}catch(Exception e){status.setText(e.getMessage());return;}
         int selectedPort;try{selectedPort=Integer.parseInt(port.getText().toString());if(selectedPort<1||selectedPort>65535)throw new NumberFormatException();}catch(NumberFormatException e){status.setText("Enter a port from 1 to 65535");return;}
@@ -102,6 +113,31 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         getWindow().getInsetsController().setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);getWindow().getInsetsController().hide(WindowInsets.Type.systemBars());
         stats.setVisibility(showStats?View.VISIBLE:View.GONE);video.requestFocus();reveal();next.start();
     }
+    private void refreshCameras(){
+        cameras.clear();try{cameras.addAll(CameraCapture.choices(this));}catch(Exception error){if(status!=null)status.setText("Camera inventory unavailable: "+error.getMessage());}
+        ArrayList<String> labels=new ArrayList<>();for(CameraCapture.Choice camera:cameras)labels.add(camera.toString());if(labels.isEmpty())labels.add("No camera supports a compatible H.264 mode");
+        cameraChoices.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));
+    }
+    private void bindCamera(){if(!cameraBound){cameraBound=bindService(new android.content.Intent(this,CameraShareService.class),cameraConnection,0);if(!cameraBound)cameraRunning=false;}}
+    private void shareCamera(){
+        if(!visible||session!=null||cameraRunning||(cameraBound&&cameraBinder==null)){status.setText("Stop the current session before sharing a camera");return;}
+        if(checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.CAMERA},41);return;}
+        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            // Notification denial does not remove Android's foreground-service
+            // task-manager indicator or the in-app Stop control.
+            if(!getPreferences(0).getBoolean("cameraNotificationAsked",false)){getPreferences(0).edit().putBoolean("cameraNotificationAsked",true).apply();requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},42);return;}
+        }
+        if(cameras.isEmpty()){refreshCameras();if(cameras.isEmpty()){status.setText("No supported camera is available");return;}}
+        String address=server.getText().toString().trim();try{ClientSession.ipv4(address);}catch(Exception error){status.setText(error.getMessage());return;}
+        int number;try{number=Integer.parseInt(port.getText().toString());if(number<1||number>65535)throw new NumberFormatException();}catch(NumberFormatException error){status.setText("Enter a port from 1 to 65535");return;}
+        String code=accessCode.getText().toString();if(!code.isEmpty()&&!code.matches("[0-9]{6}")){status.setText("Enter a six-digit access code");return;}
+        Route route=choices.get(routes.getSelectedItemPosition());CameraCapture.Choice camera=cameras.get(cameraChoices.getSelectedItemPosition());
+        android.content.Intent intent=new android.content.Intent(this,CameraShareService.class).putExtra("address",address).putExtra("port",number).putExtra("local",route.address).putExtra("network",route.network).putExtra("code",code)
+            .putExtra("camera",camera.id()).putExtra("cameraLabel",camera.label()).putExtra("width",camera.width()).putExtra("height",camera.height()).putExtra("fps",camera.fps());
+        try{startForegroundService(intent);accessCode.setText("");cameraRunning=true;status.setText("Starting camera sharing…");bindCamera();}catch(RuntimeException error){cameraRunning=false;status.setText("Cannot start camera sharing: "+error.getMessage());}
+    }
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==41){if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)shareCamera();else status.setText("Camera permission was denied");}else if(request==42)shareCamera();}
+    @Override protected void onStart(){super.onStart();visible=true;bindCamera();}
     private void fit(){int w=videoArea.getWidth(),h=videoArea.getHeight();if(w==0 || h==0)return;double scale=Math.min(w/(double)streamWidth,h/(double)streamHeight);FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)video.getLayoutParams();int nw=(int)(streamWidth*scale),nh=(int)(streamHeight*scale);if(p.width!=nw || p.height!=nh){p.width=nw;p.height=nh;p.gravity=Gravity.CENTER;video.setLayoutParams(p);}}
     private void reveal(){if(session==null)return;input.enable(false);toolbar.setVisibility(View.VISIBLE);handler.removeCallbacks(hideToolbar);if(!paused)handler.postDelayed(hideToolbar,5000);}
     private void settings(){paused=true;input.enable(false);handler.removeCallbacks(hideToolbar);new AlertDialog.Builder(this).setTitle("Client settings").setMessage(capabilities.getText()+"\n\nStylus: contact, hover, pressure, tilt, primary barrel button and eraser require support from the device and host. Barrel rotation and secondary stylus buttons are not forwarded. A passive capacitive stylus is touch input.\n\nUSB/Bluetooth keyboards use the host keyboard layout. IME composition and system-reserved keys are not forwarded.\n\nStatistics show received data and submitted decoder output, not end-to-end latency.")
@@ -116,7 +152,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         if(session!=null){int code=event.getKeyCode();if(code==KeyEvent.KEYCODE_F10 || code==KeyEvent.KEYCODE_F8 || (code==KeyEvent.KEYCODE_Q && event.isCtrlPressed() && event.isShiftPressed())){if(event.getAction()==KeyEvent.ACTION_DOWN){input.reset();if(code==KeyEvent.KEYCODE_Q)disconnect();else{paused=true;reveal();}}return true;}if(input.key(event))return true;}return super.dispatchKeyEvent(event);
     }
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(!focus)input.enable(false);else if(session!=null)input.enable(!paused && toolbar.getVisibility()!=View.VISIBLE);}
-    @Override protected void onStop(){disconnect();super.onStop();}
+    @Override protected void onStop(){visible=false;disconnect();if(cameraBinder!=null){cameraBinder.listen(null);cameraBinder=null;}if(cameraBound){unbindService(cameraConnection);cameraBound=false;}super.onStop();}
     @Override protected void onDestroy(){disconnect();getSystemService(android.hardware.input.InputManager.class).unregisterInputDeviceListener(this);handler.removeCallbacksAndMessages(null);super.onDestroy();}
     public void surfaceCreated(SurfaceHolder holder){surfaceReady=true;}
     public void surfaceChanged(SurfaceHolder holder,int format,int width,int height){}

@@ -306,6 +306,7 @@ int TcpStream::write_some(std::span<const std::uint8_t> bytes) {
     return count;
 }
 void TcpStream::wait(bool writing, Clock::time_point deadline) { wait_ready(state_->socket, writing, deadline, "secure stream"); }
+void TcpStream::cancel() noexcept { if(state_)::shutdown(state_->socket.get(),SD_BOTH); }
 std::string TcpStream::local_endpoint() const { return endpoint(state_->socket, false); }
 std::string TcpStream::peer_endpoint() const { return endpoint(state_->socket, true); }
 

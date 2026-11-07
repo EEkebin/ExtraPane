@@ -22,6 +22,7 @@ struct Frame {
 };
 using Header = std::array<std::uint8_t, 48>;
 Header encode_header(const Frame& frame);
+Header encode_header(Binding binding,std::uint64_t sequence,std::int64_t timestamp,std::size_t payload_bytes);
 // Payload length is validated before allocation. Payload bytes are not read here.
 Frame decode_header(std::span<const std::uint8_t> header);
 

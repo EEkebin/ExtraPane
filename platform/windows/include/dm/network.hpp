@@ -45,6 +45,9 @@ public:
     int read_some(std::span<std::uint8_t> bytes);
     int write_some(std::span<const std::uint8_t> bytes);
     void wait(bool writing, std::chrono::steady_clock::time_point deadline);
+    // Interrupt pending socket waits from another thread. Does not close/reuse
+    // the handle; caller must join the canceling thread before destruction/move.
+    void cancel() noexcept;
     std::string local_endpoint() const;
     std::string peer_endpoint() const;
 private:

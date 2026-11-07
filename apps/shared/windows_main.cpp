@@ -11,6 +11,46 @@
 #include <windows.h>
 #include <filesystem>
 
+namespace {
+// The installer finds this hidden top-level window and sends the legacy tray
+// Exit command. A message-only HWND would not be found by FindWindow.
+class InstallerShutdownWindow {
+public:
+    bool create(){
+        instance_=GetModuleHandleW(nullptr);
+        WNDCLASSW type{};
+        type.lpfnWndProc=&procedure;
+        type.hInstance=instance_;
+        type.lpszClassName=L"ExtraPane.Tray";
+        atom_=RegisterClassW(&type);
+        if(!atom_)return false;
+        window_=CreateWindowExW(WS_EX_TOOLWINDOW,type.lpszClassName,L"ExtraPane shutdown",
+            WS_POPUP,0,0,0,0,nullptr,nullptr,instance_,nullptr);
+        return window_!=nullptr;
+    }
+    ~InstallerShutdownWindow(){
+        if(window_)DestroyWindow(window_);
+        if(atom_)UnregisterClassW(L"ExtraPane.Tray",instance_);
+    }
+    InstallerShutdownWindow()=default;
+    InstallerShutdownWindow(const InstallerShutdownWindow&)=delete;
+    InstallerShutdownWindow& operator=(const InstallerShutdownWindow&)=delete;
+private:
+    static LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wparam,LPARAM lparam){
+        if(message==WM_COMMAND&&wparam==3&&lparam==0){
+            // Queue normal Qt shutdown so aboutToQuit stops both roles and
+            // releases session-owned resources before the instance mutex closes.
+            QMetaObject::invokeMethod(qApp,[]{QCoreApplication::quit();},Qt::QueuedConnection);
+            return 0;
+        }
+        return DefWindowProcW(window,message,wparam,lparam);
+    }
+    HINSTANCE instance_=nullptr;
+    ATOM atom_=0;
+    HWND window_=nullptr;
+};
+}
+
 int main(int argc,char** argv){
     bool checkUi=false;
     for(int i=1;i<argc;++i)if(QString::fromLocal8Bit(argv[i])=="--check-ui")checkUi=true;
@@ -39,7 +79,10 @@ int main(int argc,char** argv){
     if(engine.rootObjects().isEmpty())return 1;
     auto* window=qobject_cast<QWindow*>(engine.rootObjects().first());
     if(!window)return 1;
-    if(checkUi){QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();}
+    if(checkUi){
+        controller.setHostMode("camera");
+        QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
+    }
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane server");
     QMenu menu;auto* show=menu.addAction("Open ExtraPane");auto* stop=menu.addAction("Stop server");menu.addSeparator();auto* quit=menu.addAction("Exit ExtraPane");
     tray.setContextMenu(&menu);
@@ -49,5 +92,7 @@ int main(int argc,char** argv){
     QObject::connect(&app,&QGuiApplication::lastWindowClosed,&app,[&]{if(controller.hosting()&&QSystemTrayIcon::isSystemTrayAvailable())tray.show();else app.quit();});
     QObject::connect(&controller,&WindowsController::hostChanged,&app,[&]{if(!controller.hosting()&&!window->isVisible())app.quit();});
     QObject::connect(&app,&QCoreApplication::aboutToQuit,&controller,&WindowsController::shutdown);
+    InstallerShutdownWindow installerShutdown;
+    if(!installerShutdown.create())return 1;
     return app.exec();
 }

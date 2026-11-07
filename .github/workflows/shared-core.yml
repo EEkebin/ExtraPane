@@ -8,7 +8,17 @@ on:
       - 'tests/media_check.cpp'
       - 'tests/resource_security_check.cpp'
       - 'tests/camera_*_check.cpp'
+      - 'tests/camera_protocol_check.cpp'
+      - 'apps/camera-setup/**'
+      - 'apps/resources/**'
+      - 'cmake/*Camera*.cmake'
       - 'platform/windows/camera*.cpp'
+      - 'platform/windows/resource_session.cpp'
+      - 'platform/windows/include/dm/resource_session.hpp'
+      - 'platform/windows/network.cpp'
+      - 'platform/windows/tls.cpp'
+      - 'platform/windows/include/dm/network.hpp'
+      - 'platform/windows/include/dm/tls.hpp'
       - 'platform/windows/camera_source.def'
       - 'platform/windows/h264.cpp'
       - 'platform/windows/include/dm/h264.hpp'
@@ -25,7 +35,17 @@ on:
       - 'tests/media_check.cpp'
       - 'tests/resource_security_check.cpp'
       - 'tests/camera_*_check.cpp'
+      - 'tests/camera_protocol_check.cpp'
+      - 'apps/camera-setup/**'
+      - 'apps/resources/**'
+      - 'cmake/*Camera*.cmake'
       - 'platform/windows/camera*.cpp'
+      - 'platform/windows/resource_session.cpp'
+      - 'platform/windows/include/dm/resource_session.hpp'
+      - 'platform/windows/network.cpp'
+      - 'platform/windows/tls.cpp'
+      - 'platform/windows/include/dm/network.hpp'
+      - 'platform/windows/include/dm/tls.hpp'
       - 'platform/windows/camera_source.def'
       - 'platform/windows/h264.cpp'
       - 'platform/windows/include/dm/h264.hpp'
@@ -44,9 +64,9 @@ jobs:
       - name: Configure camera compilation and hardware-free checks
         run: cmake -S . -B out/camera-checks -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON
       - name: Build camera source and checks
-        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check --parallel 2
+        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane_camera_setup extrapane-camera-setup-check extrapane-resources extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check --parallel 2
       - name: Check synthetic frames, local IPC and unregistered COM activation
-        run: ctest --test-dir out/camera-checks -C Release -R "camera-(format|source|pipe|endpoint|activation|receiver)" --output-on-failure
+        run: ctest --test-dir out/camera-checks -C Release -R "camera-|resource-.*-config" --output-on-failure
   lifecycle:
     strategy:
       fail-fast: false
