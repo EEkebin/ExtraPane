@@ -88,7 +88,7 @@ speaker forwarding remain deferred.
 
 ## Packaging and release
 
-- [x] Combined Windows camera/microphone/USB portable development package staged at `out/windows-resources-test-20261107`; packaged offscreen startup, USB configuration, microphone endpoint and setup-payload checks pass.
+- [x] Combined Windows camera/microphone/USB portable development package staged at `out/windows-unified-server-20261107`; packaged offscreen startup, USB configuration, microphone endpoint and setup-payload checks pass.
 - [x] CI definitions for isolated resource and camera checks.
 - [x] Windows camera installer integration source and graceful app shutdown protocol.
 - [ ] Compile and verify the new installer; compiler staging was blocked by automatic approval review.
@@ -133,3 +133,5 @@ simultaneous-resource verification remain pending.
 Unified routing verification also passes an in-memory authenticated-record test: eight-byte lookahead preserves the complete camera offer and rejects tampered encrypted records before routing. No network socket, capture device or driver was exercised.
 
 2026-11-07 unified server: native dispatcher dc1fbbf and UI now start all supported receivers together. Five packaged native targets rebuild; 12 configuration checks, eight core checks, authenticated-record routing and offscreen UI pass. Optional components are prepared only for requested resources. No live listener or device tests were run.
+
+2026-11-07 unified server deployment: packaged offscreen startup passed; all 1,322 files copied and verified on the Surface Desktop as `ExtraPane-unified-server-20261107`. Old Surface camera-fix build removed. Automatic approval review blocked local old camera-fix folder/archive cleanup (reason: blocked by policy), so those copies remain. No application, listener or device was started on the Surface.
