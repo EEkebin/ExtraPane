@@ -15,7 +15,7 @@
 
 namespace dm::security {
 namespace {std::shared_ptr<access::Gate> accessGate;std::string accessCode;}
-void set_access_client(std::string code){if(!access::validCode(code))throw std::invalid_argument("Access code must contain exactly six digits");accessCode=std::move(code);}
+void set_access_client(std::string code){if(!access::validCredential(code))throw std::invalid_argument("Access credential is malformed");accessCode=std::move(code);}
 std::shared_ptr<access::Gate> enable_access_host(){accessGate=std::make_shared<access::Gate>();return accessGate;}
 
 namespace {
@@ -121,6 +121,13 @@ TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair
     erase();
 }
 TlsStream::~TlsStream() = default;
+std::vector<access::ChannelCredential> TlsStream::issue_channels(unsigned mask){
+    if(!server_||!accessGate||!protected_)throw std::runtime_error("Grouped admission requires a one-time access code");
+    return protected_->issue_channels(*accessGate,mask);
+}
+void TlsStream::require_resource(unsigned kind)const{
+    if(protected_){const auto allowed=protected_->authorized_kind();if(allowed&&*allowed!=kind)throw std::runtime_error("Grouped credential does not authorize this resource");}
+}
 void TlsStream::cancel() noexcept { state_->socket.cancel(); }
 void TlsStream::handshake(Deadline deadline) {
     for (;;) {

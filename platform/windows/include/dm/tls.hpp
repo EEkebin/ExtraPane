@@ -24,6 +24,9 @@ public:
     // must keep this stream alive until the canceling thread has joined.
     void cancel() noexcept;
     std::string description() const;
+    // Group tickets are issued only from a code-authenticated root connection.
+    std::vector<access::ChannelCredential> issue_channels(unsigned mask);
+    void require_resource(unsigned kind)const;
 private:
     void read_raw(std::span<std::uint8_t>,std::chrono::steady_clock::time_point);
     void write_raw(std::span<const std::uint8_t>,std::chrono::steady_clock::time_point);

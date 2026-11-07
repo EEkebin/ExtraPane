@@ -8,15 +8,24 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <map>
+#include <optional>
 namespace dm::access {
 using Bytes=std::vector<uint8_t>;
 using Read=std::function<void(std::span<uint8_t>)>;
 using Write=std::function<void(std::span<const uint8_t>)>;
 using Clock=std::chrono::steady_clock;
 bool validCode(const std::string& code);
+struct ChannelCredential {unsigned kind=0;std::string id,secret;};
+std::optional<ChannelCredential> channelCredential(const std::string& text);
+bool validCredential(const std::string& text);
+std::string formatCredential(const ChannelCredential& credential);
 class Gate {
     std::function<Clock::time_point()> now_;
     std::mutex mutex_;std::string code_;Clock::time_point expires_{};uint64_t generation_=0;unsigned attempts_=0;bool used_=true;
+    struct Channel {std::string secret;unsigned kind=0,attempts=0;Clock::time_point expires;uint64_t generation=0;};
+    std::map<std::string,Channel> channels_;
+    void clear_channels();
 public:
     explicit Gate(std::function<Clock::time_point()> now=Clock::now):now_(std::move(now)){}
     enum class Status { active,used,expired,exhausted };
@@ -27,6 +36,9 @@ public:
     Ticket begin();
     void consume(uint64_t generation);
     void revoke();
+    std::vector<ChannelCredential> issue_channels(unsigned mask,uint64_t admitted_generation);
+    Ticket begin_channel(const std::string& id,unsigned kind);
+    void consume_channel(const std::string& id,unsigned kind,uint64_t generation);
 };
 // Shared across TLS backends. Read/write callbacks must enforce deadlines.
 class Stream {
@@ -37,6 +49,8 @@ public:
     Stream(const Stream&)=delete;Stream& operator=(const Stream&)=delete;
     void client(const std::string& code);
     void server(Gate& gate);
+    std::optional<unsigned> authorized_kind()const;
+    std::vector<ChannelCredential> issue_channels(Gate& gate,unsigned mask);
     void read(std::span<uint8_t> bytes);
     void write(std::span<const uint8_t> bytes);
 };

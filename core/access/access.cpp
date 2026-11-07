@@ -25,24 +25,52 @@ struct Exchange {
     Exchange(bool server,const std::string& code):ctx(SPAKE2_CTX_new(server?spake2_role_bob:spake2_role_alice,
         reinterpret_cast<const uint8_t*>(server?serverName:clientName),server?sizeof(serverName)-1:sizeof(clientName)-1,
         reinterpret_cast<const uint8_t*>(server?clientName:serverName),server?sizeof(clientName)-1:sizeof(serverName)-1)){
-        need(ctx && validCode(code));need(SPAKE2_generate_msg(ctx.get(),message.data(),&size,message.size(),reinterpret_cast<const uint8_t*>(code.data()),code.size())==1);need(size==32);
+        need(ctx && (validCode(code)||(code.size()==64&&std::all_of(code.begin(),code.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');}))));need(SPAKE2_generate_msg(ctx.get(),message.data(),&size,message.size(),reinterpret_cast<const uint8_t*>(code.data()),code.size())==1);need(size==32);
     }
 };
 }
 bool validCode(const std::string& code){return code.size()==6 && std::all_of(code.begin(),code.end(),[](char c){return c>='0' && c<='9';});}
+std::optional<ChannelCredential> channelCredential(const std::string& text){
+    if(text.size()!=105||text.substr(0,6)!="EPCT1:"||text[6]<'0'||text[6]>'3'||text[7]!=':'||text[40]!=':')return {};
+    auto hex=[](std::string_view part){return std::all_of(part.begin(),part.end(),[](char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');});};
+    if(!hex(std::string_view(text).substr(8,32))||!hex(std::string_view(text).substr(41,64)))return {};
+    return ChannelCredential{static_cast<unsigned>(text[6]-'0'),text.substr(8,32),text.substr(41,64)};
+}
+bool validCredential(const std::string& text){return validCode(text)||channelCredential(text).has_value();}
+std::string formatCredential(const ChannelCredential& value){auto text="EPCT1:"+std::to_string(value.kind)+":"+value.id+":"+value.secret;need(channelCredential(text).has_value());return text;}
+void Gate::clear_channels(){for(auto& [id,value]:channels_)wipe(value.secret);channels_.clear();}
+std::vector<ChannelCredential> Gate::issue_channels(unsigned mask,uint64_t admitted_generation){
+    std::lock_guard lock(mutex_);need(mask&&mask<=15&&used_&&admitted_generation&&generation_==admitted_generation&&now_()<expires_);
+    for(auto it=channels_.begin();it!=channels_.end();)if(now_()>=it->second.expires){wipe(it->second.secret);it=channels_.erase(it);}else ++it;
+    need(channels_.size()+4<=128);std::vector<ChannelCredential> result;
+    auto random_hex=[](unsigned n){std::vector<uint8_t> bytes(n);need(RAND_bytes(bytes.data(),bytes.size())==1);std::string text;for(auto b:bytes){text+="0123456789abcdef"[b>>4];text+="0123456789abcdef"[b&15];}OPENSSL_cleanse(bytes.data(),bytes.size());return text;};
+    for(unsigned kind=0;kind<4;++kind)if(mask&(1u<<kind)){
+        ChannelCredential item{kind,random_hex(16),random_hex(32)};need(!channels_.contains(item.id));
+        channels_.emplace(item.id,Channel{item.secret,kind,0,now_()+std::chrono::seconds(60),generation_});result.push_back(std::move(item));
+    }
+    return result;
+}
+Gate::Ticket Gate::begin_channel(const std::string& id,unsigned kind){
+    std::lock_guard lock(mutex_);const auto found=channels_.find(id);need(found!=channels_.end());auto& value=found->second;
+    need(kind==value.kind&&now_()<value.expires&&value.attempts<5&&value.generation==generation_);++value.attempts;return {value.secret,value.generation};
+}
+void Gate::consume_channel(const std::string& id,unsigned kind,uint64_t generation){
+    std::lock_guard lock(mutex_);const auto found=channels_.find(id);need(found!=channels_.end());auto& value=found->second;
+    need(kind==value.kind&&generation==value.generation&&generation==generation_&&now_()<value.expires);wipe(value.secret);channels_.erase(found);
+}
 Gate::Status Gate::status(){std::lock_guard lock(mutex_);if(used_)return Status::used;if(now_()>=expires_)return Status::expired;if(attempts_>=5)return Status::exhausted;return Status::active;}
 Gate::~Gate(){revoke();}
 std::string Gate::generate(){
     uint32_t value=0;constexpr uint32_t limit=4294000000u;
     do{need(RAND_bytes(reinterpret_cast<uint8_t*>(&value),sizeof(value))==1);}while(value>=limit);
     auto code=std::to_string(value%1000000);code.insert(0,6-code.size(),'0');
-    std::lock_guard lock(mutex_);wipe(code_);code_=code;expires_=now_()+std::chrono::minutes(5);++generation_;attempts_=0;used_=false;return code;
+    std::lock_guard lock(mutex_);clear_channels();wipe(code_);code_=code;expires_=now_()+std::chrono::minutes(5);++generation_;attempts_=0;used_=false;return code;
 }
 Gate::Ticket Gate::begin(){std::lock_guard lock(mutex_);need(!used_ && now_()<expires_ && attempts_<5);++attempts_;return {code_,generation_};}
 void Gate::consume(uint64_t generation){std::lock_guard lock(mutex_);need(!used_ && generation==generation_ && now_()<expires_);used_=true;wipe(code_);}
-void Gate::revoke(){std::lock_guard lock(mutex_);used_=true;++generation_;wipe(code_);}
+void Gate::revoke(){std::lock_guard lock(mutex_);used_=true;++generation_;wipe(code_);clear_channels();}
 struct Stream::State {
-    Read readRaw;Write writeRaw;bool ready=false,attempted=false;uint64_t sent=0,received=0;
+    Read readRaw;Write writeRaw;bool ready=false,attempted=false,groupIssued=false;std::optional<unsigned> kind;uint64_t admitted_generation=0;uint64_t sent=0,received=0;
     std::array<uint8_t,128> keys{};bssl::UniquePtr<EVP_AEAD_CTX> tx,rx;Bytes buffered;size_t offset=0;
     State(Read r,Write w):readRaw(std::move(r)),writeRaw(std::move(w)){}
     ~State(){OPENSSL_cleanse(keys.data(),keys.size());if(!buffered.empty())OPENSSL_cleanse(buffered.data(),buffered.size());}
@@ -61,18 +89,35 @@ struct Stream::State {
 };
 Stream::Stream(Read r,Write w):state_(std::make_unique<State>(std::move(r),std::move(w))){}
 Stream::~Stream()=default;
-void Stream::client(const std::string& code){auto& s=*state_;need(!s.attempted);s.attempted=true;Exchange exchange(false,code);
-    s.writeRaw(hello);s.writeRaw(std::span(exchange.message).first(exchange.size));
-    std::array<uint8_t,32> response{},peer{};s.readRaw(response);need(response==hello);s.readRaw(peer);s.derive(exchange,peer,false);
-    s.writeRaw(s.proof(false));std::array<uint8_t,32> proof{};s.readRaw(proof);auto expected=s.proof(true);need(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())==0);s.ready=true;
+namespace {
+std::array<uint8_t,32> ticket_hello(const ChannelCredential& ticket){
+    std::array<uint8_t,32> header{'E','P','A','T',1,static_cast<uint8_t>(ticket.kind)};
+    auto nibble=[](char c){return c<='9'?c-'0':c-'a'+10;};
+    for(unsigned i=0;i<16;++i)header[8+i]=static_cast<uint8_t>((nibble(ticket.id[i*2])<<4)|nibble(ticket.id[i*2+1]));return header;
 }
-void Stream::server(Gate& gate){auto& s=*state_;need(!s.attempted);s.attempted=true;auto ticket=gate.begin();
+std::optional<ChannelCredential> parse_ticket_hello(const std::array<uint8_t,32>& header){
+    if(header[0]!='E'||header[1]!='P'||header[2]!='A'||header[3]!='T'||header[4]!=1||header[5]>3||header[6]||header[7]||!std::all_of(header.begin()+24,header.end(),[](uint8_t c){return c==0;}))return {};
+    ChannelCredential ticket;ticket.kind=header[5];for(unsigned i=8;i<24;++i){ticket.id+="0123456789abcdef"[header[i]>>4];ticket.id+="0123456789abcdef"[header[i]&15];}return ticket;
+}
+}
+void Stream::client(const std::string& code){auto& s=*state_;need(!s.attempted);s.attempted=true;need(validCredential(code));auto ticket=channelCredential(code);const auto header=ticket?ticket_hello(*ticket):hello;
+    Exchange exchange(false,ticket?ticket->secret:code);if(ticket)wipe(ticket->secret);
+    s.writeRaw(header);s.writeRaw(std::span(exchange.message).first(exchange.size));
+    std::array<uint8_t,32> response{},peer{};s.readRaw(response);need(response==header);s.readRaw(peer);s.derive(exchange,peer,false);
+    s.writeRaw(s.proof(false));std::array<uint8_t,32> proof{};s.readRaw(proof);auto expected=s.proof(true);need(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())==0);s.ready=true;if(ticket)s.kind=ticket->kind;
+}
+void Stream::server(Gate& gate){auto& s=*state_;need(!s.attempted);s.attempted=true;
+    std::array<uint8_t,32> request{},peer{};s.readRaw(request);auto channel=parse_ticket_hello(request);need(request==hello||channel.has_value());
+    auto ticket=channel?gate.begin_channel(channel->id,channel->kind):gate.begin();
     struct Clean {std::string& code;~Clean(){wipe(code);}} clean{ticket.code};
-    std::array<uint8_t,32> request{},peer{};s.readRaw(request);need(request==hello);s.readRaw(peer);Exchange exchange(true,ticket.code);wipe(ticket.code);
-    s.writeRaw(hello);s.writeRaw(std::span(exchange.message).first(exchange.size));s.derive(exchange,peer,true);
+    s.readRaw(peer);Exchange exchange(true,ticket.code);wipe(ticket.code);
+    s.writeRaw(request);s.writeRaw(std::span(exchange.message).first(exchange.size));s.derive(exchange,peer,true);
     std::array<uint8_t,32> proof{};s.readRaw(proof);auto expected=s.proof(false);need(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())==0);
-    gate.consume(ticket.generation);s.writeRaw(s.proof(true));s.ready=true;
+    if(channel){gate.consume_channel(channel->id,channel->kind,ticket.generation);s.kind=channel->kind;}else{gate.consume(ticket.generation);s.admitted_generation=ticket.generation;}
+    s.writeRaw(s.proof(true));s.ready=true;
 }
+std::optional<unsigned> Stream::authorized_kind()const{return state_->kind;}
+std::vector<ChannelCredential> Stream::issue_channels(Gate& gate,unsigned mask){auto& s=*state_;need(s.ready&&!s.kind&&!s.groupIssued&&s.admitted_generation);auto result=gate.issue_channels(mask,s.admitted_generation);s.groupIssued=true;return result;}
 void Stream::write(std::span<const uint8_t> bytes){auto& s=*state_;need(s.ready);struct Guard{bool& ready;bool ok=false;~Guard(){if(!ok)ready=false;}}guard{s.ready};
     while(!bytes.empty()){
         need(s.sent!=std::numeric_limits<uint64_t>::max());size_t n=std::min(bytes.size(),maxRecord);

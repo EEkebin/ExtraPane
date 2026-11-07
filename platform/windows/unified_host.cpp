@@ -7,6 +7,7 @@
 #include <dm/microphone_session.hpp>
 #include <dm/usb_session.hpp>
 #include <extrapane/session_route.hpp>
+#include <dm/group.hpp>
 #include <array>
 #include <thread>
 #include <mutex>
@@ -69,7 +70,14 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     security::TlsStream tls(std::move(socket),true,pair);Cancel cancel(tls,control.stop);
                     tls.handshake(Clock::now()+std::chrono::seconds(10));
                     std::array<std::uint8_t,extrapane::session_prefix_size> prefix{};tls.peek(prefix,Clock::now()+std::chrono::seconds(10));
-                    const auto kind=extrapane::classify_session_prefix(prefix);resource=name(kind);
+                    if(prefix==access::group_prefix){
+                        if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping");
+                        access::GroupRequest request{};tls.read(request,Clock::now()+std::chrono::seconds(5));const auto mask=access::group_mask(request);
+                        auto tickets=tls.issue_channels(mask);auto reply=access::group_reply(mask,tickets);
+                        struct Wipe {std::vector<access::ChannelCredential>& tickets;access::GroupReply& reply;~Wipe(){for(auto& item:tickets)SecureZeroMemory(item.secret.data(),item.secret.size());SecureZeroMemory(reply.data(),reply.size());}}wipe{tickets,reply};
+                        tls.write(reply,Clock::now()+std::chrono::seconds(5));resource="admission";
+                    }else{
+                    const auto kind=extrapane::classify_session_prefix(prefix);tls.require_resource(static_cast<unsigned>(kind));resource=name(kind);
                     if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping; retry after restart");
                     slot=slots.acquire(kind,control);
                     if(kind==ResourceKind::usb)control.eject_usb=control.quit.load();
@@ -83,6 +91,7 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     case ResourceKind::camera: if(!camera_lease)throw std::runtime_error(camera_busy);resources::receive_camera_admitted(tls,slot,control.stop,events);break;
                     case ResourceKind::microphone:{Lease lease(L"Local\\ExtraPane.MicrophoneServer");microphone::receive_admitted(tls,control.stop,events);break;}
                     case ResourceKind::usb: usb::receive_storage_admitted(tls,control.stop,control.eject_usb,events);break;
+                    }
                     }
                 }catch(const std::exception& error){if(!control.stop.load())report("SERVER_SESSION_ERROR kind="+resource+" "+error.what());}
                 catch(...){if(!control.stop.load())report("SERVER_SESSION_ERROR kind="+resource+" Unexpected connection failure");}
