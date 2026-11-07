@@ -1,6 +1,9 @@
 #pragma once
 #include <string_view>
 namespace extrapane::usb_uninstall {
+constexpr bool independent_service(std::wstring_view name,bool exact_owned_usb_driver) {
+    return name != L"VBoxUSB" || !exact_owned_usb_driver;
+}
 enum class MonitorAction { preserve, remove, refuse };
 constexpr MonitorAction monitor_action(bool exists, bool created, bool managed_path,
                                       bool exact_hash, bool external_consumer) {

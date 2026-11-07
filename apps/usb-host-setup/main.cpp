@@ -58,12 +58,12 @@ void no_reparse(const fs::path& path){
         auto parent=current.parent_path();if(parent==current)break;current=std::move(parent);
     }
 }
-void verify_security(const fs::path& path){
+void verify_security(const fs::path& path,bool system_driver=false){
     no_reparse(path);
     PSID owner=nullptr;PACL acl=nullptr;Local existing;
     check(GetNamedSecurityInfoW(const_cast<LPWSTR>(path.c_str()),SE_FILE_OBJECT,OWNER_SECURITY_INFORMATION|DACL_SECURITY_INFORMATION,
         &owner,nullptr,&acl,nullptr,reinterpret_cast<PSECURITY_DESCRIPTOR*>(&existing.value))==ERROR_SUCCESS,"Inspect USB host directory security failed");
-    check((IsWellKnownSid(owner,WinBuiltinAdministratorsSid)||IsWellKnownSid(owner,WinLocalSystemSid))&&acl,"USB host directory has an unexpected owner or permissions");
+    check((IsWellKnownSid(owner,WinBuiltinAdministratorsSid)||IsWellKnownSid(owner,WinLocalSystemSid)||(system_driver&&trusted_writer(owner)))&&acl,"USB host directory has an unexpected owner or permissions");
     const ACCESS_MASK writes=FILE_WRITE_DATA|FILE_APPEND_DATA|FILE_WRITE_EA|FILE_WRITE_ATTRIBUTES|FILE_DELETE_CHILD|DELETE|WRITE_DAC|WRITE_OWNER|GENERIC_WRITE|GENERIC_ALL;
     for(DWORD i=0;i<acl->AceCount;++i){
         void* raw=nullptr;check(GetAce(acl,i,&raw),"Inspect USB host directory ACL failed");const auto* header=static_cast<ACE_HEADER*>(raw);
@@ -233,9 +233,10 @@ void package_driver(const fs::path& root,HKEY ownership){
     set_string(ownership,L"StagedInf",installed);if(copied)set_string(ownership,L"CreatedInf",installed);
     if(monitor(root,true))set_string(ownership,L"CreatedMonitor",L"true");
 }
-bool external_usb_consumer(SC_HANDLE manager){
+bool external_usb_consumer(SC_HANDLE manager,bool owned_usb_driver){
     for(const auto* name:{L"usbipd",L"VBoxSup",L"VBoxDrv",L"VBoxUSB"}){
         Service service(OpenServiceW(manager,name,SERVICE_QUERY_CONFIG));
+        if(service.value&&!extrapane::usb_uninstall::independent_service(name,owned_usb_driver))continue;
         if(service.value)return true;
         check(GetLastError()==ERROR_SERVICE_DOES_NOT_EXIST,"Cannot rule out another USB driver consumer");
     }
@@ -281,7 +282,21 @@ void remove_owned_driver(const fs::path& root,HKEY ownership,bool inspect=false)
     const auto path=service.value?monitor_path(service.value):fs::path{};
     const bool managed=service.value&&(_wcsicmp(path.c_str(),(root/L"Drivers"/L"VBoxUSBMon.sys").c_str())==0||_wcsicmp(path.c_str(),(legacy_root()/L"Drivers"/L"VBoxUSBMon.sys").c_str())==0);
     bool exact=false;if(managed){verify_security(path);exact=sha256(read_file(path))==setup::files[7].digest;signed_file(path);}
-    const bool external=external_usb_consumer(manager.value);
+    // VBoxUSB is also installed by our own INF. Its existence alone does not
+    // establish an independent consumer of our monitor.
+    bool owned_usb_driver=false;
+    Service usb(OpenServiceW(manager.value,L"VBoxUSB",SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS));
+    if(usb.value&&!string_value(ownership,L"CreatedInf").empty()){
+        const auto owned_inf=removable_inf(ownership);
+        wchar_t system[MAX_PATH]{};check(GetSystemDirectoryW(system,MAX_PATH)!=0,"System directory unavailable");
+        const auto usb_path=monitor_path(usb.value);
+        const bool expected_path=_wcsicmp(usb_path.c_str(),(fs::path(system)/L"drivers"/L"VBoxUSB.sys").c_str())==0;
+        if(!owned_inf.empty()&&expected_path){
+            verify_security(usb_path,true);signed_file(usb_path);
+            owned_usb_driver=sha256(read_file(usb_path))==setup::files[6].digest;
+        }
+    }else if(!usb.value)check(GetLastError()==ERROR_SERVICE_DOES_NOT_EXIST,"Cannot inspect USB device driver ownership");
+    const bool external=external_usb_consumer(manager.value,owned_usb_driver);
     const auto action=extrapane::usb_uninstall::monitor_action(service.value!=nullptr,created==L"true",managed,exact,external);
     check(action!=extrapane::usb_uninstall::MonitorAction::refuse,"USB monitor ownership changed or another application uses it; preserved");
     const bool created_inf=!string_value(ownership,L"CreatedInf").empty();
