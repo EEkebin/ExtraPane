@@ -34,6 +34,7 @@ signals:
     void devicesChanged();
     void monitorsChanged();
     void usbEvent(QString role,QString event);
+    void displayEvent(QString role,QString event);
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

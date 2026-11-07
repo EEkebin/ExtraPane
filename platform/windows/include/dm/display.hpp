@@ -20,6 +20,7 @@ Mode current_mode(const std::wstring& source);
 Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsigned hz);
 void configure_virtual(const std::wstring& source,const Mode& mode);
 void select_layout_profile(const std::wstring& profile);
+void select_client_layout_profile(const std::wstring& peer,unsigned slot);
 void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height);
 void remember_last_mode(const std::wstring& source);
 bool restore_last_mode(const std::wstring& source);

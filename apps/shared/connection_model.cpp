@@ -47,7 +47,7 @@ bool ConnectionModel::setSharedTarget(QVariantMap target){if(!validTarget(target
 QString ConnectionModel::addConnection(QString kind){
     if(rows_.size()>=128||(kind!="display"&&kind!="camera"&&kind!="microphone"&&kind!="usb"))return {};
     Row row;row.id=QUuid::createUuid().toString(QUuid::WithoutBraces);row.kind=std::move(kind);row.target=sharedTarget_;
-    row.display={{"mode","native"},{"monitorId",""},{"width",1920},{"height",1080},{"fps",60}};
+    row.display={{"mode","custom"},{"monitorId",""},{"width",1920},{"height",1080},{"fps",60}};
     const auto id=row.id;beginInsertRows({},rowCount(),rowCount());rows_.push_back(std::move(row));endInsertRows();return id;
 }
 bool ConnectionModel::removeConnection(QString id){const auto i=find(id);if(i<0||busy(rows_[i].state))return false;beginRemoveRows({},i,i);rows_.erase(rows_.begin()+i);endRemoveRows();return true;}
@@ -60,7 +60,7 @@ bool ConnectionModel::validDisplay(const QVariantMap& mode){
     return (type=="native"||type=="custom")&&monitor.size()<=8192&&!monitor.contains(QChar(0))&&!monitor.contains('\n')&&!monitor.contains('\r')
         &&integer(mode.value("width"),2,4096)&&integer(mode.value("height"),2,4096)&&mode.value("width").toInt()%2==0&&mode.value("height").toInt()%2==0&&mode.value("width").toLongLong()*mode.value("height").toLongLong()<=8847360&&integer(mode.value("fps"),1,60);
 }
-bool ConnectionModel::setDisplayMode(QString id,QVariantMap mode){const auto i=find(id);if(i<0||rows_[i].kind!="display"||busy(rows_[i].state)||!validDisplay(mode))return false;rows_[i].display=std::move(mode);changed(i);return true;}
+bool ConnectionModel::setDisplayMode(QString id,QVariantMap mode){const auto i=find(id);if(i<0||rows_[i].kind!="display"||busy(rows_[i].state)||!validDisplay(mode))return false;if(mode.value("mode")=="custom")mode["monitorId"]=QString{};rows_[i].display=std::move(mode);changed(i);return true;}
 QVariantMap ConnectionModel::connection(QString id)const{const auto i=find(id);if(i<0)return {};QVariantMap result;const auto roles=roleNames();for(auto it=roles.begin();it!=roles.end();++it)result.insert(QString::fromLatin1(it.value()),data(index(i),it.key()));return result;}
 bool ConnectionModel::beginConnection(QString id){
     const auto i=find(id);if(i<0||busy(rows_[i].state))return false;auto& row=rows_[i];QString error;

@@ -25,7 +25,17 @@ int main(int argc,char** argv){
         return 0;
     }
     if(args.find("list-storage")!=args.npos){std::cout<<"USB_DEVICE_V1\t757362\tFake returned disk\tavailable\nUSB_LIST_DONE"<<std::endl;return 0;}
-    if(args.find("receive")!=args.npos){std::cout<<"VIDEO_RECEIVING"<<std::endl;Sleep(INFINITE);return 0;}
+    if(args.find("receive")!=args.npos){
+        auto option=[&](const std::string& name){for(int i=1;i+1<argc;++i)if(argv[i]==name)return std::string(argv[i+1]);return std::string{};};
+        if(const auto expected=std::getenv("EXTRAPANE_TEST_DISPLAY_MODE")){
+            const bool custom=std::string(expected)=="custom";
+            const bool valid=custom?(option("--monitor").empty()&&option("--width")=="1920"&&option("--height")=="1080"&&option("--fps")=="60"):
+                (option("--monitor")=="FAKE_DISPLAY_1"&&option("--width").empty()&&option("--height").empty()&&option("--fps").empty());
+            if(!valid){std::cout<<"error: invalid display launch arguments"<<std::endl;return 9;}
+        }
+        if(std::getenv("EXTRAPANE_TEST_DISPLAY_EXIT"))return 23;
+        std::cout<<"VIDEO_RECEIVING"<<std::endl;Sleep(INFINITE);return 0;
+    }
     std::string line;std::getline(std::cin,line);
     if(args.find("broker-camera")!=args.npos||args.find("broker-microphone")!=args.npos){
         const auto device=line;std::set<std::string> rows;std::cout<<"BROKER_READY"<<std::endl;

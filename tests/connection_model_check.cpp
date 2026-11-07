@@ -26,7 +26,10 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);try{
     require(model.beginConnection(usb)&&!model.beginConnection(usb2));model.setEnabled(usb,false);model.setState(usb,ConnectionModel::State::returning,"Returning");require(!model.beginConnection(usb2));
     model.setState(usb,ConnectionModel::State::recovery,"Recovery required");require(!model.removeConnection(usb)&&!model.beginConnection(usb2));
     model.setState(usb,ConnectionModel::State::idle,"Returned");require(model.beginConnection(usb2));
-    const auto display=model.addConnection("display");model.setEnabled(display,true);require(!model.beginConnection(display));
+    const auto display=model.addConnection("display");model.setEnabled(display,true);require(model.connection(display)["displayMode"].toMap()["mode"]=="custom"&&model.connection(display)["displayMode"].toMap()["monitorId"].toString().isEmpty());
+    require(model.beginConnection(display));model.setState(display,ConnectionModel::State::idle);
+    auto native=custom();native["mode"]="native";require(model.setDisplayMode(display,native)&&!model.beginConnection(display));
+    auto stale=custom();stale["monitorId"]="old-monitor";require(model.setDisplayMode(display,stale)&&model.connection(display)["displayMode"].toMap()["monitorId"].toString().isEmpty());
     require(model.setDisplayMode(display,custom())&&!model.setDisplayMode(mic,custom()));
     require(!model.setDisplayMode(display,custom(0))&&!model.setDisplayMode(display,custom(2560,1440,0)));
     require(!model.setDisplayMode(display,custom(4096,4096,60))&&!model.setDisplayMode(display,custom(2561,1440,60))&&!model.setDisplayMode(display,custom(2560,1440,61)));

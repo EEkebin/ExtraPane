@@ -9,9 +9,9 @@ USB test, and use expendable test data on the selected removable drive.
 
 Use the current installer on both PCs; custom display modes need its updated
 display driver. Start Server on the receiving PC. On Client, leave Single server
-checked and enter that server's address and port. Connect to server may be used
-with no resource selected. Add the desired resource rows, choose their sources,
-then check each row to start it. Uncheck a row to stop just that connection.
+checked and enter that server's address and port. Add the desired resource rows,
+choose their sources, then check each row to connect and start it. There is no
+separate Connect button. Uncheck a row to stop just that connection.
 Uncheck Single server to enter a separate destination for each row.
 
 During authorized device testing, verify two camera/microphone rows produce
@@ -20,8 +20,9 @@ one source across servers must also leave other recipients working. Receiving
 limits are four displays, four cameras, four microphones and one USB storage
 connection per server. USB sharing remains exclusive.
 
-Each display row opens a separate resizable window. Choose a local monitor for
-native mode and fullscreen placement, or use a custom even resolution within
+Each display row opens a separate resizable window. Custom virtual monitor mode
+requires no local monitor selection. Alternatively, choose Match local monitor
+for native mode and fullscreen placement. Custom even resolutions must remain within
 4096 pixels per dimension, 8,847,360 pixels total and 1–60 FPS. The physical
 panel's refresh rate is not changed. Check arrangement restoration, fullscreen,
 the top-center Controls handle, and the Keyboard action. Automatic keyboard
@@ -85,7 +86,8 @@ mid-cleanup. Interrupted return must retain its incomplete-write warning.
 ## Current limits
 
 The server accepts all supported resource types on the same port; there is no
-server resource selector. Clients can select resources before or after Connect. Also test Connect with nothing checked: the status should show connected without creating a monitor or capturing media.
+server resource selector. Checking a configured resource establishes its server
+connection automatically. No monitor or capture should start merely by adding a row.
 Check Display, Camera and Microphone together, choose both source devices, and
 verify that the server receives the camera/microphone while its extended desktop
 shows on the client. Uncheck one resource and confirm the others continue. Recheck it to restart; Disconnect all must clear every checkbox after USB ownership return completes. Mute the

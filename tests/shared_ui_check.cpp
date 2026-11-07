@@ -170,10 +170,14 @@ int main(int argc,char** argv){
         model.setCapability(Kind::camera,{false,"Camera unavailable"});app.processEvents();require(!model.selected(Kind::camera)&&connect->property("enabled").toBool());
         auto* window=qobject_cast<QWindow*>(root);require(window);window->resize(390,844);app.processEvents();window->resize(1120,760);app.processEvents();
         require(controller.setupRequests==0&&controller.recoveryRefreshRequests==0&&controller.ejectRequests==0&&!warnings);
-        ConnectionModel instances;instances.addConnection("display");instances.addConnection("camera");
+        ConnectionModel instances;const auto instanceDisplay=instances.addConnection("display");instances.addConnection("camera");
         QQmlPropertyMap runtime;runtime.insert("connections",QVariant::fromValue(&instances));runtime.insert("active",false);runtime.insert("status",QString("Ready"));runtime.insert("devices",QVariantMap{});runtime.insert("monitors",QVariantList{});runtime.insert("mirrorStates",QVariantMap{});
         ResourceModel repeatedModel;TestController repeated(repeatedModel);defaults(repeated,true);repeated.insert("connectionRuntime",QVariant::fromValue(&runtime));
         QQmlApplicationEngine repeatedEngine;watch(repeatedEngine);repeatedEngine.rootContext()->setContextProperty("receiver",&repeated);repeatedEngine.load(QUrl("qrc:/Main.qml"));require(!repeatedEngine.rootObjects().isEmpty());repeatedEngine.rootObjects().first()->setProperty("page",1);app.processEvents();require(!warnings);
+        auto* repeatedRoot=repeatedEngine.rootObjects().first();auto* monitorControl=named(repeatedRoot,("displayMonitor_"+instanceDisplay).toUtf8().constData());require(!monitorControl->property("visible").toBool());
+        for(auto* object:repeatedRoot->findChildren<QObject*>())require(object->property("text").toString()!="Connect to server");
+        auto monitorMode=instances.connection(instanceDisplay)["displayMode"].toMap();monitorMode["mode"]="native";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();require(monitorControl->property("visible").toBool());
+        monitorMode["mode"]="custom";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();require(!monitorControl->property("visible").toBool()&&!warnings);
         std::cout<<"Shared UI multi-resource model and offscreen shell checks passed\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

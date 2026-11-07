@@ -115,8 +115,10 @@ receiver eject, then ends the exporter and reclaims the exact source on refusal
 or timeout when local ownership checks pass. Interrupted return keeps a visible
 incomplete-write warning. Unknown ownership is not treated as freely reusable.
 
-Each display row selects a current local monitor and opens an independent
-resizable receiver window. Custom requests use even dimensions from 2 to 4096,
+Each display row opens an independent resizable receiver window. It defaults to
+a custom virtual display at 1920x1080 and 60 FPS without a local monitor selection.
+Match local monitor is an optional alternative. Checking the resource establishes
+the connection; the separate Connect button has been removed. Custom requests use even dimensions from 2 to 4096,
 at most 8,847,360 total pixels, and 1–60 target FPS. The native host still validates
 the actual requested mode. These controls do not change physical monitor refresh.
 Current Windows receiving limits are four displays, four cameras, four microphone

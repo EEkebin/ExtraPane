@@ -20,8 +20,8 @@
 
 using extrapane::windows_bridge::Child;
 namespace {
-// USB diagnostics only: bounded local history, never admission/code messages.
-void usbDiagnostic(QString role,QString event){
+// Bounded resource diagnostics, never admission/code messages.
+void usbDiagnostic(QString role,QString event,bool display=false){
     event=event.left(2048);
     event.replace(QRegularExpression("EPCT1:[^\\s]+"),"[redacted credential]");
     event.replace(QRegularExpression("(?i)(access[ _-]?code|password|credential|ticket)[ :=]+.*"),"[redacted sensitive detail]");
@@ -34,7 +34,7 @@ void usbDiagnostic(QString role,QString event){
     const auto directory=QString::fromWCharArray(local)+"/ExtraPane/logs";CoTaskMemFree(local);
 #endif
     if(!QDir().mkpath(directory))return;
-    const auto path=directory+"/usb.log";
+    const auto path=directory+(display?"/display.log":"/usb.log");
     const auto entry=(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)+" "+role+" "+event+"\n").toUtf8();
     constexpr qint64 limit=256*1024;
     if(QFileInfo(path).size()+entry.size()>limit){QFile::remove(path+".1");if(!QFile::rename(path,path+".1"))return;}
@@ -60,6 +60,7 @@ WindowsController::WindowsController(QObject* parent,bool rememberAddress):QObje
     connectionRuntime_=std::make_unique<WindowsConnectionRuntime>();
     connect(connectionRuntime_.get(),&WindowsConnectionRuntime::changed,this,&WindowsController::changed);
     connect(connectionRuntime_.get(),&WindowsConnectionRuntime::usbEvent,this,[](QString role,QString event){usbDiagnostic(role,event);});
+    connect(connectionRuntime_.get(),&WindowsConnectionRuntime::displayEvent,this,[](QString role,QString event){usbDiagnostic(role,event,true);});
     usbDiagnostic("app","CONTROLLER_STARTED");
     const auto dir=QCoreApplication::applicationDirPath();
     if(!QFileInfo::exists(dir+"/dm-view.exe"))unavailable_="The native display engine is missing from this installation.";
@@ -397,6 +398,7 @@ void WindowsController::poll(){
         while(pending.contains('\n')){
             auto at=pending.indexOf('\n');auto line=pending.left(at).trimmed();pending.remove(0,at+1);
             if(line.startsWith("USB_")||(!host&&index==3&&line.startsWith("error:")))usbDiagnostic(host?"server":"client",line);
+            if((host&&(line.contains("kind=display")||line.startsWith("CLIENT_MODE")||line.startsWith("CAPTURE_SOURCE")||line.startsWith("VIDEO_")))||(!host&&index==0&&(line.startsWith("error:")||line.startsWith("VIDEO_")||line.startsWith("CLIENT_DISPLAY"))))usbDiagnostic(host?"server":"client",line,true);
             if(line.startsWith("ACCESS_CODE ")){
                 auto digits=line.mid(12);
                 if(host&&digits.size()==6&&std::all_of(digits.begin(),digits.end(),[](QChar c){return c>='0'&&c<='9';})){

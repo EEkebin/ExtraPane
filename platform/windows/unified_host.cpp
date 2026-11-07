@@ -105,7 +105,7 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     report("SERVER_RESOURCE_STARTING kind="+resource+" slot="+std::to_string(slot)+" peer="+peer);
                     switch(kind){
                     case ResourceKind::display:{
-                        const auto ip=peer.substr(0,peer.find(':'));display::select_layout_profile(std::wstring(ip.begin(),ip.end())+L"-slot-"+std::to_wstring(slot));
+                        const auto ip=peer.substr(0,peer.find(':'));display::select_client_layout_profile(std::wstring(ip.begin(),ip.end()),slot);
                         video::host_video(options,pair,frames,60,video::wire::Codec::h264,L"",true,allow_input,1280,720,true,true,{},nullptr,nullptr,slot,&tls);break;
                     }
                     case ResourceKind::camera: if(!camera_lease)throw std::runtime_error(camera_busy);resources::receive_camera_admitted(tls,slot,control.stop,events);break;

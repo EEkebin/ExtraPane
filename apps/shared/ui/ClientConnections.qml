@@ -38,7 +38,7 @@ ScrollView {
         width: panel.availableWidth
         spacing: 12
         CheckBox { text: "Single server"; checked: panel.runtime.connections.singleServer; onClicked: panel.runtime.connections.singleServer = checked }
-        Label { text: "Active connections keep their destination until stopped and reconnected."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
+        Label { text: "Choose resources and enable their checkboxes to connect. Active connections keep their destination until stopped and reconnected."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
         DestinationFields {
             id: shared
             visible: panel.runtime.connections.singleServer
@@ -48,7 +48,6 @@ ScrollView {
             commit: value => panel.runtime.connections.setSharedTarget(value)
         }
         RowLayout {
-            Button { visible: panel.runtime.connections.singleServer; text: "Connect to server"; onClicked: { if (!shared.save()) return; panel.runtime.connectShared(shared.accessCode); shared.accessCode = "" } }
             Button { text: "Disconnect all"; enabled: panel.runtime.active; onClicked: panel.runtime.disconnectAll() }
         }
         Flow {
@@ -108,11 +107,11 @@ ScrollView {
                     }
                     ColumnLayout {
                         visible: row.resourceKind === "display"; enabled: !row.busy; Layout.fillWidth: true
-                        function saveDisplay() { row.displayOptionsValid = panel.runtime.connections.setDisplayMode(row.connectionId, {mode: custom.checked ? "custom" : "native", monitorId: monitor.currentValue || "", width: widthSpin.value, height: heightSpin.value, fps: fpsSpin.value}) }
-                        ComboBox { id: monitor; Layout.fillWidth: true; model: panel.runtime.monitors; textRole: "label"; valueRole: "id"; currentIndex: model.findIndex(item => item.id === row.displayMode.monitorId); displayText: currentIndex < 0 ? "Choose a local monitor" : currentText; onActivated: parent.saveDisplay(); Connections { target: monitor.popup; function onOpened() { panel.runtime.refreshMonitors() } } }
-                        CheckBox { id: custom; text: "Custom stream resolution and frame rate"; checked: row.displayMode.mode === "custom"; onClicked: parent.saveDisplay() }
+                        function saveDisplay() { row.displayOptionsValid = panel.runtime.connections.setDisplayMode(row.connectionId, {mode: displayChoice.currentIndex === 0 ? "custom" : "native", monitorId: displayChoice.currentIndex === 1 ? (monitor.currentValue || "") : "", width: widthSpin.value, height: heightSpin.value, fps: fpsSpin.value}) }
+                        ComboBox { id: displayChoice; objectName: "displayModeChoice_" + row.connectionId; Layout.fillWidth: true; model: ["Custom resolution and frame rate", "Match local monitor"]; currentIndex: row.displayMode.mode === "native" ? 1 : 0; onActivated: parent.saveDisplay() }
+                        ComboBox { id: monitor; objectName: "displayMonitor_" + row.connectionId; visible: displayChoice.currentIndex === 1; Layout.fillWidth: true; model: panel.runtime.monitors; textRole: "label"; valueRole: "id"; currentIndex: model.findIndex(item => item.id === row.displayMode.monitorId); displayText: currentIndex < 0 ? "Choose a local monitor" : currentText; onActivated: parent.saveDisplay(); Connections { target: monitor.popup; function onOpened() { panel.runtime.refreshMonitors() } } }
                         RowLayout {
-                            visible: custom.checked
+                            visible: displayChoice.currentIndex === 0
                             SpinBox { id: widthSpin; from: 2; to: 4096; stepSize: 2; value: row.displayMode.width; editable: true; onValueModified: parent.parent.saveDisplay() }
                             Label { text: "×" }
                             SpinBox { id: heightSpin; from: 2; to: 4096; stepSize: 2; value: row.displayMode.height; editable: true; onValueModified: parent.parent.saveDisplay() }

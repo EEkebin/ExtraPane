@@ -76,10 +76,11 @@ void WindowsConnectionRuntime::toggle(QString id,bool enabled,QString code,bool 
     if(model_.connection(id).isEmpty())return;
     model_.setEnabled(id,enabled);if(!enabled){stop(id);return;}
     if(model_.connection(id)["busy"].toBool())return;
-    if(!model_.beginConnection(id))return;
+    if(!model_.beginConnection(id)){model_.setEnabled(id,false);emit changed();return;}
     auto& row=impl_->rows[id];if(!row)row=std::make_unique<Impl::Row>();
     const auto config=model_.connection(id);row->kind=config["resourceKind"].toString();row->input=input;row->pending.clear();row->returnedStatus.clear();row->failed=false;row->recovery=false;row->returned=false;row->stopping=false;
     row->broker=broker(config["effectiveTarget"].toMap(),std::move(code));if(row->broker.isEmpty()){model_.setEnabled(id,false);model_.setState(id,State::failed,status_);return;}
+    if(row->kind=="display")emit displayEvent("client","DISPLAY_ADMISSION_QUEUED row="+id);
     impl_->brokers[row->broker]->queue.push_back(id);advance(row->broker);emit changed();
 }
 void WindowsConnectionRuntime::advance(QString key){
@@ -110,7 +111,8 @@ void WindowsConnectionRuntime::launch(QString id,QByteArray credential){
         if(row.kind=="display"){
             auto renderer=QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).value("Renderer","d3d11").toString();if(renderer!="d3d11"&&renderer!="d3d12"&&renderer!="vulkan"&&renderer!="opengl")renderer="d3d11";
             args={L"receive",L"--lan",L"--renderer",renderer.toStdWString()};if(row.input)args.push_back(L"--control");const auto mode=config["displayMode"].toMap();
-            if(!mode["monitorId"].toString().isEmpty())args.insert(args.end(),{L"--monitor",mode["monitorId"].toString().toStdWString()});
+            if(mode["mode"]=="native"&&!mode["monitorId"].toString().isEmpty())args.insert(args.end(),{L"--monitor",mode["monitorId"].toString().toStdWString()});
+            emit displayEvent("client","DISPLAY_LAUNCH row="+id+" mode="+mode["mode"].toString()+" width="+mode["width"].toString()+" height="+mode["height"].toString()+" fps="+mode["fps"].toString());
             if(mode["mode"]=="custom")args.insert(args.end(),{L"--width",mode["width"].toString().toStdWString(),L"--height",mode["height"].toString().toStdWString(),L"--fps",mode["fps"].toString().toStdWString()});
         }else args={row.kind=="camera"?L"send-camera":row.kind=="microphone"?L"send-microphone":L"send-usb",L"--device-stdin"};
         args.insert(args.end(),{L"--bind",target["localAddress"].toString()=="0.0.0.0"?L"auto":target["localAddress"].toString().toStdWString(),L"--peer",target["address"].toString().toStdWString(),L"--port",target["port"].toString().toStdWString()});
@@ -124,7 +126,7 @@ void WindowsConnectionRuntime::launch(QString id,QByteArray credential){
         if(!credential.isEmpty())row.child.send_control(credential.toStdString()+"\n");
         if(row.kind=="camera")row.child.send_control(row.mirror?"MIRROR 1\n":"MIRROR 0\n");
         model_.setState(id,State::connecting,"Connecting...");
-    }catch(const std::exception& error){row.failed=true;if(row.sharedActive){try{impl_->sources.at(row.sharedSource)->child.send_control("REMOVE\t"+id.toStdString()+"\n");}catch(...){}row.sharedActive=false;}row.child.stop();model_.setEnabled(id,false);model_.setState(id,State::failed,QString::fromUtf8(error.what()));auto& b=*impl_->brokers[row.broker];b.inflight.clear();advance(row.broker);}
+    }catch(const std::exception& error){if(row.kind=="display")emit displayEvent("client","DISPLAY_LAUNCH_FAILED row="+id+" "+QString::fromUtf8(error.what()));row.failed=true;if(row.sharedActive){try{impl_->sources.at(row.sharedSource)->child.send_control("REMOVE\t"+id.toStdString()+"\n");}catch(...){}row.sharedActive=false;}row.child.stop();model_.setEnabled(id,false);model_.setState(id,State::failed,QString::fromUtf8(error.what()));auto& b=*impl_->brokers[row.broker];b.inflight.clear();advance(row.broker);}
     credential.fill('\0');emit changed();
 }
 void WindowsConnectionRuntime::stop(QString id,bool forced){
@@ -175,6 +177,7 @@ void WindowsConnectionRuntime::poll(){
         while(row.pending.contains('\n')){
             const auto at=row.pending.indexOf('\n');const auto line=row.pending.left(at).trimmed();row.pending.remove(0,at+1);
             if(row.kind=="usb"&&(line.startsWith("USB_")||line.startsWith("error:")))emit usbEvent("client",line);
+            if(row.kind=="display"&&(line.startsWith("VIDEO_")||line.startsWith("DISPLAY_")||line.startsWith("error:")))emit displayEvent("client","row="+id+" "+line.left(2048));
             auto& b=*impl_->brokers[row.broker];
             const bool consumed=line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("USB_WAITING")||line.startsWith("USB_STARTED");
             if(consumed){if(!row.stopping)model_.setState(id,State::active,line.startsWith("USB_WAITING")?"Waiting for USB storage on the server...":"Connected");if(b.inflight==id){b.inflight.clear();advance(row.broker);}}
@@ -188,7 +191,9 @@ void WindowsConnectionRuntime::poll(){
             }
         }
         if(row.pending.size()>16384)row.pending.clear();
-        if(row.ended||(row.child.process&&WaitForSingleObject(row.child.process,0)==WAIT_OBJECT_0)){row.child.stop();row.sharedActive=false;row.ended=false;const auto detail=model_.connection(id)["status"].toString();const bool restart=row.stopping&&model_.connection(id)["connectionEnabled"].toBool();row.stopping=false;
+        if(row.ended||(row.child.process&&WaitForSingleObject(row.child.process,0)==WAIT_OBJECT_0)){
+            if(row.kind=="display"&&row.child.process){DWORD code=0;const bool known=GetExitCodeProcess(row.child.process,&code)!=FALSE;const auto detail="Display engine exited (code "+(known?QString::number(code):QString("unknown"))+").";emit displayEvent("client","row="+id+" "+detail);if(!row.stopping&&!row.failed){row.failed=true;model_.setState(id,State::returning,detail);}}
+            row.child.stop();row.sharedActive=false;row.ended=false;const auto detail=model_.connection(id)["status"].toString();const bool restart=row.stopping&&model_.connection(id)["connectionEnabled"].toBool();row.stopping=false;
             model_.setState(id,row.recovery?State::recovery:row.failed?State::failed:State::idle,row.returned?row.returnedStatus:row.failed||row.recovery?detail:QString{});
             if(!restart)model_.setEnabled(id,false);
             auto& b=*impl_->brokers[row.broker];if(b.inflight==id){b.inflight.clear();advance(row.broker);}closeIfIdle(row.broker);

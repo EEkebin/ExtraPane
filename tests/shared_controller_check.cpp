@@ -135,6 +135,16 @@ int main(int argc,char** argv){
         until([&]{return !controller.active();});
         require(!running(model,3)&&!model->selected(Kind::usb)&&status(model,3).contains("check files for incomplete writes"));
         qunsetenv("EXTRAPANE_TEST_USB_INTERRUPTED");
+        const auto customDisplay=connections->addConnection("display");
+        auto customMode=connections->connection(customDisplay)["displayMode"].toMap();customMode["monitorId"]="STALE_DISPLAY";
+        require(connections->setDisplayMode(customDisplay,customMode));qputenv("EXTRAPANE_TEST_DISPLAY_MODE","custom");runtime->toggle(customDisplay,true);
+        until([&]{return connections->connection(customDisplay)["phase"]=="active";});runtime->disconnectAll();until([&]{return !runtime->active();});
+        auto nativeMode=customMode;nativeMode["mode"]="native";nativeMode["monitorId"]="FAKE_DISPLAY_1";require(connections->setDisplayMode(customDisplay,nativeMode));
+        qputenv("EXTRAPANE_TEST_DISPLAY_MODE","native");runtime->toggle(customDisplay,true);until([&]{return connections->connection(customDisplay)["phase"]=="active";});runtime->disconnectAll();until([&]{return !runtime->active();});
+        nativeMode["monitorId"]="";require(connections->setDisplayMode(customDisplay,nativeMode));runtime->toggle(customDisplay,true);require(!connections->connection(customDisplay)["connectionEnabled"].toBool()&&!runtime->active());
+        qputenv("EXTRAPANE_TEST_DISPLAY_MODE","custom");qputenv("EXTRAPANE_TEST_DISPLAY_EXIT","1");require(connections->setDisplayMode(customDisplay,customMode));runtime->toggle(customDisplay,true);
+        until([&]{return connections->connection(customDisplay)["phase"]=="failed";});require(connections->connection(customDisplay)["status"].toString().contains("23")&&!connections->connection(customDisplay)["connectionEnabled"].toBool());
+        runtime->disconnectAll();until([&]{return !runtime->active();});qunsetenv("EXTRAPANE_TEST_DISPLAY_MODE");qunsetenv("EXTRAPANE_TEST_DISPLAY_EXIT");
         std::cout<<"Persistent Windows controller fake-child lifecycle checks passed\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
 }

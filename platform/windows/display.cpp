@@ -126,6 +126,10 @@ void select_layout_profile(const std::wstring& profile) {
     if(profile.find_first_not_of(L"0123456789.-")!=std::wstring::npos)throw std::invalid_argument("Invalid layout profile");
     layout_name=profile.empty()?L"Layout":L"Layout-"+profile;
 }
+void select_client_layout_profile(const std::wstring& peer,unsigned slot) {
+    if(peer.empty()||slot<1||slot>4)throw std::invalid_argument("Invalid client display layout slot");
+    select_layout_profile(peer+L"-"+std::to_wstring(slot));
+}
 void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height) {
     const auto mode=current_mode(source);
     const DWORD data[]{1,profile_width,profile_height,mode.width,mode.height,mode.hz,mode.rotation,static_cast<DWORD>(mode.x),static_cast<DWORD>(mode.y)};
