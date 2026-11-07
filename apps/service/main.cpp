@@ -21,9 +21,9 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
         firewall(true,port,require_code,bind);rule=true;
         std::vector<std::wstring> args{L"host",L"--lan",L"--bind",bind,L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--allow-screen",L"--extend",L"--serve",L"--keep-layout",L"--client-mode",L"--frames",debug?L"3600":L"0",L"--timeout-ms",L"0"};if(input)args.push_back(L"--allow-input");
         args.insert(args.end(),{L"--port",std::to_wstring(port)});if(require_code)args.push_back(L"--require-code");
-        engine.start((directory()/L"dm-view.exe").wstring(),args);
+        engine.start((directory()/L"dm-view.exe").wstring(),args,true);
         while(WaitForSingleObject(parent,25)==WAIT_TIMEOUT){
-            DWORD available=0;if(!PeekNamedPipe(pipe,nullptr,0,nullptr,&available,nullptr))break;if(available){char command=0;DWORD count=0;if(!ReadFile(pipe,&command,1,&count,nullptr)||count!=1||command=='Q')break;if(command=='G'&&require_code)engine.send_control("G\n");else break;}
+            DWORD available=0;if(!PeekNamedPipe(pipe,nullptr,0,nullptr,&available,nullptr))break;if(available){char command=0;DWORD count=0;if(!ReadFile(pipe,&command,1,&count,nullptr)||count!=1)break;if(command=='Q')engine.send_control("Q\n");else if(command=='E')engine.send_control("E\n");else if(command=='G'&&require_code)engine.send_control("G\n");else break;}
             auto output=engine.drain();if(!output.empty()&&!report(output))break;
             if(WaitForSingleObject(engine.process,0)==WAIT_OBJECT_0){report(engine.drain());break;}
         }

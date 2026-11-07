@@ -133,8 +133,8 @@ private:
     }
 };
 struct Admitted final:Listener {Availability start()override{return {true,{}};}void stop()noexcept override{}};
-void receive(net::TcpStream socket,std::atomic_bool& stop,const Report& report){
-    security::TlsStream tls(std::move(socket),true,"");Cancellation cancellation(tls,stop);tls.handshake(Clock::now()+std::chrono::seconds(10));
+void receive_payload(security::TlsStream& tls,std::atomic_bool& stop,const Report& report){
+    Cancellation cancellation(tls,stop);
     Transport transport(tls,stop);microphone_wire::OfferBytes offer{};transport.read(offer);const auto binding=microphone_wire::decode_offer(offer);
     Server server(1);need(server.start(std::make_unique<Admitted>()).available&&server.admit(1).available,"Allocate microphone session failed");
     auto caps=unavailable_capabilities();caps[2].destination={true,{}};Endpoint* endpoint=nullptr;
@@ -146,6 +146,7 @@ void receive(net::TcpStream socket,std::atomic_bool& stop,const Report& report){
     while(!stop){auto frame=frames.receive();endpoint->pcm(frame);}
 }
 }
+void receive_admitted(security::TlsStream& tls,std::atomic_bool& stop,const Report& report){receive_payload(tls,stop,report);}
 void serve(const net::Options& requested,std::atomic_bool& stop,const Report& report){
     need(report&& !requested.bind_address.empty()&&requested.port,"Microphone server requires interface, port and status sink");
     Handle lease(CreateMutexW(nullptr,FALSE,L"Local\\ExtraPane.MicrophoneServer"));need(lease.valid(),"Create microphone server lease failed");
@@ -155,7 +156,7 @@ void serve(const net::Options& requested,std::atomic_bool& stop,const Report& re
     // One attached microphone in this first slice. Disconnect releases its
     // endpoint but leaves the listener available for the next connection.
     while(!stop){try{
-        auto socket=listener.accept();try{receive(std::move(socket),stop,report);}catch(const std::exception& error){if(!stop)report(std::string("MICROPHONE_SESSION_ERROR ")+error.what());}
+        auto socket=listener.accept();try{security::TlsStream tls(std::move(socket),true,"");Cancellation cancellation(tls,stop);tls.handshake(Clock::now()+std::chrono::seconds(10));receive_payload(tls,stop,report);}catch(const std::exception& error){if(!stop)report(std::string("MICROPHONE_SESSION_ERROR ")+error.what());}
         report("MICROPHONE_DISCONNECTED receiving");
     }catch(const std::runtime_error& error){if(std::string_view(error.what())!="Accept timed out")throw;}}
 }

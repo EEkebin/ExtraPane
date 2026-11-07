@@ -63,10 +63,8 @@ struct Channels {
     void read(std::span<std::uint8_t> bytes){check_stop(stop);tls.read(bytes,Clock::now()+std::chrono::seconds(5));}
     void write(std::span<const std::uint8_t> bytes){check_stop(stop);tls.write(bytes,Clock::now()+std::chrono::seconds(5));}
 };
-void receive_peer(net::TcpStream socket,unsigned slot,std::atomic_bool& stop,const Report& report){
-    Com com;security::TlsStream tls(std::move(socket),true,"");
-    Cancellation cancellation(tls,stop);
-    tls.handshake(Clock::now()+std::chrono::seconds(10));check_stop(stop);
+void receive_admitted(security::TlsStream& tls,unsigned slot,std::atomic_bool& stop,const Report& report){
+    Com com;Cancellation cancellation(tls,stop);check_stop(stop);
     Channels transport(tls,stop);camera_wire::OfferBytes bytes{};transport.read(bytes);
     const auto offer=camera_wire::decode(bytes);camera::Format format{offer.width,offer.height,offer.fps};
     // This local coordinator owns exactly this admitted TLS connection. Each
@@ -95,6 +93,7 @@ void receive_peer(net::TcpStream socket,unsigned slot,std::atomic_bool& stop,con
     server.disconnect(1);
 }
 }
+void receive_camera_admitted(security::TlsStream& tls,unsigned slot,std::atomic_bool& stop,const Report& report){receive_admitted(tls,slot,stop,report);}
 void serve_camera(const net::Options& requested,std::atomic_bool& stop,const Report& sink){
     if(!sink||requested.bind_address.empty()||!requested.port)throw std::invalid_argument("Camera server needs an interface, port and status sink");
     // Local namespace intentionally covers one Windows interactive session.
@@ -116,7 +115,7 @@ void serve_camera(const net::Options& requested,std::atomic_bool& stop,const Rep
             if(!available){report("CAMERA_SESSION_ERROR Camera connection limit reached");continue;}
             if(available->thread.joinable())available->thread.join();available->done=false;
             try{available->thread=std::thread([&,available,slot,socket=std::move(socket)]()mutable{
-                try{receive_peer(std::move(socket),slot,stop,report);}
+                try{security::TlsStream tls(std::move(socket),true,"");Cancellation cancellation(tls,stop);tls.handshake(Clock::now()+std::chrono::seconds(10));receive_admitted(tls,slot,stop,report);}
                 catch(const std::exception& error){if(!stop)report("CAMERA_SESSION_ERROR slot="+std::to_string(slot)+" "+error.what());}
                 catch(...){if(!stop)report("CAMERA_SESSION_ERROR slot="+std::to_string(slot)+" Camera session failed");}
                 report("CAMERA_DISCONNECTED slot="+std::to_string(slot));available->done=true;

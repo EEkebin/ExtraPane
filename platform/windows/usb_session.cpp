@@ -90,14 +90,11 @@ void send_storage(const net::Options& options,const std::string& id,std::atomic_
     }catch(...){transfer.transport_lost();report("USB_RECOVERY_REQUIRED source remains quarantined after connection loss");throw;}
     if(!clean_eject)report("USB_RECOVERY_REQUIRED source remains quarantined");
 }
-void receive_storage(const net::Options& options,std::atomic_bool& stop,std::atomic_bool& eject,const Report& report){
-    Com com;check(IsUserAnAdmin(),"USB receiver requires explicit elevation");auto runner=native_import_runner();auto readiness=runner->ready();check(readiness.available,readiness.reason.c_str());net::TcpListener listener(options);report("LISTENING "+listener.endpoints());
-    std::unique_ptr<net::TcpStream> socket;while(!stop.load()){try{socket=std::make_unique<net::TcpStream>(listener.accept());break;}catch(const std::exception& e){if(stop.load())return;if(std::string(e.what())!="Accept timed out")throw;}}
-    if(!socket)return;
-    try{
+void receive_storage_admitted(security::TlsStream& remote,std::atomic_bool& stop,std::atomic_bool& eject,const Report& report){
+    Com com;check(IsUserAnAdmin(),"USB receiver requires explicit elevation");auto runner=native_import_runner();auto readiness=runner->ready();check(readiness.available,readiness.reason.c_str());
     std::atomic_bool session_stop=false;
     std::jthread parent_cancel([&](std::stop_token token){while(!token.stop_requested()&&!session_stop.load()&&!stop.load())std::this_thread::sleep_for(std::chrono::milliseconds(25));if(stop.load())session_stop=true;});
-security::TlsStream remote(std::move(*socket),true,"");Cancellation cancellation(remote,session_stop);remote.handshake(Clock::now()+std::chrono::seconds(15));expect(remote,0);remote.write(control(2),Clock::now()+std::chrono::seconds(5));std::array<std::uint8_t,64> packet{};remote.read(packet,Clock::now()+std::chrono::seconds(30));const auto offer=decode(packet);
+Cancellation cancellation(remote,session_stop);expect(remote,0);remote.write(control(2),Clock::now()+std::chrono::seconds(5));std::array<std::uint8_t,64> packet{};remote.read(packet,Clock::now()+std::chrono::seconds(30));const auto offer=decode(packet);
     net::Options loopback{"127.0.0.1","",0,std::chrono::milliseconds(250)};net::TcpListener local_listener(loopback);const auto local_port=endpoint_port(local_listener.endpoints());const auto serial=virtual_serial();remote.write(control(3),Clock::now()+std::chrono::seconds(5));
     std::atomic_bool clean_eject=false,in_eject=false;std::atomic_uint owned_port=0;
     std::jthread importer([&](std::stop_token token){try{Com worker_com;const auto port=runner->attach(local_port,offer.bus,serial);owned_port=port;report("USB_STARTED receiving");while(!token.stop_requested()&&!session_stop.load()){
@@ -110,7 +107,12 @@ security::TlsStream remote(std::move(*socket),true,"");Cancellation cancellation
         else report("USB_DISCONNECTED no clean eject receipt; source recovery required");
     }catch(...){session_stop=true;throw;}
     importer.request_stop();
-    }catch(const std::exception& error){if(!stop.load())report("USB_SESSION_ERROR "+std::string(error.what()));}
-
+}
+void receive_storage(const net::Options& options,std::atomic_bool& stop,std::atomic_bool& eject,const Report& report){
+    Com com;check(IsUserAnAdmin(),"USB receiver requires explicit elevation");auto runner=native_import_runner();auto readiness=runner->ready();check(readiness.available,readiness.reason.c_str());net::TcpListener listener(options);report("LISTENING "+listener.endpoints());
+    std::unique_ptr<net::TcpStream> socket;while(!stop.load()){try{socket=std::make_unique<net::TcpStream>(listener.accept());break;}catch(const std::exception& e){if(stop.load())return;if(std::string(e.what())!="Accept timed out")throw;}}
+    if(!socket)return;
+    try{security::TlsStream remote(std::move(*socket),true,"");Cancellation cancellation(remote,stop);remote.handshake(Clock::now()+std::chrono::seconds(15));receive_storage_admitted(remote,stop,eject,report);}
+    catch(const std::exception& error){if(!stop.load())report("USB_SESSION_ERROR "+std::string(error.what()));}
 }
 }

@@ -22,16 +22,20 @@ std::mutex display_lifecycle;
 using Clock = std::chrono::steady_clock;
 auto deadline() { return Clock::now() + std::chrono::seconds(5); }
 }
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::function<std::wstring(bool&)>& acquire_monitor,bool* listener_ready,net::TcpStream* accepted,unsigned monitor_slot) {
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::function<std::wstring(bool&)>& acquire_monitor,bool* listener_ready,net::TcpStream* accepted,unsigned monitor_slot,security::TlsStream* admitted) {
     if(allow_input && !extend && source.empty())throw std::invalid_argument("Input requires an explicit --display target or --extend");
     if((extend || !source.empty()) && codec!=wire::Codec::h264) throw std::invalid_argument("Selected/extended display requires H264");
     if(extend && !source.empty()) throw std::invalid_argument("Choose --extend or --display, not both");
     (void)wire::encode_offer({width,height,fps,frames,codec});
     // Authenticate before opening the capture API. Explicit CLI consent is checked by the caller.
     if(!pair.empty()){auto key = security::load_pairing(pair);SecureZeroMemory(key.data(), key.size());}
-    auto socket = accepted?std::move(*accepted):net::accept_stream(options, [&](const std::string& local) { if(listener_ready)*listener_ready=true;std::osyncstream(std::cout) << "LISTENING " << local << " TLS-video-test" << std::endl; });
-    security::TlsStream stream(std::move(socket), true, pair);
-    stream.handshake(deadline());
+    std::unique_ptr<security::TlsStream> owned_stream;
+    if(!admitted){
+        auto socket = accepted?std::move(*accepted):net::accept_stream(options, [&](const std::string& local) { if(listener_ready)*listener_ready=true;std::osyncstream(std::cout) << "LISTENING " << local << " TLS-video-test" << std::endl; });
+        owned_stream=std::make_unique<security::TlsStream>(std::move(socket),true,pair);
+        owned_stream->handshake(deadline());admitted=owned_stream.get();
+    }
+    auto& stream=*admitted;
     std::array<std::uint8_t, wire::request.size()> request{};
     stream.read(request, deadline());
     const auto preference=wire::take_client_display(request);

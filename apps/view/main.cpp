@@ -1,4 +1,5 @@
 #include <dm/tls.hpp>
+#include <dm/unified_host.hpp>
 #include <syncstream>
 #include <windows.h>
 #include <thread>
@@ -15,6 +16,7 @@
 #include <string_view>
 
 namespace {
+dm::host::Control unified_control;
 unsigned number(const std::string& text, unsigned maximum,bool allow_zero=false) {
     unsigned result = 0;
     const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), result);
@@ -90,16 +92,22 @@ int main(int argc, char** argv) {
             const auto pid=number(args.at("--parent-pid"),0xffffffffu);
             const auto parent=OpenProcess(SYNCHRONIZE,FALSE,pid);
             if(!parent)throw std::runtime_error("Launcher process is unavailable");
-            std::thread([parent]{WaitForSingleObject(parent,INFINITE);CloseHandle(parent);TerminateProcess(GetCurrentProcess(),0);}).detach();
+            std::thread([parent,unified=(command=="host"&&serve)]{WaitForSingleObject(parent,INFINITE);CloseHandle(parent);if(unified){unified_control.stop=true;Sleep(15000);}TerminateProcess(GetCurrentProcess(),0);}).detach();
         }
         if((require_code || access_stdin) && !automatic_lan)throw std::invalid_argument("Access codes require product LAN mode");
+        std::shared_ptr<dm::access::Gate> server_gate;
         if(require_code){
             if(command!="host")throw std::invalid_argument("Only hosts generate codes");
-            auto gate=dm::security::enable_access_host();
+            auto gate=dm::security::enable_access_host();server_gate=gate;
             auto generate=[gate]{std::osyncstream(std::cout)<<"ACCESS_CODE "<<gate->generate()<<std::endl;};generate();
             std::thread([gate]{auto previous=dm::access::Gate::Status::active;for(;;){Sleep(500);auto current=gate->status();if(current!=previous){previous=current;if(current!=dm::access::Gate::Status::active)std::osyncstream(std::cout)<<"ACCESS_STATUS "<<(current==dm::access::Gate::Status::used?"used":current==dm::access::Gate::Status::expired?"expired":"exhausted")<<std::endl;}}}).detach();
-            std::thread([generate]{std::string line;while(std::getline(std::cin,line)){if(line=="G")generate();}}).detach();
+            if(!serve)std::thread([generate]{std::string line;while(std::getline(std::cin,line)){if(line=="G")generate();}}).detach();
         }
+        if(command=="host"&&serve){std::thread([gate=server_gate]{std::string line;while(std::getline(std::cin,line)){
+            if(line=="Q")unified_control.quit=true;
+            else if(line=="E")unified_control.eject_usb=true;
+            else if(line=="G"&&gate)std::osyncstream(std::cout)<<"ACCESS_CODE "<<gate->generate()<<std::endl;
+        }unified_control.stop=true;}).detach();}
         if(access_stdin){if(command!="receive")throw std::invalid_argument("Client access input only");std::string code;std::getline(std::cin,code);dm::security::set_access_client(code);SecureZeroMemory(code.data(),code.size());}
         dm::net::Options options;
         options.bind_address = args.at("--bind"); options.port = 43824; options.timeout = std::chrono::milliseconds(15000);
@@ -121,7 +129,7 @@ int main(int argc, char** argv) {
                 if(text.empty() || text.size()>32) throw std::invalid_argument("Invalid GDI display name");
                 for(const unsigned char c:text) { if(c>127) throw std::invalid_argument("Display name must be ASCII");source.push_back(c); }
             }
-            if(serve){if(!extend || !source.empty() || codec!=dm::video::wire::Codec::h264)throw std::invalid_argument("--serve requires H264 extension");dm::video::serve_video(options,args.at("--name"),allow_input,frames);}
+            if(serve){if(!extend || !source.empty() || codec!=dm::video::wire::Codec::h264)throw std::invalid_argument("--serve requires H264 extension");dm::host::serve(options,args.at("--name"),allow_input,frames,unified_control);}
             else dm::video::host_video(options,args.at("--name"),frames,fps,codec,source,extend,allow_input,args.contains("--width")?number(args.at("--width"),4096):1280,args.contains("--height")?number(args.at("--height"),4096):720,keep_layout,client_mode);
         } else {
             if (allow || allow_input || serve || extend || keep_layout || client_mode || ((control || fullscreen) && headless) || args.contains("--width") || args.contains("--height") || args.contains("--display") || args.contains("--frames") || args.contains("--fps") || args.contains("--codec") || !args.contains("--peer")) throw std::invalid_argument("Unsupported receiver options or missing --peer");
