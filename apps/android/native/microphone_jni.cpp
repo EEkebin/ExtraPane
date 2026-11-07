@@ -34,8 +34,8 @@ extern "C" JNIEXPORT void JNICALL Java_io_github_eekebin_extrapane_MicrophonePro
     if(h.operation==extrapane::wire::Operation::reject)throw std::runtime_error("Server could not start its microphone endpoint; check the server status");
     if(h.operation!=extrapane::wire::Operation::grant||!body.empty())throw std::invalid_argument("Microphone request was not granted");
 }catch(const std::exception& e){fail(env,e);}}
-extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_eekebin_extrapane_MicrophoneProtocol_frameHeader(JNIEnv* env,jclass,jlong resource,jlong generation,jlong sequence,jlong position,jboolean muted){try{
+extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_eekebin_extrapane_MicrophoneProtocol_frameHeader(JNIEnv* env,jclass,jlong resource,jlong generation,jlong sequence,jlong position,jboolean muted,jboolean discontinuity){try{
     if(resource<=0||generation<=0||sequence<0||position<0)throw std::invalid_argument("Invalid microphone frame");
     extrapane::microphone_wire::Frame frame;frame.binding={static_cast<std::uint64_t>(resource),static_cast<std::uint64_t>(generation)};
-    frame.sequence=static_cast<std::uint64_t>(sequence);frame.position=static_cast<std::uint64_t>(position);frame.muted=muted;return output(env,extrapane::microphone_wire::encode_header(frame));
+    frame.sequence=static_cast<std::uint64_t>(sequence);frame.position=static_cast<std::uint64_t>(position);frame.muted=muted;frame.discontinuity=discontinuity;return output(env,extrapane::microphone_wire::encode_header(frame));
 }catch(const std::exception& e){fail(env,e);return nullptr;}}

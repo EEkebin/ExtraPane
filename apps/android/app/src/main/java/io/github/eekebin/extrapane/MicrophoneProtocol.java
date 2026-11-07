@@ -8,5 +8,5 @@ final class MicrophoneProtocol {
     static native int payloadLength(byte[] header)throws IOException;
     static native void validateCapabilities(byte[] header,byte[] payload)throws IOException;
     static native void validateGrant(byte[] header,byte[] payload,long resource)throws IOException;
-    static native byte[] frameHeader(long resource,long generation,long sequence,long position,boolean muted)throws IOException;
+    static native byte[] frameHeader(long resource,long generation,long sequence,long position,boolean muted,boolean discontinuity)throws IOException;
 }

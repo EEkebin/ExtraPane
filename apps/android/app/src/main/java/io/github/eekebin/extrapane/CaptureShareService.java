@@ -77,7 +77,7 @@ abstract class CaptureShareService extends Service {
             String address=intent.getStringExtra("address"),local=intent.getStringExtra("local"),code=intent.getStringExtra("code");int port=intent.getIntExtra("port",0);Network network=intent.getParcelableExtra("network");intent.removeExtra("code");
             if(address==null||local==null||code==null||!ConnectionValidation.ipv4(address)||port<1||port>65535)throw new IllegalArgumentException("Invalid sharing destination");
             e.key=(camera()?"camera:":"microphone:")+(camera()?intent.getStringExtra("camera"):intent.getIntExtra("microphone",-1));
-            e.lease=registry.begin(id,e.key);
+            e.lease=registry.beginShared(id,e.key);
             if(camera()){
                 String source=intent.getStringExtra("camera"),label=intent.getStringExtra("cameraLabel");int width=intent.getIntExtra("width",0),height=intent.getIntExtra("height",0),fps=intent.getIntExtra("fps",0);
                 if(source==null||label==null||width<2||height<2||fps<1)throw new IllegalArgumentException("Invalid camera selection");

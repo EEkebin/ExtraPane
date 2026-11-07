@@ -22,7 +22,7 @@ final class CameraSession extends Thread {
     void cancel(){cancelled=true;Socket current=socket;if(current!=null)try{current.close();}catch(IOException ignored){}interrupt();}
     private static long id(SecureRandom random){long value;do{value=random.nextLong()&Long.MAX_VALUE;}while(value==0);return value;}
     private static byte[] read(DataInputStream in,int count)throws IOException{byte[] bytes=new byte[count];in.readFully(bytes);return bytes;}
-    public void run(){String ending="Camera sharing stopped";CameraCapture capture=null;AccessChannel access=null;AdmissionBroker.Lease admissionLease=null;Timer watchdog=new Timer("ExtraPane camera deadlines",true);
+    public void run(){String ending="Camera sharing stopped";CaptureFanout<CameraCapture.Packet>.Subscription capture=null;AccessChannel access=null;AdmissionBroker.Lease admissionLease=null;Timer watchdog=new Timer("ExtraPane camera deadlines",true);
         try{
             admissionLease=AdmissionBroker.acquire(address,port,local,network,code,1,()->{admissionLost="Server admission ended";cancel();},()->cancelled);code=admissionLease.credential;
             InetAddress peer=ClientSession.ipv4(address);Socket raw=new Socket();socket=raw;
@@ -40,7 +40,7 @@ final class CameraSession extends Thread {
                 out.write(CameraProtocol.request(resource));header=read(in,24);CameraProtocol.validateGrant(header,read(in,CameraProtocol.payloadLength(header)),resource);
             }finally{admission.cancel();}
             if(cancelled)throw new IOException("Camera sharing stopped");
-            capture=new CameraCapture(context,choice,error->{captureFailure=error;Socket current=socket;if(current!=null)try{current.close();}catch(IOException ignored){}interrupt();});capture.start();
+            capture=SharedCaptures.camera(context,choice);
             listener.status("Sharing "+choice.label()+" · "+choice.width()+" × "+choice.height()+" · "+choice.fps()+" FPS");
             long sequence=0;boolean reportedConnected=false;
             while(!cancelled){CameraCapture.Packet packet=capture.next();if(packet==null)continue;

@@ -171,8 +171,8 @@ server addresses, ports and access codes, or one shared destination. The selecte
 network at the top applies to new capture connections; each active row freezes
 its own route and destination. Different physical sources may connect to different
 servers concurrently, subject to Android's actual camera/audio hardware support.
-One display receiver remains supported. Sharing the same physical source to
-multiple destinations and a shared Qt Android frontend remain unfinished. USB/IP export, Android virtual receiving devices,
+One display receiver remains supported. Same-source camera/microphone fanout is
+implemented as described below; a shared Qt Android frontend remains unfinished. USB/IP export, Android virtual receiving devices,
 display hosting and camera mirroring are not implemented. USB is visible but
 unavailable with an explanation; USB/Bluetooth keyboard input is separate from
 USB device export. No storage is detached by these Android changes.
@@ -216,7 +216,7 @@ the chosen device and destination, and canceling an attempt invalidates its repl
 
 Service snapshots restore active rows without retaining access codes. Attempt
 identities reject delayed callbacks and old snapshots, including a previous failed
-attempt arriving during a new permission prompt. Source ownership remains exclusive
+attempt arriving during a new permission prompt. The shared native producer retains source ownership
 through worker teardown. A separate per-device microphone lease remains held if
 vendor cleanup hangs or throws; other microphone devices can still be attempted.
 Android route changes and silenced recording remain explicit failures. Camera
@@ -232,3 +232,42 @@ instrumentation compilation and lint passed. Repeated capture rows, concurrent
 hardware access, foreground notifications and lifecycle behavior still require
 authorized Android-device testing. No device was connected or installed for these
 checks.
+
+
+## Sharing one source with several servers
+
+Several camera or microphone rows can select the same physical device. Compatible
+rows share one native capture worker while keeping separate admission, TLS,
+sequence numbers and destination queues. Camera mode must match the existing
+producer's resolution and frame rate; an incompatible mode fails explicitly.
+
+Each camera destination has at most three queued encoded frames. New subscribers
+wait for a fresh access unit containing SPS, PPS and an IDR frame; old predictive
+frames are not replayed. The existing encoder requests a one-second keyframe
+interval. A destination that fills its queue disconnects without stopping the
+other destinations. Microphone destinations have eight queued 10 ms PCM packets.
+Mute applies only to that destination's copy, and changing mute clears its queued
+audio. Packets queued while muted retain their muted flag even if unmute occurs
+before transmission. Each destination rebases its sample positions to its own
+start; dropped backlog and mute transitions set the wire discontinuity flag.
+Shared source packets are never modified by a destination.
+
+The final subscriber starts producer cleanup and waits up to six seconds on its
+connection worker, keeping foreground-service ownership until cleanup completes
+or an explicit pending-cleanup failure is reported. A new connection to that source
+waits for cleanup to finish by failing explicitly with a retry message. If native
+cleanup reports failure, the source remains unavailable until the app process is
+restarted; it is not reopened while ownership is uncertain. Producer failures or
+permission/privacy failures end all subscribers of that physical source. A source
+that provides no usable media for 15 seconds fails the affected subscription.
+Different sources remain independent, subject to Android's hardware restrictions.
+The existing camera encoder guard still blocks new camera producers globally if
+a vendor codec is stuck finishing cleanup; existing other producers continue.
+
+Host-only fanout checks cover one producer for multiple subscribers, keyframe
+joining, incompatible modes, slow-destination isolation, last-subscriber cleanup,
+cleanup-failure ownership, per-destination microphone mute and SPS/PPS/IDR detection.
+Configuration, admission and capture lifecycle checks also pass. Both APK
+architectures, instrumentation compilation and lint pass without device access.
+Actual camera/audio fanout, encoding cadence, multiple servers and Android
+background/privacy behavior still need authorized physical-device testing.

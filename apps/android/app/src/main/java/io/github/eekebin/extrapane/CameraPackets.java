@@ -5,6 +5,11 @@ import java.nio.ByteBuffer;
 
 /** Encoded bytes only. No preview bitmap or camera pixels pass through the UI. */
 final class CameraPackets {
+    static boolean independent(byte[] bytes){
+        boolean sps=false,pps=false,idr=false;
+        for(int i=0;i+3<bytes.length;i++)if(bytes[i]==0&&bytes[i+1]==0){int start=bytes[i+2]==1?i+3:(bytes[i+2]==0&&i+4<bytes.length&&bytes[i+3]==1?i+4:-1);if(start<0)continue;int kind=bytes[start]&31;if(kind==7)sps=true;if(kind==8)pps=true;if(kind==5&&sps&&pps)idr=true;i=start;}
+        return idr;
+    }
     static final int MAX_FRAME=2*1024*1024;
     static byte[] copy(ByteBuffer buffer,int offset,int length)throws IOException {
         if(buffer==null||offset<0||length<1||length>MAX_FRAME||offset>buffer.capacity()-length)throw new IOException("Invalid encoded camera buffer");

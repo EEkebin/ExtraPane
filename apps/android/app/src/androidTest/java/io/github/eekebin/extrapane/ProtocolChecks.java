@@ -39,6 +39,7 @@ public final class ProtocolChecks extends Instrumentation {
         r.key(new KeyEvent(1,2,KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_CTRL_RIGHT,1,0,22,0));require(q.take().length==0,"No orphan repeat");
     }
     @Override public void onStart(){Bundle result=new Bundle();try{
+        byte[] audioHeader=MicrophoneProtocol.frameHeader(1,2,0,0,true,true);require(audioHeader[7]==3,"Microphone mute/discontinuity flags");
         byte[] request=Protocol.request(1080,2400,60,7,0);
         byte[] custom=Protocol.customRequest(1920,1080,360,7,0);require(custom[28]==1&&ByteBuffer.wrap(custom).getInt(24)==360,"Custom mode and target FPS");
         rejected(()->Protocol.customRequest(1921,1080,60,7,0));rejected(()->Protocol.customRequest(1920,1080,361,7,0));

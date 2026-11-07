@@ -13,6 +13,7 @@ public final class CaptureRegistryCheck {
         require(service.stop(null).size()==2&&restarted.stopping()&&microphone.stopping());
         service.finish(restarted);service.finish(microphone);require(service.stop(null).isEmpty());
         var successor=replacementService.begin("restored","camera:0");require(replacementService.current(successor));replacementService.finish(successor);
+        var sharedA=service.beginShared("shared-a","camera:fanout");var sharedB=service.beginShared("shared-b","camera:fanout");service.finish(sharedA);blocked(()->service.begin("exclusive","camera:fanout"));require(service.current(sharedB));service.finish(sharedB);
         var first=DeviceCaptureLease.acquire("mic:1");var second=DeviceCaptureLease.acquire("mic:2");blocked(()->DeviceCaptureLease.acquire("mic:1"));
         second.close();blocked(()->DeviceCaptureLease.acquire("mic:1"));first.close();var newer=DeviceCaptureLease.acquire("mic:1");first.close();blocked(()->DeviceCaptureLease.acquire("mic:1"));newer.close();
         CaptureAttempt attempt=new CaptureAttempt();String old=attempt.begin();require(attempt.accept(old,false));String fresh=attempt.begin();require(!attempt.accept(old,false)&&attempt.current(fresh));

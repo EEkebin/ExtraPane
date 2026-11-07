@@ -15,15 +15,17 @@ final class MicrophoneSession extends Thread {
     private final Context context;private final String address,local;private final int port;private String code;
     private final Network network;private final MicrophoneCapture.Choice choice;private final Listener listener;
     private volatile String admissionLost;
-    private volatile boolean cancelled,muted;private volatile MicrophoneCapture active;private volatile Socket socket;private volatile Exception captureFailure;
+    private final Object muteLock=new Object();private long muteGeneration;
+    private volatile CaptureFanout<MicrophoneCapture.Packet>.Subscription active;
+    private volatile boolean cancelled,muted;private volatile Socket socket;private volatile Exception captureFailure;
     MicrophoneSession(Context context,String address,int port,String local,Network network,String code,MicrophoneCapture.Choice choice,Listener listener){
         super("ExtraPane microphone connection");this.context=context.getApplicationContext();this.address=address;this.port=port;this.local=local;this.network=network;this.code=code;this.choice=choice;this.listener=listener;
     }
-    void mute(boolean value){muted=value;MicrophoneCapture current=active;if(current!=null)current.mute(value);}
+    void mute(boolean value){synchronized(muteLock){if(muted!=value){muted=value;++muteGeneration;var current=active;if(current!=null)current.clearQueue();}}}
     void cancel(){cancelled=true;Socket current=socket;if(current!=null)try{current.close();}catch(IOException ignored){}interrupt();}
     private static long id(SecureRandom random){long value;do{value=random.nextLong()&Long.MAX_VALUE;}while(value==0);return value;}
     private static byte[] read(DataInputStream in,int count)throws IOException{byte[] bytes=new byte[count];in.readFully(bytes);return bytes;}
-    public void run(){String ending="Microphone sharing stopped";MicrophoneCapture capture=null;AccessChannel access=null;AdmissionBroker.Lease admissionLease=null;Timer watchdog=new Timer("ExtraPane microphone deadlines",true);
+    public void run(){String ending="Microphone sharing stopped";CaptureFanout<MicrophoneCapture.Packet>.Subscription capture=null;AccessChannel access=null;AdmissionBroker.Lease admissionLease=null;Timer watchdog=new Timer("ExtraPane microphone deadlines",true);
         try{
             admissionLease=AdmissionBroker.acquire(address,port,local,network,code,2,()->{admissionLost="Server admission ended";cancel();},()->cancelled);code=admissionLease.credential;
             InetAddress peer=ClientSession.ipv4(address);Socket raw=new Socket();socket=raw;
@@ -41,12 +43,12 @@ final class MicrophoneSession extends Thread {
                 out.write(MicrophoneProtocol.request(resource));tls.setSoTimeout(40000);header=read(in,24);MicrophoneProtocol.validateGrant(header,read(in,MicrophoneProtocol.payloadLength(header)),resource);
             }finally{admission.cancel();}
             if(cancelled)throw new IOException("Microphone sharing stopped");
-            capture=new MicrophoneCapture(context,choice,error->{captureFailure=error;Socket current=socket;if(current!=null)try{current.close();}catch(IOException ignored){}interrupt();});active=capture;capture.mute(muted);capture.start();
+            capture=SharedCaptures.microphone(context,choice,()->muted);active=capture;
             listener.status("Sharing "+choice.label()+" - 48 kHz mono microphone");
-            long sequence=0;boolean reportedConnected=false;
+            long sequence=0;boolean reportedConnected=false;FanoutPackets.MicrophoneTimeline timeline=new FanoutPackets.MicrophoneTimeline();
             while(!cancelled){MicrophoneCapture.Packet packet=capture.next();if(packet==null)continue;
                 TimerTask deadline=new TimerTask(){public void run(){try{tls.close();}catch(IOException ignored){}}};watchdog.schedule(deadline,5000);
-                try{boolean silent=muted||packet.muted();byte[] pcm=packet.pcm();if(silent)Arrays.fill(pcm,(byte)0);out.write(MicrophoneProtocol.frameHeader(resource,generation,sequence++,packet.position(),silent));out.write(pcm);if(!reportedConnected){reportedConnected=true;listener.connected();}}finally{deadline.cancel();watchdog.purge();}
+                try{boolean silent;byte[] pcm;FanoutPackets.Position position;synchronized(muteLock){silent=muted||packet.muted();pcm=FanoutPackets.microphoneBytes(packet.pcm(),silent);position=timeline.next(packet.position(),muteGeneration);}out.write(MicrophoneProtocol.frameHeader(resource,generation,sequence++,position.sample(),silent,position.discontinuity()));out.write(pcm);if(!reportedConnected){reportedConnected=true;listener.connected();}}finally{deadline.cancel();watchdog.purge();}
             }
         }catch(Exception error){if(!cancelled){Exception cause=captureFailure!=null?captureFailure:error;ending=cause.getMessage()==null?cause.getClass().getSimpleName():cause.getMessage();}}
         finally{
