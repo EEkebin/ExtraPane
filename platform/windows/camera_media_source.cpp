@@ -80,10 +80,12 @@ public:
     }
     STDMETHODIMP SetStreamState(MF_STREAM_STATE value) override {
         std::lock_guard lock(s_->mutex);if(s_->shutdown)return MF_E_SHUTDOWN;
-        if(value!=MF_STREAM_STATE_STOPPED&&value!=MF_STREAM_STATE_RUNNING)return MF_E_INVALID_STATE_TRANSITION;
+        if(value==s_->streamState)return S_OK;
+        if(value!=MF_STREAM_STATE_STOPPED&&value!=MF_STREAM_STATE_RUNNING&&value!=MF_STREAM_STATE_PAUSED)return MF_E_INVALID_STATE_TRANSITION;
+        if(value==MF_STREAM_STATE_PAUSED&&s_->streamState!=MF_STREAM_STATE_RUNNING)return MF_E_INVALID_STATE_TRANSITION;
         s_->streamState=value;
         if(value==MF_STREAM_STATE_STOPPED){s_->requests.clear();s_->latest.Reset();}
-        return S_OK;
+        return value==MF_STREAM_STATE_RUNNING?s_->deliver():S_OK;
     }
     STDMETHODIMP GetStreamState(MF_STREAM_STATE* value) override {
         if(!value)return E_POINTER;std::lock_guard lock(s_->mutex);
@@ -110,7 +112,8 @@ public:
         if(timeFormat&&*timeFormat!=GUID_NULL)return MF_E_UNSUPPORTED_TIME_FORMAT;
         if(position->vt!=VT_EMPTY && (position->vt!=VT_I8||position->hVal.QuadPart!=0))return MF_E_INVALIDREQUEST;
         std::lock_guard lock(s_->mutex);if(s_->shutdown)return MF_E_SHUTDOWN;
-        if(s_->started)return MF_E_INVALID_STATE_TRANSITION;
+        const bool alreadyStarted=s_->started;
+        if(alreadyStarted&&s_->fault)return E_FAIL;
         DWORD count=0,id=0;BOOL selected=FALSE;ComPtr<IMFStreamDescriptor> descriptor;
         auto hr=pd->GetStreamDescriptorCount(&count);if(FAILED(hr))return hr;
         if(count!=1)return MF_E_INVALIDSTREAMNUMBER;
@@ -121,7 +124,7 @@ public:
         hr=descriptor->GetMediaTypeHandler(&handler);if(FAILED(hr))return hr;
         hr=handler->GetCurrentMediaType(&type);if(FAILED(hr))return hr;
         DWORD equal=0;hr=s_->type->IsEqual(type.Get(),&equal);if(hr!=S_OK)return MF_E_INVALIDMEDIATYPE;
-        if(!s_->pipe.empty()){
+        if(!alreadyStarted&&!s_->pipe.empty()){
             try{
                 std::weak_ptr<Shared> weak=s_;
                 s_->subscriber=std::make_unique<FrameSubscriber>(s_->pipe,s_->format,[weak](auto pixels,auto timestamp){
@@ -136,7 +139,7 @@ public:
                 });
             }catch(...){s_->subscriber.reset();return E_FAIL;}
         }
-        PROPVARIANT start{};start.vt=VT_I8;start.hVal.QuadPart=0;
+        PROPVARIANT start{};start.vt=VT_I8;start.hVal.QuadPart=MFGetSystemTime();
         hr=s_->sourceEvents->QueueEventParamUnk(s_->announced?MEUpdatedStream:MENewStream,GUID_NULL,S_OK,stream_.Get());
         if(FAILED(hr))return hr;
         s_->announced=true;s_->started=true;s_->fault=false;s_->streamState=MF_STREAM_STATE_RUNNING;
@@ -144,7 +147,7 @@ public:
         if(FAILED(hr))return hr;
         hr=s_->sourceEvents->QueueEventParamVar(MESourceStarted,GUID_NULL,S_OK,&start);
         if(FAILED(hr))return hr;
-        try{if(s_->subscriber)s_->subscriber->start();}
+        try{if(!alreadyStarted&&s_->subscriber)s_->subscriber->start();}
         catch(...){
             s_->subscriber.reset();s_->fault=true;
             s_->sourceEvents->QueueEventParamVar(MEError,GUID_NULL,E_FAIL,nullptr);return E_FAIL;
@@ -247,7 +250,11 @@ void submit_raw(const std::shared_ptr<Shared>& s,std::span<const std::uint8_t> p
     BYTE* bytes=nullptr;checked(buffer->Lock(&bytes,nullptr,nullptr));
     std::memcpy(bytes,pixels.data(),length);checked(buffer->Unlock());checked(buffer->SetCurrentLength(length));
     ComPtr<IMFSample> sample;checked(MFCreateSample(&sample));checked(sample->AddBuffer(buffer.Get()));
-    checked(sample->SetSampleTime(timestamp));checked(sample->SetSampleDuration(10000000/s->format.fps));
+    // Remote transport timestamps are stream-relative, not this machine's QPC.
+    // Frame Server requires local QPC-correlated 100 ns timestamps; stamping a
+    // decoded frame here also avoids carrying a sender clock epoch across PCs.
+    (void)timestamp;
+    checked(sample->SetSampleTime(MFGetSystemTime()));checked(sample->SetSampleDuration(10000000/s->format.fps));
     std::lock_guard lock(s->mutex);if(s->shutdown)throw std::runtime_error("Virtual camera source shut down");
     if(!s->started)return;
     s->latest=std::move(sample);checked(s->deliver());

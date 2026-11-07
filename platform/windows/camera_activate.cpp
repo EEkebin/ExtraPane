@@ -25,6 +25,11 @@ public:
                 if(length>128)return E_INVALIDARG;
                 std::wstring pipe(length+1,L'\0');hr=attributes_->GetString(pipe_attribute,pipe.data(),length+1,&length);if(FAILED(hr))return hr;pipe.resize(length);
                 MediaSource feed(Format{width,height,num},std::move(pipe));
+                // Frame Server supplies device identity/configuration through
+                // IMFActivate. Preserve it on the distinct source object.
+                auto candidate=feed.source();ComPtr<IMFAttributes> sourceAttributes;
+                hr=candidate->GetSourceAttributes(&sourceAttributes);if(FAILED(hr))return hr;
+                hr=attributes_->CopyAllItems(sourceAttributes.Get());if(FAILED(hr))return hr;
                 source_=feed.detach();
             }
             return source_->QueryInterface(id,out);
