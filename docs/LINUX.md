@@ -8,8 +8,8 @@ hosting or connected. The listener handles independent resource sessions; actual
 display creation still depends on the desktop portal. These changes supersede the
 single-client and close-to-exit limits in the historical validation below.
 See [Linux resource prerequisites and limits](LINUX-RESOURCES.md) and
-[platform parity status](PLATFORM-PARITY.md). USB and same-source camera/microphone
-fanout remain unimplemented on Linux. Native builds and packaging are checked in
+[platform parity status](PLATFORM-PARITY.md). Camera/microphone sources can share
+one capture pipeline across destinations; USB remains unimplemented. Native builds and packaging are checked in
 GitHub; combined resources and virtual endpoints still require device validation.
 
 ## Current implementation and validation (2026-11-03)
@@ -91,9 +91,9 @@ uses the selected local monitor (the receiver's default target remains capped at
 60 FPS). These are requested rates, not measured delivery guarantees.
 
 Camera and microphone rows use native GStreamer source workers. Enumeration runs
-outside the UI thread and selectors report missing sources/plugins. Source
-leases can reject a second capture of the same physical device; this build does
-not yet provide Windows-style capture fanout to multiple destinations. USB rows
+outside the UI thread and selectors report missing sources/plugins. A shared
+native capture pipeline feeds bounded queues for each destination. Microphone
+mute is per destination; camera mirror applies to the shared source. USB rows
 remain unavailable rather than exporting storage without an ownership backend.
 
 Protected destinations maintain one authenticated control connection and request

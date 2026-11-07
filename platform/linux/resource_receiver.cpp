@@ -1,4 +1,6 @@
 #include "resource_receiver.hpp"
+#include "output_slot.hpp"
+#include <utility>
 #include <extrapane/camera_protocol.hpp>
 #include <extrapane/microphone_protocol.hpp>
 #include <extrapane/negotiation.hpp>
@@ -51,14 +53,17 @@ public:
         // Only explicit ExtraPane loopback slots. Never write to physical cameras
         // or another application's loopback node, and never create kernel nodes.
         const auto nodes=QDir("/dev").entryList({"video*"},QDir::System|QDir::Files,QDir::Name);
-        for(const auto& node:nodes){
-            const auto suffix=node.mid(5);bool numeric=false;suffix.toUInt(&numeric);if(!numeric)continue;
-            const auto path=("/dev/"+node).toUtf8();int candidate=::open(path.constData(),O_RDWR|O_NONBLOCK|O_CLOEXEC|O_NOFOLLOW);
-            if(candidate<0)continue;
-            if(!identity(candidate)||flock(candidate,LOCK_EX|LOCK_NB)){::close(candidate);continue;}
-            fd=candidate;break;
-        }
-        require(fd>=0,"No writable, unused ExtraPane Camera v4l2loopback slot is available");
+        auto selected=reserveOutputSlot<VideoNode>(nodes,[](const QString& node)->std::unique_ptr<VideoNode>{
+            const auto suffix=node.mid(5);bool numeric=false;suffix.toUInt(&numeric);if(!numeric)return {};
+            const auto path=("/dev/"+node).toUtf8();
+            auto candidate=std::make_unique<VideoNode>();
+            candidate->fd=::open(path.constData(),O_RDWR|O_NONBLOCK|O_CLOEXEC|O_NOFOLLOW);
+            if(candidate->fd<0||!identity(candidate->fd)||flock(candidate->fd,LOCK_EX|LOCK_NB))return {};
+            return candidate;
+        },[&](VideoNode& candidate){candidate.configure(width,height,fps);});
+        fd=std::exchange(selected->fd,-1);stride=selected->stride;size=selected->size;
+    }
+    void configure(unsigned width,unsigned height,unsigned fps){
         require(identity(fd),"Virtual camera identity changed");
         v4l2_format format{};format.type=V4L2_BUF_TYPE_VIDEO_OUTPUT;format.fmt.pix.width=width;format.fmt.pix.height=height;
         format.fmt.pix.pixelformat=V4L2_PIX_FMT_YUYV;format.fmt.pix.field=V4L2_FIELD_NONE;

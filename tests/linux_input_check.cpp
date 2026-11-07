@@ -86,6 +86,10 @@ int main(int argc,char** argv){
             QCoreApplication::sendEvent(&window,&buttonRelease);app.processEvents();
             need(button->property("taps").toInt()==1,"Canceled local pen gesture clicked button");queue.take();
         }
+        surface.setEnabled(false);surface.setExclusionRects({});queue.take();
+        QCoreApplication::sendEvent(&window,&buttonPress);QCoreApplication::sendEvent(&window,&buttonRelease);app.processEvents();
+        need(button->property("taps").toInt()==2&&queue.take().empty(),"Paused remote input must preserve local pen controls without injection");
+        surface.setEnabled(true);
         buttonObject.reset();surface.setExclusionRects({});window.hide();queue.take();
 
 

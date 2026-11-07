@@ -44,6 +44,8 @@ jobs:
           cmake --build --preset linux-release --parallel 2
           QT_QPA_PLATFORM=offscreen out/build/linux-release/platform/linux/extrapane-linux-input-check
           out/build/linux-release/platform/linux/extrapane-linux-resource-pcm-check
+          out/build/linux-release/platform/linux/extrapane-linux-output-slot-check
+          out/build/linux-release/platform/linux/extrapane-linux-resource-fanout-check
           out/build/linux-release/platform/linux/ui-checks/extrapane-linux-window-check
           out/build/linux-release/platform/linux/ui-checks/extrapane-linux-admission-check
       - name: Prepare tools and dependency notices

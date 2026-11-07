@@ -1,5 +1,7 @@
 #include "resource_source.hpp"
 #include "resource_pcm.hpp"
+#include "resource_fanout.hpp"
+#include "shared_capture_registry.hpp"
 #include "tls.hpp"
 #include <extrapane/camera_protocol.hpp>
 #include <extrapane/capabilities.hpp>
@@ -18,6 +20,9 @@
 #include <memory>
 #include <set>
 #include <stdexcept>
+#include <mutex>
+#include <map>
+#include <thread>
 
 namespace dm::linux_client {
 namespace {
@@ -108,6 +113,54 @@ struct Pipeline {
         gst_message_unref(message);throw std::runtime_error(reason);
     }
 };
+class CaptureHub {
+public:
+    CaptureHub(GstDevice* device,QString id,Kind kind,Mode mode):device_(GST_DEVICE(gst_object_ref(device))),id_(std::move(id)),kind_(kind),mode_(mode){}
+    ~CaptureHub(){stopping_=true;if(worker_.joinable())worker_.join();}
+    void start(){worker_=std::thread([this]{run();});}
+    void validateMode(Mode mode)const{require(mode.width==mode_.width&&mode.height==mode_.height&&mode.fps==mode_.fps,"This camera is already shared with a different mode");}
+    std::shared_ptr<CaptureQueue> subscribe(Mode mode){
+        std::lock_guard lock(mutex_);
+        validateMode(mode);
+        auto queue=std::make_shared<CaptureQueue>(kind_==Kind::Camera);
+        if(!error_.empty())queue->fail(error_);
+        queues_.push_back(queue);return queue;
+    }
+    std::shared_ptr<const CapturePacket> pop(const std::shared_ptr<CaptureQueue>& queue){
+        std::lock_guard lock(mutex_);if(!queue->error.empty())throw std::runtime_error(queue->error);return queue->pop();
+    }
+    std::atomic_bool mirror=false;
+private:
+    Device device_;QString id_;Kind kind_;Mode mode_;std::atomic_bool stopping_=false;
+    std::mutex mutex_;std::vector<std::weak_ptr<CaptureQueue>> queues_;std::string error_;std::thread worker_;
+    void run(){
+        try{
+            SourceLease lease(id_);Pipeline capture;capture.create(device_.get(),kind_,mode_);bool lastMirror=mirror.load();
+            if(capture.flip)g_object_set(capture.flip,"method",lastMirror?4:0,nullptr);
+            capture.start();auto lastSample=Clock::now();
+            while(!stopping_){
+                capture.check();const bool nextMirror=mirror.load();if(capture.flip&&lastMirror!=nextMirror){lastMirror=nextMirror;g_object_set(capture.flip,"method",lastMirror?4:0,nullptr);}
+                Sample sample(gst_app_sink_try_pull_sample(GST_APP_SINK(capture.sink),100*GST_MSECOND));
+                if(!sample){require(Clock::now()-lastSample<=std::chrono::seconds(10),"Capture source stalled or permission was withdrawn");continue;}
+                lastSample=Clock::now();auto* buffer=gst_sample_get_buffer(sample.get());GstMapInfo map{};
+                require(buffer&&gst_buffer_map(buffer,&map,GST_MAP_READ),"Cannot read captured data");
+                auto packet=std::make_shared<CapturePacket>();
+                try{
+                    require(map.size>0&&map.size<=media::max_frame_bytes,"Captured packet exceeds protocol bounds");
+                    if(kind_==Kind::Camera)require(GST_BUFFER_PTS_IS_VALID(buffer),"Camera sample has no capture timestamp");
+                    packet->bytes.assign(map.data,map.data+map.size);
+                    packet->timestamp=GST_BUFFER_PTS_IS_VALID(buffer)?static_cast<std::int64_t>(GST_BUFFER_PTS(buffer)/100):0;
+                    packet->keyframe=kind_==Kind::Camera?independentlyDecodable(packet->bytes):true;
+                    packet->discontinuity=GST_BUFFER_FLAG_IS_SET(buffer,GST_BUFFER_FLAG_DISCONT);
+                }catch(...){gst_buffer_unmap(buffer,&map);throw;}
+                gst_buffer_unmap(buffer,&map);
+                std::lock_guard lock(mutex_);
+                for(auto it=queues_.begin();it!=queues_.end();)if(auto queue=it->lock()){queue->push(packet);++it;}else it=queues_.erase(it);
+            }
+        }catch(const std::exception& error){std::lock_guard lock(mutex_);error_=error.what();for(auto& weak:queues_)if(auto queue=weak.lock())queue->fail(error_);}
+    }
+};
+SharedCaptureRegistry<QString,CaptureHub> captureRegistry;
 media::Binding randomBinding(){media::Binding result;do{require(RAND_bytes(reinterpret_cast<unsigned char*>(&result),sizeof(result))==1,"Resource randomness unavailable");}while(!result.resource||!result.generation);return result;}
 void negotiate(Tls& stream,ResourceKind kind,media::Binding binding){
     wire::ControlChannel control([&](auto bytes){stream.read(bytes,deadline(kind==ResourceKind::microphone?45:15));},[&](auto bytes){stream.write(bytes,deadline());});
@@ -146,7 +199,7 @@ void ResourceSource::run(){
         DeviceList devices(options_.kind);GstDevice* selected=nullptr;
         for(const auto& device:devices.values)if(deviceId(device.get())==options_.device){require(!selected,"Selected device identity is ambiguous");selected=device.get();}
         require(selected,"Selected source is no longer available; reopen the source list");
-        SourceLease lease(options_.device);Mode mode=options_.kind==Kind::Camera?cameraMode(selected):Mode{};
+        Mode mode=options_.kind==Kind::Camera?cameraMode(selected):Mode{};
         if(options_.kind==Kind::Camera){
             require(mode.width>0,"No compatible raw camera mode");
             if(options_.width||options_.height||options_.fps){require(options_.width&&options_.height&&options_.fps,"Incomplete camera mode");mode={options_.width,options_.height,options_.fps};}
@@ -160,25 +213,22 @@ void ResourceSource::run(){
         Tls stream(options_.server.toStdString(),options_.local.toStdString(),static_cast<std::uint16_t>(options_.port),[this]{return isInterruptionRequested();},options_.interfaceIndex,code);
         OPENSSL_cleanse(code.data(),code.size());code.clear();stream.write(offer,deadline());
         negotiate(stream,options_.kind==Kind::Camera?ResourceKind::camera:ResourceKind::microphone,binding);
-        Pipeline capture;capture.create(selected,options_.kind,mode);capture.start();
-        bool announced=false,lastMirror=false;auto announce=[&]{if(!announced){announced=true;emit connected(mode.width,mode.height,mode.fps);emit state("Connected");}};
+        const bool initialMirror=mirrored_.load();
+        auto capture=captureRegistry.acquire(QString::number(static_cast<int>(options_.kind))+":"+options_.device,[&]{
+            auto hub=std::make_shared<CaptureHub>(selected,options_.device,options_.kind,mode);hub->mirror=initialMirror;hub->start();return hub;
+        },[&](CaptureHub& hub){hub.validateMode(mode);});
+        auto subscription=capture->subscribe(mode);
+        bool announced=false;auto announce=[&]{if(!announced){announced=true;emit connected(mode.width,mode.height,mode.fps);emit state("Connected");}};
         auto read=[&](auto bytes){stream.read(bytes,deadline());};auto write=[&](auto bytes){stream.write(bytes,deadline());};
         media::Channel camera(binding,read,write);microphone_wire::Channel microphone(binding,read,write);
         PcmPacketizer packetizer(binding,[&](const auto& frame){microphone.send(frame);announce();});
-        std::uint64_t sequence=0;auto lastSample=Clock::now();
+        std::uint64_t sequence=0;const auto firstPacketDeadline=deadline(10);bool lastMirror=initialMirror;
         while(!isInterruptionRequested()){
-            capture.check();if(capture.flip&&lastMirror!=mirrored_.load()){lastMirror=mirrored_.load();g_object_set(capture.flip,"method",lastMirror?4:0,nullptr);}
-            Sample sample(gst_app_sink_try_pull_sample(GST_APP_SINK(capture.sink),100*GST_MSECOND));
-            if(!sample){if(Clock::now()-lastSample>std::chrono::seconds(10))throw std::runtime_error("Capture source stalled or permission was withdrawn");continue;}
-            lastSample=Clock::now();auto* buffer=gst_sample_get_buffer(sample.get());GstMapInfo map{};require(buffer&&gst_buffer_map(buffer,&map,GST_MAP_READ),"Cannot read captured data");
-            try{
-                if(options_.kind==Kind::Camera){
-                    require(map.size>0&&map.size<=media::max_frame_bytes,"Camera frame exceeds protocol bounds");
-                    require(GST_BUFFER_PTS_IS_VALID(buffer),"Camera sample has no capture timestamp");
-                    camera.send({binding,sequence++,static_cast<std::int64_t>(GST_BUFFER_PTS(buffer)/100),{map.data,map.data+map.size}});announce();
-                }else packetizer.push({map.data,map.size},muted_.load(),GST_BUFFER_FLAG_IS_SET(buffer,GST_BUFFER_FLAG_DISCONT));
-            }catch(...){gst_buffer_unmap(buffer,&map);throw;}
-            gst_buffer_unmap(buffer,&map);
+            const bool desiredMirror=mirrored_.load();if(lastMirror!=desiredMirror){capture->mirror=desiredMirror;lastMirror=desiredMirror;}
+            auto packet=capture->pop(subscription);
+            if(!packet){require(announced||Clock::now()<firstPacketDeadline,"Capture did not provide a decodable starting frame");QThread::msleep(10);continue;}
+            if(options_.kind==Kind::Camera){camera.send({binding,sequence++,packet->timestamp,packet->bytes});announce();}
+            else packetizer.push(packet->bytes,muted_.load(),packet->discontinuity);
         }
         emit state("Disconnected");
     }catch(const std::exception& error){if(isInterruptionRequested())emit state("Disconnected");else emit failed(QString::fromUtf8(error.what()));}

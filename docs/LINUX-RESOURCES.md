@@ -18,9 +18,15 @@ Microphone output is PCM16 little-endian, 48 kHz mono in 10 ms packets. The nati
 packetizer handles arbitrary aligned capture chunks, positions, muting and
 discontinuity. Normal provider capture does not detach the source from Linux.
 
-Different physical sources can run concurrently. The current adapter leases
-each physical source exclusively within ExtraPane; sharing the same source to
-several servers still requires a shared capture/fanout broker. Protected
+Different physical sources can run concurrently. Connections to several servers
+share one native capture pipeline and encoder per physical source within the
+app. Cross-process source leases prevent a second ExtraPane process from taking
+over that capture. Each recipient has its own bounded queue, transport and mute
+state; a slow recipient disconnects independently instead of stalling capture
+for other servers. Mirror is shared by all recipients of that camera. A camera
+joining an existing capture waits for an IDR containing SPS/PPS configuration;
+dependency frames are never silently dropped. The last recipient stops capture.
+Camera recipients must use the same source mode. Protected
 multi-resource connections use the per-destination control/ticket broker rather
 than reusing a one-use access code.
 
@@ -31,6 +37,11 @@ card label begins with `ExtraPane Camera`. The adapter checks character-device,
 driver, output/write capabilities and exclusive lease before using the slot.
 It never writes to physical cameras or another application's loopback node.
 Start server does not create kernel devices or alter device permissions.
+
+Each incoming camera reserves a separate slot. If one unused slot rejects the
+negotiated resolution, format, buffer geometry or frame rate, the receiver
+releases it and tries the remaining slots. Foreign and already leased nodes are
+never configured. Disconnect releases the selected descriptor and lease.
 
 GStreamer decodes H.264 to YUY2. Dimensions, format, allocations and both decoder
 and output strides are checked before writing. Applications select the prepared
@@ -70,6 +81,12 @@ mount handling, encrypted forwarding and reliable return behavior.
 
 The portable packetizer check covers fragmented buffers, several packets per
 buffer, sequence and position progression, mute, discontinuity and alignment.
+The portable fanout check covers independent recipient queues, packet/byte limits
+and late joins requiring IDR plus SPS/PPS. Fake capture checks exercise the same
+registry used by native capture: create once, mode rejection, last-subscriber
+cleanup, concurrent replacement and unrelated-device teardown isolation.
+These checks do not exercise a camera
+encoder or prove delivery to several physical receivers.
 Native compilation and actual delivery to applications are separate validation
 gates. Isolated checks have not exercised physical capture devices, virtual
 camera nodes or the user's PipeWire graph.
@@ -77,3 +94,7 @@ camera nodes or the user's PipeWire graph.
 References: [PipeWire sink](https://github.com/PipeWire/pipewire/blob/master/src/gst/gstpipewiresink.c),
 [PipeWire properties](https://docs.pipewire.org/page_man_pipewire-props_7.html),
 [V4L2 output](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-output.html).
+
+## Portable diagnostics
+
+Run the AppImage with --check-media-factories to print JSON listing available and missing media factories. This checks plugin loading only: it does not enumerate devices, start capture, open a virtual camera, or contact PipeWire. The pwDumpAvailable field reports whether the host prerequisite is on PATH; it does not prove the PipeWire service is running. The packaged CI startup check requires every bundled media factory and the Linux setup guides, separately from physical device acceptance.

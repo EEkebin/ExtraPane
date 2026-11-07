@@ -2,6 +2,8 @@
 #include "resource_source.hpp"
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QJsonObject>
+#include <QStandardPaths>
 #include <cstdio>
 #include <cstring>
 #include <QApplication>
@@ -21,6 +23,29 @@ namespace { volatile std::sig_atomic_t quitRequested=0; }
 
 int main(int argc,char** argv){
     std::signal(SIGPIPE,SIG_IGN);
+    // Packaging diagnostic only: resolves factories without constructing capture
+    // elements, enumerating devices, opening endpoints or contacting PipeWire.
+    if(argc==2 && std::strcmp(argv[1],"--check-media-factories")==0){
+        QCoreApplication diagnostic(argc,argv);
+        GError* error=nullptr;
+        if(!gst_init_check(nullptr,nullptr,&error)){if(error)g_error_free(error);return 3;}
+        QJsonArray available,missing;
+        for(const char* name:{"appsrc","appsink","queue","capsfilter","identity",
+            "h264parse","openh264enc","openh264dec","decodebin","videoconvert",
+            "videoscale","videorate","videoflip","audioconvert","audioresample",
+            "pipewiresrc","pipewiresink","glupload","glcolorconvert","qml6glsink"}){
+            auto* factory=gst_element_factory_find(name);
+            auto* loaded=factory?gst_plugin_feature_load(GST_PLUGIN_FEATURE(factory)):nullptr;
+            (loaded?available:missing).append(QString::fromUtf8(name));
+            if(loaded)gst_object_unref(loaded);
+            if(factory)gst_object_unref(factory);
+        }
+        const auto json=QJsonDocument(QJsonObject{{"schema",1},{"available",available},
+            {"missing",missing},{"pwDumpAvailable",!QStandardPaths::findExecutable("pw-dump").isEmpty()},
+            {"devicesTested",false}}).toJson(QJsonDocument::Compact);
+        if(std::fwrite(json.constData(),1,static_cast<size_t>(json.size()),stdout)!=static_cast<size_t>(json.size()))return 6;
+        return missing.isEmpty()?0:1;
+    }
     // Device providers are third-party code and may block indefinitely. The UI
     // runs this bounded-output helper in a killable process, without a GUI.
     if(argc>1 && std::strcmp(argv[1],"--list-resource")==0){

@@ -150,15 +150,17 @@ void InputSurface::tablet(QTabletEvent* e){
     queue->append(out);e->accept();
 }
 bool InputSurface::eventFilter(QObject* watched,QEvent* e){
-    if(!isEnabled() || !isVisible() || !queue)return false;
+    if(!isVisible())return false;
     if(watched==qGuiApp && e->type()==QEvent::TabletLeaveProximity){
         releaseLocalPenMouse();
-        if(queue->capabilities()&pen_cap){Event out;out.kind=Kind::pen;out.id=1;out.action=Action::cancel;queue->append(out);penContact_=false;}
+        if(queue&&(queue->capabilities()&pen_cap)){Event out;out.kind=Kind::pen;out.id=1;out.action=Action::cancel;queue->append(out);penContact_=false;}
         localPenSequence_=false;return false;
     }
     if(watched==window() && (e->type()==QEvent::TabletPress || e->type()==QEvent::TabletMove || e->type()==QEvent::TabletRelease)){
         auto* event=static_cast<QTabletEvent*>(e);lastPenScene_=event->position();lastPenGlobal_=event->globalPosition();lastPenModifiers_=event->modifiers();
-        if(excluded(lastPenScene_)||localPenSequence_){
+        // Pausing remote input must not disable local pen controls, including
+        // the menu used to resume it. The disabled surface cannot inject mouse.
+        if(!isEnabled()||!queue||excluded(lastPenScene_)||localPenSequence_){
             const bool localPress=e->type()==QEvent::TabletPress&&!penContact_;
             cancelRemotePen();
             if(localPress){localPenSequence_=true;localPenMouseDown_=true;localPenMouse(QEvent::MouseButtonPress,lastPenScene_,lastPenGlobal_,Qt::LeftButton,Qt::LeftButton);e->accept();return true;}
