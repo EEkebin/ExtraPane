@@ -60,4 +60,4 @@ Windows USB is one removable-storage session per receiver. Linux/macOS new media
 resources and raw USB are not covered by this Windows milestone. Android camera
 and microphone source code/APK are present but require their own physical checks.
 The combined portable package contains setup helpers; drivers still require
-explicit machine-wide setup. The updated Inno installer has not been compiled.
+explicit machine-wide setup. The 2026.11.07-pre.1 installer has been compiled with all receiving components; installation is awaiting end-to-end user testing. Choose Server + Client on the receiving desktop and Client only on the source laptop.

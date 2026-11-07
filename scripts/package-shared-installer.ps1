@@ -13,7 +13,7 @@ foreach($path in @($stagePath,$destinationPath)) {
         throw 'Development installer paths must stay under this checkout out directory.'
     }
 }
-foreach($name in @('ExtraPane.exe','ExtraPane.CameraSetup.exe')) {
+foreach($name in @('ExtraPane.exe','ExtraPane.DriverSetup.exe','ExtraPane.CameraSetup.exe','ExtraPane.UsbSetup.exe','ExtraPane.MicrophoneEndpoint.exe','ExtraPane.Usb.exe','ExtraPane.Session.exe')) {
     if(-not (Test-Path -LiteralPath (Join-Path $stagePath $name))) {throw "Missing staged output: $name"}
 }
 if(-not $Compiler) {$Compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'}
@@ -40,7 +40,8 @@ try {
 ExtraPane shared-resource development build
 
 Client only installs the per-user app without machine component changes.
-Camera host + Client installs the same app and its machine-wide camera source.
+Server + Client installs the same app, virtual-display driver, camera source,
+and microphone/USB receiving components.
 Camera setup requires administrator permission. Camera use remains subject to
 Windows camera privacy settings. No physical camera is detached or replaced.
 

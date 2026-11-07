@@ -6,11 +6,6 @@
 #define HasCamera FileExists(SourceDir + "\ExtraPane.CameraSetup.exe")
 #define HasUsb FileExists(SourceDir + "\ExtraPane.UsbSetup.exe")
 #define HasUsbHost FileExists(SourceDir + "\ExtraPane.UsbHostSetup.exe")
-#if HasCamera
-  #define MicrophoneRole 3
-#else
-  #define MicrophoneRole 2
-#endif
 [Setup]
 ; Stable identity recognizes installations made under the previous name.
 AppId=SideScreen
@@ -104,24 +99,10 @@ begin
     'Client only needs no virtual-display driver. Server + Client can also host displays and requires that driver. USB source sharing is a separate option below when its component is bundled.', True, False);
   RoleChoice.Add('Client only');
   RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
-#if HasCamera
-  RoleChoice.Add('Camera host + Client (administrator permission; no virtual-display driver)');
-#endif
-#if HasUsb
-  RoleChoice.Add('Microphone host + Client (shared USB/IP audio component; administrator permission)');
-#endif
   RoleChoice.SelectedValueIndex := 0;
   if ExpandConstant('{param:SERVER|}') = '1' then RoleChoice.SelectedValueIndex := 1
   else if (ExpandConstant('{param:SERVER|}') = '') and not WizardSilent and
     (GetPreviousData('ServerInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 1;
-#if HasCamera
-  if (ExpandConstant('{param:CAMERA|}') = '1') and (ExpandConstant('{param:SERVER|}') <> '1') then RoleChoice.SelectedValueIndex := 2
-  else if (ExpandConstant('{param:SERVER|}') = '') and (ExpandConstant('{param:CAMERA|}') = '') and not WizardSilent and
-    (RoleChoice.SelectedValueIndex = 0) and (GetPreviousData('CameraInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 2;
-#endif
-#if HasUsb
-  if ExpandConstant('{param:MICROPHONE|}') = '1' then RoleChoice.SelectedValueIndex := {#MicrophoneRole};
-#endif
 #if HasUsbHost
   { Independent of the receiving role: storage is shared FROM this PC. }
   RoleChoice.CheckListBox.Height := RoleChoice.CheckListBox.Height - ScaleY(70);
@@ -160,12 +141,6 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
 begin
   Result := MemoDirInfo + NewLine + NewLine;
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + 'Use: Server + Client (virtual-display driver required)'
-#if HasUsb
-  else if RoleChoice.SelectedValueIndex = {#MicrophoneRole} then Result := Result + 'Use: Microphone host + Client (shared USB/IP audio component; existing compatible backend preserved)'
-#endif
-#if HasCamera
-  else if RoleChoice.SelectedValueIndex = 2 then Result := Result + 'Use: Camera host + Client (machine-wide camera component, no virtual-display driver)'
-#endif
   else Result := Result + 'Use: Client only (no virtual-display driver)';
 #if HasCamera
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the machine-wide camera receiving component.';
@@ -228,7 +203,7 @@ begin
 #endif
   end;
 #if HasCamera
-  if (Result = '') and ((RoleChoice.SelectedValueIndex = 1) or (RoleChoice.SelectedValueIndex = 2)) and not CameraInstalled then begin
+  if (Result = '') and (RoleChoice.SelectedValueIndex = 1) and not CameraInstalled then begin
     ExtractTemporaryFile('ExtraPane.CameraSetup.exe');
     if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.CameraSetup.exe'),
       '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
@@ -239,7 +214,7 @@ begin
   end;
 #endif
 #if HasUsb
-  if (Result = '') and ((RoleChoice.SelectedValueIndex = 1) or (RoleChoice.SelectedValueIndex = {#MicrophoneRole})) and not MicrophoneInstalled then begin
+  if (Result = '') and (RoleChoice.SelectedValueIndex = 1) and not MicrophoneInstalled then begin
     ExtractTemporaryFile('ExtraPane.UsbSetup.exe');
     if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.UsbSetup.exe'), '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'Microphone setup could not start or administrator permission was canceled.'
