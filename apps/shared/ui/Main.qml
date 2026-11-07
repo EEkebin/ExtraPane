@@ -2,6 +2,7 @@ import QtQuick
 // Shared shell baseline. Platforms supply Video.qml and the receiver controller.
 // Windows and Linux supply native platform controllers.
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQuick.Window
 
@@ -11,7 +12,14 @@ ApplicationWindow {
     minimumWidth: 360; minimumHeight: 480
     visible: true
     title: "ExtraPane"
-    color: "#10151f"
+    font.family: windowsClient ? "Segoe UI" : "sans-serif"
+    font.pixelSize: 14
+    Material.theme: Material.Dark
+    Material.accent: "#79b2ff"
+    Material.primary: "#15233b"
+    Material.background: "#0e1727"
+    Material.foreground: "#e4ecfa"
+    color: "#0e1727"
     palette.window: "#10151f"
     palette.windowText: "#edf1f8"
     palette.base: "#172130"
@@ -25,6 +33,7 @@ ApplicationWindow {
     palette.placeholderText: "#aab8cc"
     readonly property bool multiClient: windowsClient && typeof receiver.connectionRuntime !== "undefined"
     property bool windowsClient: receiver.platformLabel === "Windows"
+    property bool sidebarCollapsed: false
     property bool inputPaused: false
     component ToolbarButton: ToolButton {
         id: control
@@ -42,7 +51,7 @@ ApplicationWindow {
     }
     function pauseInput() { receiver.releaseInput(); inputPaused = true; revealToolbar() }
     function toggleInput() { receiver.releaseInput(); inputPaused = !inputPaused; revealToolbar() }
-    property int page: Qt.application.arguments.indexOf("--host") >= 0 ? 0 : 1
+    property int page: Qt.application.arguments.indexOf("--client") >= 0 ? 1 : 0
     onPageChanged: receiver.releaseInput()
     footer: TabBar {
         visible: root.width < 700 && !root.fullscreen
@@ -81,25 +90,57 @@ ApplicationWindow {
     RowLayout {
         anchors.fill: parent; spacing: 0
         Rectangle {
-            Layout.fillHeight: true; Layout.preferredWidth: 180
+            id: sidebar
+            objectName: "navigationSidebar"
+            Layout.fillHeight: true
+            Layout.preferredWidth: root.sidebarCollapsed ? 72 : 224
             visible: !root.fullscreen && root.width >= 700
-            color: "#161e2b"
+            color: "#0a1120"
+            Rectangle { anchors.right: parent.right; height: parent.height; width: 1; color: "#1a2940" }
             ColumnLayout {
-                anchors.fill: parent; anchors.margins: 18; spacing: 10
-                Label { text: "ExtraPane"; font.pixelSize: 23; font.bold: true; topPadding: 14; bottomPadding: 20 }
+                anchors.fill: parent; anchors.margins: 12; spacing: 8
+                RowLayout {
+                    Layout.fillWidth: true; Layout.preferredHeight: 64
+                    Image { visible: !root.sidebarCollapsed; source: "qrc:/extrapane.png"; Layout.preferredWidth: 30; Layout.preferredHeight: 30; fillMode: Image.PreserveAspectFit }
+                    Label { visible: !root.sidebarCollapsed; text: "ExtraPane"; font.pixelSize: 20; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                    IconButton { objectName: "sidebarToggle"; symbol: "menu"; description: root.sidebarCollapsed ? "Expand navigation" : "Collapse navigation"; Layout.alignment: Qt.AlignHCenter; onClicked: root.sidebarCollapsed = !root.sidebarCollapsed }
+                }
                 Repeater {
-                    model: ["Server", "Client", "Settings"]
-                    Button {
+                    model: [{name: "Server", icon: "server"}, {name: "Client", icon: "client"}, {name: "Settings", icon: "settings"}]
+                    ToolButton {
+                        id: navigation
                         required property int index
-                        required property string modelData
-                        text: modelData; Layout.fillWidth: true
-                        checkable: true; checked: root.page === index
+                        required property var modelData
+                        objectName: "navigation_" + modelData.icon
+                        Layout.fillWidth: true; Layout.preferredHeight: 48
+                        Accessible.name: modelData.name
+                        ToolTip.visible: root.sidebarCollapsed && hovered
+                        ToolTip.text: modelData.name; ToolTip.delay: 400
                         onClicked: root.page = index
+                        contentItem: RowLayout {
+                            spacing: 14
+                            AppIcon { symbol: navigation.modelData.icon; stroke: root.page === navigation.index ? "#9ac4ff" : "#8fa2bf"; Layout.preferredWidth: 22; Layout.preferredHeight: 22; Layout.leftMargin: 10 }
+                            Label { visible: !root.sidebarCollapsed; text: navigation.modelData.name; color: root.page === navigation.index ? "#eaf2ff" : "#aabbd3"; font.weight: root.page === navigation.index ? Font.DemiBold : Font.Normal; Layout.fillWidth: true }
+                        }
+                        background: Rectangle {
+                            radius: 10
+                            color: root.page === navigation.index ? "#192e4b" : navigation.hovered ? "#132136" : "transparent"
+                            Rectangle { visible: root.page === navigation.index; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 3; height: 20; radius: 2; color: "#79b2ff" }
+                        }
                     }
                 }
                 Item { Layout.fillHeight: true }
-                Label { text: receiver.platformLabel; color: "#aab8cc" }
-                Button { text: "About"; Layout.fillWidth: true; onClicked: root.page = 3 }
+                Label { visible: !root.sidebarCollapsed; text: receiver.platformLabel.toUpperCase(); font.pixelSize: 10; font.letterSpacing: 1.5; color: "#7287a4"; leftPadding: 14; bottomPadding: 8 }
+                ToolButton {
+                    id: aboutNavigation
+                    objectName: "navigation_about"
+                    Layout.fillWidth: true; Layout.preferredHeight: 48
+                    Accessible.name: "About"
+                    ToolTip.visible: root.sidebarCollapsed && hovered; ToolTip.text: "About"
+                    onClicked: root.page = 3
+                    contentItem: RowLayout { spacing: 14; AppIcon { symbol: "about"; Layout.preferredWidth: 22; Layout.preferredHeight: 22; Layout.leftMargin: 10; stroke: root.page === 3 ? "#9ac4ff" : "#8fa2bf" } Label { visible: !root.sidebarCollapsed; text: "About"; color: "#aabbd3"; Layout.fillWidth: true } }
+                    background: Rectangle { radius: 10; color: root.page === 3 ? "#192e4b" : aboutNavigation.hovered ? "#132136" : "transparent" }
+                }
             }
         }
         StackLayout {
@@ -109,15 +150,15 @@ ApplicationWindow {
                 objectName: "serverPage"
                 ScrollView {
                     id: serverScroll
-                    anchors.fill: parent; anchors.margins: 24
+                    anchors.fill: parent; anchors.margins: root.width < 700 ? 16 : 32
                     contentWidth: availableWidth
                 ColumnLayout {
                     width: serverScroll.availableWidth; spacing: 16
-                    Label { text: "Server"; font.pixelSize: 30; font.bold: true }
+                    Label { text: "Server"; font.pixelSize: 30; font.weight: Font.DemiBold }
                     Label { text: "Accept connections from your other devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label {
                         text: receiver.hostAvailability.length ? receiver.hostAvailability : receiver.hostDescription
-                        color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                        color: receiver.hostAvailability.length ? "#f0c66e" : "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
                     ComboBox {
                         id: hostAddress; objectName: "hostAddressPicker"; Layout.fillWidth: true; model: receiver.addresses; textRole: "label"
@@ -125,6 +166,10 @@ ApplicationWindow {
                     }
                     Button {
                         objectName: "serverStartButton"
+                        highlighted: true
+                        leftPadding: 22; rightPadding: 22
+                        background: Rectangle { implicitHeight: 44; radius: 10; color: parent.enabled ? (parent.down ? "#3468a7" : parent.hovered ? "#5288cb" : "#3e76bb") : "#27364c"; border.width: parent.activeFocus ? 2 : 0; border.color: "#a7ceff" }
+                        contentItem: Text { text: parent.text; font: parent.font; color: parent.enabled ? "#ffffff" : "#8fa0b6"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         text: receiver.hosting ? "Stop server" : receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Preparing server..." : "Start server"
                         enabled: receiver.hosting || (receiver.hostAvailability.length === 0 && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning))
                         onClicked: { if (receiver.hosting) receiver.stopHost(); else { const selected=receiver.addresses[hostAddress.currentIndex]; receiver.startHost(selected ? selected.address : "0.0.0.0", Number(hostPort.text), requireCode.checked) } }
@@ -160,9 +205,9 @@ ApplicationWindow {
                 objectName: "clientPage"
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: root.fullscreen ? 0 : 24
+                    anchors.margins: root.fullscreen ? 0 : root.width < 700 ? 16 : 32
                     spacing: root.fullscreen ? 0 : 12
-                    Label { visible: !root.fullscreen; text: "Client"; font.pixelSize: 30; font.bold: true }
+                    Label { visible: !root.fullscreen; text: "Client"; font.pixelSize: 30; font.weight: Font.DemiBold }
                     RowLayout {
                         visible: !root.multiClient && !receiver.active && !root.fullscreen
                         TextField { id: clientPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } Layout.preferredWidth: 100 }
@@ -291,8 +336,8 @@ ApplicationWindow {
             }
             Pane {
                 ColumnLayout {
-                    anchors.fill: parent; anchors.margins: 24; spacing: 16
-                    Label { text: "Settings"; font.pixelSize: 30; font.bold: true }
+                    anchors.fill: parent; anchors.margins: root.width < 700 ? 16 : 32; spacing: 16
+                    Label { text: "Settings"; font.pixelSize: 30; font.weight: Font.DemiBold }
                     CheckBox { id: globalInputAllowed; text: "Send mouse, keyboard, touch and pen input"; checked: true; enabled: !receiver.active }
                     Label { text: "Keyboard forwarding follows the server's keyboard layout. Available input features depend on both devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { text: receiver.inputDescription; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
@@ -303,7 +348,7 @@ ApplicationWindow {
             }
             Pane {
                 ColumnLayout {
-                    anchors.fill: parent; anchors.margins: 24; spacing: 16
+                    anchors.fill: parent; anchors.margins: root.width < 700 ? 16 : 32; spacing: 16
                     Label { text: "ExtraPane"; font.pixelSize: 32; font.bold: true }
                     Label { text: "Another screen for your desktop." }
                     Label { text: "Development build: " + receiver.version }

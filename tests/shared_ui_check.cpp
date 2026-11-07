@@ -5,6 +5,11 @@
 #include <QQmlContext>
 #include <QQmlPropertyMap>
 #include <QWindow>
+#include <QQuickWindow>
+#include <QDir>
+#include <QThread>
+#include <QElapsedTimer>
+#include <QFontDatabase>
 #include <QQuickItem>
 #include <QSet>
 #include <QQuickStyle>
@@ -107,7 +112,12 @@ static void model_checks(){
     auto duplicate=devices("duplicate","Mic one");duplicate+=devices("duplicate","Mic two");model.setDevices(Kind::microphone,duplicate,"duplicate","Ambiguous",false);require(model.selectedDevice(Kind::microphone).isEmpty());
 }
 int main(int argc,char** argv){
-    qputenv("QT_QPA_PLATFORM","offscreen");qputenv("QT_QUICK_BACKEND","software");QQuickStyle::setStyle("Fusion");QGuiApplication app(argc,argv);
+    qputenv("QT_QPA_PLATFORM","offscreen");qputenv("QT_QUICK_BACKEND","software");QQuickStyle::setStyle("Material");QGuiApplication app(argc,argv);
+#ifdef Q_OS_WIN
+    require(QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR")+"/Fonts/segoeui.ttf")>=0);
+    QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR")+"/Fonts/seguisb.ttf");
+#endif
+    auto waitFor=[&](auto predicate){QElapsedTimer timer;timer.start();while(!predicate()&&timer.elapsed()<2000){app.processEvents();QThread::msleep(5);}require(predicate());};
     try{
         model_checks();bool warnings=false;
         auto watch=[&](QQmlApplicationEngine& engine){QObject::connect(&engine,&QQmlEngine::warnings,&app,[&](const QList<QQmlError>& errors){warnings=true;for(const auto& error:errors)std::cerr<<error.toString().toStdString()<<'\n';});};
@@ -138,20 +148,20 @@ int main(int argc,char** argv){
         mirror->setProperty("checked",true);require(QMetaObject::invokeMethod(mirror,"clicked"));app.processEvents();require(controller.mirrorRequests==1&&controller.value("cameraMirrored").toBool()&&controller.connectRequests==0);
         auto* cameraPicker=named(picker,"resourceDevicePicker_camera");auto* micPicker=named(picker,"resourceDevicePicker_microphone");
         require(cameraPicker->property("visible").toBool()&&micPicker->property("visible").toBool());auto* cameraPopup=cameraPicker->property("popup").value<QObject*>();require(cameraPopup&&cameraPicker->property("enabled").toBool()&&cameraPicker->property("count").toInt()==0);
-        require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshed=="camera"&&controller.refreshRequests==1);require(QMetaObject::invokeMethod(cameraPopup,"close"));
+        require(QMetaObject::invokeMethod(cameraPopup,"open"));waitFor([&]{return cameraPopup->property("opened").toBool();});require(controller.refreshed=="camera"&&controller.refreshRequests==1);require(QMetaObject::invokeMethod(cameraPopup,"close"));waitFor([&]{return !cameraPopup->property("visible").toBool();});
         for(auto* object:picker->findChildren<QObject*>()){require(!object->objectName().startsWith("resourceRefresh_"));require(object->property("text").toString()!="USB source setup");}
         model.setDevices(Kind::camera,devices("cam-a","Built-in camera"),{},"Choose camera",false);model.setDevices(Kind::microphone,devices("mic-a","Built-in microphone"),{},"Choose microphone",false);app.processEvents();
         require(cameraPicker->property("currentIndex").toInt()==-1&&micPicker->property("currentIndex").toInt()==-1);
         cameraPicker->setProperty("currentIndex",0);require(QMetaObject::invokeMethod(cameraPicker,"activated",Q_ARG(int,0)));micPicker->setProperty("currentIndex",0);require(QMetaObject::invokeMethod(micPicker,"activated",Q_ARG(int,0)));app.processEvents();
         require(controller.deviceSelections==2&&model.selectedDevice(Kind::camera)=="cam-a"&&model.selectedDevice(Kind::microphone)=="mic-a"&&connect->property("enabled").toBool());
         model.setDevices(Kind::camera,model.devices(Kind::camera),"cam-a","Listing devices...",true);app.processEvents();
-        require(cameraPicker->property("enabled").toBool());require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshRequests==1);require(QMetaObject::invokeMethod(cameraPopup,"close"));
+        require(cameraPicker->property("enabled").toBool());require(QMetaObject::invokeMethod(cameraPopup,"open"));waitFor([&]{return cameraPopup->property("opened").toBool();});require(controller.refreshRequests==1);require(QMetaObject::invokeMethod(cameraPopup,"close"));waitFor([&]{return !cameraPopup->property("visible").toBool();});
         model.setDevices(Kind::camera,model.devices(Kind::camera),"cam-a","Ready",false);app.processEvents();
-        require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshRequests==2&&model.selectedDevice(Kind::camera)=="cam-a");require(QMetaObject::invokeMethod(cameraPopup,"close"));
+        require(QMetaObject::invokeMethod(cameraPopup,"open"));waitFor([&]{return cameraPopup->property("opened").toBool();});require(controller.refreshRequests==2&&model.selectedDevice(Kind::camera)=="cam-a");require(QMetaObject::invokeMethod(cameraPopup,"close"));waitFor([&]{return !cameraPopup->property("visible").toBool();});
         require(QMetaObject::invokeMethod(connect,"clicked"));require(controller.connectRequests==1);
         model.setLocked(false);controller.insert("active",true);model.setSessionState(Kind::display,true,"Receiving");model.setSessionState(Kind::camera,true,"Sharing");model.setSessionState(Kind::microphone,true,"Sharing");app.processEvents();
         require(picker->property("visible").toBool()&&camera->property("enabled").toBool()&&!cameraPicker->property("enabled").toBool()&&disconnect->property("visible").toBool());
-        require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshRequests==2);require(QMetaObject::invokeMethod(cameraPopup,"close"));
+        require(QMetaObject::invokeMethod(cameraPopup,"open"));waitFor([&]{return cameraPopup->property("opened").toBool();});require(controller.refreshRequests==2);require(QMetaObject::invokeMethod(cameraPopup,"close"));waitFor([&]{return !cameraPopup->property("visible").toBool();});
         require(mirror->property("visible").toBool()&&mirror->property("enabled").toBool());
         mirror->setProperty("checked",false);require(QMetaObject::invokeMethod(mirror,"clicked"));app.processEvents();require(controller.mirrorRequests==2&&!controller.value("cameraMirrored").toBool()&&controller.connectRequests==1&&controller.disconnectRequests==0&&controller.stopRequests==0&&controller.muteRequests==0);
         camera->setProperty("checked",false);require(QMetaObject::invokeMethod(camera,"clicked"));app.processEvents();require(!model.selected(Kind::camera)&&model.selected(Kind::microphone)&&model.selected(Kind::display));
@@ -194,6 +204,26 @@ int main(int argc,char** argv){
         auto* camerasDisconnect=named(repeatedRoot,"connectionGroupDisconnect_camera");require(camerasDisconnect->property("enabled").toBool());require(QMetaObject::invokeMethod(camerasDisconnect,"clicked"));app.processEvents();
         require(runtime.requests==QStringList{instanceCamera,secondCamera}&&instances.connection(instanceDisplay)["phase"]=="active"&&instances.connection(instanceMic)["phase"]=="active"&&!instances.connection(instanceCamera)["connectionEnabled"].toBool()&&!instances.connection(secondCamera)["connectionEnabled"].toBool());
         const auto beforeAdd=instances.rowCount();require(QMetaObject::invokeMethod(named(repeatedRoot,"connectionGroupAdd_camera"),"clicked"));app.processEvents();require(instances.rowCount()==beforeAdd+1&&instances.data(instances.index(beforeAdd),ConnectionModel::Kind)=="camera"&&!warnings);
+        auto* nav=named(repeatedRoot,"navigationSidebar");auto* navToggle=named(repeatedRoot,"sidebarToggle");
+        auto* repeatedWindow=qobject_cast<QQuickWindow*>(repeatedRoot);require(repeatedWindow);repeatedWindow->resize(1120,760);app.processEvents();
+        const auto expandedWidth=nav->property("width").toReal();require(QMetaObject::invokeMethod(navToggle,"clicked"));waitFor([&]{return nav->property("width").toReal()<expandedWidth;});require(repeatedRoot->property("sidebarCollapsed").toBool()&&instances.connection(instanceDisplay)["phase"]=="active");
+        require(QMetaObject::invokeMethod(named(repeatedRoot,"navigation_about"),"clicked"));app.processEvents();require(repeatedRoot->property("page")==3);
+        require(QMetaObject::invokeMethod(navToggle,"clicked"));app.processEvents();require(!repeatedRoot->property("sidebarCollapsed").toBool());
+        for(const auto* key:{"display","camera","microphone","usb"}){auto* title=named(repeatedRoot,(QString("connectionGroupTitle_")+key).toUtf8().constData());auto* item=qobject_cast<QQuickItem*>(title);require(item&&qAbs(item->x()+item->width()/2-item->parentItem()->width()/2)<1.0);}
+        const auto screenshotPath=qEnvironmentVariable("EXTRAPANE_UI_SCREENSHOTS");
+        if(!screenshotPath.isEmpty()){
+            require(QDir().mkpath(screenshotPath));
+            auto capture=[&](QString name){for(int i=0;i<35;++i){app.processEvents();QThread::msleep(10);}const auto image=repeatedWindow->grabWindow();require(!image.isNull()&&image.save(screenshotPath+"/"+name+".png"));};
+            repeated.insert("hostComponents",QVariantList{});repeated.insert("hostDescription",QString("Clients choose which displays, cameras, microphones and USB devices to share."));
+            runtime.insert("devices",QVariantMap{{"camera",devices("fake-source","Surface camera")},{"microphone",devices("fake-source","Surface microphone")}});runtime.insert("active",true);
+            repeated.insert("hostStatus",QString("Ready to accept connections"));repeatedRoot->setProperty("page",0);capture("server-1120");
+            repeatedRoot->setProperty("page",1);capture("client-1120");
+            repeatedWindow->resize(720,760);repeatedRoot->setProperty("sidebarCollapsed",false);capture("client-720-expanded");
+            repeatedRoot->setProperty("sidebarCollapsed",true);capture("client-720-collapsed");
+            while(instances.rowCount()){const auto id=instances.data(instances.index(0),ConnectionModel::Id).toString();instances.setState(id,ConnectionModel::State::idle);require(instances.removeConnection(id));}
+            runtime.insert("active",false);repeatedWindow->resize(1120,760);repeatedRoot->setProperty("sidebarCollapsed",false);capture("client-empty-1120");
+        }
+        require(!warnings);
         std::cout<<"Shared UI multi-resource model and offscreen shell checks passed\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

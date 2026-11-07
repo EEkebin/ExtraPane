@@ -367,8 +367,16 @@ consolidation. Installation, upgrade and unified removal need end-to-end validat
 
 ## Custom Windows display refresh target (2026-11-07)
 
-Custom display targets accept 1?360 FPS/Hz; the default remains 60. This is a requested mode and stream target, not a delivery guarantee. Capture, encoder, decoder, network and presentation hardware must support the requested rate. Driver 0.9 extends the private mode descriptor to three hexadecimal refresh digits, preserving legacy descriptor decoding. Camera and JPEG limits are unchanged.
+Custom display targets accept 1-360 FPS/Hz; the default remains 60. This is a requested mode and stream target, not a delivery guarantee. Capture, encoder, decoder, network and presentation hardware must support the requested rate. Driver 0.9 extends the private mode descriptor to three hexadecimal refresh digits, preserving legacy descriptor decoding. Camera and JPEG limits are unchanged.
 
 ## Grouped resources and remote keyboard (2026-11-07)
 
 Resource groups collapse without stopping connections and disconnect independently. Hide routine component-presence messages, preserve actionable failures. Windows automatic keyboard requests target the streamed host monitor after confirmed editable touch; use the OS accessibility keyboard, preserve unrelated instances and expose limitations. A complete modern touch keyboard/IME integration is not claimed.
+
+## Desktop shell presentation (2026-11-07)
+
+Open on Server by default without starting it automatically. Use centered resource
+group titles with separate compact icon actions, accessible names and tooltips.
+The desktop navigation can collapse into an icon rail; collapsing navigation or
+a resource group never changes connections. Keep actionable status visible and
+move general usage limits out of the primary connection workflow.

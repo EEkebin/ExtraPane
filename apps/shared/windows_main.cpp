@@ -65,7 +65,7 @@ int main(int argc,char** argv){
     }
     struct Instance {HANDLE handle=nullptr;~Instance(){if(handle)CloseHandle(handle);}} instance;
     if(!checkUi){instance.handle=CreateMutexW(nullptr,FALSE,L"Local\\SideScreen.App");if(!instance.handle||GetLastError()==ERROR_ALREADY_EXISTS)return 1;}
-    QQuickStyle::setStyle("Fusion");
+    QQuickStyle::setStyle("Material");
     QApplication app(argc,argv);
     app.setOrganizationName("ExtraPane");app.setApplicationName("ExtraPane");
     app.setQuitOnLastWindowClosed(false);

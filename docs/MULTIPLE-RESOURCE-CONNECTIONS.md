@@ -191,3 +191,11 @@ This does not implement the modern Windows touch keyboard, TSF or IME. Matching
 Windows builds are required for the new request; Linux/macOS hosts accept the
 optional request but do not implement this Windows keyboard behavior. Physical
 touch typing and keyboard placement remain acceptance tests.
+
+## Desktop navigation and group controls
+
+The app opens on Server without starting the server. Desktop navigation can
+collapse to an icon rail; its menu button expands it again. Resource group titles
+are centered across their headers, independently of the add/disconnect actions
+on the right. Icon actions have tooltips and accessible names. Navigation and
+collapse are presentation changes only, leaving resource sessions untouched.

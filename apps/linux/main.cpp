@@ -19,7 +19,7 @@ int main(int argc,char** argv){
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents,false);
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTabletEvents,false);
     // A consistent Controls style honors our palette on KDE light and dark desktops.
-    QQuickStyle::setStyle("Fusion");
+    QQuickStyle::setStyle("Material");
     QGuiApplication app(argc,argv);
     QTimer shutdownTimer;QObject::connect(&shutdownTimer,&QTimer::timeout,&app,[]{if(quitRequested)QCoreApplication::quit();});shutdownTimer.start(100);
     QCoreApplication::setOrganizationName("ExtraPane");QCoreApplication::setApplicationName("ExtraPane");

@@ -19,10 +19,13 @@ target_link_libraries(ExtraPane PRIVATE extrapane_session dm_probe_protocol Open
 # Stable resource paths, independent of this subdirectory's relative location.
 set_source_files_properties(../../apps/shared/ui/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 set_source_files_properties(../../apps/shared/ui/ResourcePicker.qml PROPERTIES QT_RESOURCE_ALIAS ResourcePicker.qml)
+set_source_files_properties(../../apps/shared/ui/ClientConnections.qml PROPERTIES QT_RESOURCE_ALIAS ClientConnections.qml)
+set_source_files_properties(../../apps/shared/ui/AppIcon.qml PROPERTIES QT_RESOURCE_ALIAS AppIcon.qml)
+set_source_files_properties(../../apps/shared/ui/IconButton.qml PROPERTIES QT_RESOURCE_ALIAS IconButton.qml)
 set_source_files_properties(../../apps/linux/Video.qml PROPERTIES QT_RESOURCE_ALIAS Video.qml)
 set_source_files_properties(../../assets/branding/icon.png PROPERTIES QT_RESOURCE_ALIAS extrapane.png)
 qt_add_resources(ExtraPane ui PREFIX / FILES
-  ../../apps/shared/ui/Main.qml ../../apps/shared/ui/ResourcePicker.qml ../../apps/linux/Video.qml ../../assets/branding/icon.png)
+  ../../apps/shared/ui/Main.qml ../../apps/shared/ui/ResourcePicker.qml ../../apps/shared/ui/ClientConnections.qml ../../apps/shared/ui/AppIcon.qml ../../apps/shared/ui/IconButton.qml ../../apps/linux/Video.qml ../../assets/branding/icon.png)
 include(GNUInstallDirs)
 install(TARGETS ExtraPane RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES ../../packaging/linux/io.github.EEkebin.ExtraPane.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
