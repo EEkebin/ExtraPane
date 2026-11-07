@@ -7,6 +7,8 @@
 #include <map>
 #include <syncstream>
 #include <thread>
+#include <vector>
+#include <algorithm>
 namespace {
 std::atomic_bool stopping=false,muted=false;
 void report(const std::string& message){std::osyncstream(std::cout)<<message<<std::endl;}
@@ -16,6 +18,36 @@ void ipv4(const std::string& value){std::size_t start=0;unsigned first=0;for(uns
 std::wstring wide(const std::string& value){const auto n=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0);if(!n)throw std::invalid_argument("Invalid UTF-8 microphone identifier");std::wstring out(n,L'\0');MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),out.data(),n);return out;}
 std::string utf8(const std::wstring& value){const auto n=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);if(!n)throw std::runtime_error("Cannot encode microphone label");std::string out(n,'\0');WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),out.data(),n,nullptr,nullptr);return out;}
 struct Threads{std::thread parent,status;~Threads(){stopping=true;if(parent.joinable())parent.join();if(status.joinable())status.join();}};
+void broker_mode(int argc,char** argv){
+    bool deviceStdin=false;unsigned parentPid=0;
+    for(int i=2;i<argc;++i){const std::string arg=argv[i];if(arg=="--device-stdin"&&!deviceStdin){deviceStdin=true;continue;}
+        if(arg=="--parent-pid"&&!parentPid&&++i<argc){parentPid=number(argv[i],0xffffffffu);continue;}throw std::invalid_argument("Invalid microphone broker option");}
+    if(!deviceStdin)throw std::invalid_argument("Microphone broker requires --device-stdin");
+    Threads threads;if(parentPid){HANDLE parent=OpenProcess(SYNCHRONIZE,FALSE,parentPid);if(!parent)throw std::runtime_error("Launcher unavailable");threads.parent=std::thread([parent]{while(!stopping){if(WaitForSingleObject(parent,100)==WAIT_OBJECT_0){stopping=true;break;}}CloseHandle(parent);});}
+    std::string device;if(!std::getline(std::cin,device)||device.empty()||device.size()>4096||device.find('\0')!=std::string::npos)throw std::invalid_argument("Missing local microphone identifier");
+    dm::microphone::SourceBroker broker(wide(device),stopping,report);report("BROKER_READY");
+    std::string line;while(!stopping&&std::getline(std::cin,line)){
+        struct Wipe{std::string& value;~Wipe(){if(!value.empty())SecureZeroMemory(value.data(),value.size());}}wipe{line};
+        if(line=="Q"){stopping=true;break;}
+        if(line.empty()||line.size()>8192||line.find('\0')!=std::string::npos)throw std::invalid_argument("Invalid microphone broker command size");
+        std::vector<std::string> fields;std::size_t start=0;
+        do{const auto next=line.find('\t',start);fields.push_back(line.substr(start,next==std::string::npos?next:next-start));if(next==std::string::npos)break;start=next+1;}while(fields.size()<8);
+        struct WipeFields{std::vector<std::string>& values;~WipeFields(){for(auto& value:values)if(!value.empty())SecureZeroMemory(value.data(),value.size());}}wipeFields{fields};
+        std::string row=fields.size()>1?fields[1]:std::string{};
+        const bool validRow=!row.empty()&&row.size()<=128&&std::all_of(row.begin(),row.end(),[](unsigned char c){return(c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-'||c=='_';});
+        if(!validRow)throw std::invalid_argument("Invalid microphone broker row identity");
+        try{
+            if(fields[0]=="ADD"&&fields.size()==6){
+                dm::net::Options options;options.bind_address=fields[2];options.peer=fields[3];options.port=static_cast<std::uint16_t>(number(fields[4],65535));
+                if(options.bind_address!="auto")ipv4(options.bind_address);ipv4(options.peer);
+                broker.add(row,options,fields[5]=="-"?std::string{}:fields[5]);
+            }else if(fields[0]=="REMOVE"&&fields.size()==2)broker.remove(row);
+            else if(fields[0]=="MUTE"&&fields.size()==3&&(fields[2]=="0"||fields[2]=="1"))broker.mute(row,fields[2]=="1");
+            else throw std::invalid_argument("Unknown microphone broker command");
+        }catch(const std::exception& e){std::string reason=e.what();for(auto& c:reason)if(static_cast<unsigned char>(c)<32)c=' ';report("RESOURCE_EVENT\t"+row+"\tERROR\t"+reason.substr(0,512));}
+    }
+    stopping=true;
+}
 }
 int main(int argc,char** argv){try{
     SetConsoleCtrlHandler(handler,TRUE);
@@ -24,9 +56,11 @@ int main(int argc,char** argv){try{
             "  serve-microphone --bind <local-ipv4|auto> --port N [--require-code] [--parent-pid N] [--check-config]\n"
             "  send-microphone --bind <local-ipv4|auto> --peer <server-ipv4> --port N --device-stdin [--access-stdin] [--parent-pid N] [--check-config]\n"
             "  list-microphones\nServer stdin: G new code, Q stop. Sender stdin: device ID, optional code, then M mute, U unmute, Q stop.\n"
+            "  broker-microphone --device-stdin [--parent-pid N] (one source, dynamic ADD/REMOVE/MUTE recipients on stdin)\n"
             "Dedicated microphone-only port; source currently requires a 48 kHz mix format.\n";return 0;
     }
     const std::string mode=argv[1];
+    if(mode=="broker-microphone"){broker_mode(argc,argv);report("STOPPED");return 0;}
     if(mode=="list"||mode=="list-microphones"){
         if(argc!=2)throw std::invalid_argument("list takes no options");unsigned index=0;
         for(const auto& device:dm::microphone::enumerate()){

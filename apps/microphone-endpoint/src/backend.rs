@@ -157,4 +157,15 @@ mod trust {
         let mut duplicate=text.to_vec();duplicate.extend_from_slice(text);
         assert!(!owned_port(&duplicate,1,1234,"ep-owned","ABC123"));
     }
+    #[test] fn concurrent_endpoint_ports_are_not_interchangeable() {
+        let first=b"Port 01: device in use at High Speed\n -> usbip://127.0.0.1:1234/ep-first\n -> serial: FIRST123\n";
+        let second=b"Port 02: device in use at High Speed\n -> usbip://127.0.0.1:2345/ep-second\n -> serial: SECOND456\n";
+        assert!(owned_port(first,1,1234,"ep-first","FIRST123"));
+        assert!(owned_port(second,2,2345,"ep-second","SECOND456"));
+        assert!(!owned_port(first,2,2345,"ep-second","SECOND456"));
+        assert!(!owned_port(second,1,1234,"ep-first","FIRST123"));
+        // Reusing a physical import port for another endpoint must not authorize
+        // cleanup by the old endpoint owner.
+        assert!(!owned_port(second,2,1234,"ep-first","FIRST123"));
+    }
 }

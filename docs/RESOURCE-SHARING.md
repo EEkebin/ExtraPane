@@ -13,8 +13,12 @@ passes display regression checks. iOS, renaming and speaker forwarding are defer
 The client connects to a server and selects Display, Camera, Microphone and/or
 individual USB devices. Display streams from server to client; other resources
 travel from client to server. A media-only connection must not allocate a monitor.
-One camera and one microphone per connection initially; one remote receiver per
-physical resource. Desktop hosting and an outbound connection can coexist.
+The Windows development client supports repeatable rows and either a shared
+server destination or independent destinations. One camera/microphone source
+can feed several servers; USB remains exclusive. Desktop hosting and outbound
+connections can coexist. See [multiple resource connections](MULTIPLE-RESOURCE-CONNECTIONS.md)
+for limits and validation status; other platform adapters retain their documented
+preview capabilities.
 
 One installation and one Start server / Stop server control manage platform
 components. Starting listens without activating resources. Disconnect cleans up
@@ -253,8 +257,8 @@ admission once per incoming connection, then examines eight decrypted bytes to
 select the existing display, camera, microphone or USB adapter. A bounded prefix
 buffer preserves those bytes for the adapter's full protocol validation. Unknown
 protocols, component errors and client disconnects end that connection; the
-listener remains available. Limits are four display sessions, four cameras, one
-microphone and one USB session, with a bounded pending-connection pool.
+listener remains available. Limits are four display sessions, four cameras, four
+microphones and one USB session, with a bounded pending-connection pool.
 
 Starting the server does not allocate a virtual monitor, camera or microphone.
 Adapters prepare those resources after the corresponding client request. The

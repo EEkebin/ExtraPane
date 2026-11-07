@@ -14,6 +14,8 @@
 
 #include <memory>
 #include <vector>
+#include <array>
+#include "ModeRequest.h"
 
 #include "Trace.h"
 
@@ -94,7 +96,7 @@ namespace Microsoft
         class IndirectDeviceContext
         {
         public:
-            IndirectDeviceContext(_In_ WDFDEVICE WdfDevice);
+            IndirectDeviceContext(_In_ WDFDEVICE WdfDevice,const ExtraPane::DisplayRequest::Request& requested);
             virtual ~IndirectDeviceContext();
 
             void InitAdapter();
@@ -103,19 +105,23 @@ namespace Microsoft
         protected:
             WDFDEVICE m_WdfDevice;
             IDDCX_ADAPTER m_Adapter;
+            std::vector<IndirectSampleMonitor::SampleMonitorMode> m_Modes;
+            std::array<BYTE,IndirectSampleMonitor::szEdidBlock> m_Edid;
         };
 
         class IndirectMonitorContext
         {
         public:
-            IndirectMonitorContext(_In_ IDDCX_MONITOR Monitor);
+            IndirectMonitorContext(_In_ IDDCX_MONITOR Monitor,const std::vector<IndirectSampleMonitor::SampleMonitorMode>& modes);
             virtual ~IndirectMonitorContext();
 
             void AssignSwapChain(IDDCX_SWAPCHAIN SwapChain, LUID RenderAdapter, HANDLE NewFrameEvent);
             void UnassignSwapChain();
+            const std::vector<IndirectSampleMonitor::SampleMonitorMode>& Modes()const{return m_Modes;}
 
         private:
             IDDCX_MONITOR m_Monitor;
+            const std::vector<IndirectSampleMonitor::SampleMonitorMode> m_Modes;
             std::unique_ptr<SwapChainProcessor> m_ProcessingThread;
         } ;
     }

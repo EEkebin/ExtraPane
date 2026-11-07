@@ -8,6 +8,7 @@ struct EncodedFrame {
     std::uint64_t sequence=0;
     std::int64_t capture_timestamp=0;
     std::vector<std::uint8_t> h264;
+    bool fresh_encoder=false;
 };
 // A client source resource for the negotiated camera channel. The network sink
 // must bound its queue and must not block the camera worker on socket writes.
@@ -21,9 +22,10 @@ public:
     void stop()noexcept override;
     Format format() const { return source_.format(); }
     bool failed()const noexcept{return source_.failed();}
+    void request_keyframe()noexcept{refresh_=true;}
 private:
     Format format_;Sink sink_;const std::atomic_bool* mirrored_;std::unique_ptr<dm::video::H264Encoder> encoder_;
-    std::uint64_t sequence_=0;
+    std::uint64_t sequence_=0;std::atomic_bool refresh_=false;
     SourceResource source_;
 };
 

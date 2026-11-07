@@ -1,6 +1,7 @@
 #include <dm/video.hpp>
 #include <dm/video_layout.hpp>
 #include <dm/video_protocol.hpp>
+#include <dm/text_focus_policy.hpp>
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
@@ -31,6 +32,14 @@ int main() {
         rejects([&]{wire::set_client_display(request,{0,2000,60});});
         rejects([&]{wire::set_client_display(request,{16385,2000,60});});
         rejects([&]{wire::set_client_display(request,{3000,2000,1001});});
+        wire::set_client_display(request,{1600,1000,48,true});
+        preference=wire::take_client_display(request);
+        require(preference.exact_mode&&preference.width==1600&&preference.hz==48&&request==wire::request,"Exact custom mode roundtrip failed");
+        rejects([&]{wire::set_client_display(request,{1601,1000,48,true});});
+        rejects([&]{wire::set_client_display(request,{1600,1000,120,true});});
+        rejects([&]{wire::set_client_display(request,{4096,4096,60,true});});
+        auto invalidFlags=wire::request;invalidFlags[28]=2;
+        rejects([&]{wire::take_client_display(invalidFlags);});
         auto offer = wire::encode_offer({1280,720,10,30});
         require(wire::decode_offer(offer).width == 1280, "Offer width lost");
         rejects([&] { (void)wire::decode_offer(std::span(offer).first(12)); });
@@ -54,6 +63,19 @@ int main() {
         auto header = wire::encode_header({123,4000,0x123456789abcdef0ull});
         const auto decoded = wire::decode_header(header);
         require(decoded.sequence == 123 && decoded.bytes == 4000 && decoded.micros == 0x123456789abcdef0ull, "Header lost endian-sensitive fields");
+        require(wire::decode_header(wire::encode_header({7,300,100,0x12345678})).editable_touch==0x12345678,"Touch focus correlation lost");
+        require(decoded.editable_touch==0,"Unrequested focus hint must default to zero");
+        dm::input::TouchKeyboardGate gate;gate.touch(23,100);
+        require(!gate.accept(24,101)&&!gate.accept(0,101),"Wrong/stale touch correlation accepted");
+        require(gate.accept(23,102)&&!gate.accept(23,103),"Focus hint must be consumed once");
+        gate.touch(25,200);require(!gate.accept(25,2701),"Expired touch accepted");
+        gate.touch(26,300);gate.clear();require(!gate.accept(26,301),"Focus loss did not clear touch");
+        using dm::input::editable_at_touch;
+        require(editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,true,true),"Editable control on target display rejected");
+        require(!editable_at_touch({100,0,500,400},{120,20,300,80},50,40,true,true,true),"Other display touch accepted");
+        require(!editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,true,false),"Read-only control accepted");
+        require(!editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,false,true),"Unfocused control accepted");
+        require(!editable_at_touch({100,0,500,400},{120,20,300,80},150,40,false,true,true),"Disabled control accepted");
         header[8] = 255;
         rejects([&] { (void)wire::decode_header(header); });
         Frame source{64,32,{}};

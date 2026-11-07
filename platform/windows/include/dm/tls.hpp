@@ -3,6 +3,7 @@
 #include <dm/pairing.hpp>
 #include <dm/prefix_buffer.hpp>
 #include <memory>
+#include <optional>
 #include <dm/access.hpp>
 
 namespace dm::security {
@@ -10,7 +11,7 @@ void set_access_client(std::string code);
 std::shared_ptr<access::Gate> enable_access_host();
 class TlsStream {
 public:
-    TlsStream(net::TcpStream socket, bool server, const std::string& pair_name);
+    TlsStream(net::TcpStream socket, bool server, const std::string& pair_name,std::optional<std::string> credential=std::nullopt);
     ~TlsStream();
     TlsStream(const TlsStream&) = delete;
     TlsStream& operator=(const TlsStream&) = delete;
@@ -35,6 +36,7 @@ private:
     dm::protocol::PrefixBuffer prefix_;
     std::unique_ptr<access::Stream> protected_;
     std::chrono::steady_clock::time_point access_deadline_;
+    std::string credential_;
     bool server_=false;
     uint64_t control_=0;std::shared_ptr<access::Gate> control_gate_;
     struct State;

@@ -2,8 +2,12 @@
 #include <dm/resource_session.hpp>
 #include <dm/tls.hpp>
 #include <charconv>
+#include <algorithm>
 #include <iostream>
 #include <map>
+#include <deque>
+#include <memory>
+#include <mutex>
 #include <syncstream>
 #include <thread>
 #include <string_view>
@@ -26,6 +30,34 @@ std::wstring wide(const std::string& value){
 }
 std::string utf8(const std::wstring& value){const auto size=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);if(!size)return {};std::string result(size,'\0');WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),result.data(),size,nullptr,nullptr);return result;}
 struct Threads{std::thread parent,status;~Threads(){stopped=true;if(parent.joinable())parent.join();if(status.joinable())status.join();}};
+std::optional<std::string> bounded_line(std::size_t maximum){std::string line;char c=0;while(std::cin.get(c)){if(c=='\n'){if(!line.empty()&&line.back()=='\r')line.pop_back();return line;}if(c=='\0'||line.size()>=maximum)throw std::invalid_argument("Camera control line exceeds its limit");line+=c;}if(!line.empty())throw std::invalid_argument("Incomplete camera control line");return {};}
+int camera_broker_cli(int argc,char** argv){
+    std::map<std::string,std::string> values;bool device_stdin=false,check=false;
+    for(int i=2;i<argc;++i){const std::string key=argv[i];if(key=="--device-stdin"){if(device_stdin)throw std::invalid_argument("Duplicate device selector");device_stdin=true;continue;}if(key=="--check-config"){check=true;continue;}
+        if(key!="--parent-pid"&&key!="--width"&&key!="--height"&&key!="--fps")throw std::invalid_argument("Unsupported camera broker option");if(++i>=argc||!values.emplace(key,argv[i]).second)throw std::invalid_argument("Missing or duplicate camera broker option");}
+    if(!device_stdin)throw std::invalid_argument("Camera broker requires --device-stdin");
+    std::optional<dm::camera::Format> format;
+    if(values.contains("--width")||values.contains("--height")||values.contains("--fps")){if(!values.contains("--width")||!values.contains("--height")||!values.contains("--fps"))throw std::invalid_argument("Camera mode requires width, height and fps");format=dm::camera::Format{number(values.at("--width"),3840),number(values.at("--height"),2160),number(values.at("--fps"),60)};dm::camera::validate_format(*format);}
+    unsigned pid=0;if(values.contains("--parent-pid"))pid=number(values.at("--parent-pid"),0xffffffffu);
+    if(check){report("CONFIG_OK mode=camera-broker");return 0;}
+    Threads threads;if(pid){const auto parent=OpenProcess(SYNCHRONIZE,FALSE,pid);if(!parent)throw std::runtime_error("Launcher unavailable");threads.parent=std::thread([parent]{while(!stopped)if(WaitForSingleObject(parent,250)==WAIT_OBJECT_0){stopped=true;break;}CloseHandle(parent);});}
+    auto line=bounded_line(4096);if(!line||line->empty())throw std::invalid_argument("Missing camera source identifier");const auto device=wide(*line);
+    struct Commands{std::mutex mutex;std::deque<dm::resources::CameraRecipientCommand> items;~Commands(){for(auto& item:items)SecureZeroMemory(item.credential.data(),item.credential.size());}};
+    auto commands=std::make_shared<Commands>();
+    std::thread([commands]{try{while(!stopped){auto input=bounded_line(8192);if(!input)break;struct Wipe{std::string& value;~Wipe(){SecureZeroMemory(value.data(),value.size());}}wipe{*input};
+        if(*input=="Q")break;if(*input=="MIRROR\t0"||*input=="MIRROR\t1"){mirrored=input->back()=='1';report(mirrored?"CAMERA_MIRROR on":"CAMERA_MIRROR off");continue;}
+        std::vector<std::string> fields;std::size_t start=0;for(;;){const auto at=input->find('\t',start);fields.push_back(input->substr(start,at==input->npos?at:at-start));if(at==input->npos)break;start=at+1;}
+        struct WipeFields{std::vector<std::string>& values;~WipeFields(){for(auto& value:values)SecureZeroMemory(value.data(),value.size());}}wipeFields{fields};
+        if(fields.size()<2||fields[1].empty()||fields[1].size()>64||!std::all_of(fields[1].begin(),fields[1].end(),[](unsigned char c){return(c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-'||c=='_';}))throw std::invalid_argument("Invalid camera recipient ID");
+        dm::resources::CameraRecipientCommand command;command.row=fields[1];
+        if(fields[0]=="REMOVE"&&fields.size()==2)command.kind=dm::resources::CameraRecipientCommand::Kind::remove;
+        else if(fields[0]=="ADD"&&fields.size()==6){command.kind=dm::resources::CameraRecipientCommand::Kind::add;command.options.bind_address=fields[2];command.options.peer=fields[3];command.options.port=static_cast<std::uint16_t>(number(fields[4],65535));command.options.timeout=std::chrono::seconds(5);if(fields[2]!="auto")ipv4(fields[2]);ipv4(fields[3]);if(fields[5]!="-"){if(!dm::access::validCredential(fields[5]))throw std::invalid_argument("Invalid recipient credential");command.credential=std::move(fields[5]);}}
+        else throw std::invalid_argument("Invalid camera broker command");
+        std::lock_guard lock(commands->mutex);if(commands->items.size()>=64){SecureZeroMemory(command.credential.data(),command.credential.size());throw std::invalid_argument("Camera broker command queue full");}commands->items.push_back(std::move(command));
+    }}catch(...){report("BROKER_ERROR Invalid camera broker control; source stopped.");}stopped=true;}).detach();
+    dm::resources::broker_camera(device,format,stopped,report,&mirrored,[commands]()->std::optional<dm::resources::CameraRecipientCommand>{std::lock_guard lock(commands->mutex);if(commands->items.empty())return {};auto item=std::move(commands->items.front());commands->items.pop_front();return item;});
+    report("STOPPED");return 0;
+}
 }
 int main(int argc,char** argv){try{
     SetConsoleCtrlHandler(control,TRUE);
@@ -33,6 +65,7 @@ int main(int argc,char** argv){try{
         std::cout<<"ExtraPane camera resource helper (development)\n"
             "  ExtraPane.Resources.exe serve-camera --bind <local-ipv4|auto> --port N [--require-code] [--parent-pid N]\n"
             "  ExtraPane.Resources.exe send-camera --bind <local-ipv4|auto> --peer <server-ipv4> --port N --device-stdin [--access-stdin] [--width 1280 --height 720 --fps 30]\n"
+            "  ExtraPane.Resources.exe broker-camera --device-stdin [--parent-pid N]\n"
             "  ExtraPane.Resources.exe list-cameras\n"
             "Camera mode is automatically selected from the device unless all three format options are supplied.\n"
             "Host stdin: G generates a new one-time code; Q stops. Client stdin: device ID then optional code, followed by Q.\n"
@@ -53,6 +86,7 @@ int main(int argc,char** argv){try{
         }
         report("CAMERA_LIST_DONE");return 0;
     }
+    if(command=="broker-camera")return camera_broker_cli(argc,argv);
     const bool server=command=="serve-camera";
     if(!server&&command!="send-camera")throw std::invalid_argument("Unknown resource helper command");
     bool requireCode=false,accessStdin=false,deviceStdin=false,checkConfig=false;std::map<std::string,std::string> values;

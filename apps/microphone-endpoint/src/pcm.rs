@@ -92,4 +92,16 @@ mod tests {
         ring.accept(Packet::Stop);ring.capture(0,&mut out);assert_eq!(out,[0;3]);
     }
     #[test] fn sequence_never_wraps() {assert!(read_packet(&mut frame(3,0,&[]).as_slice(),&mut (u32::MAX as u64+1)).is_err());}
+    #[test] fn endpoints_keep_independent_audio_and_stop_state() {
+        let first=Ring::default();let second=Ring::default();
+        let mut a=[0;PCM_BYTES];let mut b=[0;PCM_BYTES];
+        for sample in a.chunks_exact_mut(2){sample.copy_from_slice(&100i16.to_le_bytes());}
+        for sample in b.chunks_exact_mut(2){sample.copy_from_slice(&200i16.to_le_bytes());}
+        first.accept(Packet::Pcm(a));second.accept(Packet::Pcm(b));
+        first.accept(Packet::Stop);let mut silence=[1;8];let mut output=[0;8];
+        first.capture(0,&mut silence);second.capture(0,&mut output);
+        assert_eq!(silence,[0;8]);assert_eq!(output,[200*65536;8]);
+        for _ in 0..20{first.accept(Packet::Pcm(a));}
+        second.capture(8,&mut output);assert_eq!(output,[200*65536;8]);
+    }
 }

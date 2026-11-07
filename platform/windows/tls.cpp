@@ -14,8 +14,8 @@
 #include <mutex>
 
 namespace dm::security {
-namespace {std::shared_ptr<access::Gate> accessGate;std::string accessCode;}
-void set_access_client(std::string code){if(!access::validCredential(code))throw std::invalid_argument("Access credential is malformed");accessCode=std::move(code);}
+namespace {std::shared_ptr<access::Gate> accessGate;std::string accessCode;std::mutex accessCodeMutex;}
+void set_access_client(std::string code){if(!access::validCredential(code))throw std::invalid_argument("Access credential is malformed");std::lock_guard lock(accessCodeMutex);SecureZeroMemory(accessCode.data(),accessCode.size());accessCode=std::move(code);}
 std::shared_ptr<access::Gate> enable_access_host(){accessGate=std::make_shared<access::Gate>();return accessGate;}
 
 namespace {
@@ -90,8 +90,10 @@ struct TlsStream::State {
         return true;
     }
 };
-TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair_name)
+TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair_name,std::optional<std::string> credential)
     : state_(std::make_unique<State>(std::move(socket))) {
+    struct EraseCredential{std::optional<std::string>& value;~EraseCredential(){if(value)SecureZeroMemory(value->data(),value->size());}}eraseCredential{credential};
+    if(credential&&!credential->empty()&&!access::validCredential(*credential))throw std::invalid_argument("Access credential is malformed");
     server_=server;
     std::lock_guard lock(crypto_mutex);
     if (psa_crypto_init() != PSA_SUCCESS) throw std::runtime_error("Initialize system-backed crypto failed");
@@ -119,8 +121,9 @@ TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair
         mbedtls_ssl_set_bio(&state_->ssl, &state_->socket, send_callback, recv_callback, nullptr);
     } catch (...) { erase(); throw; }
     erase();
+    if(!server_){if(credential)credential_=*credential;else{std::lock_guard accessLock(accessCodeMutex);credential_=accessCode;}}
 }
-TlsStream::~TlsStream(){if(control_gate_&&control_)control_gate_->close_control(control_);}
+TlsStream::~TlsStream(){SecureZeroMemory(credential_.data(),credential_.size());if(control_gate_&&control_)control_gate_->close_control(control_);}
 bool TlsStream::open_control(){
     if(!server_||control_)throw std::runtime_error("Invalid control admission");
     if(!protected_)return false;
@@ -142,16 +145,17 @@ void TlsStream::require_resource(unsigned kind)const{
 }
 void TlsStream::cancel() noexcept { state_->socket.cancel(); }
 void TlsStream::handshake(Deadline deadline) {
+    struct Erase{std::string& value;~Erase(){SecureZeroMemory(value.data(),value.size());value.clear();}}erase{credential_};
     for (;;) {
         check_deadline(deadline);
         const int result = [&]{std::lock_guard lock(crypto_mutex);return mbedtls_ssl_handshake(&state_->ssl);}();
         if (result == 0) break;
         if (!state_->retry(result, deadline)) tls_error("TLS authentication failed", result);
     }
-    if((server_ && accessGate) || (!server_ && !accessCode.empty())){
+    if((server_ && accessGate) || (!server_ && !credential_.empty())){
         access_deadline_=std::chrono::steady_clock::now()+std::chrono::seconds(10);
         protected_=std::make_unique<access::Stream>([this](std::span<uint8_t> bytes){read_raw(bytes,access_deadline_);},[this](std::span<const uint8_t> bytes){write_raw(bytes,access_deadline_);});
-        if(server_)protected_->server(*accessGate);else protected_->client(accessCode);
+        if(server_)protected_->server(*accessGate);else protected_->client(credential_);
     }
 }
 void TlsStream::write_raw(std::span<const std::uint8_t> bytes, Deadline deadline) {

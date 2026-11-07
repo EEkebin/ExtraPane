@@ -115,6 +115,7 @@ Get-ChildItem -LiteralPath $crt.FullName -Filter '*.dll' | ForEach-Object { Copy
 Copy-Item -LiteralPath (Join-Path $qtPath 'plugins/platforms/qoffscreen.dll') -Destination (Join-Path $destinationPath 'platforms/qoffscreen.dll')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/RESOURCE-SHARING.md') -Destination (Join-Path $destinationPath 'DEVELOPMENT-STATUS.md')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/IMPLEMENTATION-CHECKLIST.md') -Destination (Join-Path $destinationPath 'IMPLEMENTATION-CHECKLIST.md')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/MULTIPLE-RESOURCE-CONNECTIONS.md') -Destination $destinationPath
 $revision = & git -C $projectRoot rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot record the development build source revision.' }
 $changes = & git -C $projectRoot status --porcelain

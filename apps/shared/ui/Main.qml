@@ -23,6 +23,7 @@ ApplicationWindow {
     palette.toolTipBase: "#253349"
     palette.toolTipText: "#edf1f8"
     palette.placeholderText: "#aab8cc"
+    readonly property bool multiClient: windowsClient && typeof receiver.connectionRuntime !== "undefined"
     property bool windowsClient: receiver.platformLabel === "Windows"
     property bool inputPaused: false
     component ToolbarButton: ToolButton {
@@ -161,12 +162,12 @@ ApplicationWindow {
                     spacing: root.fullscreen ? 0 : 12
                     Label { visible: !root.fullscreen; text: "Client"; font.pixelSize: 30; font.bold: true }
                     RowLayout {
-                        visible: !receiver.active && !root.fullscreen
+                        visible: !root.multiClient && !receiver.active && !root.fullscreen
                         TextField { id: clientPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } Layout.preferredWidth: 100 }
                         TextField { id: clientCode; placeholderText: "Access code (optional)"; echoMode: TextInput.Password; maximumLength: 6; Layout.fillWidth: true }
                     }
                     RowLayout {
-                        visible: !receiver.active && !root.fullscreen
+                        visible: !root.multiClient && !receiver.active && !root.fullscreen
                         TextField {
                             id: serverAddress; Layout.fillWidth: true
                             placeholderText: "Server IPv4 address"; text: receiver.savedAddress
@@ -177,7 +178,7 @@ ApplicationWindow {
                             enabled: !receiver.active && (root.windowsClient ? receiver.clientReady : receiver.availability.length === 0 && receiver.resources.canConnect)
                             onClicked: {
                                 const selected = receiver.addresses[localAddress.currentIndex]
-                                receiver.connectTo(serverAddress.text, selected ? selected.address : "0.0.0.0", inputAllowed.checked, root.nextScale, selected ? selected.index : 0, Number(clientPort.text), clientCode.text)
+                                receiver.connectTo(serverAddress.text, selected ? selected.address : "0.0.0.0", globalInputAllowed.checked, root.nextScale, selected ? selected.index : 0, Number(clientPort.text), clientCode.text)
                                 clientCode.text = ""
                                 root.nextScale = 0
                                 root.revealToolbar()
@@ -185,7 +186,7 @@ ApplicationWindow {
                         }
                     }
                     RowLayout {
-                        visible: !receiver.active && !root.fullscreen
+                        visible: !root.multiClient && !receiver.active && !root.fullscreen
                         Label { text: "Connect through" }
                         ComboBox { id: localAddress; Layout.fillWidth: true; model: receiver.addresses; textRole: "label"; valueRole: "address" }
                         Button { text: "Refresh"; onClicked: receiver.refreshAddresses() }
@@ -196,18 +197,24 @@ ApplicationWindow {
                     }
                     Button {
                         objectName: "clientDisconnectButton"
-                        visible: root.windowsClient && receiver.active
+                        visible: root.windowsClient && !root.multiClient && receiver.active
                         text: "Disconnect all"
                         onClicked: receiver.disconnectFromServer()
                     }
+                    Loader {
+                        active: root.multiClient
+                        visible: active
+                        Layout.fillWidth: true; Layout.fillHeight: true
+                        sourceComponent: Component { ClientConnections { controller: receiver; runtime: receiver.connectionRuntime; addresses: receiver.addresses; inputAllowed: globalInputAllowed.checked } }
+                    }
                     ScrollView {
                         id: resourceScroll
-                        visible: root.windowsClient
+                        visible: root.windowsClient && !root.multiClient
                         Layout.fillWidth: true; Layout.fillHeight: true
                         contentWidth: availableWidth
                         Loader {
                             width: resourceScroll.availableWidth
-                            active: root.windowsClient
+                            active: root.windowsClient && !root.multiClient
                             sourceComponent: Component {
                                 ResourcePicker { resourceModel: receiver.resources; controller: receiver }
                             }
@@ -276,7 +283,7 @@ ApplicationWindow {
                             }
                         }
                     }
-                    Label { visible: !root.fullscreen; text: receiver.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { visible: !root.fullscreen && !root.multiClient; text: receiver.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { visible: !root.fullscreen; text: root.windowsClient ? "Ctrl+Shift+Q disconnects all selected resources. Display opens in its own native window." : "F8 pauses input | Ctrl+Shift+Q disconnects | F11 toggles fullscreen | F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
@@ -284,7 +291,7 @@ ApplicationWindow {
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 24; spacing: 16
                     Label { text: "Settings"; font.pixelSize: 30; font.bold: true }
-                    CheckBox { id: inputAllowed; text: "Send mouse, keyboard, touch and pen input"; checked: true; enabled: !receiver.active }
+                    CheckBox { id: globalInputAllowed; text: "Send mouse, keyboard, touch and pen input"; checked: true; enabled: !receiver.active }
                     Label { text: "Keyboard forwarding follows the server's keyboard layout. Available input features depend on both devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { text: receiver.inputDescription; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Label { text: receiver.rendererDescription; wrapMode: Text.WordWrap; Layout.fillWidth: true }

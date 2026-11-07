@@ -4,12 +4,14 @@
 namespace dm::camera {
 EncodedSource::EncodedSource(std::wstring device,std::optional<Format> format,Sink sink,const std::atomic_bool* mirrored)
     :format_(format.value_or(Format{})),sink_(std::move(sink)),mirrored_(mirrored),source_(std::move(device),format,[this](Sample sample){
+        if(refresh_.exchange(false))encoder_.reset();
+        const bool fresh=!encoder_;
         if(!encoder_)encoder_=std::make_unique<dm::video::H264Encoder>(format_.width,format_.height,format_.fps);
         auto pixels=nv12_pixels(sample,format_);
         if(mirrored_&&mirrored_->load(std::memory_order_relaxed))mirror_nv12(pixels,format_);
         auto output=encoder_->encode_nv12(pixels,sequence_);
         if(output.empty()||output.size()>2*1024*1024)throw std::runtime_error("Camera H264 output exceeds channel limit");
-        sink_({sequence_++,sample.timestamp,std::move(output)});
+        sink_({sequence_++,sample.timestamp,std::move(output),fresh});
     },[this]{encoder_.reset();}){if(!sink_)throw std::invalid_argument("Camera requires an encoded-frame sink");}
 EncodedSource::~EncodedSource(){stop();}
 extrapane::Availability EncodedSource::prepare(){auto result=source_.prepare();if(result.available)format_=source_.format();return result;}

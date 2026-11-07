@@ -29,7 +29,7 @@ void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,
 // Device lifetime is the handle lifetime, including process termination.
 class VirtualMonitor {
 public:
-    explicit VirtualMonitor(unsigned slot=0);
+    explicit VirtualMonitor(unsigned slot=0,Mode desired={});
     ~VirtualMonitor();
     VirtualMonitor(const VirtualMonitor&)=delete;
     VirtualMonitor& operator=(const VirtualMonitor&)=delete;

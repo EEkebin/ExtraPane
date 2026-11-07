@@ -1,4 +1,5 @@
 #include <extrapane/media.hpp>
+#include <extrapane/camera_fanout.hpp>
 #include <algorithm>
 #include <future>
 #include <iostream>
@@ -42,5 +43,26 @@ int main() {try {
     FrameQueue waiting(f.binding);
     auto waiter=std::async(std::launch::async,[&]{return waiting.pop_for(5s);});
     waiting.close();check(waiter.wait_for(1s)==std::future_status::ready);check(!waiter.get());
+    {
+        extrapane::camera::Fanout fanout;
+        auto a=fanout.add("first",{21,1});a->admitted=true;
+        fanout.publish(10,100,{1,2,3},false);check(!a->frames.pop_for(0ms)); // Await an independent encoder start.
+        fanout.publish(11,110,{1,2,3},true);auto first=a->frames.pop_for(0ms);check(first&&first->binding==Binding{21,1}&&first->sequence==11);
+        auto b=fanout.add("late",{22,7}); // Unadmitted recipients receive no media.
+        fanout.publish(12,120,{4,5},true);check(!b->frames.pop_for(0ms));check(a->frames.pop_for(0ms).has_value());
+        b->admitted=true;fanout.publish(13,130,{6},false);check(!b->frames.pop_for(0ms));check(a->frames.pop_for(0ms).has_value());
+        fanout.publish(14,140,{7},true);auto joined=b->frames.pop_for(0ms);check(joined&&joined->binding==Binding{22,7});check(a->frames.pop_for(0ms).has_value());
+        for(unsigned i=15;i<20;++i){fanout.publish(i,i*10,{8,9},false);check(a->frames.pop_for(0ms).has_value());}
+        check(b->failed&&b->frames.closed()&&!a->failed); // Only slow recipient fails.
+        fanout.remove("late");fanout.publish(20,200,{10},false);check(a->frames.pop_for(0ms).has_value());
+        check(rejects([&]{fanout.add("first",{23,1});}));
+        fanout.remove("first");check(a->frames.closed());
+        auto replacement=fanout.add("first",{23,2});replacement->admitted=true;
+        fanout.publish(21,210,{1},false);check(!replacement->frames.pop_for(0ms));
+        fanout.publish(22,220,{2},true);check(replacement->frames.pop_for(0ms)->binding==Binding{23,2});
+        for(unsigned i=0;i<7;++i)fanout.add("row"+std::to_string(i),{30+i,1});
+        check(rejects([&]{fanout.add("too-many",{50,1});}));
+        check(rejects([&]{fanout.publish(23,230,{},true);}));
+    }
     std::cout<<"Media framing, stale generation, bounds and cancellation checks passed\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

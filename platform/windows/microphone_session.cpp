@@ -2,6 +2,7 @@
 #include <bcrypt.h>
 #include <dm/microphone_session.hpp>
 #include <dm/microphone.hpp>
+#include <dm/microphone_fanout.hpp>
 #include <dm/tls.hpp>
 #include <extrapane/microphone_protocol.hpp>
 #include <extrapane/negotiation.hpp>
@@ -10,6 +11,8 @@
 #include <limits>
 #include <thread>
 #include <stdexcept>
+#include <map>
+#include <mutex>
 
 namespace dm::microphone {
 namespace {
@@ -48,7 +51,7 @@ struct Transport {
 wire::Message caps_message(const Capabilities& caps){auto bytes=wire::encode_capabilities(caps);return {{wire::Operation::capabilities,ResourceKind::display,0,static_cast<std::uint32_t>(bytes.size())},std::move(bytes)};}
 class Endpoint final:public Resource {
 public:
-    explicit Endpoint(std::atomic_bool& stop):stop_(stop){}
+    explicit Endpoint(std::atomic_bool& stop,unsigned slot):stop_(stop),slot_(slot){validate_endpoint_slot(slot_);}
     ~Endpoint(){stop();}
     Availability prepare()override{
         std::wstring path(32768,L'\0');const auto length=GetModuleFileNameW(nullptr,path.data(),static_cast<DWORD>(path.size()));
@@ -74,7 +77,7 @@ public:
         job_.reset();process_.reset();output_.reset();
     }
 private:
-    std::atomic_bool& stop_;std::wstring exe_;Handle input_,output_,process_,job_;std::uint32_t sequence_=0;
+    std::atomic_bool& stop_;unsigned slot_;std::wstring exe_;Handle input_,output_,process_,job_;std::uint32_t sequence_=0;
     std::string outputText_;bool ready_=false,muted_=false;
     void drain(){
         DWORD available=0;if(!PeekNamedPipe(output_.h,nullptr,0,nullptr,&available,nullptr))return;
@@ -82,7 +85,8 @@ private:
             outputText_.append(bytes,read);need(outputText_.size()<=65536,"Microphone endpoint status exceeded limit");
             for(auto newline=outputText_.find('\n');newline!=std::string::npos;newline=outputText_.find('\n')){
                 auto line=outputText_.substr(0,newline);outputText_.erase(0,newline+1);if(!line.empty()&&line.back()=='\r')line.pop_back();
-                if(line=="MICROPHONE_READY slot=1")ready_=true;
+                if(endpoint_ready(slot_,line))ready_=true;
+                else if(line.starts_with("MICROPHONE_READY"))throw std::runtime_error("Microphone component reported a different endpoint slot");
                 // This detail stays on the receiving PC; negotiation sends a
                 // generic rejection to the peer, never local paths/identities.
                 if(line.starts_with("error:"))throw std::runtime_error("Microphone endpoint: "+line.substr(6,512));
@@ -107,7 +111,7 @@ private:
         startup.StartupInfo.hStdInput=childIn.h;startup.StartupInfo.hStdOutput=childOut.h;startup.StartupInfo.hStdError=childOut.h;startup.lpAttributeList=list;
         job_.reset(CreateJobObjectW(nullptr,nullptr));need(job_.valid(),"Create microphone component job failed");
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};limits.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;need(SetInformationJobObject(job_.h,JobObjectExtendedLimitInformation,&limits,sizeof(limits)),"Configure microphone component job failed");
-        std::wstring command=L"\""+exe_+L"\" --run --slot 1";PROCESS_INFORMATION child{};
+        std::wstring command=L"\""+exe_+L"\""+endpoint_arguments(slot_);PROCESS_INFORMATION child{};
         need(CreateProcessW(exe_.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW|CREATE_SUSPENDED|EXTENDED_STARTUPINFO_PRESENT,nullptr,nullptr,&startup.StartupInfo,&child),"Launch microphone endpoint failed");
         process_.reset(child.hProcess);Handle thread(child.hThread);
         if(!AssignProcessToJobObject(job_.h,process_.h)){TerminateProcess(process_.h,1);throw std::runtime_error("Cannot supervise microphone endpoint");}
@@ -135,12 +139,13 @@ private:
     }
 };
 struct Admitted final:Listener {Availability start()override{return {true,{}};}void stop()noexcept override{}};
-void receive_payload(security::TlsStream& tls,std::atomic_bool& stop,const Report& report){
+void receive_payload(security::TlsStream& tls,std::atomic_bool& stop,const Report& report,unsigned slot){
+    validate_endpoint_slot(slot);
     Cancellation cancellation(tls,stop);
     Transport transport(tls,stop);microphone_wire::OfferBytes offer{};transport.read(offer);const auto binding=microphone_wire::decode_offer(offer);
     Server server(1);need(server.start(std::make_unique<Admitted>()).available&&server.admit(1).available,"Allocate microphone session failed");
     auto caps=unavailable_capabilities();caps[2].destination={true,{}};Endpoint* endpoint=nullptr;
-    Negotiation negotiation(server,1,caps,[&](ResourceKind kind)->std::unique_ptr<Resource>{if(kind!=ResourceKind::microphone)throw std::runtime_error("Microphone listener received another resource");auto result=std::make_unique<Endpoint>(stop);endpoint=result.get();return result;});
+    Negotiation negotiation(server,1,caps,[&](ResourceKind kind)->std::unique_ptr<Resource>{if(kind!=ResourceKind::microphone)throw std::runtime_error("Microphone listener received another resource");auto result=std::make_unique<Endpoint>(stop,slot);endpoint=result.get();return result;});
     negotiation.serve_one(transport.control);auto request=transport.control.receive();
     need(request.header.operation==wire::Operation::request&&request.header.kind==ResourceKind::microphone&&request.header.resource_id==binding.resource,"Microphone request does not match offer");
     const auto result=negotiation.handle(request);transport.control.send(result);
@@ -148,22 +153,26 @@ void receive_payload(security::TlsStream& tls,std::atomic_bool& stop,const Repor
         for(const auto& state:server.snapshot(1))if(state.request.id==binding.resource&&!state.detail.empty())throw std::runtime_error(state.detail);
         throw std::runtime_error("Microphone endpoint unavailable; check the managed component");
     }
-    report("MICROPHONE_STARTED receiving");
+    report("MICROPHONE_STARTED receiving slot="+std::to_string(slot));
     microphone_wire::Channel frames(binding,[&](auto b){transport.read(b);},[&](auto b){transport.write(b);});
     while(!stop){auto frame=frames.receive();endpoint->pcm(frame);}
 }
 }
-void receive_admitted(security::TlsStream& tls,std::atomic_bool& stop,const Report& report){receive_payload(tls,stop,report);}
+void receive_admitted(security::TlsStream& tls,std::atomic_bool& stop,const Report& report,unsigned slot){
+    validate_endpoint_slot(slot);Handle lease(CreateMutexW(nullptr,FALSE,endpoint_server_lease(slot).c_str()));need(lease.valid(),"Cannot reserve microphone receiving slot");
+    const auto acquired=WaitForSingleObject(lease.h,0);need(acquired==WAIT_OBJECT_0||acquired==WAIT_ABANDONED,"This microphone receiving slot is already occupied");
+    struct Unlock{HANDLE h;~Unlock(){ReleaseMutex(h);}}unlock{lease.h};receive_payload(tls,stop,report,slot);
+}
 void serve(const net::Options& requested,std::atomic_bool& stop,const Report& report){
     need(report&& !requested.bind_address.empty()&&requested.port,"Microphone server requires interface, port and status sink");
-    Handle lease(CreateMutexW(nullptr,FALSE,L"Local\\ExtraPane.MicrophoneServer"));need(lease.valid(),"Create microphone server lease failed");
+    Handle lease(CreateMutexW(nullptr,FALSE,endpoint_server_lease(1).c_str()));need(lease.valid(),"Create microphone server lease failed");
     const auto acquired=WaitForSingleObject(lease.h,0);need(acquired==WAIT_OBJECT_0||acquired==WAIT_ABANDONED,"A microphone server is already running");
     struct Unlock{HANDLE h;~Unlock(){ReleaseMutex(h);}}unlock{lease.h};
     auto options=requested;options.timeout=std::chrono::milliseconds(250);net::TcpListener listener(options);report("LISTENING "+listener.endpoints());
-    // One attached microphone in this first slice. Disconnect releases its
-    // endpoint but leaves the listener available for the next connection.
+    // The dedicated diagnostic listener reserves slot 1. The unified listener
+    // allocates distinct slots and invokes receive_admitted concurrently.
     while(!stop){try{
-        auto socket=listener.accept();try{security::TlsStream tls(std::move(socket),true,"");Cancellation cancellation(tls,stop);tls.handshake(Clock::now()+std::chrono::seconds(10));receive_payload(tls,stop,report);}catch(const std::exception& error){if(!stop)report(std::string("MICROPHONE_SESSION_ERROR ")+error.what());}
+        auto socket=listener.accept();try{security::TlsStream tls(std::move(socket),true,"");Cancellation cancellation(tls,stop);tls.handshake(Clock::now()+std::chrono::seconds(10));receive_payload(tls,stop,report,1);}catch(const std::exception& error){if(!stop)report(std::string("MICROPHONE_SESSION_ERROR ")+error.what());}
         report("MICROPHONE_DISCONNECTED receiving");
     }catch(const std::runtime_error& error){if(std::string_view(error.what())!="Accept timed out")throw;}}
 }
@@ -191,5 +200,106 @@ void send(const net::Options& options,const std::wstring& device,std::atomic_boo
         }
     }
     source.stop();report("MICROPHONE_DISCONNECTED sending");
+}
+
+struct SourceBroker::State {
+    struct Recipient {
+        std::string row,credential;net::Options options;FanoutQueue queue;
+        std::atomic_bool stop=false,ready=false,ended=false;
+        std::mutex error_mutex;std::string source_error;std::thread worker;
+        ~Recipient(){if(!credential.empty())SecureZeroMemory(credential.data(),credential.size());}
+    };
+    std::wstring device;std::atomic_bool& external_stop;Report report;std::atomic_bool quit=false;
+    std::mutex mutex;std::map<std::string,std::shared_ptr<Recipient>> recipients;std::thread capture_worker;
+    State(std::wstring selected,std::atomic_bool& stopping,Report sink):device(std::move(selected)),external_stop(stopping),report(std::move(sink)){
+        need(!device.empty()&&device.size()<=4096&&static_cast<bool>(report),"Select a valid microphone source and status sink");
+        capture_worker=std::thread([this]{capture_loop();});
+    }
+    ~State(){
+        quit=true;for(auto& r:snapshot(false)){r->stop=true;r->queue.close();}
+        if(capture_worker.joinable())capture_worker.join();
+        for(auto& [id,r]:recipients)if(r->worker.joinable())r->worker.join();
+    }
+    std::vector<std::shared_ptr<Recipient>> snapshot(bool ready_only){
+        std::vector<std::shared_ptr<Recipient>> out;std::lock_guard lock(mutex);
+        for(const auto& [id,r]:recipients)if(!r->ended&&!r->stop&&(!ready_only||r->ready))out.push_back(r);return out;
+    }
+    void event(const Recipient& r,const char* state,std::string message={})noexcept{
+        for(auto& ch:message)if(static_cast<unsigned char>(ch)<32)ch=' ';if(message.size()>512)message.resize(512);
+        try{report("RESOURCE_EVENT\t"+r.row+"\t"+state+"\t"+message);}catch(...){ }
+    }
+    void fail_source(const std::string& reason){
+        for(auto& r:snapshot(false)){{std::lock_guard lock(r->error_mutex);r->source_error=reason;}r->stop=true;r->queue.close();}
+    }
+    void capture_loop()noexcept{
+        std::unique_ptr<SourceLease> lease;std::unique_ptr<Capture> source;FanoutFrame frame;std::size_t filled=0;
+        while(!quit&&!external_stop){
+            auto active=snapshot(true);
+            if(active.empty()){
+                source.reset();lease.reset();filled=0;std::this_thread::sleep_for(std::chrono::milliseconds(25));continue;
+            }
+            try{
+                if(!source){lease=std::make_unique<SourceLease>(device);source=std::make_unique<Capture>(device);source->start();filled=0;}
+                const auto packet=source->read(std::chrono::milliseconds(100));if(!packet)continue;
+                for(std::size_t i=0;i<packet->samples.size();++i){
+                    if(!filled){frame.position=packet->device_position+i;frame.muted=packet->muted;frame.discontinuity=packet->discontinuity;}
+                    frame.discontinuity|=packet->discontinuity;frame.muted|=packet->muted;
+                    const auto value=static_cast<std::uint16_t>(packet->samples[i]);frame.pcm[filled*2]=static_cast<std::uint8_t>(value);frame.pcm[filled*2+1]=static_cast<std::uint8_t>(value>>8);
+                    if(++filled==microphone_wire::sample_count){if(frame.muted)frame.pcm.fill(0);for(auto& recipient:active)if(!recipient->stop)recipient->queue.push(frame);filled=0;}
+                }
+            }catch(const std::exception& error){source.reset();lease.reset();filled=0;fail_source(error.what());}
+            catch(...){source.reset();lease.reset();filled=0;fail_source("Shared microphone capture failed");}
+        }
+        source.reset();lease.reset();for(auto& r:snapshot(false)){r->stop=true;r->queue.close();}
+    }
+    void transmit(const std::shared_ptr<Recipient>& r)noexcept{
+        std::string error;
+        try{
+            need(!quit&&!external_stop&&!r->stop,"Microphone recipient canceled before connection");
+            security::TlsStream tls(net::connect_stream(r->options),false,"",r->credential);
+            if(!r->credential.empty())SecureZeroMemory(r->credential.data(),r->credential.size());r->credential.clear();
+            Cancellation cancellation(tls,r->stop);tls.handshake(Clock::now()+std::chrono::seconds(10));
+            Transport transport(tls,r->stop);const auto binding=random_binding();transport.write(microphone_wire::encode_offer(binding));
+            auto caps=unavailable_capabilities();caps[2].source={true,{}};transport.control.send(caps_message(caps));auto reply=transport.control.receive();
+            need(reply.header.operation==wire::Operation::capabilities&&reply.header.kind==ResourceKind::display&&!reply.header.resource_id,"Invalid microphone capability response");
+            need(can_connect(ResourceKind::microphone,caps,wire::decode_capabilities(reply.payload)).available,"Server cannot receive microphones");
+            auto request=wire::encode_request({binding.resource,ResourceKind::microphone,"microphone"});transport.control.send({{wire::Operation::request,ResourceKind::microphone,binding.resource,static_cast<std::uint32_t>(request.size())},std::move(request)});
+            wire::ControlChannel startup([&](auto b){transport.read(b,35);},[&](auto b){transport.write(b);});reply=startup.receive();
+            need(reply.header.operation==wire::Operation::grant&&reply.header.kind==ResourceKind::microphone&&reply.header.resource_id==binding.resource&&reply.payload.empty(),"Server could not allocate a microphone endpoint");
+            microphone_wire::Channel frames(binding,[&](auto b){transport.read(b);},[&](auto b){transport.write(b);});
+            r->ready=true;std::uint64_t sequence=0;bool started=false;
+            while(!r->stop&&!quit&&!external_stop){
+                const auto packet=r->queue.pop(std::chrono::milliseconds(100));if(!packet)continue;if(r->stop)break;
+                microphone_wire::Frame outgoing;outgoing.binding=binding;outgoing.sequence=sequence;outgoing.position=packet->position;outgoing.muted=packet->muted;outgoing.discontinuity=packet->discontinuity;outgoing.pcm=packet->pcm;
+                frames.send(outgoing);need(sequence!=std::numeric_limits<std::uint64_t>::max(),"Microphone sequence exhausted");++sequence;
+                if(!started){event(*r,"STARTED","Microphone stream admitted and sending");started=true;}
+            }
+        }catch(const std::exception& failure){if(!r->stop&&!quit&&!external_stop)error=failure.what();}
+        catch(...){if(!r->stop&&!quit&&!external_stop)error="Microphone recipient failed";}
+        if(!r->credential.empty())SecureZeroMemory(r->credential.data(),r->credential.size());r->credential.clear();
+        {std::lock_guard lock(r->error_mutex);if(!r->source_error.empty())error=r->source_error;}
+        r->ready=false;r->stop=true;r->queue.close();
+        if(!error.empty())event(*r,"ERROR",std::move(error));else event(*r,"STOPPED","Microphone recipient stopped");r->ended=true;
+    }
+};
+SourceBroker::SourceBroker(std::wstring device,std::atomic_bool& stop,Report report):state_(std::make_unique<State>(std::move(device),stop,std::move(report))){}
+SourceBroker::~SourceBroker()=default;
+void SourceBroker::add(std::string row,net::Options options,std::string credential){
+    struct Wipe{std::string& value;~Wipe(){if(!value.empty())SecureZeroMemory(value.data(),value.size());}}wipe{credential};
+    need(!row.empty()&&row.size()<=128&&std::all_of(row.begin(),row.end(),[](unsigned char c){return(c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-'||c=='_';}),"Invalid microphone recipient row identity");
+    if(!credential.empty())need(access::validCredential(credential),"Malformed microphone recipient credential");
+    auto& s=*state_;need(!s.quit&&!s.external_stop,"Microphone broker is stopping");
+    std::shared_ptr<State::Recipient> previous;{std::lock_guard lock(s.mutex);const auto found=s.recipients.find(row);if(found!=s.recipients.end()){need(found->second->ended,"Microphone recipient is already active");previous=found->second;s.recipients.erase(found);}}
+    if(previous&&previous->worker.joinable())previous->worker.join();
+    auto r=std::make_shared<State::Recipient>();r->row=std::move(row);r->options=std::move(options);r->credential=credential;
+    {std::lock_guard lock(s.mutex);need(s.recipients.size()<16,"One microphone source supports at most 16 recipient rows");s.recipients.emplace(r->row,r);}
+    try{r->worker=std::thread([&s,r]{s.transmit(r);});}catch(...){std::lock_guard lock(s.mutex);s.recipients.erase(r->row);throw;}
+}
+void SourceBroker::remove(const std::string& row){
+    auto& s=*state_;std::shared_ptr<State::Recipient> r;{std::lock_guard lock(s.mutex);const auto found=s.recipients.find(row);need(found!=s.recipients.end(),"Microphone recipient does not exist");r=found->second;s.recipients.erase(found);}
+    r->stop=true;r->queue.close();if(r->worker.joinable())r->worker.join();
+}
+void SourceBroker::mute(const std::string& row,bool value){
+    auto& s=*state_;std::lock_guard lock(s.mutex);const auto found=s.recipients.find(row);need(found!=s.recipients.end()&&!found->second->ended,"Microphone recipient does not exist");found->second->queue.mute(value);
 }
 }

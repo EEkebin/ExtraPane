@@ -1,5 +1,6 @@
 #pragma once
 #include "resource_model.hpp"
+#include "windows_connection_runtime.hpp"
 #include <QObject>
 #include <QVariantList>
 #include <memory>
@@ -8,6 +9,7 @@
 
 class WindowsController final:public QObject {
     Q_OBJECT
+    Q_PROPERTY(WindowsConnectionRuntime* connectionRuntime READ connectionRuntime CONSTANT)
     Q_PROPERTY(ResourceModel* resources READ resources CONSTANT)
     Q_PROPERTY(QString accessCode READ accessCode NOTIFY hostChanged)
     Q_PROPERTY(bool hosting READ hosting NOTIFY hostChanged)
@@ -39,6 +41,7 @@ public:
     explicit WindowsController(QObject* parent=nullptr,bool rememberAddress=true);
     ~WindowsController() override;
     ResourceModel* resources(){return &resources_;}
+    WindowsConnectionRuntime* connectionRuntime(){return connectionRuntime_.get();}
     QString accessCode()const{return code_;}
     bool hosting()const;
     bool active()const;
@@ -94,6 +97,7 @@ private:
     QString resourceAvailability(const QString& kind)const;
     struct Impl;std::unique_ptr<Impl> impl_;
     ResourceModel resources_;
+    std::unique_ptr<WindowsConnectionRuntime> connectionRuntime_;
     QVariantList addresses_;
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
     QVariantList recoveries_;

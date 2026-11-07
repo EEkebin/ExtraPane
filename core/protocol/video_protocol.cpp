@@ -25,12 +25,15 @@ void set_client_display(std::span<std::uint8_t> bytes, ClientDisplay display) {
     if(bytes.size()!=request.size() || ((display.width||display.height||display.hz) &&
        (!display.width || !display.height || !display.hz || display.width>16384 || display.height>16384 || display.hz>1000)))
         throw std::runtime_error("Invalid client display preference");
-    put32(bytes,16,display.width);put32(bytes,20,display.height);put32(bytes,24,display.hz);
+    if(display.exact_mode && (!display.width || display.width>4096 || display.height>4096 || display.width%2 || display.height%2 || display.hz>60 || static_cast<std::uint64_t>(display.width)*display.height>8847360))
+        throw std::runtime_error("Custom display mode exceeds supported limits");
+    put32(bytes,16,display.width);put32(bytes,20,display.height);put32(bytes,24,display.hz);bytes[28]=display.exact_mode?1:0;
 }
 ClientDisplay take_client_display(std::span<std::uint8_t> bytes) {
     if(bytes.size()!=request.size())throw std::runtime_error("Invalid request size");
-    ClientDisplay result{get32(bytes,16),get32(bytes,20),get32(bytes,24)};
-    set_client_display(bytes,result);std::fill(bytes.begin()+16,bytes.begin()+28,std::uint8_t{0});return result;
+    if(bytes[28]>1)throw std::runtime_error("Unknown client display mode flags");
+    ClientDisplay result{get32(bytes,16),get32(bytes,20),get32(bytes,24),bytes[28]==1};
+    set_client_display(bytes,result);std::fill(bytes.begin()+16,bytes.begin()+29,std::uint8_t{0});return result;
 }
 OfferBytes encode_offer(const Offer& offer) {
     validate(offer);
@@ -52,13 +55,12 @@ HeaderBytes encode_header(const FrameHeader& header) {
     HeaderBytes out{'D','M','V','F'};
     put32(out, 4, header.sequence); put32(out, 8, header.bytes);
     put32(out, 12, static_cast<std::uint32_t>(header.micros >> 32));
-    put32(out, 16, static_cast<std::uint32_t>(header.micros));
+    put32(out, 16, static_cast<std::uint32_t>(header.micros));put32(out,20,header.editable_touch);
     return out;
 }
 FrameHeader decode_header(std::span<const std::uint8_t> bytes) {
-    if (bytes.size() != 24 || bytes[0] != 'D' || bytes[1] != 'M' || bytes[2] != 'V' || bytes[3] != 'F' ||
-        std::any_of(bytes.begin() + 20, bytes.end(), [](auto b) { return b != 0; })) throw std::runtime_error("Invalid video frame header");
-    FrameHeader result{get32(bytes, 4), get32(bytes, 8), (static_cast<std::uint64_t>(get32(bytes, 12)) << 32) | get32(bytes, 16)};
+    if (bytes.size() != 24 || bytes[0] != 'D' || bytes[1] != 'M' || bytes[2] != 'V' || bytes[3] != 'F') throw std::runtime_error("Invalid video frame header");
+    FrameHeader result{get32(bytes, 4), get32(bytes, 8), (static_cast<std::uint64_t>(get32(bytes, 12)) << 32) | get32(bytes, 16),get32(bytes,20)};
     if (result.bytes > max_jpeg) throw std::runtime_error("Video payload length exceeds limit");
     return result;
 }

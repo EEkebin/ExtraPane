@@ -10,10 +10,10 @@ using Kind=extrapane::ResourceKind;
 static void require(bool value,const std::source_location where=std::source_location::current()){
     if(!value)throw std::runtime_error("Controller check failed at line "+std::to_string(where.line()));
 }
-template<class F>static void until(F condition){
+template<class F>static void until(F condition,const std::source_location where=std::source_location::current()){
     QElapsedTimer timer;timer.start();
     while(!condition()&&timer.elapsed()<5000){QCoreApplication::processEvents();QThread::msleep(10);}
-    require(condition());
+    require(condition(),where);
 }
 static bool running(ResourceModel* model,int row){return model->data(model->index(row),ResourceModel::Running).toBool();}
 static QString status(ResourceModel* model,int row){return model->data(model->index(row),ResourceModel::Status).toString();}
@@ -103,6 +103,24 @@ int main(int argc,char** argv){
         controller.connectTo("192.0.2.1","0.0.0.0",false,0,0,43824,{});
         until([&]{return !controller.active();});
         require(!model->selected(Kind::camera)&&!running(model,1)&&controller.status().contains("Invalid server session response"));qunsetenv("EXTRAPANE_TEST_BAD_TICKET");
+        // Actual instance runtime with fake native capture brokers and no sockets.
+        auto* runtime=controller.connectionRuntime();auto* connections=runtime->connections();
+        const QVariantMap firstTarget{{"address","192.0.2.1"},{"port",43824},{"localAddress","0.0.0.0"},{"interfaceIndex",0}};
+        require(connections->setSharedTarget(firstTarget));runtime->connectShared({});until([&]{return runtime->status().startsWith("Connected.");});require(controller.active());
+        const auto cam1=connections->addConnection("camera"),cam2=connections->addConnection("camera"),mic1=connections->addConnection("microphone");
+        connections->setSource(cam1,"63616d");connections->setSource(cam2,"63616d");connections->setSource(mic1,"6d6963");
+        runtime->toggle(cam1,true);runtime->toggle(cam2,true);runtime->toggle(mic1,true);
+        try{until([&]{return connections->connection(cam1)["phase"]=="active"&&connections->connection(cam2)["phase"]=="active"&&connections->connection(mic1)["phase"]=="active";});}catch(...){for(const auto& id:{cam1,cam2,mic1})std::cerr<<connections->connection(id)["phase"].toString().toStdString()<<" "<<connections->connection(id)["status"].toString().toStdString()<<"\n";std::cerr<<runtime->status().toStdString()<<"\n";throw;}
+        runtime->toggle(cam1,false);until([&]{return connections->connection(cam1)["phase"]=="idle";});require(connections->connection(cam2)["phase"]=="active");
+        runtime->setMirror(cam2,true);until([&]{return runtime->mirrorStates()["63616d"].toBool();});
+        connections->setSingleServer(false);const auto bad=connections->addConnection("camera");auto secondTarget=firstTarget;secondTarget["address"]="192.0.2.2";connections->setTarget(bad,secondTarget);connections->setSource(bad,"626164");runtime->toggle(bad,true);
+        until([&]{return connections->connection(bad)["phase"]=="failed";});require(connections->connection(cam2)["phase"]=="active"&&connections->connection(mic1)["phase"]=="active");
+        runtime->disconnectAll();until([&]{return !runtime->active();});require(!controller.active());
+        qputenv("EXTRAPANE_TEST_USB_BUSY","1");
+        const auto storage=connections->addConnection("usb"),storage2=connections->addConnection("usb");connections->setSource(storage,"757362");connections->setSource(storage2,"757362");runtime->toggle(storage,true);
+        until([&]{return connections->connection(storage)["phase"]=="active";});runtime->toggle(storage2,true);require(connections->connection(storage2)["phase"]!="active"&&connections->connection(storage2)["status"].toString().contains("reserved"));
+        runtime->disconnectAll();until([&]{return connections->connection(storage)["connectionEnabled"].toBool()&&connections->connection(storage)["status"].toString().contains("busy");});require(runtime->active());
+        runtime->disconnectAll();until([&]{return !runtime->active();});require(connections->connection(storage)["status"].toString().contains("returned"));qunsetenv("EXTRAPANE_TEST_USB_BUSY");
         std::cout<<"Persistent Windows controller fake-child lifecycle checks passed\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
 }

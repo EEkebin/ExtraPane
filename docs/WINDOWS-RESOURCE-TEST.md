@@ -5,12 +5,40 @@ builds do not establish actual driver/device delivery. Use matching development
 packages on both PCs. Keep unrelated USB drives disconnected during the eventual
 USB test, and use expendable test data on the selected removable drive.
 
+## Multiple connections
+
+Use the current installer on both PCs; custom display modes need its updated
+display driver. Start Server on the receiving PC. On Client, leave Single server
+checked and enter that server's address and port. Connect to server may be used
+with no resource selected. Add the desired resource rows, choose their sources,
+then check each row to start it. Uncheck a row to stop just that connection.
+Uncheck Single server to enter a separate destination for each row.
+
+During authorized device testing, verify two camera/microphone rows produce
+separate OS endpoints, and that stopping one leaves the other running. Reusing
+one source across servers must also leave other recipients working. Receiving
+limits are four displays, four cameras, four microphones and one USB storage
+connection per server. USB sharing remains exclusive.
+
+Each display row opens a separate resizable window. Choose a local monitor for
+native mode and fullscreen placement, or use a custom even resolution within
+4096 pixels per dimension, 8,847,360 pixels total and 1–60 FPS. The physical
+panel's refresh rate is not changed. Check arrangement restoration, fullscreen,
+the top-center Controls handle, and the Keyboard action. Automatic keyboard
+opening uses Windows On-Screen Keyboard for remote fields exposing supported
+accessibility metadata; it is not a complete modern touch-keyboard/IME bridge.
+
+With active server/client work, close the main window and double-click its tray
+icon: the main window should return and focus without disconnecting anything.
+With no work it should exit. Tray Exit requests normal shutdown; a USB eject
+blocker must remain visible and prevent forced storage return.
+
 ## Camera
 
 1. Install Server + Client on the receiving PC, open Server, then start it on
    the selected interface and port. If access codes are enabled, generate one.
-2. On the sending PC open Client, check Camera, open the device list and explicitly select the
-   source, enter the receiving address/port/code, and connect.
+2. On the sending PC open Client, add Camera, open the device list and explicitly
+   select the source, enter the receiving address/port/code, then check the row.
 3. Select ExtraPane Camera in a recording app or browser. Verify picture,
    orientation, permissions, stop, reconnect and device unplug. The source negotiates its supported resolution and frame rate within the documented camera limits.
 4. Check whether a second local application can open the source camera. The app
@@ -19,8 +47,9 @@ USB test, and use expendable test data on the selected removable drive.
 ## Microphone
 
 1. Install Server + Client on the receiving PC. Restart Windows if setup requests it, then start the server.
-2. On the sending PC open Client, check Microphone, open its list and select a source, and
-   connect. The source must expose a supported 48 kHz mono/stereo shared format.
+2. On the sending PC open Client, add Microphone, open its list and select a
+   source, then check the row. The source must expose a supported 48 kHz
+   mono/stereo shared format.
 3. Select ExtraPane Microphone in a recording application. Check real recorded
    audio, mute/unmute, permission withdrawal, stop and reconnect. This build sends
    mono PCM16; it does not yet use Opus or resample other source rates.

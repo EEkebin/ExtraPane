@@ -83,14 +83,27 @@ int main(int argc,char** argv){
         for(int i=1;i<4;++i)controller.resources()->select(i,true);
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
-    QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane server");
+    QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane");
     QMenu menu;auto* show=menu.addAction("Open ExtraPane");auto* stop=menu.addAction("Stop server");menu.addSeparator();auto* quit=menu.addAction("Exit ExtraPane");
     tray.setContextMenu(&menu);
-    QObject::connect(show,&QAction::triggered,window,[&]{window->show();window->requestActivate();tray.hide();});
+    auto restoreWindow=[&]{if(window->visibility()==QWindow::Minimized)window->showNormal();else window->show();window->raise();window->requestActivate();tray.hide();};
+    QObject::connect(show,&QAction::triggered,window,restoreWindow);
+    QObject::connect(&tray,&QSystemTrayIcon::activated,window,[&](QSystemTrayIcon::ActivationReason reason){if(reason==QSystemTrayIcon::DoubleClick)restoreWindow();});
     QObject::connect(stop,&QAction::triggered,&controller,&WindowsController::stopHost);
-    QObject::connect(quit,&QAction::triggered,&app,&QCoreApplication::quit);
-    QObject::connect(&app,&QGuiApplication::lastWindowClosed,&app,[&]{if(controller.hosting()&&QSystemTrayIcon::isSystemTrayAvailable())tray.show();else app.quit();});
-    QObject::connect(&controller,&WindowsController::hostChanged,&app,[&]{if(!controller.hosting()&&!window->isVisible())app.quit();});
+    auto hasWork=[&]{return controller.hosting()||controller.active()||controller.cameraSetupRunning();};
+    bool exitRequested=false;
+    QObject::connect(quit,&QAction::triggered,&app,[&]{
+        exitRequested=true;
+        // Keep status and any USB eject blocker visible while children stop.
+        // aboutToQuit is final cleanup, not the normal USB return protocol.
+        restoreWindow();
+        controller.disconnectFromServer();controller.stopHost();
+        if(!hasWork())app.quit();
+    });
+    QObject::connect(&app,&QGuiApplication::lastWindowClosed,&app,[&]{if(hasWork()&&QSystemTrayIcon::isSystemTrayAvailable())tray.show();else app.quit();});
+    auto stateChanged=[&]{stop->setEnabled(controller.hosting());if(!hasWork()&&(exitRequested||!window->isVisible()))app.quit();};
+    QObject::connect(&controller,&WindowsController::hostChanged,&app,stateChanged);
+    QObject::connect(&controller,&WindowsController::changed,&app,stateChanged);
     QObject::connect(&app,&QCoreApplication::aboutToQuit,&controller,&WindowsController::shutdown);
     InstallerShutdownWindow installerShutdown;
     if(!installerShutdown.create())return 1;

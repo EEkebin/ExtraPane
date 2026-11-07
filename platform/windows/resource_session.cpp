@@ -6,6 +6,8 @@
 #include <dm/camera_stream.hpp>
 #include <extrapane/camera_protocol.hpp>
 #include <extrapane/negotiation.hpp>
+#include <extrapane/camera_fanout.hpp>
+#include <map>
 #include <array>
 #include <thread>
 #include <mutex>
@@ -158,4 +160,62 @@ void send_camera(const net::Options& options,const std::wstring& local_device,st
     }catch(...){source.stop();if(!stop)throw;}
     source.stop();report("CAMERA_DISCONNECTED sending");
 }
+void broker_camera(const std::wstring& local_device,std::optional<camera::Format> format,std::atomic_bool& stop,const Report& sink,const std::atomic_bool* mirrored,const std::function<std::optional<CameraRecipientCommand>()>& next_command){
+    if(local_device.empty()||!sink||!next_command)throw std::invalid_argument("Camera broker requires a source and control channel");
+    if(format)camera::validate_format(*format);Com com;
+    LocalLease lease(source_lease_name(local_device),"This camera is already owned by another ExtraPane source broker");
+    extrapane::camera::Fanout fanout;std::mutex report_mutex;
+    auto report=[&](const std::string& row,const char* event,std::string detail){for(auto& c:detail)if(static_cast<unsigned char>(c)<32)c=' ';std::lock_guard lock(report_mutex);sink("RESOURCE_EVENT\t"+row+"\t"+event+"\t"+detail.substr(0,1024));};
+    struct Worker{std::atomic_bool stop=false,done=false;std::shared_ptr<extrapane::camera::Fanout::Recipient> recipient;std::thread thread;};
+    std::map<std::string,std::unique_ptr<Worker>> workers;
+    std::unique_ptr<camera::EncodedSource> source;
+    auto remove=[&](const std::string& id){auto it=workers.find(id);if(it==workers.end())return;it->second->stop=true;fanout.remove(id);if(it->second->thread.joinable())it->second->thread.join();workers.erase(it);};
+    struct Cleanup{std::map<std::string,std::unique_ptr<Worker>>& workers;std::unique_ptr<camera::EncodedSource>& source;extrapane::camera::Fanout& fanout;~Cleanup(){for(auto& [id,w]:workers){w->stop=true;fanout.remove(id);}if(source)source->stop();for(auto& [id,w]:workers)if(w->thread.joinable())w->thread.join();}}cleanup{workers,source,fanout};
+    sink("BROKER_READY");
+    while(!stop.load()){
+        for(auto it=workers.begin();it!=workers.end();){if(it->second->done){const auto id=it->first;++it;remove(id);}else ++it;}
+        if(workers.empty()&&source){source->stop();source.reset();}
+        if(source&&source->failed()){for(auto& [id,w]:workers){report(id,"ERROR","Shared camera capture or encoding failed");w->stop=true;fanout.remove(id);}while(!workers.empty())remove(workers.begin()->first);source->stop();source.reset();}
+        auto command=next_command();
+        if(!command){Sleep(20);continue;}
+        struct Erase{std::string& value;~Erase(){SecureZeroMemory(value.data(),value.size());}}erase{command->credential};
+        if(command->kind==CameraRecipientCommand::Kind::remove){remove(command->row);continue;}
+        if(workers.contains(command->row)){report(command->row,"ERROR","Recipient already exists");continue;}
+        const auto request_row=command->row;
+        try{
+            if(workers.size()>=8)throw std::runtime_error("One camera source supports up to eight recipients");
+            if(!source){
+                source=std::make_unique<camera::EncodedSource>(local_device,format,[&](camera::EncodedFrame frame){fanout.publish(frame.sequence,frame.capture_timestamp,frame.h264,frame.fresh_encoder);},mirrored);
+                auto prepared=source->prepare();if(!prepared.available){source.reset();throw std::runtime_error(prepared.reason);}
+                auto started=source->start();if(!started.available){source.reset();throw std::runtime_error(started.reason);}
+            }
+            const auto selected=source->format();const auto binding=random_binding();
+            auto item=std::make_unique<Worker>();auto* worker=item.get();item->recipient=fanout.add(command->row,binding);const auto id=command->row;
+            workers.emplace(id,std::move(item));
+            try{worker->thread=std::thread([&,worker,selected,binding,command=std::move(*command)]()mutable{
+                struct Finish{Worker& worker;~Finish(){worker.done=true;}}finish{*worker};
+                struct Wipe{std::string& value;~Wipe(){SecureZeroMemory(value.data(),value.size());value.clear();}}wipe{command.credential};
+                try{
+                    Com worker_com;security::TlsStream tls(net::connect_stream(command.options),false,"",command.credential);SecureZeroMemory(command.credential.data(),command.credential.size());command.credential.clear();Cancellation cancellation(tls,worker->stop);
+                    tls.handshake(Clock::now()+std::chrono::seconds(10));check_stop(worker->stop);Channels transport(tls,worker->stop);
+                    const camera_wire::Offer offer{selected.width,selected.height,selected.fps,binding};transport.write(camera_wire::encode(offer));
+                    auto local=unavailable_capabilities();local[1].source={true,{}};transport.control.send(capabilities_message(local));auto reply=transport.control.receive();
+                    if(reply.header.operation!=wire::Operation::capabilities||reply.header.kind!=ResourceKind::display||reply.header.resource_id!=0)throw std::runtime_error("Camera capability exchange rejected");
+                    if(!can_connect(ResourceKind::camera,local,wire::decode_capabilities(reply.payload)).available)throw std::runtime_error("Server cannot receive a camera");
+                    auto request=wire::encode_request({binding.resource,ResourceKind::camera,"camera"});transport.control.send({{wire::Operation::request,ResourceKind::camera,binding.resource,static_cast<std::uint32_t>(request.size())},std::move(request)});reply=transport.control.receive();
+                    if(reply.header.operation!=wire::Operation::grant||reply.header.kind!=ResourceKind::camera||reply.header.resource_id!=binding.resource||!reply.payload.empty())throw std::runtime_error("Server rejected this camera recipient");
+                    worker->recipient->admitted=true;source->request_keyframe();report(command.row,"STARTED","Camera connected; source-wide mirror applies to every recipient");
+                    media::Channel frames(binding,[&](auto bytes){transport.read(bytes);},[&](auto bytes){transport.write(bytes);});
+                    while(!worker->stop.load()){
+                        auto frame=worker->recipient->frames.pop_for(std::chrono::milliseconds(100));
+                        if(worker->recipient->failed)throw std::runtime_error("Recipient is too slow; its bounded camera queue overflowed");
+                        if(frame)frames.send(*frame);
+                    }
+                }catch(const std::exception& error){if(!worker->stop)report(command.row,"ERROR",error.what());}
+                worker->recipient->admitted=false;worker->recipient->frames.close();report(command.row,"STOPPED","Camera recipient stopped");
+            });}catch(...){fanout.remove(id);workers.erase(id);throw;}
+        }catch(const std::exception& error){report(request_row,"ERROR",error.what());}
+    }
+}
+
 }

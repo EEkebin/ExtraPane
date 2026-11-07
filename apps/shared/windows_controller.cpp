@@ -57,6 +57,9 @@ struct WindowsController::Impl {
     ~Impl(){if(setup)CloseHandle(setup);}
 };
 WindowsController::WindowsController(QObject* parent,bool rememberAddress):QObject(parent),impl_(std::make_unique<Impl>()),rememberAddress_(rememberAddress){
+    connectionRuntime_=std::make_unique<WindowsConnectionRuntime>();
+    connect(connectionRuntime_.get(),&WindowsConnectionRuntime::changed,this,&WindowsController::changed);
+    connect(connectionRuntime_.get(),&WindowsConnectionRuntime::usbEvent,this,[](QString role,QString event){usbDiagnostic(role,event);});
     usbDiagnostic("app","CONTROLLER_STARTED");
     const auto dir=QCoreApplication::applicationDirPath();
     if(!QFileInfo::exists(dir+"/dm-view.exe"))unavailable_="The native display engine is missing from this installation.";
@@ -109,7 +112,7 @@ void WindowsController::refreshDevices(QString key){
 }
 QString WindowsController::version()const{return QString::fromUtf8(EXTRAPANE_VERSION);}
 bool WindowsController::hosting()const{return impl_->host.process!=nullptr;}
-bool WindowsController::active()const{if(impl_->admission)return true;for(const auto& state:impl_->clients)if(state.child.process)return true;return false;}
+bool WindowsController::active()const{if(connectionRuntime_&&connectionRuntime_->active())return true;if(impl_->admission)return true;for(const auto& state:impl_->clients)if(state.child.process)return true;return false;}
 QString WindowsController::resourceAvailability(const QString& kind)const{
     if(kind=="usb"&&!QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Usb.exe"))return "The USB connection engine is missing from this installation.";
     if(kind=="microphone"||kind=="usb"){
@@ -293,6 +296,7 @@ void WindowsController::stopResource(QString key){
     resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,i==2&&microphoneMuted_);emit changed();
 }
 void WindowsController::disconnectFromServer(){
+    if(connectionRuntime_)connectionRuntime_->disconnectAll();
     impl_->disconnectPending=true;
     for(int i=0;i<4;++i){resources_.select(i,false);stopResource(resourceNames[i]);}
     if(!impl_->clients[3].child.process)cancelAdmission();
@@ -359,6 +363,12 @@ void WindowsController::launchHost(){
     emit hostChanged();
 }
 void WindowsController::stopHost(){
+    if(impl_->preparing){
+        impl_->preparing=false;
+        if(impl_->probe){auto* process=impl_->probe;impl_->probe=nullptr;process->disconnect(this);process->kill();process->deleteLater();impl_->probeOutput.clear();}
+        hostStatus_=impl_->setup?"Server start cancelled; waiting for component setup to finish.":"Server start cancelled.";
+        emit hostChanged();
+    }
     if(!hosting())return;
     try{impl_->host.send_control("Q");hostStatus_="Stopping server; waiting for active USB storage to eject safely...";}
     catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}
@@ -375,7 +385,7 @@ void WindowsController::poll(){
             if(result==0)prepareHostComponent();
             else failHostPreparation(result==3010?"Restart Windows to finish component setup, then click Start server.":"Required component setup failed (exit "+QString::number(result)+"). Retry Start server to repair it.");
         }else{
-        hostStatus_=result==0?"Component setup completed.":result==3010?"Component setup completed; restart Windows before using it.":"Component setup failed (exit "+QString::number(result)+").";if(impl_->recovering){recoveryStatus_=result==0?"USB storage restored. Refresh to check remaining records.":"Recovery refused or failed. No forced recovery is available; review the record and USB connection state.";impl_->recovering=false;recoveries_.clear();emit recoveryChanged();}
+        hostStatus_=result==0?"Component setup completed.":result==3010?"Component setup completed; restart Windows before using it.":"Component setup failed (exit "+QString::number(result)+").";if(impl_->recovering){recoveryStatus_=result==0?"USB storage restored. Refresh to check remaining records.":"Recovery refused or failed. No forced recovery is available; review the record and USB connection state.";impl_->recovering=false;recoveries_.clear();if(result==0&&connectionRuntime_)connectionRuntime_->refreshDevices("usb");emit recoveryChanged();}
         status_=hostStatus_;emit changed();emit hostChanged();
         }
     }
@@ -437,6 +447,7 @@ void WindowsController::poll(){
     if(impl_->codeExpires&&GetTickCount64()>=impl_->codeExpires){impl_->codeExpires=0;code_="Code expired. Generate a new code.";emit hostChanged();}
 }
 void WindowsController::shutdown(){
+    if(connectionRuntime_)connectionRuntime_->shutdown();
     impl_->preparing=false;
     if(impl_->probe){auto* process=impl_->probe;impl_->probe=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}
     cancelAdmission();

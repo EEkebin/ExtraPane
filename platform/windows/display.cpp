@@ -2,6 +2,7 @@
 #include <swdevice.h>
 #include <cfgmgr32.h>
 #include <dm/display.hpp>
+#include "../../drivers/idd/ModeRequest.h"
 #include <chrono>
 #include <algorithm>
 #include <cmath>
@@ -200,7 +201,10 @@ struct VirtualMonitor::State {
         SetEvent(state.event);
     }
 };
-VirtualMonitor::VirtualMonitor(unsigned slot):state_(std::make_unique<State>()) {
+VirtualMonitor::VirtualMonitor(unsigned slot,Mode desired):state_(std::make_unique<State>()) {
+    const bool custom=desired.width||desired.height||desired.hz;
+    ExtraPane::DisplayRequest::Request request{1,desired.width,desired.height,desired.hz};
+    if(custom&&!ExtraPane::DisplayRequest::Valid(request))throw std::invalid_argument("Custom virtual display mode requires even dimensions 2..4096, at most 8847360 pixels and 1..60 Hz");
     auto& s=*state_;s.slot=slot;if(slot)s.baseline=active_monitors();
     if(!s.event) throw std::runtime_error("Cannot create device completion event");
     // Slot zero retains the diagnostic identity; server slots are independent adapters.
@@ -211,7 +215,11 @@ VirtualMonitor::VirtualMonitor(unsigned slot):state_(std::make_unique<State>()) 
     info.pszzCompatibleIds=L"DMIndirectDisplay\0";
     info.pszDeviceDescription=L"DM LAN Virtual Display";
     info.CapabilityFlags=SWDeviceCapabilitiesRemovable|SWDeviceCapabilitiesSilentInstall|SWDeviceCapabilitiesDriverRequired;
-    check(SwDeviceCreate(L"DM",L"HTREE\\ROOT\\0",&info,0,nullptr,State::created,&s,&s.device),"Create DM virtual display (requires administrator and staged driver)");
+    DEVPROPERTY property{};property.CompKey.Key=ExtraPane::DisplayRequest::Property;property.CompKey.Store=DEVPROP_STORE_SYSTEM;
+    property.Type=DEVPROP_TYPE_BINARY;property.BufferSize=sizeof(request);property.Buffer=&request;
+    // Explicitly overwrite a prior slot's custom request when returning to the
+    // default mode list; PnP may retain properties on a removed device instance.
+    check(SwDeviceCreate(L"DM",L"HTREE\\ROOT\\0",&info,1,&property,State::created,&s,&s.device),"Create DM virtual display (requires administrator and staged driver)");
     if(WaitForSingleObject(s.event,10000)!=WAIT_OBJECT_0) throw std::runtime_error("DM device creation timed out");
     check(s.result,"Enumerate DM virtual display");
 }

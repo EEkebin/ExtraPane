@@ -13,7 +13,12 @@ Do not run upstream hardware tests as part of ordinary builds.
 
 `ExtraPane.MicrophoneEndpoint.exe --run --slot N` creates one input endpoint,
 where N is 1..4. Only run after resource admission. It never captures a local
-microphone. `MICROPHONE_READY slot=N` means USB/IP attach completed, not that an
+microphone. Each slot has its own `ExtraPane Microphone N` product/capture name,
+descriptor serial, PCM ring, supervised process and owned USB/IP attachment.
+The unified listener assigns one slot to each concurrent incoming microphone;
+the dedicated diagnostic listener continues to reserve slot 1. Four receiving
+microphones are the current capacity, not an unlimited endpoint pool.
+`MICROPHONE_READY slot=N` means USB/IP attach completed, not that an
 application successfully recorded audio. `MICROPHONE_STOPPED` reports cleanup.
 Fatal errors use `error:` and exit code 1. Allow 30 seconds for startup and 12
 seconds for graceful stop. A five-second stdin stall fails closed. The owner must
@@ -32,9 +37,11 @@ The USB/IP server binds only `127.0.0.1` on an ephemeral port. A random bus ID
 identifies each session. Attach uses `--once --terse`; the returned decimal port
 is retained and only that port is detached. There is no global detach. If attach
 succeeds but returns malformed output, its export is removed; no guessed port is
-detached. The backend should remove the disconnected endpoint. A local per-slot
-mutex prevents duplicate helpers in one Windows interactive session; coordination
-across simultaneous Windows logon sessions remains a limitation.
+detached. The backend should remove the disconnected endpoint. Global per-slot
+mutexes prevent two helpers from claiming the same slot across Windows logon
+sessions; an inaccessible or occupied slot fails closed. Session-specific random
+bus IDs and attach serials prevent one session from detaching another's port.
+Slot names remain recognizable; reconnecting creates a fresh attachment identity.
 
 ## Local stdin framing
 
@@ -57,7 +64,8 @@ keep latency from growing, but long-session audio quality requires device tests.
 ## Isolated validation
 
 `cargo test --manifest-path apps/microphone-endpoint/Cargo.toml` tests only this
-crate's parser, sample conversion, mute, queue limits and exact attach-port parser.
+crate's parser, sample conversion, mute, queue limits, distinct slot identities,
+independent PCM stop state and exact attachment ownership checks.
 `ExtraPane.MicrophoneEndpoint.exe --check` validates in memory without sockets,
 driver access, enumeration, capture or subprocesses. It does not prove deployment
 or audio delivery. Do not invoke `--run` during unattended builds.
@@ -65,5 +73,6 @@ or audio delivery. Do not invoke `--run` during unattended builds.
 The current descriptors use pid.codes test identity `1209:0001`, as the upstream
 probe does. This is a development slice, not a claimed assigned production USB
 identity. Production descriptor identity, managed backend installation, signed
-CLI compatibility, real app recording, unplug/stop cleanup and multisession
-behavior remain release gates.
+CLI compatibility, real app recording, unplug/stop cleanup and concurrent real
+application recording remain release gates. Synthetic checks do not establish
+that four microphones are visible and usable in Windows or an application.

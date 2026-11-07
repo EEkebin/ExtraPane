@@ -1,5 +1,21 @@
 # Decisions, assumptions, and evidence
 
+## Multiple client connections and tray lifetime (2026-11-07)
+
+The Windows shared client uses repeatable resource rows with independent source,
+destination and lifecycle state. Single server mode supplies one destination to
+all rows; Multiple servers mode exposes each row's destination. Running rows
+retain their destination until disconnected. Camera and microphone capture can
+feed several destinations through bounded native queues; USB remains exclusive
+and retains its safe-return rules. See MULTIPLE-RESOURCE-CONNECTIONS.md for
+implementation status and tested limits.
+
+Each display row has its own resizable preview window and fullscreen destination.
+Closing the main window keeps it in the tray while a server or client connection
+is active; with no work it exits. Double-clicking the tray icon restores and
+focuses the main window for either role. Tray Exit requests normal disconnect
+and server stop, keeping USB return blockers visible rather than forcing return.
+
 ## Automatic USB return (2026-11-07)
 
 Unchecking USB or choosing Disconnect all requests a graceful return: the

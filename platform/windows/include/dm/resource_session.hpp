@@ -14,4 +14,13 @@ void receive_camera_admitted(security::TlsStream&,unsigned slot,std::atomic_bool
 void serve_camera(const net::Options& options,std::atomic_bool& stop,const Report& report);
 void send_camera(const net::Options& options,const std::wstring& local_device,
     std::optional<camera::Format> format,std::atomic_bool& stop,const Report& report,const std::atomic_bool* mirrored=nullptr);
+struct CameraRecipientCommand {
+    enum class Kind {add,remove};
+    Kind kind=Kind::remove;std::string row;
+    net::Options options;std::string credential;
+};
+// One process/capture/encoder for one local source. Mirror is source-wide.
+void broker_camera(const std::wstring& local_device,std::optional<camera::Format> format,
+    std::atomic_bool& stop,const Report& report,const std::atomic_bool* mirrored,
+    const std::function<std::optional<CameraRecipientCommand>()>& next_command);
 }

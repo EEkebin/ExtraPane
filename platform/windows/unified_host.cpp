@@ -27,7 +27,7 @@ struct Cancel {
 };
 struct Slots {
     std::mutex mutex;std::array<std::array<bool,4>,4> used{};
-    unsigned acquire(ResourceKind kind,Control& control){std::lock_guard lock(mutex);if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping; retry after restart");const auto index=static_cast<unsigned>(kind);if(index>=4)throw std::runtime_error("Unsupported server resource");const unsigned capacity=index<2?4:1;for(unsigned slot=0;slot<capacity;++slot)if(!used[index][slot]){used[index][slot]=true;return slot+1;}throw std::runtime_error("Resource is already in use or its connection limit was reached");}
+    unsigned acquire(ResourceKind kind,Control& control){std::lock_guard lock(mutex);if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping; retry after restart");const auto index=static_cast<unsigned>(kind);if(index>=4)throw std::runtime_error("Unsupported server resource");const unsigned capacity=index<3?4:1;for(unsigned slot=0;slot<capacity;++slot)if(!used[index][slot]){used[index][slot]=true;return slot+1;}throw std::runtime_error("Resource is already in use or its connection limit was reached");}
     void release(ResourceKind kind,unsigned slot){std::lock_guard lock(mutex);used[static_cast<unsigned>(kind)][slot-1]=false;}
     bool stop_if_no_usb(Control& control){std::lock_guard lock(mutex);if(used[3][0])return false;control.stop=true;return true;}
 };
@@ -104,11 +104,11 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     report("SERVER_RESOURCE_STARTING kind="+resource+" slot="+std::to_string(slot)+" peer="+peer);
                     switch(kind){
                     case ResourceKind::display:{
-                        const auto ip=peer.substr(0,peer.find(':'));display::select_layout_profile(std::wstring(ip.begin(),ip.end()));
+                        const auto ip=peer.substr(0,peer.find(':'));display::select_layout_profile(std::wstring(ip.begin(),ip.end())+L"-slot-"+std::to_wstring(slot));
                         video::host_video(options,pair,frames,60,video::wire::Codec::h264,L"",true,allow_input,1280,720,true,true,{},nullptr,nullptr,slot,&tls);break;
                     }
                     case ResourceKind::camera: if(!camera_lease)throw std::runtime_error(camera_busy);resources::receive_camera_admitted(tls,slot,control.stop,events);break;
-                    case ResourceKind::microphone:{Lease lease(L"Local\\ExtraPane.MicrophoneServer");microphone::receive_admitted(tls,control.stop,events);break;}
+                    case ResourceKind::microphone:{microphone::receive_admitted(tls,control.stop,events,slot);break;}
                     case ResourceKind::usb: usb::receive_storage_admitted(tls,control.stop,control.eject_usb,events);break;
                     }
                     }

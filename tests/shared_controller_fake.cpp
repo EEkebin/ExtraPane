@@ -4,6 +4,9 @@
 #include <thread>
 #include <chrono>
 #include <cstdlib>
+#include <sstream>
+#include <vector>
+#include <set>
 
 // Test-only native children: no network, capture, USB, or device APIs.
 int main(int argc,char** argv){
@@ -24,6 +27,19 @@ int main(int argc,char** argv){
     if(args.find("list-storage")!=args.npos){std::cout<<"USB_DEVICE_V1\t757362\tFake returned disk\tavailable\nUSB_LIST_DONE"<<std::endl;return 0;}
     if(args.find("receive")!=args.npos){std::cout<<"VIDEO_RECEIVING"<<std::endl;Sleep(INFINITE);return 0;}
     std::string line;std::getline(std::cin,line);
+    if(args.find("broker-camera")!=args.npos||args.find("broker-microphone")!=args.npos){
+        const auto device=line;std::set<std::string> rows;std::cout<<"BROKER_READY"<<std::endl;
+        while(std::getline(std::cin,line)){
+            if(line=="Q")return 0;
+            std::istringstream input(line);std::vector<std::string> fields;std::string field;while(std::getline(input,field,'\t'))fields.push_back(field);
+            if(fields.size()==6&&fields[0]=="ADD"){
+                if(device=="bad"){std::cout<<"RESOURCE_EVENT\t"<<fields[1]<<"\tERROR\tsimulated source failure"<<std::endl;continue;}
+                rows.insert(fields[1]);std::cout<<"RESOURCE_EVENT\t"<<fields[1]<<"\tSTARTED\tready"<<std::endl;
+            }else if(fields.size()==2&&fields[0]=="REMOVE"){rows.erase(fields[1]);std::cout<<"RESOURCE_EVENT\t"<<fields[1]<<"\tSTOPPED\tdone"<<std::endl;}
+            else if(fields.size()==2&&fields[0]=="MIRROR")std::cout<<"CAMERA_MIRROR "<<(fields[1]=="1"?"on":"off")<<std::endl;
+            else if(fields.size()!=3||fields[0]!="MUTE")return 3;
+        }return 0;
+    }
     if(args.find("send-microphone")!=args.npos&&std::getenv("EXTRAPANE_TEST_MIC_FAIL")){
         std::cout<<"error: simulated microphone rejection"<<std::endl;return 1;
     }

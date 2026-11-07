@@ -7,6 +7,8 @@
 #include <dm/video_gpu.hpp>
 #include <dm/display.hpp>
 #include <dm/input.hpp>
+#include <dm/text_focus.hpp>
+#include <dm/text_focus_policy.hpp>
 #include <bcrypt.h>
 #include <iostream>
 #include <stdexcept>
@@ -44,6 +46,9 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     if(request[7]>1)throw std::runtime_error("Unknown input permission request");
     const bool control=request[7]==1;request[7]=0;
     const unsigned requested_caps=request[8];request[8]=0;
+    if(request[10]>1)throw std::runtime_error("Unknown text-focus hint request");
+    const bool text_focus_requested=request[10]==1;request[10]=0;
+    if(text_focus_requested&&(!control||!(requested_caps&input::touch_cap)))throw std::runtime_error("Text-focus hints require granted touch input");
     if(requested_caps>input::all_caps || control!=(requested_caps!=0))throw std::runtime_error("Invalid receiver input capabilities");
     if (request != wire::request) throw std::runtime_error("Unsupported video/input request");
     if(control && !allow_input)throw std::runtime_error("Host did not grant --allow-input permission");
@@ -59,18 +64,22 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         const auto baseline=display::active_monitors();
         bool existing_monitor=false;
         if(!acquire_monitor) {
-            virtual_monitor.reset(new display::VirtualMonitor(monitor_slot));
+            virtual_monitor.reset(new display::VirtualMonitor(monitor_slot,preference.exact_mode?display::Mode{preference.width,preference.height,preference.hz}:display::Mode{}));
             selected_source=virtual_monitor->wait_for_source();
         } else selected_source=acquire_monitor(existing_monitor);
         if(client_mode) {
             const auto chosen=display::closest_mode(selected_source,preference.width,preference.height,preference.hz);
+            if(preference.exact_mode&&(chosen.width!=preference.width||chosen.height!=preference.height||chosen.hz!=preference.hz))throw std::runtime_error("The installed display driver does not support this custom mode; update the server driver or select a supported mode");
             client_choice=chosen;
             width=chosen.width;height=chosen.height;fps=std::min(preference.hz,chosen.hz);
             std::osyncstream(std::cout)<<"CLIENT_MODE requested="<<preference.width<<'x'<<preference.height<<'@'<<preference.hz
                      <<" selected="<<width<<'x'<<height<<'@'<<fps
                      <<" fallback="<<(width!=preference.width || height!=preference.height || fps!=preference.hz)<<std::endl;
         }
-        if(!keep_layout || !display::restore_mode(selected_source,profile_width,profile_height,existing_monitor)) {
+        const bool restored_layout=keep_layout&&display::restore_mode(selected_source,profile_width,profile_height,existing_monitor);
+        if(preference.exact_mode&&restored_layout){
+            auto exact=display::current_mode(selected_source);exact.width=width;exact.height=height;exact.hz=client_choice.hz;exact.rotation=0;display::configure_virtual(selected_source,exact);
+        }else if(!restored_layout) {
             if(client_mode && client_choice.rotation) {
                 display::set_virtual_mode(selected_source,height,width,client_choice.hz,baseline);
                 auto rotated=display::current_mode(selected_source);rotated.width=width;rotated.height=height;rotated.rotation=client_choice.rotation;
@@ -127,6 +136,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     }
     std::unique_ptr<input::Broker> broker;
     std::uint64_t epoch=0;
+    std::unique_ptr<input::TextFocusProbe> text_focus;
     unsigned granted_caps=0;
     if(control) {
         broker=std::make_unique<input::Broker>(selected_source);
@@ -136,6 +146,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         std::osyncstream(std::cout)<<"INPUT_GRANTED caps="<<granted_caps<<" touch_contacts="<<((granted_caps&input::touch_cap)?10:0)<<" pen_devices="<<((granted_caps&input::pen_cap)?1:0)<<" watchdog_ms=1500"<<std::endl;
     }
     const auto codec_name=codec==wire::Codec::h264 ? "H264" : "JPEG-test";
+    if(text_focus_requested&&(granted_caps&input::touch_cap))text_focus=std::make_unique<input::TextFocusProbe>(selected_source);
     stream.write(wire::encode_offer({frame.width, frame.height, fps, frames,codec,static_cast<std::uint8_t>(granted_caps),epoch}), deadline());
     std::array<std::uint8_t,wire::ready.size()> ready{};
     stream.read(ready,deadline());
@@ -182,6 +193,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         stream.write(wire::encode_offer({frame.width,frame.height,fps,frames,codec,static_cast<std::uint8_t>(granted_caps),epoch}),deadline());
         stream.read(ready,deadline());if(ready!=wire::ready)throw std::runtime_error("Receiver did not acknowledge changed geometry");
         if(keep_layout && extend)display::remember_mode(selected_source,profile_width,profile_height);
+        if(text_focus)text_focus=std::make_unique<input::TextFocusProbe>(selected_source);
         last_input_time=0;next_frame=Clock::now();
         std::osyncstream(std::cout)<<"DISPLAY_RECONFIGURED "<<frame.width<<'x'<<frame.height<<" position="<<mode->x<<','<<mode->y<<" rotation="<<mode->rotation<<std::endl;
     };
@@ -201,7 +213,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
         auto payload = encoder ? encoder->encode(frame,i) : encode_jpeg(frame);
         const auto encoded=Clock::now();
         const auto micros = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(sample - start).count());
-        stream.write(wire::encode_header({static_cast<std::uint32_t>(i), static_cast<std::uint32_t>(payload.size()), micros}), deadline());
+        stream.write(wire::encode_header({static_cast<std::uint32_t>(i), static_cast<std::uint32_t>(payload.size()), micros,text_focus?text_focus->confirmed_touch():0}), deadline());
         stream.write(payload, deadline());
         if(broker) {
             input::HeaderBytes bytes{};stream.read(bytes,Clock::now()+std::chrono::milliseconds(1000));const auto header=input::decode_header(bytes);
@@ -213,7 +225,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
                 if(event.kind!=input::Kind::reset && event.micros<last_input_time)throw std::runtime_error("Input samples are out of order");
                 if(event.kind!=input::Kind::reset)last_input_time=event.micros;
             }
-            broker->send(events);input_events+=header.count;
+            broker->send(events);if(text_focus)text_focus->observe(events);input_events+=header.count;
         }
         const auto sent=Clock::now();
         capture_ms+=std::chrono::duration<double,std::milli>(sample-begin_capture).count();
@@ -272,11 +284,11 @@ void serve_video(const net::Options& requested,const std::string& pair,bool allo
         });
     }
 }
-void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display,Quality quality,const std::function<void(StreamStats)>& statistics) {
+void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display,Quality quality,const std::function<void(StreamStats)>& statistics,const std::function<void()>& editable_touch) {
     auto socket = net::connect_stream(options);
     security::TlsStream stream(std::move(socket), false, pair);
     stream.handshake(deadline());
-    auto request=wire::request;request[9]=static_cast<std::uint8_t>(quality);if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}wire::set_client_display(request,client_display);stream.write(request, deadline());
+    auto request=wire::request;request[9]=static_cast<std::uint8_t>(quality);if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}if(editable_touch&&input_source&&(request[8]&input::touch_cap))request[10]=1;wire::set_client_display(request,client_display);stream.write(request, deadline());
     wire::OfferBytes offer_bytes{};
     // Authenticated host may need to enumerate/start its session-owned driver.
     stream.read(offer_bytes, Clock::now()+std::chrono::seconds(45));
@@ -302,6 +314,7 @@ void receive_video(const net::Options& options, const std::string& pair, const s
         if (++decoded_frames>offer.frames && offer.frames) throw std::runtime_error("Decoded frame count exceeds negotiated limit");
         sink(std::move(frame));
     };
+    input::TouchKeyboardGate text_focus_gate;
     for (std::uint64_t i = 0; !offer.frames || i < offer.frames; ++i) {
         wire::HeaderBytes header_bytes{};
         stream.read(header_bytes, deadline());
@@ -309,7 +322,7 @@ void receive_video(const net::Options& options, const std::string& pair, const s
         while(header.bytes==0) {
             if(header.sequence!=static_cast<std::uint32_t>(i) || header.micros<previous_time)throw std::runtime_error("Out-of-order reconfiguration");
             previous_time=header.micros;
-            if(input_grant)input_grant(0);
+            text_focus_gate.clear();if(input_grant)input_grant(0);
             if(decoder)for(auto& frame:decoder->finish())deliver(std::move(frame));
             if(decoder)retired_gpu_frames+=decoder->gpu_frames();
             decoder.reset();
@@ -327,11 +340,14 @@ void receive_video(const net::Options& options, const std::string& pair, const s
         }
         if (header.sequence != static_cast<std::uint32_t>(i) || header.micros < previous_time) throw std::runtime_error("Out-of-order video frame");
         previous_time = header.micros;
+        if(header.editable_touch&&!request[10])throw std::runtime_error("Unrequested text-focus hint");
+        if(editable_touch&&text_focus_gate.accept(header.editable_touch,GetTickCount64()))editable_touch();
         std::vector<std::uint8_t> payload(header.bytes);
         stream.read(payload, deadline());
         // Return input before decoding so host encode can overlap receiver GPU work.
         if(offer.input_caps) {
             auto events=input_source();
+            for(const auto& event:events){if(event.kind==input::Kind::reset||event.kind==input::Kind::key||event.kind==input::Kind::pen||(event.kind==input::Kind::mouse&&event.action==input::Action::down))text_focus_gate.clear();else if(event.kind==input::Kind::touch&&event.action==input::Action::down)text_focus_gate.touch(input::touch_token(event.micros),GetTickCount64());}
             stream.write(input::encode_header({offer.input_epoch,static_cast<std::uint32_t>(i),static_cast<std::uint32_t>(events.size())}),deadline());
             const auto bytes=input::encode_events(events);if(!bytes.empty())stream.write(bytes,deadline());
         }
