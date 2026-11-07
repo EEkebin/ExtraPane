@@ -27,7 +27,7 @@ $redistVersion = Get-ChildItem -LiteralPath $redistRoot -Directory | Where-Objec
 if (-not $redistVersion) { throw 'MSVC redistributable files are missing.' }
 $crt = Get-ChildItem -LiteralPath (Join-Path $redistVersion.FullName 'x64') -Directory | Where-Object { $_.Name -like 'Microsoft.VC*.CRT' } | Select-Object -First 1
 if (-not $crt) { throw 'MSVC x64 runtime files are missing.' }
-$files = @((Join-Path $uiPath 'ExtraPane.exe'), (Join-Path $enginePath 'dm-view.exe'), (Join-Path $enginePath 'ExtraPane.Service.exe'))
+$files = @((Join-Path $uiPath 'ExtraPane.exe'), (Join-Path $enginePath 'dm-view.exe'), (Join-Path $enginePath 'ExtraPane.Service.exe'), (Join-Path $enginePath 'ExtraPane.Session.exe'))
 if ($IncludeCamera) {
     $files += (Join-Path $enginePath 'ExtraPane.Resources.exe'), (Join-Path $enginePath 'ExtraPane.CameraSetup.exe')
 }

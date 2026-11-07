@@ -23,9 +23,7 @@ ApplicationWindow {
     palette.toolTipBase: "#253349"
     palette.toolTipText: "#edf1f8"
     palette.placeholderText: "#aab8cc"
-    property bool cameraClient: receiver.platformLabel === "Windows" ? receiver.clientMode !== "display" : false
-    property bool usbClient: receiver.platformLabel === "Windows" ? receiver.clientMode === "usb" : false
-    property bool microphoneClient: receiver.platformLabel === "Windows" ? receiver.clientMode === "microphone" : false
+    property bool windowsClient: receiver.platformLabel === "Windows"
     property bool inputPaused: false
     component ToolbarButton: ToolButton {
         id: control
@@ -61,9 +59,9 @@ ApplicationWindow {
     }
     property int nextScale: 0
     property bool toolbarVisible: true
-    property bool fullscreen: !cameraClient && visibility === Window.FullScreen
+    property bool fullscreen: !windowsClient && visibility === Window.FullScreen
     function toggleFullscreen() {
-        if (cameraClient) return
+        if (windowsClient) return
         receiver.releaseInput()
         if (fullscreen) showNormal(); else showFullScreen()
         revealToolbar()
@@ -71,8 +69,8 @@ ApplicationWindow {
     function revealToolbar() { toolbarVisible = true; hideToolbar.restart() }
     Shortcut { sequence: "Ctrl+Shift+Q"; onActivated: receiver.disconnectFromServer() }
     Shortcut { sequence: "F11"; onActivated: root.toggleFullscreen() }
-    Shortcut { enabled: !root.cameraClient; sequence: "F10"; onActivated: root.pauseInput() }
-    Shortcut { enabled: !root.cameraClient; sequence: "F8"; onActivated: root.toggleInput() }
+    Shortcut { enabled: !root.windowsClient; sequence: "F10"; onActivated: root.pauseInput() }
+    Shortcut { enabled: !root.windowsClient; sequence: "F8"; onActivated: root.toggleInput() }
     onActiveChanged: { if (!active) receiver.releaseInput() }
     Timer {
         id: hideToolbar
@@ -168,66 +166,12 @@ ApplicationWindow {
                 }
             }
             Item {
+                objectName: "clientPage"
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: root.fullscreen ? 0 : 24
                     spacing: root.fullscreen ? 0 : 12
                     Label { visible: !root.fullscreen; text: "Client"; font.pixelSize: 30; font.bold: true }
-                    ComboBox {
-                        visible: receiver.platformLabel === "Windows" && !root.fullscreen
-                        enabled: !receiver.active && (receiver.platformLabel === "Windows" ? !receiver.cameraScanRunning : true)
-                        model: ["Display", "Camera (preview)", "Microphone (preview)", "USB storage (preview)"]
-                        currentIndex: root.usbClient ? 3 : root.microphoneClient ? 2 : root.cameraClient ? 1 : 0
-                        onActivated: receiver.clientMode = currentIndex === 3 ? "usb" : currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
-                    }
-                    ScrollView {
-                        id: resourceScroll
-                        visible: root.cameraClient && !root.fullscreen
-                        Layout.fillWidth: true; Layout.fillHeight: true
-                        contentWidth: availableWidth
-                        ColumnLayout {
-                        objectName: "cameraClientPanel"
-                        width: resourceScroll.availableWidth
-                        Label { text: root.usbClient ? "Share removable USB storage exclusively with trusted computers. Close its files first. Use Eject USB on the receiving PC before stopping; a lost connection requires source recovery." : root.microphoneClient ? "Send a local microphone to a Windows microphone server. Resource modes use separate connections in this preview." : "Send a local camera to a Windows camera server. Display and camera use separate connections in this preview."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            ComboBox {
-                                id: cameraSourcePicker; objectName: "cameraSourcePicker"; Layout.fillWidth: true
-                                enabled: root.cameraClient && !receiver.active && !receiver.cameraScanRunning
-                                model: root.cameraClient ? receiver.cameras : []
-                                textRole: "label"; valueRole: "id"
-                                currentIndex: root.cameraClient ? model.findIndex(item => item.id === receiver.selectedCamera && item.available !== false) : -1
-                                displayText: currentIndex < 0 ? (root.usbClient ? "Select removable storage" : root.microphoneClient ? "Select a microphone" : "Select a camera") : currentText
-                                onActivated: receiver.selectedCamera = currentValue
-                            }
-                            Button {
-                                objectName: "cameraRefreshButton"; text: root.cameraClient && receiver.cameraScanRunning ? "Listing..." : root.usbClient ? "Refresh USB storage" : root.microphoneClient ? "Refresh microphones" : "Refresh cameras"
-                                enabled: root.cameraClient && !receiver.active && !receiver.cameraScanRunning
-                                onClicked: receiver.refreshCameras()
-                            }
-                        }
-                        Label { text: root.cameraClient ? receiver.cameraStatus : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                        Button {
-                            visible: root.microphoneClient && receiver.active
-                            text: root.microphoneClient && receiver.microphoneMuted ? "Unmute microphone" : "Mute microphone"
-                            onClicked: receiver.setMicrophoneMuted(!receiver.microphoneMuted)
-                        }
-                        Button { objectName: "usbSourceSetupButton"; visible: root.usbClient; text: "USB source setup"; enabled: !receiver.active && !receiver.hosting && !receiver.cameraSetupRunning; onClicked: receiver.setupUsbSource() }
-                        ColumnLayout {
-                            visible: root.usbClient
-                            Layout.fillWidth: true
-                            Label { text: "USB recovery"; font.bold: true }
-                            Label { text: root.usbClient ? receiver.recoveryStatus : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                            ComboBox { id: recoveryPicker; objectName: "usbRecoveryPicker"; Layout.fillWidth: true; model: root.usbClient ? receiver.usbRecoveries : []; textRole: "label"; valueRole: "id"; enabled: !receiver.active && !receiver.hosting && !receiver.recoveryBusy }
-                            RowLayout {
-                                Button { objectName: "usbRecoveryRefreshButton"; text: "Refresh recovery"; enabled: root.usbClient && !receiver.active && !receiver.hosting && !receiver.recoveryBusy; onClicked: receiver.refreshUsbRecovery() }
-                                Button { objectName: "usbRecoveryRestoreButton"; text: "Restore selected disk"; enabled: root.usbClient && !receiver.active && !receiver.hosting && !receiver.recoveryBusy && recoveryPicker.currentIndex >= 0 && receiver.usbRecoveries[recoveryPicker.currentIndex].available; onClicked: receiver.recoverUsb(recoveryPicker.currentValue) }
-                            }
-                        }
-                        Button { objectName: "cameraDisconnectButton"; text: root.usbClient ? "Stop USB (recovery may be required)" : root.microphoneClient ? "Stop sharing microphone" : "Stop sharing camera"; visible: receiver.active; onClicked: receiver.disconnectFromServer() }
-                        }
-                    }
-
                     RowLayout {
                         visible: !receiver.active && !root.fullscreen
                         TextField { id: clientPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } Layout.preferredWidth: 100 }
@@ -242,7 +186,7 @@ ApplicationWindow {
                         }
                         Button {
                             id: connectButton; objectName: "connectButton"; text: "Connect"
-                            enabled: !receiver.active && receiver.availability.length === 0 && (root.cameraClient ? !receiver.cameraScanRunning && receiver.selectedCamera.length > 0 && receiver.cameras.some(item => item.id === receiver.selectedCamera && item.available !== false) : receiver.resources.canConnect)
+                            enabled: !receiver.active && (root.windowsClient ? receiver.clientReady : receiver.availability.length === 0 && receiver.resources.canConnect)
                             onClicked: {
                                 const selected = receiver.addresses[localAddress.currentIndex]
                                 receiver.connectTo(serverAddress.text, selected ? selected.address : "0.0.0.0", inputAllowed.checked, root.nextScale, selected ? selected.index : 0, Number(clientPort.text), clientCode.text)
@@ -262,17 +206,42 @@ ApplicationWindow {
                         visible: receiver.availability.length > 0; text: receiver.availability; color: "#f0c66e"
                         wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
+                    Button {
+                        objectName: "clientDisconnectButton"
+                        visible: root.windowsClient && receiver.active
+                        text: "Disconnect all"
+                        onClicked: receiver.disconnectFromServer()
+                    }
+                    ScrollView {
+                        id: resourceScroll
+                        visible: root.windowsClient
+                        Layout.fillWidth: true; Layout.fillHeight: true
+                        contentWidth: availableWidth
+                        Loader {
+                            width: resourceScroll.availableWidth
+                            active: root.windowsClient
+                            sourceComponent: Component {
+                                ResourcePicker { resourceModel: receiver.resources; controller: receiver }
+                            }
+                        }
+                    }
                     Rectangle {
-                        id: viewport; visible: !root.cameraClient; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
+                        id: viewport; visible: !root.windowsClient; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
                         ScrollView {
                             anchors.fill: parent; anchors.margins: 18
                             visible: !receiver.active
                             contentWidth: availableWidth
-                            ResourcePicker { width: parent.width; resourceModel: receiver.resources }
+                            Loader {
+                                width: parent.width
+                                active: !root.windowsClient
+                                sourceComponent: Component {
+                                    ResourcePicker { resourceModel: receiver.resources }
+                                }
+                            }
                         }
                         Loader {
                             objectName: "clientVideoLoader"
-                            anchors.fill: parent; active: !root.cameraClient && receiver.availability.length === 0; visible: receiver.active; source: "qrc:/Video.qml"
+                            anchors.fill: parent; active: !root.windowsClient && receiver.availability.length === 0; visible: receiver.active; source: "qrc:/Video.qml"
                             onLoaded: item.inputPaused = Qt.binding(function() { return root.inputPaused || root.toolbarVisible || settingsMenu.opened })
                         }
                         Item {
@@ -320,7 +289,7 @@ ApplicationWindow {
                         }
                     }
                     Label { visible: !root.fullscreen; text: receiver.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { visible: !root.fullscreen; text: root.cameraClient ? "Ctrl+Shift+Q stops sharing" : "F8 pauses input | Ctrl+Shift+Q disconnects Â· F11 toggles fullscreen Â· F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { visible: !root.fullscreen; text: root.windowsClient ? "Ctrl+Shift+Q disconnects all selected resources. Display opens in its own native window." : "F8 pauses input | Ctrl+Shift+Q disconnects | F11 toggles fullscreen | F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
             Pane {

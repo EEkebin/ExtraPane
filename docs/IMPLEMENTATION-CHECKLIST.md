@@ -23,7 +23,7 @@ speaker forwarding remain deferred.
 - [x] Camera-only live protocol integrated into Windows and Android app sessions.
 - [x] Camera format negotiation and connection/status/error UI.
 - [x] One Windows server accepts display, camera, microphone and USB connections on the same port; no server resource dropdown. Native build and isolated routing/UI checks pass; live verification pending.
-- [ ] Client checkboxes for simultaneous resource selection and grouped access-code admission; the client currently selects one resource per connection.
+- [x] Windows client multi-select checkboxes, independent device/status/stop/mute state, and grouped one-code admission implemented; isolated checks pass, physical combined-resource verification pending.
 - [ ] Shared UI migration and display regression checks across all four platforms.
 
 ## Camera
@@ -135,3 +135,5 @@ Unified routing verification also passes an in-memory authenticated-record test:
 2026-11-07 unified server: native dispatcher dc1fbbf and UI now start all supported receivers together. Five packaged native targets rebuild; 12 configuration checks, eight core checks, authenticated-record routing and offscreen UI pass. Optional components are prepared only for requested resources. No live listener or device tests were run.
 
 2026-11-07 unified server deployment: packaged offscreen startup passed; all 1,322 files copied and verified on the Surface Desktop as `ExtraPane-unified-server-20261107`. Old Surface camera-fix build removed. Automatic approval review blocked local old camera-fix folder/archive cleanup (reason: blocked by policy), so those copies remain. No application, listener or device was started on the Surface.
+
+2026-11-07 client multi-select: model/UI checks cover combined display/camera/microphone selections, independent source devices, stop/mute, unavailable devices and no automatic capture. Group admission uses one-use per-resource tickets, with real in-memory PAKE/AEAD expiry/replay/wrong-kind checks; all native helpers rebuilt. Physical simultaneous delivery remains unverified.

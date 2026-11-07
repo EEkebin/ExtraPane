@@ -15,78 +15,74 @@
 #include <shlobj.h>
 
 using extrapane::windows_bridge::Child;
-struct WindowsController::Impl {QProcess* recoveryScan=nullptr;QByteArray recoveryOutput;bool recoveryInvalid=false,recovering=false;QProcess* inventory=nullptr; QByteArray inventoryOutput; bool inventoryFailed=false; Child host,client;QString hostPending,clientPending,cameraProblem;bool hostFailed=false,clientFailed=false;quint64 codeExpires=0;HANDLE setup=nullptr;~Impl(){if(setup)CloseHandle(setup);}};
+namespace {
+constexpr std::array<const char*,4> resourceNames{"display","camera","microphone","usb"};
+int resourceIndex(const QString& key){for(int i=0;i<4;++i)if(key==resourceNames[i])return i;return -1;}
+extrapane::ResourceKind resourceKind(int i){return static_cast<extrapane::ResourceKind>(i);}
+const wchar_t* helper(int i){return i==0?L"dm-view.exe":i==1?L"ExtraPane.Resources.exe":i==2?L"ExtraPane.Microphone.exe":L"ExtraPane.Usb.exe";}
+}
+struct WindowsController::Impl {
+    struct Client{Child child;QProcess* inventory=nullptr;QByteArray inventoryOutput;bool inventoryFailed=false,failed=false,stopping=false;QString pending,status="Ready";};
+    struct Request{QString server,local;unsigned port=0,scale=0;bool input=false;std::array<bool,4> selected{};} request;
+    std::array<Client,4> clients;
+    QProcess* admission=nullptr;QByteArray admissionOutput;bool admissionFailed=false;
+    QProcess* recoveryScan=nullptr;QByteArray recoveryOutput;bool recoveryInvalid=false,recovering=false;
+    Child host;QString hostPending,cameraProblem;bool hostFailed=false;quint64 codeExpires=0;HANDLE setup=nullptr;
+    ~Impl(){if(setup)CloseHandle(setup);}
+};
 WindowsController::WindowsController(QObject* parent):QObject(parent),impl_(std::make_unique<Impl>()){
     const auto dir=QCoreApplication::applicationDirPath();
     if(!QFileInfo::exists(dir+"/dm-view.exe"))unavailable_="The native display engine is missing from this installation.";
     if(!QFileInfo::exists(dir+"/ExtraPane.Service.exe"))hostUnavailable_="The server helper is missing from this installation.";
     if(!unavailable_.isEmpty())hostUnavailable_=unavailable_;
-    resources_.setCapability(extrapane::ResourceKind::display,{unavailable_.isEmpty(),unavailable_.toStdString()});
+    for(int i=0;i<4;++i){const bool present=QFileInfo::exists(dir+"/"+QString::fromWCharArray(helper(i)));
+        resources_.setCapability(resourceKind(i),{present,present?"":"The packaged resource engine is missing."});
+    }
+    connect(&resources_,&ResourceModel::selectionChanged,this,&WindowsController::changed);
+    connect(this,&WindowsController::hostChanged,this,&WindowsController::changed);
     refreshAddresses();auto* timer=new QTimer(this);timer->setInterval(100);
     connect(timer,&QTimer::timeout,this,&WindowsController::poll);timer->start();
 }
 WindowsController::~WindowsController(){shutdown();}
-QString WindowsController::availability()const{
-    if(clientMode_=="usb")return QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Usb.exe")?QString{}:QString("The USB connection engine is missing from this installation.");
-    if(clientMode_=="microphone")return QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Microphone.exe")?QString{}:QString("The microphone connection engine is missing from this installation.");
-    if(clientMode_=="camera")return QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Resources.exe")?QString{}:QString("The camera connection engine is missing from this installation.");
-    return unavailable_;
-}
-void WindowsController::setClientMode(QString mode){
-    if(active()||cameraScanRunning()||(mode!="display"&&mode!="camera"&&mode!="microphone"&&mode!="usb")||mode==clientMode_)return;
-    clientMode_=std::move(mode);cameras_.clear();selectedCamera_.clear();cameraStatus_="Refresh devices and choose a source. Capture starts after admission.";status_="Ready";emit camerasChanged();emit changed();
-}
-bool WindowsController::cameraScanRunning()const{return impl_->inventory!=nullptr;}
-void WindowsController::setSelectedCamera(QString id){
-    if(active()||cameraScanRunning())return;
-    if(!id.isEmpty()&&std::none_of(cameras_.begin(),cameras_.end(),[&](const QVariant& v){return v.toMap()["id"].toString()==id&&v.toMap().value("available",true).toBool();}))return;
-    selectedCamera_=std::move(id);emit camerasChanged();
-}
-void WindowsController::refreshCameras(){
-    if(active()||cameraScanRunning()||clientMode_=="display")return;
-    if(!availability().isEmpty()){cameraStatus_=availability();emit camerasChanged();return;}
-    auto* process=new QProcess(this);impl_->inventory=process;impl_->inventoryOutput.clear();impl_->inventoryFailed=false;
-    cameraStatus_="Listing devices...";emit camerasChanged();
+QString WindowsController::availability()const{return {};}
+bool WindowsController::clientReady()const{return !active()&&!impl_->setup&&resources_.canConnect();}
+void WindowsController::selectDevice(QString kind,QString id){const auto i=resourceIndex(kind);if(i<1||active())return;resources_.setSelectedDevice(resourceKind(i),id);emit changed();}
+void WindowsController::refreshDevices(QString key){
+    const auto i=resourceIndex(key);if(i<1||active()||impl_->setup)return;
+    auto& state=impl_->clients[i];if(state.inventory)return;
+    auto* process=new QProcess(this);state.inventory=process;state.inventoryOutput.clear();state.inventoryFailed=false;
+    resources_.setDevices(resourceKind(i),resources_.devices(resourceKind(i)),resources_.selectedDevice(resourceKind(i)),"Listing devices...",true);
     process->setProcessChannelMode(QProcess::MergedChannels);
-    auto finish=[this,process](bool success){
-        if(impl_->inventory!=process)return;
-        impl_->inventoryOutput+=process->readAll();
-        QVariantList found;QSet<QString> ids;bool done=false;
-        bool valid=success&&!impl_->inventoryFailed&&impl_->inventoryOutput.size()<=1024*1024;
-        if(valid)for(auto line:impl_->inventoryOutput.split('\n')){
+    auto finish=[this,process,i](bool success){
+        auto& state=impl_->clients[i];if(state.inventory!=process)return;state.inventoryOutput+=process->readAll();
+        QVariantList found;QSet<QString> ids;bool done=false;bool valid=success&&!state.inventoryFailed&&state.inventoryOutput.size()<=1024*1024;
+        const QByteArray prefix=i==1?"CAMERA_DEVICE_V1":i==2?"MICROPHONE_DEVICE_V1":"USB_DEVICE_V1";
+        const QByteArray end=i==1?"CAMERA_LIST_DONE":i==2?"MICROPHONE_LIST_DONE":"USB_LIST_DONE";
+        if(valid)for(auto line:state.inventoryOutput.split('\n')){
             if(line.endsWith('\r'))line.chop(1);if(line.isEmpty())continue;
-            if(line==(clientMode_=="usb"?"USB_LIST_DONE":clientMode_=="microphone"?"MICROPHONE_LIST_DONE":"CAMERA_LIST_DONE")){if(done)valid=false;done=true;continue;}
-            auto fields=line.split('\t');
-            bool available=true;QString reason;
-            if(clientMode_=="usb"){
-                if(fields.size()!=4||fields[0]!="USB_DEVICE_V1"){valid=false;break;}
-                available=fields[3]=="available";reason=available?QString{}:QString::fromUtf8(fields[3]);
-                fields={QByteArray("USB_DEVICE_V1"),QByteArray::number(found.size()),fields[2],fields[1]};
-            }
-            if(done||fields.size()!=4||fields[0]!=(clientMode_=="usb"?"USB_DEVICE_V1":clientMode_=="microphone"?"MICROPHONE_DEVICE_V1":"CAMERA_DEVICE_V1")||fields[1]!=QByteArray::number(found.size())||fields[2].isEmpty()||fields[2].size()>2048||fields[3].isEmpty()||fields[3].size()>8192||fields[3].size()%2||found.size()>=128){valid=false;break;}
-            const auto id=fields[3];
-            if(std::any_of(id.begin(),id.end(),[](char c){return !((c>='0'&&c<='9')||(c>='a'&&c<='f'));})){valid=false;break;}
+            if(line==end){if(done)valid=false;done=true;continue;}
+            auto fields=line.split('\t');bool available=true;QString reason;
+            if(done||fields.size()!=4||fields[0]!=prefix||found.size()>=128){valid=false;break;}
+            if(i==3){available=fields[3]=="available";reason=available?QString{}:QString::fromUtf8(fields[3]);fields={prefix,QByteArray::number(found.size()),fields[2],fields[1]};}
+            if(fields[1]!=QByteArray::number(found.size())||fields[2].isEmpty()||fields[2].size()>2048||fields[3].isEmpty()||fields[3].size()>8192||fields[3].size()%2){valid=false;break;}
+            const auto id=fields[3];if(std::any_of(id.begin(),id.end(),[](char c){return !((c>='0'&&c<='9')||(c>='a'&&c<='f'));})){valid=false;break;}
             const auto decoded=QByteArray::fromHex(id);const auto value=QString::fromUtf8(decoded);const auto label=QString::fromUtf8(fields[2]);
             if(value.toUtf8()!=decoded||label.toUtf8()!=fields[2]||decoded.contains('\n')||decoded.contains('\r')||decoded.contains('\0')||ids.contains(QString::fromLatin1(id))){valid=false;break;}
-            ids.insert(QString::fromLatin1(id));found.push_back(QVariantMap{{"label",available?label:label+" ? "+reason},{"id",QString::fromLatin1(id)},{"available",available}});
+            ids.insert(QString::fromLatin1(id));found.push_back(QVariantMap{{"label",available?label:label+" - "+reason},{"id",QString::fromLatin1(id)},{"available",available}});
         }
-        impl_->inventory=nullptr;impl_->inventoryOutput.clear();process->deleteLater();
-        if(valid&&done){cameras_=found;if(!ids.contains(selectedCamera_))selectedCamera_.clear();cameraStatus_=found.isEmpty()?"No devices found. Check privacy settings and reconnect the device, then refresh.":clientMode_=="usb"?"Only eligible removable storage can be shared. USB sharing temporarily removes it from this PC; eject on the receiving PC before stopping.":clientMode_=="microphone"?"Select a microphone. Supports 48 kHz mono/stereo sources; other formats report an error.":"Select a camera. Sharing uses 1280 x 720 at 30 FPS; unsupported camera modes report an error.";}
-        else{cameras_.clear();selectedCamera_.clear();cameraStatus_="Device listing failed or timed out. Check privacy settings and the installation, then refresh.";}
-        emit camerasChanged();
+        state.inventory=nullptr;state.inventoryOutput.clear();process->deleteLater();
+        const QString message=valid&&done?(found.isEmpty()?"No devices found. Check setup/privacy settings and refresh.":i==1?"Choose a camera; this build requires 1280 x 720 at 30 FPS.":i==2?"Choose a microphone; supported sources use 48 kHz mono/stereo.":"Choose eligible removable storage. Eject on the server before stopping."):"Device listing failed or timed out. Check component setup and privacy settings.";
+        resources_.setDevices(resourceKind(i),valid&&done?found:QVariantList{},resources_.selectedDevice(resourceKind(i)),message,false);emit changed();
     };
-    connect(process,&QProcess::readyRead,this,[this,process]{
-        if(impl_->inventory!=process)return;impl_->inventoryOutput+=process->readAll();
-        if(impl_->inventoryOutput.size()>1024*1024){impl_->inventoryFailed=true;impl_->inventoryOutput.clear();process->kill();}
-    });
+    connect(process,&QProcess::readyRead,this,[this,process,i]{auto& state=impl_->clients[i];if(state.inventory!=process)return;state.inventoryOutput+=process->readAll();if(state.inventoryOutput.size()>1024*1024){state.inventoryFailed=true;state.inventoryOutput.clear();process->kill();}});
     connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[finish](int code,QProcess::ExitStatus state){finish(code==0&&state==QProcess::NormalExit);});
     connect(process,&QProcess::errorOccurred,this,[finish](QProcess::ProcessError error){if(error==QProcess::FailedToStart)finish(false);});
-    QTimer::singleShot(10000,process,[this,process]{if(impl_->inventory==process){impl_->inventoryFailed=true;process->kill();}});
-    process->start(QCoreApplication::applicationDirPath()+(clientMode_=="usb"?"/ExtraPane.Usb.exe":clientMode_=="microphone"?"/ExtraPane.Microphone.exe":"/ExtraPane.Resources.exe"),QStringList{clientMode_=="usb"?"list-storage":clientMode_=="microphone"?"list-microphones":"list-cameras"});
+    QTimer::singleShot(10000,process,[this,process,i]{auto& state=impl_->clients[i];if(state.inventory==process){state.inventoryFailed=true;process->kill();}});
+    process->start(QCoreApplication::applicationDirPath()+"/"+QString::fromWCharArray(helper(i)),QStringList{i==1?"list-cameras":i==2?"list-microphones":"list-storage"});
 }
 QString WindowsController::version()const{return QString::fromUtf8(EXTRAPANE_VERSION);}
 bool WindowsController::hosting()const{return impl_->host.process!=nullptr;}
-bool WindowsController::active()const{return impl_->client.process!=nullptr;}
+bool WindowsController::active()const{if(impl_->admission)return true;for(const auto& state:impl_->clients)if(state.child.process)return true;return false;}
 QString WindowsController::resourceAvailability(const QString& kind)const{
     if(kind=="usb"&&!QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Usb.exe"))return "The USB connection engine is missing from this installation.";
     if(kind=="microphone"||kind=="usb"){
@@ -122,10 +118,10 @@ QString WindowsController::hostDescription()const{
 }
 bool WindowsController::cameraSetupRunning()const{return impl_->setup!=nullptr;}
 void WindowsController::setMicrophoneMuted(bool muted){
-    if(clientMode_!="microphone"||!active())return;
-    try{impl_->client.send_control(muted?"M\n":"U\n");microphoneMuted_=muted;}
-    catch(const std::exception& e){status_=QString::fromUtf8(e.what());}
-    emit changed();
+    auto& state=impl_->clients[2];if(!state.child.process||state.stopping)return;
+    try{state.child.send_control(muted?"M\n":"U\n");microphoneMuted_=muted;}
+    catch(const std::exception& e){state.status=QString::fromUtf8(e.what());}
+    resources_.setSessionState(resourceKind(2),true,state.status,microphoneMuted_);emit changed();
 }
 void WindowsController::setupMicrophone(){
     if(active()||hosting()||impl_->setup)return;
@@ -158,38 +154,76 @@ void WindowsController::refreshAddresses(){
     }emit addressesChanged();
 }
 void WindowsController::connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex,unsigned port,QString code){
-    if(active()||cameraScanRunning()||impl_->setup)return;
-    const bool camera=clientMode_!="display";
+    if(!clientReady())return;
     const QHostAddress address(server.trimmed());
-    if((!camera&&!resources_.canConnect())||address.protocol()!=QAbstractSocket::IPv4Protocol||address.isNull()||address.isMulticast()||address.isLoopback()||address.toIPv4Address()==0xffffffffu||!port||port>65535||scale>2){status_="Select a resource and enter a valid server IPv4 address and port.";emit changed();return;}
-    if(!availability().isEmpty()){status_=availability();emit changed();return;}
-    if(camera&&(selectedCamera_.isEmpty()||std::none_of(cameras_.begin(),cameras_.end(),[&](const QVariant& v){return v.toMap()["id"].toString()==selectedCamera_&&v.toMap().value("available",true).toBool();}))){status_="Refresh devices and select a local source.";emit changed();return;}
+    if(address.protocol()!=QAbstractSocket::IPv4Protocol||address.isNull()||address.isMulticast()||address.isLoopback()||address.toIPv4Address()==0xffffffffu||!port||port>65535||scale>2){status_="Enter a valid server IPv4 address and port.";emit changed();return;}
     if(!code.isEmpty()&&(code.size()!=6||std::any_of(code.begin(),code.end(),[](QChar c){return c<'0'||c>'9';}))){status_="Access code must contain six digits.";emit changed();return;}
     bool valid=interfaceIndex==0&&local=="0.0.0.0";
-    for(const auto& item:addresses_){auto entry=item.toMap();if(entry["address"].toString()==local&&entry["index"].toUInt()==interfaceIndex)valid=true;}
+    for(const auto& item:addresses_){const auto entry=item.toMap();if(entry["address"].toString()==local&&entry["index"].toUInt()==interfaceIndex)valid=true;}
     if(!valid){status_="Refresh and select a connected local address.";emit changed();return;}
-    try{
-        impl_->clientFailed=false;impl_->clientPending.clear();microphoneMuted_=false;
-        if(camera){
-            std::vector<std::wstring> args{clientMode_=="usb"?L"send-usb":clientMode_=="microphone"?L"send-microphone":L"send-camera",L"--bind",local=="0.0.0.0"?L"auto":local.toStdWString(),L"--peer",address.toString().toStdWString(),L"--port",std::to_wstring(port),L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--device-stdin"};
-            if(!code.isEmpty())args.push_back(L"--access-stdin");
-            if(clientMode_=="usb"){auto at=std::find(args.begin(),args.end(),L"--parent-pid");if(at!=args.end())args.erase(at,at+2);impl_->client.start_elevated(L"ExtraPane.Usb.exe",args);}
-            else impl_->client.start((extrapane::windows_bridge::directory()/(clientMode_=="microphone"?L"ExtraPane.Microphone.exe":L"ExtraPane.Resources.exe")).wstring(),args,true);
-            impl_->client.send_control(QByteArray::fromHex(selectedCamera_.toLatin1()).toStdString()+"\n");
-        }else{
-        auto renderer=QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).value("Renderer","d3d11").toString();
-        if(renderer!="d3d11"&&renderer!="d3d12"&&renderer!="vulkan"&&renderer!="opengl")renderer="d3d11";
-        std::vector<std::wstring> args{L"receive",L"--lan",L"--bind",local=="0.0.0.0"?L"auto":local.toStdWString(),L"--peer",address.toString().toStdWString(),L"--port",std::to_wstring(port),L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--quality",scale==1?L"75":scale==2?L"50":L"native",L"--renderer",renderer.toStdWString()};
-        if(input)args.push_back(L"--control");if(!code.isEmpty())args.push_back(L"--access-stdin");
-        impl_->client.start((extrapane::windows_bridge::directory()/L"dm-view.exe").wstring(),args);
+    auto& request=impl_->request;request={address.toString(),local,port,scale,input,{}};unsigned mask=0,count=0;
+    for(int i=0;i<4;++i){request.selected[i]=resources_.selected(resourceKind(i));if(request.selected[i]){mask|=1u<<i;++count;}}
+    resources_.setLocked(true);microphoneMuted_=false;
+    QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).setValue("Peer",address.toString());
+    if(code.isEmpty()||count==1){std::array<std::string,4> credentials;for(int i=0;i<4;++i)if(request.selected[i])credentials[i]=code.toStdString();code.fill(QChar(0));startClients(std::move(credentials));return;}
+    auto* process=new QProcess(this);impl_->admission=process;impl_->admissionOutput.clear();impl_->admissionFailed=false;status_="Authorizing the selected resources...";emit changed();
+    auto finish=[this,process](bool ok){
+        if(impl_->admission!=process)return;impl_->admissionOutput+=process->readAllStandardOutput();
+        bool valid=ok&&!impl_->admissionFailed&&impl_->admissionOutput.size()<=16384,done=false;std::array<std::string,4> credentials;
+        if(valid)for(auto line:impl_->admissionOutput.split('\n')){
+            if(line.endsWith('\r'))line.chop(1);if(line.isEmpty())continue;
+            if(line=="SESSION_READY"){if(done)valid=false;done=true;continue;}
+            const auto fields=line.split('\t');if(done||fields.size()!=3||fields[0]!="SESSION_TICKET_V1"){valid=false;break;}
+            const auto i=resourceIndex(QString::fromLatin1(fields[1]));if(i<0||!impl_->request.selected[i]||!credentials[i].empty()){valid=false;break;}
+            const auto ticket=fields[2].split(':');
+            auto hex=[](const QByteArray& bytes,int size){return bytes.size()==size&&std::all_of(bytes.begin(),bytes.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');});};
+            if(ticket.size()!=4||ticket[0]!="EPCT1"||ticket[1]!=QByteArray::number(i)||!hex(ticket[2],32)||!hex(ticket[3],64)){valid=false;break;}
+            credentials[i]=fields[2].toStdString();line.fill('\0');
         }
-        if(!code.isEmpty()){auto bytes=code.toLatin1();impl_->client.send_control(bytes.toStdString()+"\n");bytes.fill('\0');code.fill(QChar(0));}
-        QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).setValue("Peer",address.toString());
-        resources_.setLocked(true);status_=camera?"Connecting source; capture starts after acceptance...":"Connecting in the native display window...";
-    }catch(const std::exception& e){impl_->client.stop();resources_.setLocked(false);status_=QString::fromUtf8(e.what());}
-    emit changed();
+        for(int i=0;i<4;++i)if(impl_->request.selected[i]&&credentials[i].empty())valid=false;
+        impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();impl_->admission=nullptr;process->deleteLater();
+        if(valid&&done)startClients(std::move(credentials));else{for(auto& credential:credentials)std::fill(credential.begin(),credential.end(),'\0');resources_.setLocked(false);status_="Resource authorization failed. Check the access code and use matching builds on both PCs.";emit changed();}
+    };
+    connect(process,&QProcess::readyReadStandardOutput,this,[this,process]{if(impl_->admission!=process)return;impl_->admissionOutput+=process->readAllStandardOutput();if(impl_->admissionOutput.size()>16384){impl_->admissionFailed=true;impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();process->kill();}});
+    connect(process,&QProcess::readyReadStandardError,this,[process]{process->readAllStandardError();});
+    connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[finish](int result,QProcess::ExitStatus state){finish(result==0&&state==QProcess::NormalExit);});
+    connect(process,&QProcess::errorOccurred,this,[finish](QProcess::ProcessError error){if(error==QProcess::FailedToStart)finish(false);});
+    QTimer::singleShot(25000,process,[this,process]{if(impl_->admission==process){impl_->admissionFailed=true;process->kill();}});
+    process->start(QCoreApplication::applicationDirPath()+"/ExtraPane.Session.exe",QStringList{"--bind",local=="0.0.0.0"?"auto":local,"--peer",address.toString(),"--port",QString::number(port),"--resources",QString::number(mask),"--access-stdin","--parent-pid",QString::number(GetCurrentProcessId())});
+    auto bytes=code.toLatin1();bytes+='\n';process->write(bytes);bytes.fill('\0');code.fill(QChar(0));process->closeWriteChannel();
 }
-void WindowsController::disconnectFromServer(){if(clientMode_=="usb"&&active()){try{impl_->client.send_control("Q\n");status_="Stopping USB transfer. If it was not ejected by the receiver, source recovery is required.";}catch(const std::exception& e){status_=QString::fromUtf8(e.what());}emit changed();return;}impl_->client.stop();resources_.setLocked(false);status_="Disconnected";emit changed();}
+void WindowsController::startClients(std::array<std::string,4> credentials){
+    const auto request=impl_->request;
+    for(int i=0;i<4;++i){if(!request.selected[i])continue;auto& state=impl_->clients[i];state.failed=false;state.stopping=false;state.pending.clear();
+        try{
+            std::vector<std::wstring> args;
+            if(i==0){
+                auto renderer=QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).value("Renderer","d3d11").toString();
+                if(renderer!="d3d11"&&renderer!="d3d12"&&renderer!="vulkan"&&renderer!="opengl")renderer="d3d11";
+                args={L"receive",L"--lan",L"--quality",request.scale==1?L"75":request.scale==2?L"50":L"native",L"--renderer",renderer.toStdWString()};if(request.input)args.push_back(L"--control");
+            }else args={i==1?L"send-camera":i==2?L"send-microphone":L"send-usb",L"--device-stdin"};
+            args.insert(args.end(),{L"--bind",request.local=="0.0.0.0"?L"auto":request.local.toStdWString(),L"--peer",request.server.toStdWString(),L"--port",std::to_wstring(request.port)});
+            if(!credentials[i].empty())args.push_back(L"--access-stdin");
+            if(i==3)state.child.start_elevated(L"ExtraPane.Usb.exe",args);
+            else{args.insert(args.end(),{L"--parent-pid",std::to_wstring(GetCurrentProcessId())});state.child.start((extrapane::windows_bridge::directory()/helper(i)).wstring(),args,i!=0);}
+            if(i)state.child.send_control(QByteArray::fromHex(resources_.selectedDevice(resourceKind(i)).toLatin1()).toStdString()+"\n");
+            if(!credentials[i].empty())state.child.send_control(credentials[i]+"\n");
+            state.status="Connecting...";
+        }catch(const std::exception& e){state.child.stop();state.failed=true;state.status=QString::fromUtf8(e.what());}
+        std::fill(credentials[i].begin(),credentials[i].end(),'\0');resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,false);
+    }
+    resources_.setLocked(active());status_=active()?"Selected resources are connecting. Each resource can be stopped independently.":"No selected resource could start; see its status above.";emit changed();
+}
+void WindowsController::cancelAdmission(){
+    if(!impl_->admission)return;auto* process=impl_->admission;impl_->admission=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();
+}
+void WindowsController::stopResource(QString key){
+    const auto i=resourceIndex(key);if(i<0||impl_->admission)return;auto& state=impl_->clients[i];if(!state.child.process)return;
+    try{if(i==0){state.child.stop();state.status="Disconnected";}else{state.child.send_control("Q\n");state.stopping=true;state.status=i==3?"Stopping USB; source recovery may be required unless the server already ejected it.":"Stopping...";}}
+    catch(const std::exception& e){state.status=QString::fromUtf8(e.what());}
+    resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,i==2&&microphoneMuted_);resources_.setLocked(active());emit changed();
+}
+void WindowsController::disconnectFromServer(){cancelAdmission();for(const auto* key:resourceNames)stopResource(key);resources_.setLocked(active());status_=active()?"Stopping selected resources...":"Disconnected";emit changed();}
 void WindowsController::startHost(QString address,unsigned port,bool requireCode){
     if(hosting()||impl_->setup)return;
     if(!hostAvailability().isEmpty()){hostStatus_=hostAvailability();emit hostChanged();return;}
@@ -221,7 +255,9 @@ void WindowsController::poll(){
         hostStatus_=result==0?"Component setup completed.":result==3010?"Component setup completed; restart Windows before using it.":"Component setup failed (exit "+QString::number(result)+").";if(impl_->recovering){recoveryStatus_=result==0?"USB storage restored. Refresh to check remaining records.":"Recovery refused or failed. No forced recovery is available; review the record and USB connection state.";impl_->recovering=false;recoveries_.clear();emit recoveryChanged();}
         status_=hostStatus_;emit changed();emit hostChanged();
     }
-    auto drain=[&](Child& child,QString& pending,bool host){
+    auto drain=[&](Child& child,QString& pending,bool host,int index=-1){
+        auto& currentStatus=host?hostStatus_:impl_->clients[index].status;
+        auto& failed=host?impl_->hostFailed:impl_->clients[index].failed;
         if(!child.process)return;
         pending+=QString::fromUtf8(child.drain());
         while(pending.contains('\n')){
@@ -233,35 +269,40 @@ void WindowsController::poll(){
                 }digits.fill(QChar(0));line.fill(QChar(0));continue;
             }
             if(line.startsWith("ACCESS_STATUS ")){if(host){code_="Code "+line.mid(14)+". Generate a new code.";impl_->codeExpires=0;emit hostChanged();}continue;}
-            if(line.startsWith("error:")){(host?impl_->hostFailed:impl_->clientFailed)=true;(host?hostStatus_:status_)=(!host&&clientMode_=="usb")?"USB sharing failed: "+line.mid(6).trimmed()+" Check USB recovery before reconnecting.":line.mid(6).trimmed();}
-            else if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")){(host?hostStatus_:status_)="Connected";}
+            if(line.startsWith("error:")){failed=true;currentStatus=(!host&&index==3)?"USB sharing failed: "+line.mid(6).trimmed()+" Check USB recovery before reconnecting.":line.mid(6).trimmed();}
+            else if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")){currentStatus="Connected";}
             else if(line.startsWith("LISTENING")||line.startsWith("HOST_LISTENING")){if(host)hostStatus_="Listening";}
             else if(line.startsWith("SERVER_STOP_BLOCKED")){if(host)hostStatus_=line.mid(19).trimmed();}
             else if(line.startsWith("SERVER_RESOURCE_UNAVAILABLE")){if(host)hostStatus_="Listening; "+line.mid(27).trimmed();}
             else if(line.startsWith("SERVER_STOPPING")){if(host)hostStatus_="Stopping server...";}
             else if(line.startsWith("SERVER_SESSION_ERROR")){if(host)hostStatus_="Listening; a resource connection ended: "+line.mid(21).trimmed();}
-            else if(line.startsWith("USB_SESSION_ERROR")){(host?hostStatus_:status_)="USB session ended; server continues listening. "+line.mid(18);}
-            else if(line.startsWith("USB_STARTED")){(host?hostStatus_:status_)=host?"USB storage connected. Close files and eject before disconnecting.":"USB storage is shared exclusively. Eject it on the receiving PC to return it safely.";}
-            else if(line.startsWith("USB_EJECT_BUSY")){(host?hostStatus_:status_)="USB is busy; close files and try eject again. "+line.mid(14);}
-            else if(line.startsWith("USB_RECOVERY_REQUIRED")){(host?impl_->hostFailed:impl_->clientFailed)=true;(host?hostStatus_:status_)="USB recovery required on the source PC. "+line.mid(21);}
-            else if(line.startsWith("USB_EJECTED")){(host?hostStatus_:status_)="USB safely ejected. "+line.mid(11);}
-            else if(line.startsWith("USB_DISCONNECTED")){(host?hostStatus_:status_)=host?"Listening; USB disconnected.":"USB disconnected.";}
-            else if(line.startsWith("MICROPHONE_SENDING")){if(!host)status_="Sharing microphone. Select ExtraPane Microphone in an app on the server.";}
-            else if(line.startsWith("MICROPHONE_STARTED")){if(host){impl_->cameraProblem.clear();hostStatus_="Microphone connected. Select ExtraPane Microphone in your recording app.";}else status_="Sharing microphone. Select ExtraPane Microphone in an app on the server.";}
+            else if(line.startsWith("USB_SESSION_ERROR")){currentStatus="USB session ended; server continues listening. "+line.mid(18);}
+            else if(line.startsWith("USB_STARTED")){currentStatus=host?"USB storage connected. Close files and eject before disconnecting.":"USB storage is shared exclusively. Eject it on the receiving PC to return it safely.";}
+            else if(line.startsWith("USB_EJECT_BUSY")){currentStatus="USB is busy; close files and try eject again. "+line.mid(14);}
+            else if(line.startsWith("USB_RECOVERY_REQUIRED")){failed=true;currentStatus="USB recovery required on the source PC. "+line.mid(21);}
+            else if(line.startsWith("USB_EJECTED")){currentStatus="USB safely ejected. "+line.mid(11);}
+            else if(line.startsWith("USB_DISCONNECTED")){currentStatus=host?"Listening; USB disconnected.":"USB disconnected.";}
+            else if(line.startsWith("MICROPHONE_SENDING")){if(!host)currentStatus="Sharing microphone. Select ExtraPane Microphone in an app on the server.";}
+            else if(line.startsWith("MICROPHONE_STARTED")){if(host){impl_->cameraProblem.clear();hostStatus_="Microphone connected. Select ExtraPane Microphone in your recording app.";}else currentStatus="Sharing microphone. Select ExtraPane Microphone in an app on the server.";}
             else if(line.startsWith("MICROPHONE_SESSION_ERROR")){if(host){impl_->cameraProblem=line.mid(25).trimmed();hostStatus_="Microphone connection failed; server still listening. "+impl_->cameraProblem;}}
             else if(line.startsWith("MICROPHONE_DISCONNECTED")){if(host)hostStatus_="Listening; microphone disconnected. "+impl_->cameraProblem;}
-            else if(line.startsWith("CAMERA_STARTED")){if(!host)status_="Sharing camera. Select ExtraPane Camera in an app on the server.";if(host){impl_->cameraProblem.clear();hostStatus_="Camera connected â€” select ExtraPane Camera in your application.";}}
+            else if(line.startsWith("CAMERA_STARTED")){if(!host)currentStatus="Sharing camera. Select ExtraPane Camera in an app on the server.";if(host){impl_->cameraProblem.clear();hostStatus_="Camera connected â€” select ExtraPane Camera in your application.";}}
             else if(line.startsWith("CAMERA_SESSION_ERROR")){if(host){impl_->cameraProblem=line.section(' ',2);hostStatus_="Camera connection failed; server still listening. "+impl_->cameraProblem;}}
             else if(line.startsWith("CAMERA_DISCONNECTED")){if(host)hostStatus_=impl_->cameraProblem.isEmpty()?"Listening â€” camera client disconnected.":"Listening. Last camera error: "+impl_->cameraProblem;}
-            if(host)emit hostChanged();else emit changed();
+            if(host)emit hostChanged();else{if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("USB_STARTED"))status_="Resources are active. Manage each one below.";resources_.setSessionState(resourceKind(index),true,currentStatus,index==2&&microphoneMuted_);emit changed();}
         }
         if(pending.size()>16384)pending.clear();
-        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{resources_.setLocked(false);if(!impl_->clientFailed&&clientMode_!="usb")status_="Disconnected";emit changed();}}
+        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{if(!failed&&index!=3)currentStatus="Disconnected";resources_.setSessionState(resourceKind(index),false,currentStatus,false);resources_.setLocked(active());status_=active()?"Other selected resources remain active. See each resource status.":"All resources have stopped. See their individual status above.";emit changed();}}
     };
-    drain(impl_->host,impl_->hostPending,true);drain(impl_->client,impl_->clientPending,false);
+    drain(impl_->host,impl_->hostPending,true);for(int i=0;i<4;++i)drain(impl_->clients[i].child,impl_->clients[i].pending,false,i);
     if(impl_->codeExpires&&GetTickCount64()>=impl_->codeExpires){impl_->codeExpires=0;code_="Code expired. Generate a new code.";emit hostChanged();}
 }
-void WindowsController::shutdown(){if(impl_->recoveryScan){auto* scan=impl_->recoveryScan;impl_->recoveryScan=nullptr;scan->disconnect(this);scan->kill();scan->waitForFinished(1000);scan->deleteLater();}if(impl_->inventory){auto* process=impl_->inventory;impl_->inventory=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}impl_->host.stop();impl_->client.stop();resources_.setLocked(false);}
+void WindowsController::shutdown(){
+    cancelAdmission();
+    if(impl_->recoveryScan){auto* process=impl_->recoveryScan;impl_->recoveryScan=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}
+    for(auto& state:impl_->clients){if(state.inventory){auto* process=state.inventory;state.inventory=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}state.child.stop();}
+    impl_->host.stop();resources_.setLocked(false);
+}
 
 void WindowsController::ejectUsb(){
     if(!hosting())return;

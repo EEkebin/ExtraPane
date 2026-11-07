@@ -9,7 +9,7 @@ USB test, and use expendable test data on the selected removable drive.
 
 1. On the receiving PC open Server, run Camera setup, then start it on
    the selected interface and port. If access codes are enabled, generate one.
-2. On the sending PC choose Client ? Camera, refresh and explicitly select the
+2. On the sending PC open Client, check Camera, refresh and explicitly select the
    source, enter the receiving address/port/code, and connect.
 3. Select ExtraPane Camera in a recording app or browser. Verify picture,
    orientation, permissions, stop, reconnect and device unplug. Capture currently
@@ -20,7 +20,7 @@ USB test, and use expendable test data on the selected removable drive.
 ## Microphone
 
 1. On the receiving PC open Server and run Receiving component setup. Restart Windows if setup requests it, then start the server.
-2. On the sending PC choose Client ? Microphone, refresh/select a source, and
+2. On the sending PC open Client, check Microphone, refresh/select a source, and
    connect. The source must expose a supported 48 kHz mono/stereo shared format.
 3. Select ExtraPane Microphone in a recording application. Check real recorded
    audio, mute/unmute, permission withdrawal, stop and reconnect. This build sends
@@ -29,8 +29,7 @@ USB test, and use expendable test data on the selected removable drive.
 
 ## USB storage
 
-1. Install the USB source component on the sending PC using Client ? USB storage
-   ? USB source setup. On the recipient use Server ? Receiving component setup. Do not replace independently installed incompatible backends.
+1. Install the USB source component on the sending PC by checking USB on Client and clicking USB source setup. On the recipient use Server ? Receiving component setup. Do not replace independently installed incompatible backends.
 2. Refresh storage on the source. Only eligible removable storage with complete
    identity and ownership information can connect. Protected disks, uncertain
    identities and already-owned devices must remain unavailable.
@@ -51,8 +50,12 @@ USB test, and use expendable test data on the selected removable drive.
 ## Current limits
 
 The server accepts all supported resource types on the same port; there is no
-server resource selector. Clients still select one resource per connection, not
-simultaneous resource checkboxes. Separate resource connections can coexist.
+server resource selector. Clients select any combination of available resource checkboxes before Connect.
+Check Display, Camera and Microphone together, choose both source devices, and
+verify that the server receives the camera/microphone while its extended desktop
+shows on the client. Stop one resource and confirm the others continue. Mute the
+microphone independently. For access-code mode, enter one fresh code for the
+whole selection; it issues short-lived, single-use resource tickets.
 Windows USB is one removable-storage session per receiver. Linux/macOS new media
 resources and raw USB are not covered by this Windows milestone. Android camera
 and microphone source code/APK are present but require their own physical checks.

@@ -214,10 +214,10 @@ the server or receiver. It checks startup, not actual device delivery.
 The Windows server starts once and accepts display, camera, microphone and USB
 connections on one selected address/port. Missing components fail only the
 requested resource. Existing clients select their resource using the current
-protocol; no extra public ports or server mode selection are required. The client
-UI still selects one resource per connection: a combined client checklist and
-grouped admission for several resources are not complete. Multiple resource
-connections can coexist on the server; this is not multiplexing over one TCP stream.
+protocol; no extra public ports or server mode selection are required. The Windows client uses a multi-select resource checklist with independent device
+choices and status. One Connect action starts the selected resources, including
+receiving a display while sending a camera and microphone. Separate protected
+resource streams coexist; they are not multiplexed over one TCP stream.
 Windows camera sharing currently requires a 1280 ? 720, 30 FPS capture mode.
 Windows microphone sharing accepts 48 kHz mono/stereo WASAPI sources and sends
 mono PCM16 over the encrypted connection; Opus and sample-rate conversion remain
@@ -256,5 +256,18 @@ Adapters prepare those resources after the corresponding client request. The
 server page shows component availability and setup actions without a resource
 selector. Normal Stop requests safe USB eject before shutting down; a busy eject
 keeps the server running. Process termination still follows the documented USB
-quarantine/recovery rules. Optional six-digit codes remain one-use per TLS
-connection; a future grouped client session needs its own admission lifecycle.
+quarantine/recovery rules. Optional six-digit codes remain single-use. For a multi-resource selection, a
+short admission connection exchanges that code for one ticket per selected
+resource. Tickets expire after 60 seconds, can be used once, and are bound to the
+resource and server code generation. Regenerating the code revokes unused tickets.
+Credentials pass through private child-process stdin/stdout rather than command
+arguments or saved preferences. Canceling admission launches no resources.
+
+The client retains the checkbox list while connected. Camera and microphone have
+separate source pickers; no source is selected automatically. Each resource has
+its own status and Stop button, microphone has Mute, and Disconnect all stops the
+selected resource processes. A missing/failed resource does not stop the other
+resources. Selection and source changes are locked while connected; disconnect
+before choosing a different combination. USB retains its explicit server-side
+eject and source recovery requirements. These changes have passed isolated UI,
+protocol and authorization checks; simultaneous physical delivery is unverified.

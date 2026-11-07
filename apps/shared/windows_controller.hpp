@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QVariantList>
 #include <memory>
+#include <array>
+#include <string>
 
 class WindowsController final:public QObject {
     Q_OBJECT
@@ -16,11 +18,7 @@ class WindowsController final:public QObject {
     Q_PROPERTY(bool active READ active NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString availability READ availability NOTIFY changed)
-    Q_PROPERTY(QString clientMode READ clientMode WRITE setClientMode NOTIFY changed)
-    Q_PROPERTY(QVariantList cameras READ cameras NOTIFY camerasChanged)
-    Q_PROPERTY(bool cameraScanRunning READ cameraScanRunning NOTIFY camerasChanged)
-    Q_PROPERTY(QString cameraStatus READ cameraStatus NOTIFY camerasChanged)
-    Q_PROPERTY(QString selectedCamera READ selectedCamera WRITE setSelectedCamera NOTIFY camerasChanged)
+    Q_PROPERTY(bool clientReady READ clientReady NOTIFY changed)
     Q_PROPERTY(QVariantList usbRecoveries READ usbRecoveries NOTIFY recoveryChanged)
     Q_PROPERTY(QString recoveryStatus READ recoveryStatus NOTIFY recoveryChanged)
     Q_PROPERTY(bool recoveryBusy READ recoveryBusy NOTIFY recoveryChanged)
@@ -46,14 +44,10 @@ public:
     QString hostStatus()const{return hostStatus_;}
     QString status()const{return status_;}
     QString availability()const;
-    QString clientMode()const{return clientMode_;}
-    void setClientMode(QString mode);
-    QVariantList cameras()const{return cameras_;}
-    bool cameraScanRunning()const;
-    QString cameraStatus()const{return cameraStatus_;}
-    QString selectedCamera()const{return selectedCamera_;}
-    void setSelectedCamera(QString id);
-    Q_INVOKABLE void refreshCameras();
+    bool clientReady()const;
+    Q_INVOKABLE void refreshDevices(QString kind);
+    Q_INVOKABLE void selectDevice(QString kind,QString id);
+    Q_INVOKABLE void stopResource(QString kind);
     bool microphoneMuted()const{return microphoneMuted_;}
     Q_INVOKABLE void setMicrophoneMuted(bool muted);
     Q_INVOKABLE void setupMicrophone();
@@ -88,16 +82,16 @@ public:
     Q_INVOKABLE void releaseInput(){}
     void shutdown();
 signals:
-    void recoveryChanged();void changed();void hostChanged();void addressesChanged();void camerasChanged();
+    void recoveryChanged();void changed();void hostChanged();void addressesChanged();
 private:
     void poll();
+    void startClients(std::array<std::string,4> credentials);
+    void cancelAdmission();
     QString resourceAvailability(const QString& kind)const;
     struct Impl;std::unique_ptr<Impl> impl_;
     ResourceModel resources_;
     QVariantList addresses_;
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
-    QString clientMode_="display",selectedCamera_,cameraStatus_="Click Refresh cameras to list local cameras. Capture starts only after connection is accepted.";
-    QVariantList cameras_;
     QVariantList recoveries_;
     QString recoveryStatus_="Refresh recovery records after USB stops. Recovery never forces a busy or unverified disk online.";
     bool microphoneMuted_=false;

@@ -285,3 +285,15 @@ resource-specific components are prepared lazily. There are no separate public
 resource ports. The shared server dropdown is removed. Client checklist/grouped
 admission remains a separate unfinished item; one-use access codes have not been
 silently made reusable to simulate that feature.
+
+## Multi-select Windows client (2026-11-07)
+
+Remove the exclusive client resource dropdown and use the real resource checklist
+for all selections. Each camera/microphone/USB source has independent inventory,
+selection, status and stop controls; display receives while media sources send.
+One Connect action launches the selected resource channels. Failures are isolated
+per resource. A code-protected selection first authorizes once and receives
+one-use, resource-bound child tickets; never silently reuse the six-digit code.
+The current implementation uses separate protected streams, not one multiplexed
+TCP connection. Selection changes require disconnect; stopping/muting individual
+resources does not stop the others.

@@ -80,9 +80,7 @@ int main(int argc,char** argv){
     auto* window=qobject_cast<QWindow*>(engine.rootObjects().first());
     if(!window)return 1;
     if(checkUi){
-        controller.setClientMode("camera");
-        controller.setClientMode("microphone");
-        controller.setClientMode("usb");
+        for(int i=1;i<4;++i)controller.resources()->select(i,true);
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane server");
