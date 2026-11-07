@@ -61,9 +61,26 @@ bounded channels must be bound to the admitted session and use the configured po
   retains one pending decoded image and at most four pending sample requests.
   Synthetic in-process consumer checks pass, including token delivery, replacing
   an older pending raw frame, clearing requests on stop and waking a waiting
-  consumer on shutdown. This is not a registered system camera: COM activation,
-  Frame Server IPC, virtual-camera registration and installer integration remain
-  unfinished. Discord/browser delivery has not been tested.
+  consumer on shutdown. This is not yet a registered system camera.
+- ExtraPane.CameraSource.dll implements the COM class factory and MF activation
+  object. Activation validates local pipe/format attributes; the source connects
+  only when an application starts it. Stop/shutdown cancels pipe I/O, and a broken
+  pipe reports a native media error instead of silently retaining a frozen image.
+  DetachObject transfers shutdown responsibility to the consumer. An isolated test
+  loads the actual DLL without registering it and verifies sample delivery,
+  disconnect errors, ownership and DLL unload eligibility.
+- Local Frame Server transport uses a fresh random named pipe per resource,
+  rejects remote pipe clients and configures access for the current user, Local
+  Service and System. It checks the reader SID before sending frames; identification
+  impersonation prevents the pipe server from acting as the reader. Raw-frame
+  storage keeps the latest image plus one in-flight transfer. Tests exercise the
+  current-user path only; service-account activation remains unverified.
+- The Windows registration backend compiles with session lifetime/current-user
+  access, requires the installed COM source, and tears down partial startup on
+  failure. It has not been run or installed. Lifecycle tests substitute a fake
+  registration backend while exercising real local pipes and MF samples.
+  Installer registration, live decoder/session integration and actual Frame Server
+  activation remain unfinished. Discord/browser delivery has not been tested.
 - The existing Linux QML shell now lives in apps/shared/ui and is consumed by the
   Linux package through the same resource URL. Video.qml remains platform-specific.
   A shared resource checklist is connected to the Linux controller. The Windows

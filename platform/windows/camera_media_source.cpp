@@ -6,6 +6,7 @@
 #include <devicetopology.h>
 #include <wrl.h>
 #include <dm/camera_media_source.hpp>
+#include <dm/camera_pipe.hpp>
 #include <deque>
 #include <mutex>
 #include <cstring>
@@ -16,8 +17,10 @@ using namespace Microsoft::WRL;
 namespace {
 void checked(HRESULT hr){if(FAILED(hr))throw std::runtime_error("Camera media source operation failed");}
 struct Shared {
-    std::mutex mutex;
-    bool shutdown=false,started=false,announced=false;
+    std::mutex mutex,lifecycle;
+    std::wstring pipe;
+    std::unique_ptr<FrameSubscriber> subscriber;
+    bool shutdown=false,started=false,announced=false,fault=false;
     MF_STREAM_STATE streamState=MF_STREAM_STATE_STOPPED;
     Format format;
     ComPtr<IMFMediaEventQueue> sourceEvents,streamEvents;
@@ -37,6 +40,7 @@ struct Shared {
         return streamEvents->QueueEventParamUnk(MEMediaSample,GUID_NULL,S_OK,sample.Get());
     }
 };
+void submit_raw(const std::shared_ptr<Shared>& s,std::span<const std::uint8_t> pixels,std::int64_t timestamp);
 // GetEvent must never hold the source lock while waiting for an event.
 #define CAMERA_EVENTS(member) \
     STDMETHODIMP GetEvent(DWORD flags,IMFMediaEvent** out) override { \
@@ -68,6 +72,7 @@ public:
     STDMETHODIMP RequestSample(IUnknown* token) override {
         std::lock_guard lock(s_->mutex);
         if(s_->shutdown)return MF_E_SHUTDOWN;
+        if(s_->fault)return E_FAIL;
         if(!s_->started||s_->streamState!=MF_STREAM_STATE_RUNNING)return MF_E_INVALIDREQUEST;
         if(s_->requests.size()>=4)return MF_E_NOTACCEPTING;
         try{s_->requests.emplace_back(token);}catch(...){return E_OUTOFMEMORY;}
@@ -100,6 +105,7 @@ public:
         if(s_->shutdown)return MF_E_SHUTDOWN;return s_->presentation->Clone(out);
     }
     STDMETHODIMP Start(IMFPresentationDescriptor* pd,const GUID* timeFormat,const PROPVARIANT* position) override {
+        std::lock_guard lifecycle(s_->lifecycle);
         if(!pd||!position)return E_POINTER;
         if(timeFormat&&*timeFormat!=GUID_NULL)return MF_E_UNSUPPORTED_TIME_FORMAT;
         if(position->vt!=VT_EMPTY && (position->vt!=VT_I8||position->hVal.QuadPart!=0))return MF_E_INVALIDREQUEST;
@@ -115,30 +121,58 @@ public:
         hr=descriptor->GetMediaTypeHandler(&handler);if(FAILED(hr))return hr;
         hr=handler->GetCurrentMediaType(&type);if(FAILED(hr))return hr;
         DWORD equal=0;hr=s_->type->IsEqual(type.Get(),&equal);if(hr!=S_OK)return MF_E_INVALIDMEDIATYPE;
+        if(!s_->pipe.empty()){
+            try{
+                std::weak_ptr<Shared> weak=s_;
+                s_->subscriber=std::make_unique<FrameSubscriber>(s_->pipe,s_->format,[weak](auto pixels,auto timestamp){
+                    if(auto shared=weak.lock())submit_raw(shared,pixels,timestamp);
+                },[weak]{
+                    if(auto shared=weak.lock()){
+                        std::lock_guard lock(shared->mutex);if(shared->shutdown||!shared->started)return;
+                        shared->fault=true;shared->latest.Reset();shared->requests.clear();
+                        shared->sourceEvents->QueueEventParamVar(MEError,GUID_NULL,E_FAIL,nullptr);
+                        shared->streamEvents->QueueEventParamVar(MEError,GUID_NULL,E_FAIL,nullptr);
+                    }
+                });
+            }catch(...){s_->subscriber.reset();return E_FAIL;}
+        }
         PROPVARIANT start{};start.vt=VT_I8;start.hVal.QuadPart=0;
         hr=s_->sourceEvents->QueueEventParamUnk(s_->announced?MEUpdatedStream:MENewStream,GUID_NULL,S_OK,stream_.Get());
         if(FAILED(hr))return hr;
-        s_->announced=true;s_->started=true;s_->streamState=MF_STREAM_STATE_RUNNING;
+        s_->announced=true;s_->started=true;s_->fault=false;s_->streamState=MF_STREAM_STATE_RUNNING;
         hr=s_->streamEvents->QueueEventParamVar(MEStreamStarted,GUID_NULL,S_OK,&start);
         if(FAILED(hr))return hr;
-        return s_->sourceEvents->QueueEventParamVar(MESourceStarted,GUID_NULL,S_OK,&start);
+        hr=s_->sourceEvents->QueueEventParamVar(MESourceStarted,GUID_NULL,S_OK,&start);
+        if(FAILED(hr))return hr;
+        try{if(s_->subscriber)s_->subscriber->start();}
+        catch(...){
+            s_->subscriber.reset();s_->fault=true;
+            s_->sourceEvents->QueueEventParamVar(MEError,GUID_NULL,E_FAIL,nullptr);return E_FAIL;
+        }
+        return S_OK;
     }
     STDMETHODIMP Stop() override {
-        std::lock_guard lock(s_->mutex);if(s_->shutdown)return MF_E_SHUTDOWN;
+        std::lock_guard lifecycle(s_->lifecycle);
+        std::unique_ptr<FrameSubscriber> closing;
+        std::unique_lock lock(s_->mutex);if(s_->shutdown)return MF_E_SHUTDOWN;
         if(!s_->started)return S_OK;
         s_->started=false;s_->streamState=MF_STREAM_STATE_STOPPED;s_->latest.Reset();s_->requests.clear();
+        closing=std::move(s_->subscriber);
         auto hr=s_->streamEvents->QueueEventParamVar(MEStreamStopped,GUID_NULL,S_OK,nullptr);
-        if(FAILED(hr))return hr;
-        return s_->sourceEvents->QueueEventParamVar(MESourceStopped,GUID_NULL,S_OK,nullptr);
+        if(SUCCEEDED(hr))hr=s_->sourceEvents->QueueEventParamVar(MESourceStopped,GUID_NULL,S_OK,nullptr);
+        lock.unlock();closing.reset();return hr;
     }
     STDMETHODIMP Pause() override {
         std::lock_guard lock(s_->mutex);return s_->shutdown?MF_E_SHUTDOWN:MF_E_INVALID_STATE_TRANSITION;
     }
     STDMETHODIMP Shutdown() override {
+        std::lock_guard lifecycle(s_->lifecycle);
         ComPtr<IMFMediaSource> parent;
+        std::unique_ptr<FrameSubscriber> closing;
         {std::lock_guard lock(s_->mutex);if(s_->shutdown)return S_OK;
          s_->shutdown=true;s_->started=false;s_->latest.Reset();s_->requests.clear();
-         s_->streamEvents->Shutdown();s_->sourceEvents->Shutdown();parent=std::move(s_->parent);}
+         s_->streamEvents->Shutdown();s_->sourceEvents->Shutdown();parent=std::move(s_->parent);closing=std::move(s_->subscriber);}
+        closing.reset();
         return S_OK;
     }
     STDMETHODIMP GetSourceAttributes(IMFAttributes** out) override {
@@ -167,14 +201,16 @@ private:
 #undef CAMERA_EVENTS
 }
 struct MediaSource::State {std::shared_ptr<Shared> shared;ComPtr<Source> source;};
-MediaSource::MediaSource(Format format):state_(std::make_unique<State>()) {
-    validate_format(format);auto s=std::make_shared<Shared>();s->format=format;
+MediaSource::MediaSource(Format format,std::wstring pipe):state_(std::make_unique<State>()) {
+    validate_format(format);auto s=std::make_shared<Shared>();s->format=format;s->pipe=std::move(pipe);
+    if(!s->pipe.empty()){FrameSubscriber validate(s->pipe,format,[](auto,auto){});}
     checked(MFCreateEventQueue(&s->sourceEvents));checked(MFCreateEventQueue(&s->streamEvents));
     checked(MFCreateAttributes(&s->sourceAttributes,2));checked(MFCreateAttributes(&s->streamAttributes,3));
     checked(s->sourceAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID));
     checked(s->sourceAttributes->SetString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,L"ExtraPane Camera"));
     checked(s->streamAttributes->SetGUID(MF_DEVICESTREAM_STREAM_CATEGORY,PINNAME_VIDEO_CAPTURE));
     checked(s->streamAttributes->SetUINT32(MF_DEVICESTREAM_STREAM_ID,0));
+    checked(s->streamAttributes->SetUINT32(MF_DEVICESTREAM_ATTRIBUTE_FRAMESOURCE_TYPES,MFFrameSourceTypes_Color));
     checked(MFCreateMediaType(&s->type));
     checked(s->type->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video));checked(s->type->SetGUID(MF_MT_SUBTYPE,MFVideoFormat_NV12));
     checked(MFSetAttributeSize(s->type.Get(),MF_MT_FRAME_SIZE,format.width,format.height));
@@ -186,6 +222,7 @@ MediaSource::MediaSource(Format format):state_(std::make_unique<State>()) {
     checked(s->type->SetUINT32(MF_MT_SAMPLE_SIZE,format.width*format.height*3/2));
     checked(s->type->SetUINT32(MF_MT_DEFAULT_STRIDE,format.width));
     IMFMediaType* types[]={s->type.Get()};checked(MFCreateStreamDescriptor(0,1,types,&s->descriptor));
+    checked(s->streamAttributes->CopyAllItems(s->descriptor.Get()));
     ComPtr<IMFMediaTypeHandler> handler;checked(s->descriptor->GetMediaTypeHandler(&handler));checked(handler->SetCurrentMediaType(s->type.Get()));
     IMFStreamDescriptor* streams[]={s->descriptor.Get()};checked(MFCreatePresentationDescriptor(1,streams,&s->presentation));
     checked(s->presentation->SelectStream(0));
@@ -196,9 +233,15 @@ MediaSource::MediaSource(Format format):state_(std::make_unique<State>()) {
 }
 MediaSource::~MediaSource(){stop();}
 ComPtr<IMFMediaSourceEx> MediaSource::source()const {ComPtr<IMFMediaSourceEx> result;checked(state_->source.As(&result));return result;}
+ComPtr<IMFMediaSourceEx> MediaSource::detach(){auto result=source();state_.reset();return result;}
 void MediaSource::stop()noexcept {if(state_&&state_->source)state_->source->Shutdown();}
 void MediaSource::submit(std::span<const std::uint8_t> pixels,std::int64_t timestamp) {
-    auto s=state_->shared;const auto length=s->format.width*s->format.height*3/2;
+    if(!state_)throw std::runtime_error("Camera source ownership transferred");
+    submit_raw(state_->shared,pixels,timestamp);
+}
+namespace {
+void submit_raw(const std::shared_ptr<Shared>& s,std::span<const std::uint8_t> pixels,std::int64_t timestamp) {
+    const auto length=s->format.width*s->format.height*3/2;
     if(pixels.size()!=length)throw std::invalid_argument("Virtual camera NV12 frame size mismatch");
     ComPtr<IMFMediaBuffer> buffer;checked(MFCreateMemoryBuffer(length,&buffer));
     BYTE* bytes=nullptr;checked(buffer->Lock(&bytes,nullptr,nullptr));
@@ -208,5 +251,6 @@ void MediaSource::submit(std::span<const std::uint8_t> pixels,std::int64_t times
     std::lock_guard lock(s->mutex);if(s->shutdown)throw std::runtime_error("Virtual camera source shut down");
     if(!s->started)return;
     s->latest=std::move(sample);checked(s->deliver());
+}
 }
 }
