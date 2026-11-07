@@ -1,0 +1,225 @@
+#include <windows.h>
+#include <shlobj.h>
+#include <sddl.h>
+#include <aclapi.h>
+#include <bcrypt.h>
+#include <filesystem>
+#include <iostream>
+#include <vector>
+#include <span>
+#include <iomanip>
+#include <sstream>
+#include <cstring>
+#include "usb_host_payload.hpp"
+#include <setupapi.h>
+#include <wintrust.h>
+#include <softpub.h>
+#include <map>
+#include <array>
+#include <memory>
+#include <algorithm>
+#include <string_view>
+
+namespace fs=std::filesystem;
+namespace setup=extrapane::usb_host_setup;
+namespace {
+void check(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
+struct Handle {HANDLE value=INVALID_HANDLE_VALUE;explicit Handle(HANDLE h):value(h){}~Handle(){if(value&&value!=INVALID_HANDLE_VALUE)CloseHandle(value);}Handle(const Handle&)=delete;};
+struct Key {HKEY value=nullptr;~Key(){if(value)RegCloseKey(value);}};
+struct Local {void* value=nullptr;~Local(){if(value)LocalFree(value);}};
+std::wstring sha256(std::span<const unsigned char> bytes){
+    BCRYPT_ALG_HANDLE algorithm=nullptr;check(BCryptOpenAlgorithmProvider(&algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)>=0,"Open SHA256 provider failed");
+    struct Algorithm{BCRYPT_ALG_HANDLE value;~Algorithm(){BCryptCloseAlgorithmProvider(value,0);}} cleanup{algorithm};
+    BCRYPT_HASH_HANDLE hash=nullptr;check(BCryptCreateHash(algorithm,&hash,nullptr,0,nullptr,0,0)>=0,"Create SHA256 failed");
+    struct Hash{BCRYPT_HASH_HANDLE value;~Hash(){BCryptDestroyHash(value);}} hashCleanup{hash};
+    check(bytes.size()<=64*1024*1024,"USB host component exceeds package limit");
+    check(BCryptHashData(hash,const_cast<PUCHAR>(bytes.data()),static_cast<ULONG>(bytes.size()),0)>=0,"Hash USB host component failed");
+    unsigned char digest[32]{};check(BCryptFinishHash(hash,digest,32,0)>=0,"Finish USB host hash failed");
+    std::wostringstream text;text<<std::hex<<std::setfill(L'0');for(auto value:digest)text<<std::setw(2)<<unsigned(value);return text.str();
+}
+fs::path component_root(){
+    PWSTR value=nullptr;check(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_ProgramFilesX64,0,nullptr,&value)),"Program Files location is unavailable");
+    fs::path root(value);CoTaskMemFree(value);return root/L"ExtraPane Components"/L"UsbHost";
+}
+void no_reparse(const fs::path& path){
+    for(auto current=path;!current.empty();){
+        const auto attributes=GetFileAttributesW(current.c_str());
+        if(attributes!=INVALID_FILE_ATTRIBUTES)check(!(attributes&FILE_ATTRIBUTE_REPARSE_POINT),"USB host setup refuses reparse-point paths");
+        auto parent=current.parent_path();if(parent==current)break;current=std::move(parent);
+    }
+}
+void verify_security(const fs::path& path){
+    no_reparse(path);
+    PSID owner=nullptr;PACL acl=nullptr;Local existing;
+    check(GetNamedSecurityInfoW(const_cast<LPWSTR>(path.c_str()),SE_FILE_OBJECT,OWNER_SECURITY_INFORMATION|DACL_SECURITY_INFORMATION,
+        &owner,nullptr,&acl,nullptr,reinterpret_cast<PSECURITY_DESCRIPTOR*>(&existing.value))==ERROR_SUCCESS,"Inspect USB host directory security failed");
+    check((IsWellKnownSid(owner,WinBuiltinAdministratorsSid)||IsWellKnownSid(owner,WinLocalSystemSid))&&acl,"USB host directory has an unexpected owner or permissions");
+    const ACCESS_MASK writes=FILE_WRITE_DATA|FILE_APPEND_DATA|FILE_WRITE_EA|FILE_WRITE_ATTRIBUTES|FILE_DELETE_CHILD|DELETE|WRITE_DAC|WRITE_OWNER|GENERIC_WRITE|GENERIC_ALL;
+    for(DWORD i=0;i<acl->AceCount;++i){
+        void* raw=nullptr;check(GetAce(acl,i,&raw),"Inspect USB host directory ACL failed");const auto* header=static_cast<ACE_HEADER*>(raw);
+        if(header->AceType==ACCESS_DENIED_ACE_TYPE)continue;
+        check(header->AceType==ACCESS_ALLOWED_ACE_TYPE,"Unsupported USB host directory ACL");
+        auto* ace=static_cast<ACCESS_ALLOWED_ACE*>(raw);auto* principal=&ace->SidStart;
+        if(ace->Mask&writes)check(IsWellKnownSid(principal,WinBuiltinAdministratorsSid)||IsWellKnownSid(principal,WinLocalSystemSid),"USB host directory is writable by an unprivileged principal");
+    }
+}
+void protected_directory(const fs::path& path){
+    no_reparse(path);Local security;
+    check(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;GRGX;;;BU)(A;OICI;GRGX;;;LS)",SDDL_REVISION_1,reinterpret_cast<PSECURITY_DESCRIPTOR*>(&security.value),nullptr),"Directory security failed");
+    SECURITY_ATTRIBUTES attributes{sizeof(attributes),security.value,FALSE};
+    if(!CreateDirectoryW(path.c_str(),&attributes))check(GetLastError()==ERROR_ALREADY_EXISTS,"Create component directory failed");
+    verify_security(path);
+}
+std::vector<unsigned char> read_file(const fs::path& path){
+    no_reparse(path);Handle file(CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+    check(file.value!=INVALID_HANDLE_VALUE,"Read installed USB host payload failed");LARGE_INTEGER size{};
+    check(GetFileSizeEx(file.value,&size)&&size.QuadPart>0&&size.QuadPart<=64*1024*1024,"Invalid installed USB host payload size");
+    std::vector<unsigned char> bytes(static_cast<std::size_t>(size.QuadPart));DWORD got=0;
+    check(ReadFile(file.value,bytes.data(),static_cast<DWORD>(bytes.size()),&got,nullptr)&&got==bytes.size(),"Read installed USB host payload failed");return bytes;
+}
+bool write_payload(const fs::path& path,std::span<const unsigned char> bytes){
+    no_reparse(path);Handle file(CreateFileW(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr));
+    if(file.value==INVALID_HANDLE_VALUE){check(GetLastError()==ERROR_FILE_EXISTS||GetLastError()==ERROR_ALREADY_EXISTS,"Create USB host payload failed");check(sha256(read_file(path))==sha256(bytes),"Existing USB host payload does not match package");return false;}
+    DWORD written=0;
+    if(!WriteFile(file.value,bytes.data(),static_cast<DWORD>(bytes.size()),&written,nullptr)||written!=bytes.size()||!FlushFileBuffers(file.value)){
+        CloseHandle(file.value);file.value=INVALID_HANDLE_VALUE;
+        check(DeleteFileW(path.c_str())!=FALSE,"USB host payload write failed and the new partial file could not be removed");
+        throw std::runtime_error("Write USB host payload failed; partial file removed");
+    }
+    return true;
+}
+void signed_file(const fs::path& path){
+    no_reparse(path);WINTRUST_FILE_INFO file{sizeof(file)};file.pcwszFilePath=path.c_str();
+    WINTRUST_DATA data{sizeof(data)};data.dwUIChoice=WTD_UI_NONE;data.fdwRevocationChecks=WTD_REVOKE_NONE;data.dwUnionChoice=WTD_CHOICE_FILE;data.pFile=&file;data.dwStateAction=WTD_STATEACTION_VERIFY;data.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL|WTD_REVOCATION_CHECK_NONE;
+    GUID action=WINTRUST_ACTION_GENERIC_VERIFY_V2;const auto result=WinVerifyTrust(reinterpret_cast<HWND>(INVALID_HANDLE_VALUE),&action,&data);data.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(reinterpret_cast<HWND>(INVALID_HANDLE_VALUE),&action,&data);
+    check(result==ERROR_SUCCESS,"USB/IP component has no trusted Authenticode signature; nothing will be executed");
+}
+constexpr wchar_t manifest_name[]=L"extrapane-usbhost-v1.txt";
+constexpr wchar_t host_key[]=L"SOFTWARE\\ExtraPane\\UsbHost";
+constexpr wchar_t setup_key[]=L"SOFTWARE\\ExtraPane\\UsbHostSetup";
+struct Service {SC_HANDLE value=nullptr;explicit Service(SC_HANDLE h):value(h){}~Service(){if(value)CloseServiceHandle(value);}Service(const Service&)=delete;};
+std::span<const unsigned char> payload(const setup::File& item){
+    auto resource=FindResourceW(nullptr,MAKEINTRESOURCEW(item.resource),RT_RCDATA);check(resource,"USB host package is missing a component");
+    const auto size=SizeofResource(nullptr,resource);const auto bytes=static_cast<const unsigned char*>(LockResource(LoadResource(nullptr,resource)));
+    check(bytes&&size&&size<=64*1024*1024,"USB host package component exceeds bounds");std::span<const unsigned char> result{bytes,size};check(sha256(result)==item.digest,"USB host package component hash mismatch");return result;
+}
+std::vector<unsigned char> manifest(){
+    std::string text="ExtraPane UsbHost v1\nsource=";for(auto c:std::wstring(setup::source))text+=static_cast<char>(c);text+='\n';
+    for(const auto& file:setup::files){for(auto c:std::wstring(file.digest))text+=static_cast<char>(c);text+=' ';for(auto c:std::wstring(file.name))text+=static_cast<char>(c);text+='\n';}return {text.begin(),text.end()};
+}
+void validate_tree(const fs::path& root,bool complete){
+    verify_security(root);std::vector<fs::path> expected;for(const auto& file:setup::files)expected.emplace_back(file.name);expected.emplace_back(manifest_name);
+    for(const auto& entry:fs::recursive_directory_iterator(root)){
+        no_reparse(entry.path());const auto relative=entry.path().lexically_relative(root);
+        if(entry.is_directory()){check(relative==L"Drivers","Unknown directory in managed USB host; no changes made");verify_security(entry.path());continue;}
+        check(entry.is_regular_file()&&std::find(expected.begin(),expected.end(),relative)!=expected.end(),"Unowned file in managed USB host; no changes made");verify_security(entry.path());
+    }
+    for(const auto& file:setup::files){const auto path=root/file.name;if(fs::exists(path))check(sha256(read_file(path))==file.digest,"Managed USB host payload changed; no changes made");else check(!complete,"Managed USB host payload is incomplete");}
+    if(fs::exists(root/manifest_name))check(read_file(root/manifest_name)==manifest(),"USB host ownership manifest changed");else check(!complete,"USB host ownership manifest is missing");
+}
+void trusted_registry(HKEY key){
+    DWORD type=0,size=0;check(RegQueryValueExW(key,L"SymbolicLinkValue",nullptr,&type,nullptr,&size)==ERROR_FILE_NOT_FOUND,"USB host registry links are forbidden");
+    PSECURITY_DESCRIPTOR sd=nullptr;PSID owner=nullptr;PACL dacl=nullptr;
+    check(GetSecurityInfo(key,SE_REGISTRY_KEY,OWNER_SECURITY_INFORMATION|DACL_SECURITY_INFORMATION,&owner,nullptr,&dacl,nullptr,&sd)==ERROR_SUCCESS,"Inspect USB host registry security failed");Local free{sd};
+    SECURITY_DESCRIPTOR_CONTROL control=0;DWORD revision=0;check(GetSecurityDescriptorControl(sd,&control,&revision)&&dacl&&(control&SE_DACL_PROTECTED)&&(IsWellKnownSid(owner,WinBuiltinAdministratorsSid)||IsWellKnownSid(owner,WinLocalSystemSid)),"USB host registry owner or ACL is not protected");
+    constexpr DWORD writes=KEY_SET_VALUE|KEY_CREATE_SUB_KEY|KEY_CREATE_LINK|DELETE|WRITE_DAC|WRITE_OWNER|GENERIC_ALL|GENERIC_WRITE;
+    for(DWORD i=0;i<dacl->AceCount;++i){void* raw=nullptr;check(GetAce(dacl,i,&raw),"Read USB host registry ACL failed");const auto header=static_cast<ACE_HEADER*>(raw);if(header->AceType==ACCESS_DENIED_ACE_TYPE)continue;check(header->AceType==ACCESS_ALLOWED_ACE_TYPE,"Unsupported USB host registry ACL");auto ace=static_cast<ACCESS_ALLOWED_ACE*>(raw);if(ace->Mask&writes)check(IsWellKnownSid(&ace->SidStart,WinBuiltinAdministratorsSid)||IsWellKnownSid(&ace->SidStart,WinLocalSystemSid),"USB host registry is writable by an untrusted account");}
+}
+void protected_key(HKEY parent,const wchar_t* name,Key& key){
+    DWORD disposition=0;auto status=RegOpenKeyExW(parent,name,REG_OPTION_OPEN_LINK,KEY_READ|KEY_WRITE|READ_CONTROL|KEY_WOW64_64KEY,&key.value);
+    if(status==ERROR_FILE_NOT_FOUND){Local security;check(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"O:BAG:BAD:P(A;CI;KA;;;SY)(A;CI;KA;;;BA)(A;CI;KR;;;BU)",SDDL_REVISION_1,reinterpret_cast<PSECURITY_DESCRIPTOR*>(&security.value),nullptr),"USB host registry ACL creation failed");SECURITY_ATTRIBUTES attributes{sizeof(attributes),security.value,FALSE};
+        status=RegCreateKeyExW(parent,name,0,nullptr,REG_OPTION_NON_VOLATILE,KEY_READ|KEY_WRITE|READ_CONTROL|KEY_WOW64_64KEY,&attributes,&key.value,&disposition);
+        check(status==ERROR_SUCCESS,"Create USB host registry failed");RegCloseKey(key.value);key.value=nullptr;status=RegOpenKeyExW(parent,name,REG_OPTION_OPEN_LINK,KEY_READ|KEY_WRITE|READ_CONTROL|KEY_WOW64_64KEY,&key.value);
+    }check(status==ERROR_SUCCESS,"Open USB host registry failed");trusted_registry(key.value);
+}
+void registration_preflight(const fs::path& root){
+    Key host;const auto status=RegOpenKeyExW(HKEY_LOCAL_MACHINE,host_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&host.value);
+    if(status==ERROR_FILE_NOT_FOUND||status==ERROR_PATH_NOT_FOUND)return;
+    check(status==ERROR_SUCCESS,"Cannot inspect private USB host ownership");trusted_registry(host.value);
+    DWORD type=0,bytes=0;const auto value=RegQueryValueExW(host.value,L"APPLICATIONFOLDER",nullptr,&type,nullptr,&bytes);
+    if(value==ERROR_SUCCESS){check(type==REG_SZ&&bytes>=2&&bytes<=32768&&bytes%2==0,"Invalid private USB host registration");std::wstring folder(bytes/2,L'\0');check(RegQueryValueExW(host.value,L"APPLICATIONFOLDER",nullptr,&type,reinterpret_cast<BYTE*>(folder.data()),&bytes)==ERROR_SUCCESS&&folder.back()==L'\0',"Read private USB host registration failed");folder.pop_back();check(folder.find(L'\0')==std::wstring::npos&&fs::path(folder)==root,"Another installation owns private USB host registration");}
+    else check(value==ERROR_FILE_NOT_FOUND,"Cannot inspect private USB host folder");
+    for(const auto name:{L"Devices",L"Policy"}){Key child;const auto opened=RegOpenKeyExW(host.value,name,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&child.value);if(opened==ERROR_FILE_NOT_FOUND)continue;check(opened==ERROR_SUCCESS,"Cannot inspect private USB ownership");trusted_registry(child.value);DWORD count=0;check(RegQueryInfoKeyW(child.value,nullptr,nullptr,nullptr,&count,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr)==ERROR_SUCCESS&&!count,"USB bindings or policies remain; eject/recover before setup");}
+}
+void no_pending_recovery(){
+    Key recovery;const auto status=RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE\\ExtraPane\\Components\\UsbRecovery",REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&recovery.value);
+    if(status==ERROR_FILE_NOT_FOUND||status==ERROR_PATH_NOT_FOUND)return;
+    check(status==ERROR_SUCCESS,"Cannot inspect pending USB recovery journals");trusted_registry(recovery.value);DWORD count=0;
+    check(RegQueryInfoKeyW(recovery.value,nullptr,nullptr,nullptr,&count,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr)==ERROR_SUCCESS&&!count,"Pending USB quarantine/recovery journal exists; recover storage before removing its backend");
+}
+std::wstring string_value(HKEY key,const wchar_t* name){
+    DWORD type=0,bytes=0;const auto status=RegQueryValueExW(key,name,nullptr,&type,nullptr,&bytes);if(status==ERROR_FILE_NOT_FOUND)return {};
+    check(status==ERROR_SUCCESS&&type==REG_SZ&&bytes>=2&&bytes<=32768&&bytes%2==0,"Invalid USB host ownership value");std::wstring result(bytes/2,L'\0');check(RegQueryValueExW(key,name,nullptr,&type,reinterpret_cast<BYTE*>(result.data()),&bytes)==ERROR_SUCCESS&&type==REG_SZ&&result.back()==L'\0',"Read USB host ownership value failed");result.pop_back();check(result.find(L'\0')==std::wstring::npos,"Embedded NUL in USB host ownership value");return result;
+}
+void set_string(HKEY key,const wchar_t* name,const std::wstring& value){check(RegSetValueExW(key,name,0,REG_SZ,reinterpret_cast<const BYTE*>(value.c_str()),static_cast<DWORD>((value.size()+1)*sizeof(wchar_t)))==ERROR_SUCCESS,"Write USB host ownership record failed");check(RegFlushKey(key)==ERROR_SUCCESS,"Flush USB host ownership record failed");}
+void private_registration(const fs::path& root,bool enable){
+    Key software,app,host,devices,policy;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE",0,KEY_READ|KEY_WRITE|KEY_WOW64_64KEY,&software.value)==ERROR_SUCCESS,"Administrator registry access is required");
+    protected_key(software.value,L"ExtraPane",app);protected_key(app.value,L"UsbHost",host);
+    const auto folder=string_value(host.value,L"APPLICATIONFOLDER");check(folder.empty()||fs::path(folder)==root,"Another application owns the private USB host registration");
+    protected_key(host.value,L"Devices",devices);protected_key(host.value,L"Policy",policy);
+    DWORD count=0;check(RegQueryInfoKeyW(devices.value,nullptr,nullptr,nullptr,&count,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr)==ERROR_SUCCESS&&!count,"USB bindings remain; eject and recover them before component setup");
+    check(RegQueryInfoKeyW(policy.value,nullptr,nullptr,nullptr,&count,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr)==ERROR_SUCCESS&&!count,"Unexpected private USB policy exists; no changes made");
+    if(enable)set_string(host.value,L"APPLICATIONFOLDER",root.wstring());
+    else {const auto status=RegDeleteValueW(host.value,L"APPLICATIONFOLDER");check(status==ERROR_SUCCESS||status==ERROR_FILE_NOT_FOUND,"Disable USB host registration failed");check(RegFlushKey(host.value)==ERROR_SUCCESS,"Flush disabled USB host registration failed");}
+}
+fs::path monitor_path(SC_HANDLE service){
+    DWORD bytes=0;QueryServiceConfigW(service,nullptr,0,&bytes);check(bytes>=sizeof(QUERY_SERVICE_CONFIGW)&&bytes<=65536,"Invalid existing VBoxUSBMon configuration");std::vector<unsigned char> data(bytes);auto config=reinterpret_cast<QUERY_SERVICE_CONFIGW*>(data.data());
+    check(QueryServiceConfigW(service,config,bytes,&bytes)&&config->dwServiceType==SERVICE_KERNEL_DRIVER,"Existing VBoxUSBMon is not a compatible kernel driver service");
+    std::wstring path=config->lpBinaryPathName;if(path.size()>=2&&path.front()==L'"'&&path.back()==L'"')path=path.substr(1,path.size()-2);
+    if(path.starts_with(L"\\??\\"))path.erase(0,4);
+    if(path.starts_with(L"\\SystemRoot\\")){wchar_t windows[MAX_PATH]{};check(GetWindowsDirectoryW(windows,MAX_PATH)!=0,"Windows location unavailable");path=std::wstring(windows)+path.substr(11);}
+    check(fs::path(path).is_absolute()&&path.find(L'"')==std::wstring::npos,"Existing VBoxUSBMon image path is unsupported");return path;
+}
+bool monitor(const fs::path& root,bool install){
+    Service manager(OpenSCManagerW(nullptr,nullptr,SC_MANAGER_CONNECT|(install?SC_MANAGER_CREATE_SERVICE:0)));check(manager.value,"Open service manager failed");Service existing(OpenServiceW(manager.value,L"VBoxUSBMon",SERVICE_QUERY_CONFIG));
+    if(existing.value){const auto path=monitor_path(existing.value);verify_security(path);check(sha256(read_file(path))==setup::files[7].digest,"Existing shared VBoxUSBMon version differs; left unchanged");signed_file(path);return false;}
+    check(GetLastError()==ERROR_SERVICE_DOES_NOT_EXIST,"Cannot inspect shared VBoxUSBMon service");check(install,"VBoxUSBMon service is not installed");
+    const auto path=root/L"Drivers"/L"VBoxUSBMon.sys";signed_file(path);
+    Service created(CreateServiceW(manager.value,L"VBoxUSBMon",L"VirtualBox USB Monitor Service",SERVICE_QUERY_CONFIG,SERVICE_KERNEL_DRIVER,SERVICE_DEMAND_START,SERVICE_ERROR_NORMAL,path.c_str(),nullptr,nullptr,nullptr,nullptr,nullptr));
+    check(created.value,"Create demand-start VBoxUSBMon service failed; existing services were not changed");return true;
+}
+void package_driver(const fs::path& root,HKEY ownership){
+    signed_file(root/L"Drivers"/L"VBoxUSB.cat");signed_file(root/L"Drivers"/L"VBoxUSBMon.sys");
+    wchar_t installed[MAX_PATH]{};DWORD required=0;const auto inf=root/L"Drivers"/L"VBoxUSB.inf";
+    const auto copied=SetupCopyOEMInfW(inf.c_str(),nullptr,SPOST_PATH,SP_COPY_NOOVERWRITE,installed,MAX_PATH,&required,nullptr);
+    const auto error=copied?ERROR_SUCCESS:GetLastError();check(copied||error==ERROR_FILE_EXISTS,"Stage signed USB driver package failed; existing packages left unchanged");
+    check(installed[0]&&required<=MAX_PATH,"Staged USB driver package identity unavailable");
+    set_string(ownership,L"StagedInf",installed);if(copied)set_string(ownership,L"CreatedInf",installed);
+    if(monitor(root,true))set_string(ownership,L"CreatedMonitor",L"true");
+}
+int modify(bool install){
+    check(IsUserAnAdmin(),"USB host setup requires administrator permission");SYSTEM_INFO system{};GetNativeSystemInfo(&system);check(system.wProcessorArchitecture==PROCESSOR_ARCHITECTURE_AMD64,"USB host setup requires native x64 Windows");
+    Handle lock(CreateMutexW(nullptr,FALSE,L"Global\\ExtraPane.UsbHostSetup"));check(lock.value&&lock.value!=INVALID_HANDLE_VALUE,"USB host setup mutex unavailable");const auto acquired=WaitForSingleObject(lock.value,0);check(acquired==WAIT_OBJECT_0||acquired==WAIT_ABANDONED,"USB host setup is already running");struct Unlock{HANDLE h;~Unlock(){ReleaseMutex(h);}}unlock{lock.value};
+    const auto root=component_root();for(const auto& item:setup::files)payload(item);
+    registration_preflight(root);
+    Key software,app,ownership;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE",0,KEY_READ|KEY_WRITE|KEY_WOW64_64KEY,&software.value)==ERROR_SUCCESS,"Administrator registry access required");protected_key(software.value,L"ExtraPane",app);protected_key(app.value,L"UsbHostSetup",ownership);
+    const auto source=string_value(ownership.value,L"Source");check(source.empty()||source==setup::source,"Existing managed USB host version differs; upgrade requires explicit migration");
+    if(fs::exists(root)){if(source.empty())check(fs::is_empty(root),"Unowned USB host directory is not empty; no changes made");else validate_tree(root,false);}
+    if(!install){
+        if(source.empty()){std::cout<<"not-installed\n";return 0;}
+        // Reject live ownership before removing any executable. Driver store and
+        // shared monitor service/binary are always retained, never stopped here.
+        no_pending_recovery();std::vector<std::unique_ptr<Handle>> files;
+        const auto hold=[&](const fs::path& path){if(fs::exists(path)){auto file=std::make_unique<Handle>(CreateFileW(path.c_str(),GENERIC_READ|DELETE,0,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));check(file->value!=INVALID_HANDLE_VALUE,"Stop USB host sessions before removing their components");files.push_back(std::move(file));}};
+        for(const auto& item:setup::files)if(!std::wstring_view(item.name).starts_with(L"Drivers/"))hold(root/item.name);hold(root/manifest_name);
+        private_registration(root,false);set_string(ownership.value,L"State",L"removing");
+        std::size_t marked=0;try{for(auto& file:files){FILE_DISPOSITION_INFO remove{TRUE};check(SetFileInformationByHandle(file->value,FileDispositionInfo,&remove,sizeof(remove)),"Mark USB host file for removal failed");++marked;}}
+        catch(...){for(std::size_t i=0;i<marked;++i){FILE_DISPOSITION_INFO keep{FALSE};SetFileInformationByHandle(files[i]->value,FileDispositionInfo,&keep,sizeof(keep));}throw;}
+        files.clear();
+        set_string(ownership.value,L"State",L"inactive");std::cout<<"removed; shared signed driver package, monitor service and protected driver files retained\n";return 0;
+    }
+    protected_directory(root.parent_path());protected_directory(root);protected_directory(root/L"Drivers");
+    set_string(ownership.value,L"Source",setup::source);set_string(ownership.value,L"State",L"preparing");
+    for(const auto& item:setup::files){write_payload(root/item.name,payload(item));verify_security(root/item.name);}
+    // Marker is published last, after signed driver staging and private registry
+    // creation succeed. Partial owned files remain hash-checked for explicit retry.
+    package_driver(root,ownership.value);private_registration(root,true);write_payload(root/manifest_name,manifest());validate_tree(root,true);set_string(ownership.value,L"State",L"installed");
+    std::cout<<"installed; driver is demand-start and no USB device was bound\n";return 0;
+}
+}
+int wmain(int argc,wchar_t** argv){try{
+    check(argc==2,"Use --check-package, --install, --status or --remove");const std::wstring mode=argv[1];
+    if(mode==L"--check-package"){for(const auto& item:setup::files)payload(item);std::cout<<"USB_HOST_PACKAGE_OK\n";return 0;}
+    if(mode==L"--status"){const auto root=component_root();if(!fs::exists(root/manifest_name)){std::cout<<"not-installed\n";return 3;}validate_tree(root,true);monitor(root,false);Key host;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,host_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&host.value)==ERROR_SUCCESS,"USB host registration missing");trusted_registry(host.value);check(fs::path(string_value(host.value,L"APPLICATIONFOLDER"))==root,"USB host registration points elsewhere");std::cout<<"installed\n";return 0;}
+    if(mode==L"--install")return modify(true);if(mode==L"--remove")return modify(false);throw std::runtime_error("Unknown USB host setup command");
+}catch(const std::exception& error){std::cerr<<"error: "<<error.what()<<'\n';return 1;}}

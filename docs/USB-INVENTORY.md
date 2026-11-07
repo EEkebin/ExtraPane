@@ -6,10 +6,17 @@ device. Building the library does not inspect connected devices. The isolated
 `usb-inventory-parsers` test uses synthetic byte buffers only.
 
 The backend collects present disk interfaces using SetupAPI and obtains their
-instance IDs locally. It queries the storage descriptor, physical disk number,
+instance IDs locally. It retains both the storage-stack instance ID and the
+physical USB ancestor ID; the latter is used for backend binding and ownership
+checks. It queries the storage descriptor, physical disk number,
 partition layout, USB parent ancestry, volume disk extents, Windows volume, and
 currently enumerated paging files. A candidate must report USB bus transport and
 removable media. USB disks reporting fixed media are intentionally excluded.
+Durable recovery also requires the physical USB node's unique-ID capability and
+a bounded, nonempty storage serial that is not all zeros/spaces. Devices without
+those identifiers remain unavailable. These identifiers are supplied by device
+firmware, not cryptographic identity: identical devices with cloned identifiers
+cannot be distinguished from those identifiers alone.
 
 Composite USB devices and devices with multiple children below their physical
 USB node are excluded. An unreadable or unfamiliar parent tree is unresolved.

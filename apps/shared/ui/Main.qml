@@ -1,6 +1,6 @@
 import QtQuick
 // Shared shell baseline. Platforms supply Video.qml and the receiver controller.
-// Linux is currently the first consumer; other platform adapters are pending.
+// Windows and Linux supply native platform controllers.
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
@@ -171,11 +171,15 @@ ApplicationWindow {
                         currentIndex: root.usbClient ? 3 : root.microphoneClient ? 2 : root.cameraClient ? 1 : 0
                         onActivated: receiver.clientMode = currentIndex === 3 ? "usb" : currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
                     }
-                    ColumnLayout {
-                        objectName: "cameraClientPanel"
+                    ScrollView {
+                        id: resourceScroll
                         visible: root.cameraClient && !root.fullscreen
-                        Layout.fillWidth: true
-                        Label { text: root.usbClient ? "Share removable USB storage exclusively. Close its files first. Use Eject USB on the receiving PC before stopping; a lost connection requires source recovery." : root.microphoneClient ? "Send a local microphone to a Windows microphone server. Resource modes use separate connections in this preview." : "Send a local camera to a Windows camera server. Display and camera use separate connections in this preview."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Layout.fillWidth: true; Layout.fillHeight: true
+                        contentWidth: availableWidth
+                        ColumnLayout {
+                        objectName: "cameraClientPanel"
+                        width: resourceScroll.availableWidth
+                        Label { text: root.usbClient ? "Share removable USB storage exclusively with trusted computers. Close its files first. Use Eject USB on the receiving PC before stopping; a lost connection requires source recovery." : root.microphoneClient ? "Send a local microphone to a Windows microphone server. Resource modes use separate connections in this preview." : "Send a local camera to a Windows camera server. Display and camera use separate connections in this preview."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         RowLayout {
                             Layout.fillWidth: true
                             ComboBox {
@@ -199,19 +203,20 @@ ApplicationWindow {
                             text: root.microphoneClient && receiver.microphoneMuted ? "Unmute microphone" : "Mute microphone"
                             onClicked: receiver.setMicrophoneMuted(!receiver.microphoneMuted)
                         }
-                        Button { visible: root.usbClient; text: "USB source setup"; enabled: !receiver.active && !receiver.hosting && !receiver.cameraSetupRunning; onClicked: receiver.setupUsbSource() }
+                        Button { objectName: "usbSourceSetupButton"; visible: root.usbClient; text: "USB source setup"; enabled: !receiver.active && !receiver.hosting && !receiver.cameraSetupRunning; onClicked: receiver.setupUsbSource() }
                         ColumnLayout {
                             visible: root.usbClient
                             Layout.fillWidth: true
                             Label { text: "USB recovery"; font.bold: true }
                             Label { text: root.usbClient ? receiver.recoveryStatus : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                            ComboBox { id: recoveryPicker; Layout.fillWidth: true; model: root.usbClient ? receiver.usbRecoveries : []; textRole: "label"; valueRole: "id"; enabled: !receiver.active && !receiver.hosting && !receiver.recoveryBusy }
+                            ComboBox { id: recoveryPicker; objectName: "usbRecoveryPicker"; Layout.fillWidth: true; model: root.usbClient ? receiver.usbRecoveries : []; textRole: "label"; valueRole: "id"; enabled: !receiver.active && !receiver.hosting && !receiver.recoveryBusy }
                             RowLayout {
-                                Button { text: "Refresh recovery"; enabled: root.usbClient && !receiver.active && !receiver.hosting && !receiver.recoveryBusy; onClicked: receiver.refreshUsbRecovery() }
-                                Button { text: "Restore selected disk"; enabled: root.usbClient && !receiver.active && !receiver.hosting && !receiver.recoveryBusy && recoveryPicker.currentIndex >= 0 && receiver.usbRecoveries[recoveryPicker.currentIndex].available; onClicked: receiver.recoverUsb(recoveryPicker.currentValue) }
+                                Button { objectName: "usbRecoveryRefreshButton"; text: "Refresh recovery"; enabled: root.usbClient && !receiver.active && !receiver.hosting && !receiver.recoveryBusy; onClicked: receiver.refreshUsbRecovery() }
+                                Button { objectName: "usbRecoveryRestoreButton"; text: "Restore selected disk"; enabled: root.usbClient && !receiver.active && !receiver.hosting && !receiver.recoveryBusy && recoveryPicker.currentIndex >= 0 && receiver.usbRecoveries[recoveryPicker.currentIndex].available; onClicked: receiver.recoverUsb(recoveryPicker.currentValue) }
                             }
                         }
                         Button { objectName: "cameraDisconnectButton"; text: root.usbClient ? "Stop USB (recovery may be required)" : root.microphoneClient ? "Stop sharing microphone" : "Stop sharing camera"; visible: receiver.active; onClicked: receiver.disconnectFromServer() }
+                        }
                     }
 
                     RowLayout {

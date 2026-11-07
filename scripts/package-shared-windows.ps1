@@ -65,5 +65,19 @@ Get-ChildItem -LiteralPath $crt.FullName -Filter '*.dll' | ForEach-Object { Copy
 Copy-Item -LiteralPath (Join-Path $qtPath 'plugins/platforms/qoffscreen.dll') -Destination (Join-Path $destinationPath 'platforms/qoffscreen.dll')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/RESOURCE-SHARING.md') -Destination (Join-Path $destinationPath 'DEVELOPMENT-STATUS.md')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/IMPLEMENTATION-CHECKLIST.md') -Destination (Join-Path $destinationPath 'IMPLEMENTATION-CHECKLIST.md')
+$revision = & git -C $projectRoot rev-parse HEAD
+if ($LASTEXITCODE -ne 0) { throw 'Cannot record the development build source revision.' }
+$changes = & git -C $projectRoot status --porcelain
+@{
+    project = 'ExtraPane'
+    kind = 'development-resource-build'
+    sourceRevision = $revision.Trim()
+    workingTreeChanges = [bool]$changes
+    stagedUtc = [DateTime]::UtcNow.ToString('o')
+    camera = [bool]$IncludeCamera
+    microphone = [bool]$IncludeMicrophone
+    usbStorage = [bool]$IncludeUsb
+    deviceVerified = $false
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $destinationPath 'BUILD-INFO.json') -Encoding UTF8
 Write-Host "Staged development resource-sharing app: $destinationPath"
 Write-Host 'No app was launched, no driver installed, and no connection was attempted.'

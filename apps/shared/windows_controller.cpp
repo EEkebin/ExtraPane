@@ -230,7 +230,7 @@ void WindowsController::poll(){
                 }digits.fill(QChar(0));line.fill(QChar(0));continue;
             }
             if(line.startsWith("ACCESS_STATUS ")){if(host){code_="Code "+line.mid(14)+". Generate a new code.";impl_->codeExpires=0;emit hostChanged();}continue;}
-            if(line.startsWith("error:")){(host?impl_->hostFailed:impl_->clientFailed)=true;(host?hostStatus_:status_)=line.mid(6).trimmed();}
+            if(line.startsWith("error:")){(host?impl_->hostFailed:impl_->clientFailed)=true;(host?hostStatus_:status_)=(!host&&clientMode_=="usb")?"USB sharing failed: "+line.mid(6).trimmed()+" Check USB recovery before reconnecting.":line.mid(6).trimmed();}
             else if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")){(host?hostStatus_:status_)="Connected";}
             else if(line.startsWith("LISTENING")||line.startsWith("HOST_LISTENING")){if(host)hostStatus_="Listening";}
             else if(line.startsWith("USB_SESSION_ERROR")){(host?hostStatus_:status_)="USB session ended; server continues listening. "+line.mid(18);}
@@ -249,7 +249,7 @@ void WindowsController::poll(){
             if(host)emit hostChanged();else emit changed();
         }
         if(pending.size()>16384)pending.clear();
-        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{resources_.setLocked(false);if(!impl_->clientFailed)status_="Disconnected";emit changed();}}
+        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{resources_.setLocked(false);if(!impl_->clientFailed&&clientMode_!="usb")status_="Disconnected";emit changed();}}
     };
     drain(impl_->host,impl_->hostPending,true);drain(impl_->client,impl_->clientPending,false);
     if(impl_->codeExpires&&GetTickCount64()>=impl_->codeExpires){impl_->codeExpires=0;code_="Code expired. Generate a new code.";emit hostChanged();}

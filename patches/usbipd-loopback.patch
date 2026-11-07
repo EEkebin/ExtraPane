@@ -1,0 +1,223 @@
+diff --git a/Usbipd/CommandHandlersCli.cs b/Usbipd/CommandHandlersCli.cs
+index 983a913..7690f77 100644
+--- a/Usbipd/CommandHandlersCli.cs
++++ b/Usbipd/CommandHandlersCli.cs
+@@ -158,7 +158,7 @@ sealed partial class CommandHandlers : ICommandHandlers
+ #pragma warning restore CA1849 // Call async methods when in an async method
+     }
+ 
+-    static ExitCode Bind(BusId busId, bool force, IConsole console)
++    static ExitCode Bind(BusId busId, bool force, IConsole console, string? expectedInstance = null)
+     {
+         var device = DeviceExtensions.GetAll().SingleOrDefault(d => d.BusId.HasValue && d.BusId.Value == busId);
+         if (device is null)
+@@ -166,6 +166,15 @@ sealed partial class CommandHandlers : ICommandHandlers
+             console.ReportError($"There is no device with busid '{busId}'.");
+             return ExitCode.Failure;
+         }
++        // ExtraPane passes a locally selected physical identity. Persist that exact
++        // enumerated object, never a replacement that reused its bus address.
++        if (expectedInstance is not null &&
++            (!string.Equals(device.InstanceId, expectedInstance, StringComparison.OrdinalIgnoreCase)
++             || device.PersistedGuid.HasValue || device.IsForced || device.ClientIPAddress is not null || force))
++        {
++            console.ReportError("Selected USB identity changed or is already owned; no binding changed.");
++            return ExitCode.Failure;
++        }
+         if (device.PersistedGuid.HasValue && (force == device.IsForced))
+         {
+             // Not an error, just let the user know they just executed a no-op.
+@@ -204,6 +213,17 @@ sealed partial class CommandHandlers : ICommandHandlers
+         return ExitCode.Success;
+     }
+ 
++    Task<ExitCode> ICommandHandlers.BindGuarded(BusId busId, string instanceId, IConsole console, CancellationToken cancellationToken)
++    {
++        if (!CheckInstalled(console) || string.IsNullOrWhiteSpace(instanceId)
++            || instanceId.Length > 4096 || !instanceId.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase)
++            || instanceId.Any(char.IsControl))
++        {
++            return Task.FromResult(ExitCode.Failure);
++        }
++        return Task.FromResult(Bind(busId, false, console, instanceId));
++    }
++
+     Task<ExitCode> ICommandHandlers.Bind(BusId busId, bool force, IConsole console, CancellationToken cancellationToken)
+     {
+         if (!CheckInstalled(console))
+diff --git a/Usbipd/ConnectedClient.cs b/Usbipd/ConnectedClient.cs
+index 3d02bbc..9758116 100644
+--- a/Usbipd/ConnectedClient.cs
++++ b/Usbipd/ConnectedClient.cs
+@@ -20,7 +20,7 @@ using static Usbipd.Interop.UsbIp;
+ 
+ namespace Usbipd;
+ 
+-sealed class ConnectedClient(ILogger<ConnectedClient> logger, ClientContext clientContext, IServiceProvider serviceProvider)
++sealed class ConnectedClient(ILogger<ConnectedClient> logger, ClientContext clientContext, IServiceProvider serviceProvider, IConfiguration configuration)
+ {
+     readonly ILogger Logger = logger;
+     readonly ClientContext ClientContext = clientContext;
+@@ -62,33 +62,36 @@ sealed class ConnectedClient(ILogger<ConnectedClient> logger, ClientContext clie
+         }
+     }
+ 
+-    static IEnumerable<Device> GetDevicesAvailableForClient(IPAddress ipAddress)
++    // ExtraPane's local launcher supplies both identities after local admission.
++    // Missing/invalid configuration denies every device. A bus address alone is
++    // insufficient because it may be reused after an unplug/replug.
++    readonly string? AllowedInstanceId = configuration["usbipd:AllowedInstanceId"];
++    readonly BusId? AllowedBusId = ParseAllowedBusId(configuration["usbipd:AllowedBusId"]);
++
++    static BusId? ParseAllowedBusId(string? value)
+     {
+-        return DeviceExtensions.GetAll().Where(device =>
+-        {
+-            if (!device.BusId.HasValue)
+-            {
+-                // The device is not currently plugged in.
+-                return false;
+-            }
+-            if (device.BusId.Value.IsIncompatibleHub)
+-            {
+-                // The hub the device is plugged into is incompatible.
+-                return false;
+-            }
+-            if (device.PersistedGuid.HasValue)
+-            {
+-                // Device is already bound, so available for attach.
+-                return true;
+-            }
+-            return Policy.IsAutoBindAllowed(device, ipAddress);
+-        });
++        return BusId.TryParse(value ?? string.Empty, out var busId)
++            && string.Equals(value, busId.ToString(), StringComparison.Ordinal) ? busId : null;
++    }
++
++    bool IsAllowed(Device device)
++    {
++        return AllowedBusId.HasValue && device.BusId == AllowedBusId
++            && !AllowedBusId.Value.IsIncompatibleHub
++            && !string.IsNullOrWhiteSpace(AllowedInstanceId)
++            && string.Equals(device.InstanceId, AllowedInstanceId, StringComparison.OrdinalIgnoreCase)
++            && device.PersistedGuid.HasValue;
++    }
++
++    IEnumerable<Device> GetDevicesAvailableForClient()
++    {
++        return DeviceExtensions.GetAll().Where(IsAllowed);
+     }
+ 
+     async Task HandleRequestDeviceListAsync(CancellationToken cancellationToken)
+     {
+         var exportedDevices = new List<ExportedDevice>();
+-        foreach (var device in GetDevicesAvailableForClient(ClientContext.ClientAddress))
++        foreach (var device in GetDevicesAvailableForClient())
+         {
+             try
+             {
+@@ -131,22 +134,17 @@ sealed class ConnectedClient(ILogger<ConnectedClient> logger, ClientContext clie
+         try
+         {
+             {
+-                // Auto-bind if necessary *and* allowed.
+-                var bindDevice = GetDevicesAvailableForClient(ClientContext.ClientAddress).SingleOrDefault(d => d.BusId.HasValue && d.BusId.Value == busId);
++                // Require the exact, already bound device admitted by the local launcher.
++                var bindDevice = GetDevicesAvailableForClient().SingleOrDefault(d => d.BusId.HasValue && d.BusId.Value == busId);
+                 if (bindDevice is null)
+                 {
+                     await SendOpCodeAsync(OpCode.OP_REP_IMPORT, Status.ST_NODEV);
+                     return;
+                 }
+-                if (!bindDevice.PersistedGuid.HasValue)
+-                {
+-                    // The device is not currently bound, but it is allowed by the policy. Auto-bind it now...
+-                    Logger.AutoBind(ClientContext.ClientAddress, busId, bindDevice.InstanceId);
+-                    UsbipdRegistry.Instance.Persist(bindDevice.InstanceId, bindDevice.Description);
+-                }
++
+             }
+ 
+-            var device = UsbipdRegistry.Instance.GetBoundDevices().SingleOrDefault(d => d.BusId.HasValue && d.BusId.Value == busId);
++            var device = UsbipdRegistry.Instance.GetBoundDevices().SingleOrDefault(d => IsAllowed(d) && d.BusId.HasValue && d.BusId.Value == busId);
+             if (device is null)
+             {
+                 await SendOpCodeAsync(OpCode.OP_REP_IMPORT, Status.ST_NODEV);
+diff --git a/Usbipd/ICommandHandlers.cs b/Usbipd/ICommandHandlers.cs
+index 4f077d0..4d7b0f6 100644
+--- a/Usbipd/ICommandHandlers.cs
++++ b/Usbipd/ICommandHandlers.cs
+@@ -15,6 +15,8 @@ interface ICommandHandlers
+     Task<ExitCode> AttachWsl(VidPid vidPid, bool autoAttach, string? distribution, IPAddress? hostAddress,
+         IConsole console, CancellationToken cancellationToken);
+     Task<ExitCode> Bind(BusId busId, bool force, IConsole console, CancellationToken cancellationToken);
++
++    Task<ExitCode> BindGuarded(BusId busId, string instanceId, IConsole console, CancellationToken cancellationToken);
+     Task<ExitCode> Bind(VidPid vidPid, bool force, IConsole console, CancellationToken cancellationToken);
+     Task<ExitCode> Detach(BusId busId, IConsole console, CancellationToken cancellationToken);
+     Task<ExitCode> Detach(VidPid vidPid, IConsole console, CancellationToken cancellationToken);
+diff --git a/Usbipd/Program.cs b/Usbipd/Program.cs
+index b1faf74..88ebdfb 100644
+--- a/Usbipd/Program.cs
++++ b/Usbipd/Program.cs
+@@ -647,6 +647,14 @@ static class Program
+             );
+             rootCommand.Subcommands.Add(serverCommand);
+         }
++        {
++            var bus = new Option<BusId>("--busid") { Required = true, CustomParser = ParseCompatibleBusId };
++            var instance = new Option<string>("--instance-id") { Required = true };
++            var guardedBind = new Command("extrapane-bind", "Bind only the exact locally selected ExtraPane device") { bus, instance };
++            guardedBind.SetAction(async (parseResult, cancellationToken) => (int)
++                await commandHandlers.BindGuarded(parseResult.GetRequiredValue(bus), parseResult.GetRequiredValue(instance), console, cancellationToken));
++            rootCommand.Subcommands.Add(guardedBind);
++        }
+         {
+             //
+             //  state
+diff --git a/Usbipd/Server.cs b/Usbipd/Server.cs
+index 73c8331..34c5fab 100644
+--- a/Usbipd/Server.cs
++++ b/Usbipd/Server.cs
+@@ -28,7 +28,8 @@ sealed partial class Server : BackgroundService
+         {
+             Logger.Debug($"usbipd:Port = {port}");
+         }
+-        TcpListener = TcpListener.Create(port);
++        // ExtraPane: loopback only; the launcher must provide authenticated tunneling.
++        TcpListener = new TcpListener(IPAddress.Loopback, port);
+     }
+ 
+     readonly ILogger Logger;
+@@ -84,8 +85,8 @@ sealed partial class Server : BackgroundService
+     {
+         Logger.Debug(GitVersionInformation.InformationalVersion);
+ 
+-        // Cleanup any left-overs in case the previous instance crashed.
+-        _ = UsbipdRegistry.Instance.SetAllDevicesAsDetached();
++        // ExtraPane owns only its selected binding. Recovery is handled by its
++        // protected session journal; never clear unrelated attachment state.
+ 
+         // Non-interactive services have this disabled by default.
+         // We require it so the ConfigurationManager can change the driver.
+@@ -99,6 +100,7 @@ sealed partial class Server : BackgroundService
+         TcpListener.Server.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 5);
+ 
+         TcpListener.Start();
++        Console.WriteLine("USBIPD_LOOPBACK_READY");
+         while (true)
+         {
+             var tcpClient = await TcpListener.AcceptTcpClientAsync(stoppingToken);
+diff --git a/Usbipd/UsbipdRegistry.cs b/Usbipd/UsbipdRegistry.cs
+index 08bf307..150d282 100644
+--- a/Usbipd/UsbipdRegistry.cs
++++ b/Usbipd/UsbipdRegistry.cs
+@@ -29,7 +29,7 @@ sealed class UsbipdRegistry : IDisposable
+         WritableBaseKey?.Dispose();
+     }
+ 
+-    const string RegistryPath = @"SOFTWARE\usbipd-win";
++    const string RegistryPath = @"SOFTWARE\ExtraPane\UsbHost";
+ 
+     public UsbipdRegistry(RegistryKey parentKey)
+     {

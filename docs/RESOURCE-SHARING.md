@@ -208,3 +208,31 @@ the Qt executable and runtime. This development staging command does not install
 the driver, launch the app or publish a release. The staged executable's
 `--check-ui` option loads its actual controller and QML offscreen without starting
 the server or receiver. It checks startup, not actual device delivery.
+
+## Current Windows resource build (2026-11-07)
+
+The shared app now has separate Display, Camera, Microphone and USB storage modes.
+These are separate connections in this development build; the final multi-resource
+checklist and simultaneous display/camera/microphone transport are not complete.
+Windows camera sharing currently requires a 1280 ? 720, 30 FPS capture mode.
+Windows microphone sharing accepts 48 kHz mono/stereo WASAPI sources and sends
+mono PCM16 over the encrypted connection; Opus and sample-rate conversion remain
+future work. Camera and microphone capture do not detach the physical source,
+although applications and drivers may impose their own simultaneous-use limits.
+
+Windows USB sharing is restricted to eligible, uniquely identified removable
+storage. The source requires the managed USB host component; the recipient uses
+the managed USB/IP client component also used by the microphone endpoint. These
+are internal components of the same app package. USB controls request explicit
+administrator permission; ordinary camera/microphone capture does not.
+Use **Eject USB** on the recipient, stop the source session, then use **Refresh
+recovery ? Restore selected disk** on the source. The restore helper verifies the
+recorded disk, binding release and durable eject evidence. Busy eject keeps the
+transfer running. Interrupted transfers remain offline and may require manual
+administrator investigation; there is no force-online button. See [USB](USB.md).
+
+The isolated checks validate compilation, bounded protocols, synthetic lifecycle
+and offscreen startup. They do not prove real camera delivery, audio recording,
+USB device import or driver installation. Physical testing is deferred until this
+implementation milestone is complete. Linux/macOS resource adapters and Android
+USB remain outside this Windows-to-Windows milestone.

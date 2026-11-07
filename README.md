@@ -154,3 +154,13 @@ Tags use UTC calendar dates, for example `v2026.11.03-pre.31.1`. Stable releases
 Created by [EEkebin](https://github.com/EEkebin). Third-party dependencies and notices are listed in [third_party](third_party/README.md) and included in the downloads. The driver derives from Microsoft's indirect-display sample and includes its license and attribution.
 
 A project-wide open-source license has not been selected. Third-party components retain their own licenses. ExtraPane is independent of Microsoft.
+
+## Device-sharing development
+
+The `feat/shared-resources` branch is building a shared interface with camera,
+microphone and removable USB storage sharing. It is not part of the published
+release described above. Windows-to-Windows implementations are being assembled
+with Android camera/microphone sources; physical delivery and component setup
+still need verification. See the [implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md),
+[resource design](docs/RESOURCE-SHARING.md) and [future Windows verification guide](docs/WINDOWS-RESOURCE-TEST.md)
+for completed work, limitations and the test gates.

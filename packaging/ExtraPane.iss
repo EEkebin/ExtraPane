@@ -5,6 +5,7 @@
 #define HasDriver FileExists(SourceDir + "\ExtraPane.DriverSetup.exe")
 #define HasCamera FileExists(SourceDir + "\ExtraPane.CameraSetup.exe")
 #define HasUsb FileExists(SourceDir + "\ExtraPane.UsbSetup.exe")
+#define HasUsbHost FileExists(SourceDir + "\ExtraPane.UsbHostSetup.exe")
 #if HasCamera
   #define MicrophoneRole 3
 #else
@@ -52,6 +53,9 @@ Source: "{#SourceDir}\ExtraPane.CameraSetup.exe"; Flags: dontcopy
 #if HasUsb
 Source: "{#SourceDir}\ExtraPane.UsbSetup.exe"; Flags: dontcopy
 #endif
+#if HasUsbHost
+Source: "{#SourceDir}\ExtraPane.UsbHostSetup.exe"; Flags: dontcopy
+#endif
 ; Remove only known legacy app files after graceful shutdown; preserve data.
 [InstallDelete]
 Type: files; Name: "{app}\SideScreen.exe"
@@ -80,6 +84,8 @@ var
   DriverInstalled: Boolean;
   CameraInstalled, RemoveCamera: Boolean;
   MicrophoneInstalled: Boolean;
+  UsbHostInstalled: Boolean;
+  UsbHostChoice: TNewCheckBox;
 
 #include "shutdown.iss"
 
@@ -91,10 +97,11 @@ begin
 end;
 
 procedure InitializeWizard;
+var UsbHostDescription: TNewStaticText;
 begin
   RoleChoice := CreateInputOptionPage(wpWelcome, 'How will you use this PC?',
-    'Both choices install the same ExtraPane app.',
-    'Client only receives another PC''s display and needs no virtual-display driver. Server + Client can also host displays and requires the driver on this PC.', True, False);
+    'All choices install the same ExtraPane app.',
+    'Client only needs no virtual-display driver. Server + Client can also host displays and requires that driver. USB source sharing is a separate option below when its component is bundled.', True, False);
   RoleChoice.Add('Client only');
   RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
 #if HasCamera
@@ -114,6 +121,25 @@ begin
 #endif
 #if HasUsb
   if ExpandConstant('{param:MICROPHONE|}') = '1' then RoleChoice.SelectedValueIndex := {#MicrophoneRole};
+#endif
+#if HasUsbHost
+  { Independent of the receiving role: storage is shared FROM this PC. }
+  RoleChoice.CheckListBox.Height := RoleChoice.CheckListBox.Height - ScaleY(70);
+  UsbHostChoice := TNewCheckBox.Create(RoleChoice);
+  UsbHostChoice.Parent := RoleChoice.Surface;
+  UsbHostChoice.SetBounds(RoleChoice.CheckListBox.Left,
+    RoleChoice.CheckListBox.Top + RoleChoice.CheckListBox.Height + ScaleY(6),
+    RoleChoice.CheckListBox.Width, ScaleY(22));
+  UsbHostChoice.Caption := 'Enable USB storage sharing from this PC (administrator permission)';
+  UsbHostChoice.Checked := ExpandConstant('{param:USBHOST|0}') = '1';
+  UsbHostDescription := TNewStaticText.Create(RoleChoice);
+  UsbHostDescription.Parent := RoleChoice.Surface;
+  UsbHostDescription.SetBounds(UsbHostChoice.Left,
+    UsbHostChoice.Top + UsbHostChoice.Height + ScaleY(2),
+    UsbHostChoice.Width, ScaleY(40));
+  UsbHostDescription.AutoSize := False;
+  UsbHostDescription.WordWrap := True;
+  UsbHostDescription.Caption := 'Installs USB source support and signed drivers. Receiving USB devices uses the separate shared USB/IP component. No storage device is selected or shared during setup.';
 #endif
   DriverConsent := CreateInputOptionPage(RoleChoice.ID, 'Required server driver',
     'Server setup includes a machine-wide virtual-display driver.',
@@ -140,9 +166,18 @@ begin
 #if HasCamera
   else if RoleChoice.SelectedValueIndex = 2 then Result := Result + 'Use: Camera host + Client (machine-wide camera component, no virtual-display driver)'
 #endif
-  else Result := Result + 'Use: Client only (no driver installation)';
+  else Result := Result + 'Use: Client only (no virtual-display driver)';
 #if HasCamera
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the machine-wide camera receiving component.';
+#endif
+#if HasUsb
+  if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the shared USB/IP microphone receiving component. Existing compatible installations are preserved.';
+#endif
+#if HasUsbHost
+  if UsbHostChoice.Checked then
+    Result := Result + NewLine + 'USB source sharing: install the bundled native backend and signed driver package with administrator approval. Existing compatible shared drivers are preserved. No USB device is bound, no public server service or firewall rule is added, and the monitor driver is not started by setup.'
+  else
+    Result := Result + NewLine + 'USB source sharing: not requested; existing source components are left unchanged.';
 #endif
   Result := Result + NewLine + NewLine + MemoGroupInfo + NewLine + MemoTasksInfo;
 end;
@@ -165,6 +200,12 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer;
 begin
   Result := '';
+#if !HasUsbHost
+  if ExpandConstant('{param:USBHOST|0}') = '1' then begin
+    Result := 'USB source sharing was requested, but this installer does not contain its component.';
+    Exit;
+  end;
+#endif
   if not StopRunningExtraPane then begin
     Result := 'ExtraPane is still running. Close it and stop its driver before continuing.';
     Exit;
@@ -198,7 +239,7 @@ begin
   end;
 #endif
 #if HasUsb
-  if (Result = '') and (RoleChoice.SelectedValueIndex = {#MicrophoneRole}) and not MicrophoneInstalled then begin
+  if (Result = '') and ((RoleChoice.SelectedValueIndex = 1) or (RoleChoice.SelectedValueIndex = {#MicrophoneRole})) and not MicrophoneInstalled then begin
     ExtractTemporaryFile('ExtraPane.UsbSetup.exe');
     if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.UsbSetup.exe'), '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'Microphone setup could not start or administrator permission was canceled.'
@@ -208,6 +249,17 @@ begin
       MicrophoneInstalled := True;
       if Code = 3010 then NeedsRestart := True;
     end;
+  end;
+#endif
+#if HasUsbHost
+  if (Result = '') and UsbHostChoice.Checked and not UsbHostInstalled then begin
+    ExtractTemporaryFile('ExtraPane.UsbHostSetup.exe');
+    if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.UsbHostSetup.exe'),
+      '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+      Result := 'USB source setup could not start or administrator permission was canceled. Retry or clear the USB storage sharing option.'
+    else if Code <> 0 then
+      Result := 'USB source setup failed (exit ' + IntToStr(Code) + '). Existing shared drivers are not replaced or removed. Eject and recover any pending USB transfers before retrying; incompatible components need separate resolution.'
+    else UsbHostInstalled := True;
   end;
 #endif
 end;
@@ -243,7 +295,7 @@ begin
     Description.SetBounds(ScaleX(20), ScaleY(20), ScaleX(420), ScaleY(65));
     Description.AutoSize := False;
     Description.WordWrap := True;
-    Description.Caption := 'Remove ExtraPane from this PC. The machine-wide driver stays installed. Remove it separately using the ExtraPane Virtual Display Driver entry in Windows Apps.';
+    Description.Caption := 'Remove ExtraPane from this PC. Machine-wide display and USB components stay installed; shared USB drivers are never removed automatically. Finish any pending USB eject/recovery before uninstalling. The display driver has its own Windows Apps entry.';
     Choice := TNewCheckBox.Create(Dialog);
     Choice.Parent := Dialog;
     Choice.SetBounds(ScaleX(20), ScaleY(90), ScaleX(420), ScaleY(25));

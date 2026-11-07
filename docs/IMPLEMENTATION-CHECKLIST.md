@@ -55,12 +55,15 @@ speaker forwarding remain deferred.
 - [ ] Verify component setup/recording behavior after the full implementation milestone.
 
 
-- [ ] Native capture and Opus transport.
-- [ ] Normal recording-device endpoints on receiving computers.
+- [x] Windows/Android native capture and bounded PCM16 transport.
+- [ ] Opus compression and source sample-rate conversion.
+- [x] Windows recording-device endpoint implementation through managed USB/IP UAC2 helper.
+- [ ] Verify endpoint enumeration and actual application recording; Linux/macOS endpoints remain unimplemented.
 - [x] Windows/Android source mute, permission and interruption handling implemented; physical behavior pending.
 - [x] Android AudioRecord source, microphone foreground service and mute/stop UI implemented; APK and lint pass.
 - [ ] Physical Android foreground/background, lock and permission-withdrawal behavior.
-- [ ] Windows audio-driver signing/distribution solution.
+- [x] Pinned signed USB/IP backend setup implemented for the Windows microphone endpoint.
+- [ ] Verify installed driver compatibility and resolve production USB identity/distribution prerequisites.
 - [ ] Application-level recording and reconnect tests.
 
 ## USB
@@ -70,13 +73,15 @@ speaker forwarding remain deferred.
 - [x] Native storage lock/dismount adapter and bounded single-worker USB tunnel implemented; synthetic lifecycle/framing checks pass.
 - [x] Protected local USB backend, durable offline journal, explicit recovery helper and managed source setup compiled; synthetic checks pass.
 - [x] Windows USB source picker, destination eject and guided recovery controls implemented; offscreen UI checks pass.
-- [ ] Finish native session integration build and failure-path review before staging the combined package.
+- [x] Native Windows USB session integration built and failure paths reviewed; 15 isolated USB checks pass.
 
-- [ ] Windows/Linux USB forwarding through admitted encrypted transport.
-- [ ] Safe per-device selection, exclusions and exclusive ownership.
-- [ ] Source unmount and destination flush/eject handling.
-- [ ] Disconnect cleanup without forced or automatic storage reattachment.
-- [ ] Managed dependency installation, upgrades and removal.
+- [x] Windows USB forwarding through encrypted admitted sessions with supervised private backend processes.
+- [ ] Linux USB forwarding and cross-platform USB verification.
+- [x] Windows per-device selection, exclusions, unique identity and exclusive ownership implemented.
+- [x] Windows source lock/offline/handoff and destination flush/eject implemented; physical behavior remains unverified.
+- [x] Disconnect quarantine and durable verified-eject recovery implemented; no automatic source disk-online operation.
+- [x] Managed Windows source/receiver setup and conservative shared-component retention implemented.
+- [ ] Validate setup/removal on devices and implement upgrades between differing component payloads.
 - [ ] Physical removable-storage validation.
 
 ## Packaging and release
@@ -106,6 +111,8 @@ speaker forwarding remain deferred.
 | 2026-11-07 Windows sender | Windows camera picker/share/stop UI and USB ownership foundation | Offscreen camera/fallback UI and 5 core suites pass; no physical device access. |
 | 2026-11-07 native sources | WASAPI source, local microphone endpoint helper and native USB inventory | Native builds/PCM and inventory checks; 4 Rust unit checks. No capture, attachment or disk enumeration executed. |
 | 2026-11-07 microphone connection | Windows microphone session/UI and managed component setup | 6 core suites, UI checks, native configuration/payload checks pass. No live sockets or driver installation. |
+| `dc802ce` | Microphone backend ownership hardening | Five isolated Rust checks and release build pass; protected payload hashes/ACLs and exact port identity checked before cleanup. No driver/device execution. |
+| 2026-11-07 Windows USB session | Native source/receiver, scoped import, safe eject, durable recovery, shared controls and package integration | 15 isolated USB checks, offscreen UI and native builds pass. Driver handoff and actual device delivery still need physical verification. |
 | 2026-11-07 USB ownership and recovery | Protected backend, offline journal, source setup and guided Windows controls | Native recovery/setup payload checks and offscreen UI pass. No storage enumeration, driver setup or real USB session run. |
 | 2026-11-07 Android microphone / USB transport | Android microphone sender and native storage/tunnel foundations | Android APK/instrumentation compilation/lint; 7 core suites; synthetic native storage lifecycle checks. No live USB or audio access. |
 
