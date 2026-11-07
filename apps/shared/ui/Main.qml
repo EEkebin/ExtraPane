@@ -356,7 +356,17 @@ ApplicationWindow {
             Pane {
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: root.width < 700 ? 16 : 32; spacing: 16
-                    Label { text: "ExtraPane"; font.pixelSize: 32; font.bold: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: "ExtraPane"; font.pixelSize: 32; font.bold: true; Layout.fillWidth: true }
+                        Image {
+                            source: "qrc:/extrapane.png"
+                            Layout.preferredWidth: 72; Layout.preferredHeight: 72
+                            Layout.alignment: Qt.AlignRight | Qt.AlignTop
+                            fillMode: Image.PreserveAspectFit
+                            Accessible.name: "ExtraPane logo"
+                        }
+                    }
                     Label { text: "Another screen for your desktop." }
                     Label { text: "Development build: " + receiver.version }
                     Button { text: "README"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane#readme") }

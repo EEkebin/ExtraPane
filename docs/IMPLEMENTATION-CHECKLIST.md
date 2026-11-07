@@ -261,3 +261,5 @@ The live consumer probe subsequently reported MF_E_INVALID_STATE_TRANSITION. Sou
 2026-11-07 scrollbar spacing: shared server and resource scroll areas reserve scrollbar width plus12 logical pixels so controls/text do not overlap the scrollbar. Gutter remains stable while scrollbar fades. Linux resource loader now sizes to padded availableWidth. Existing offscreen UI check passed and server render inspected; no live device actions.
 
 2026-11-07 group header hit area: empty space and title on each resource group header now toggle expansion, with header background pointer handling beneath the separate chevron/add/disconnect controls. Child actions remain independent. Included in finalpre19 UI check/package.
+
+2026-11-07 About branding: standard packaged ExtraPane icon added at upper-right of About heading with aspect ratio preserved. Included alongside scrollbar gutters and full-header collapse behavior in pre19.
