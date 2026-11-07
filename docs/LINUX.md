@@ -68,3 +68,38 @@ CI uses the pinned Arch snapshot described in RELEASING.md, records package vers
 ## Access-code connections
 
 Code-enabled builds add a TCP port (default 43824) and optional six-digit access code on the Client page. Use matching releases. Enable Require access code before starting the server; Generate new code admits another connection without disconnecting existing sessions. See [access-code setup and security](ACCESS-CODES.md) for expiry, retry limits and reachable internet endpoints. No-code mode is still restricted to trusted-network use.
+
+## Resource UI integration (development branch, 2026-11-07)
+
+The development Linux app now uses the same grouped, repeatable connection model
+as Windows. A row retains its effective destination while active; each display
+has its own receiver window, input queue and decoder. Custom width/height and
+1?360 target FPS are requested through the shared display protocol. Native mode
+uses the selected local monitor (the receiver's default target remains capped at
+60 FPS). These are requested rates, not measured delivery guarantees.
+
+Camera and microphone rows use native GStreamer source workers. Enumeration runs
+outside the UI thread and selectors report missing sources/plugins. Source
+leases can reject a second capture of the same physical device; this build does
+not yet provide Windows-style capture fanout to multiple destinations. USB rows
+remain unavailable rather than exporting storage without an ownership backend.
+
+Protected destinations maintain one authenticated control connection and request
+a separate kind-bound ticket for each resource. Canceled requests and stale
+callbacks cannot be applied to a later connection generation. The pending ticket
+queue is bounded to64; established resources are not limited by that queue.
+Use matching server builds that support the control protocol.
+
+The main window stays available through the tray while hosting or sending/receiving
+resources. Double-click restores it. If a desktop has no system tray, closing the
+last window while active restores the app instead of silently stopping its work.
+Receiver windows have touch-accessible controls, F11 fullscreen, F10 controls,
+F8 input pause, and Ctrl+Shift+Q to disconnect only that window.
+
+Isolated Qt tests under `tests/linux_ui` cover receiver-window controls and the
+admission worker's cancellation, queue bounds and malformed control replies using
+a fake transport and the real credential parser. They pass on the Windows build
+host with Qt6.8.3. Native Linux compilation, AppImage startup and actual media
+interoperability remain separate gates; these checks do not open devices.
+
+Native source and receiving endpoint prerequisites are detailed in [Linux resources](LINUX-RESOURCES.md).
