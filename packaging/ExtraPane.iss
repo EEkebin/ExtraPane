@@ -4,6 +4,12 @@
 #define OutputPath GetEnv("EXTRAPANE_DIST")
 #define HasDriver FileExists(SourceDir + "\ExtraPane.DriverSetup.exe")
 #define HasCamera FileExists(SourceDir + "\ExtraPane.CameraSetup.exe")
+#define HasUsb FileExists(SourceDir + "\ExtraPane.UsbSetup.exe")
+#if HasCamera
+  #define MicrophoneRole 3
+#else
+  #define MicrophoneRole 2
+#endif
 [Setup]
 ; Stable identity recognizes installations made under the previous name.
 AppId=SideScreen
@@ -43,6 +49,9 @@ Source: "{#SourceDir}\ExtraPane.DriverSetup.exe"; Flags: dontcopy
 #if HasCamera
 Source: "{#SourceDir}\ExtraPane.CameraSetup.exe"; Flags: dontcopy
 #endif
+#if HasUsb
+Source: "{#SourceDir}\ExtraPane.UsbSetup.exe"; Flags: dontcopy
+#endif
 ; Remove only known legacy app files after graceful shutdown; preserve data.
 [InstallDelete]
 Type: files; Name: "{app}\SideScreen.exe"
@@ -70,6 +79,7 @@ var
   RoleChoice, DriverConsent: TInputOptionWizardPage;
   DriverInstalled: Boolean;
   CameraInstalled, RemoveCamera: Boolean;
+  MicrophoneInstalled: Boolean;
 
 #include "shutdown.iss"
 
@@ -90,6 +100,9 @@ begin
 #if HasCamera
   RoleChoice.Add('Camera host + Client (administrator permission; no virtual-display driver)');
 #endif
+#if HasUsb
+  RoleChoice.Add('Microphone host + Client (shared USB/IP audio component; administrator permission)');
+#endif
   RoleChoice.SelectedValueIndex := 0;
   if ExpandConstant('{param:SERVER|}') = '1' then RoleChoice.SelectedValueIndex := 1
   else if (ExpandConstant('{param:SERVER|}') = '') and not WizardSilent and
@@ -98,6 +111,9 @@ begin
   if (ExpandConstant('{param:CAMERA|}') = '1') and (ExpandConstant('{param:SERVER|}') <> '1') then RoleChoice.SelectedValueIndex := 2
   else if (ExpandConstant('{param:SERVER|}') = '') and (ExpandConstant('{param:CAMERA|}') = '') and not WizardSilent and
     (RoleChoice.SelectedValueIndex = 0) and (GetPreviousData('CameraInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 2;
+#endif
+#if HasUsb
+  if ExpandConstant('{param:MICROPHONE|}') = '1' then RoleChoice.SelectedValueIndex := {#MicrophoneRole};
 #endif
   DriverConsent := CreateInputOptionPage(RoleChoice.ID, 'Required server driver',
     'Server setup includes a machine-wide virtual-display driver.',
@@ -118,7 +134,12 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
 begin
   Result := MemoDirInfo + NewLine + NewLine;
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + 'Use: Server + Client (virtual-display driver required)'
+#if HasUsb
+  else if RoleChoice.SelectedValueIndex = {#MicrophoneRole} then Result := Result + 'Use: Microphone host + Client (shared USB/IP audio component; existing compatible backend preserved)'
+#endif
+#if HasCamera
   else if RoleChoice.SelectedValueIndex = 2 then Result := Result + 'Use: Camera host + Client (machine-wide camera component, no virtual-display driver)'
+#endif
   else Result := Result + 'Use: Client only (no driver installation)';
 #if HasCamera
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the machine-wide camera receiving component.';
@@ -166,7 +187,7 @@ begin
 #endif
   end;
 #if HasCamera
-  if (Result = '') and (RoleChoice.SelectedValueIndex <> 0) and not CameraInstalled then begin
+  if (Result = '') and ((RoleChoice.SelectedValueIndex = 1) or (RoleChoice.SelectedValueIndex = 2)) and not CameraInstalled then begin
     ExtractTemporaryFile('ExtraPane.CameraSetup.exe');
     if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.CameraSetup.exe'),
       '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
@@ -174,6 +195,19 @@ begin
     else if Code <> 0 then
       Result := 'The camera component could not be installed (exit ' + IntToStr(Code) + '). Existing foreign registrations are not overwritten. Retry or choose Client only.'
     else CameraInstalled := True;
+  end;
+#endif
+#if HasUsb
+  if (Result = '') and (RoleChoice.SelectedValueIndex = {#MicrophoneRole}) and not MicrophoneInstalled then begin
+    ExtractTemporaryFile('ExtraPane.UsbSetup.exe');
+    if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.UsbSetup.exe'), '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+      Result := 'Microphone setup could not start or administrator permission was canceled.'
+    else if (Code <> 0) and (Code <> 3010) then
+      Result := 'Microphone setup failed (exit ' + IntToStr(Code) + '). Existing USB/IP installations are preserved; an incompatible installation needs separate resolution.'
+    else begin
+      MicrophoneInstalled := True;
+      if Code = 3010 then NeedsRestart := True;
+    end;
   end;
 #endif
 end;

@@ -50,13 +50,16 @@ speaker forwarding remain deferred.
 
 - [x] Windows WASAPI shared-mode source and PCM conversion implemented; isolated conversion checks passed.
 - [x] Local UAC2 microphone endpoint helper implemented with pinned dependency; 4 unit checks and safe startup check passed.
-- [ ] Managed signed USB/IP backend setup and microphone session/UI integration.
+- [x] Windows microphone session, bounded PCM wire and picker/mute/stop controls; isolated UI/protocol/configuration checks passed.
+- [x] Managed signed USB/IP setup helper compiled with payload and policy checks; no installation performed.
+- [ ] Verify component setup/recording behavior after the full implementation milestone.
 
 
 - [ ] Native capture and Opus transport.
 - [ ] Normal recording-device endpoints on receiving computers.
-- [ ] Independent mute, permission and interruption handling.
-- [ ] Android foreground/background lifecycle.
+- [x] Windows/Android source mute, permission and interruption handling implemented; physical behavior pending.
+- [x] Android AudioRecord source, microphone foreground service and mute/stop UI implemented; APK and lint pass.
+- [ ] Physical Android foreground/background, lock and permission-withdrawal behavior.
 - [ ] Windows audio-driver signing/distribution solution.
 - [ ] Application-level recording and reconnect tests.
 
@@ -64,7 +67,8 @@ speaker forwarding remain deferred.
 
 - [x] Platform-independent storage eligibility, exclusive ownership and recovery lifecycle with synthetic checks.
 - [x] Windows read-only disk inventory implementation and synthetic descriptor/layout checks.
-- [ ] Connect that lifecycle to native storage operations and encrypted USB/IP.
+- [x] Native storage lock/dismount adapter and bounded single-worker USB tunnel implemented; synthetic lifecycle/framing checks pass.
+- [ ] Connect the native storage adapter, protected backend, durable recovery and encrypted USB/IP into app sessions.
 
 - [ ] Windows/Linux USB forwarding through admitted encrypted transport.
 - [ ] Safe per-device selection, exclusions and exclusive ownership.
@@ -99,5 +103,7 @@ speaker forwarding remain deferred.
 | 2026-11-07 camera preview | Windows setup and live receiver, Android sender, shared host UI and installer shutdown | 11 Windows checks and 4 core checks passed; APK/Android lint and packet checks passed. No device installation or camera/GPU tests. |
 | 2026-11-07 Windows sender | Windows camera picker/share/stop UI and USB ownership foundation | Offscreen camera/fallback UI and 5 core suites pass; no physical device access. |
 | 2026-11-07 native sources | WASAPI source, local microphone endpoint helper and native USB inventory | Native builds/PCM and inventory checks; 4 Rust unit checks. No capture, attachment or disk enumeration executed. |
+| 2026-11-07 microphone connection | Windows microphone session/UI and managed component setup | 6 core suites, UI checks, native configuration/payload checks pass. No live sockets or driver installation. |
+| 2026-11-07 Android microphone / USB transport | Android microphone sender and native storage/tunnel foundations | Android APK/instrumentation compilation/lint; 7 core suites; synthetic native storage lifecycle checks. No live USB or audio access. |
 
 Concurrent implementation is authorized. Device testing is deferred until camera, microphone and USB implementation is complete. CAMERA-TEST.md is a future test guide, not a request to test now.

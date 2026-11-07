@@ -82,6 +82,8 @@ int main(int argc,char** argv){
     if(checkUi){
         controller.setHostMode("camera");
         controller.setClientMode("camera");
+        controller.setHostMode("microphone");
+        controller.setClientMode("microphone");
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane server");

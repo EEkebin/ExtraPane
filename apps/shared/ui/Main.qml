@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 // Shared shell baseline. Platforms supply Video.qml and the receiver controller.
 // Linux is currently the first consumer; other platform adapters are pending.
 import QtQuick.Controls
@@ -23,7 +23,8 @@ ApplicationWindow {
     palette.toolTipBase: "#253349"
     palette.toolTipText: "#edf1f8"
     palette.placeholderText: "#aab8cc"
-    property bool cameraClient: receiver.platformLabel === "Windows" ? receiver.clientMode === "camera" : false
+    property bool cameraClient: receiver.platformLabel === "Windows" ? receiver.clientMode !== "display" : false
+    property bool microphoneClient: receiver.platformLabel === "Windows" ? receiver.clientMode === "microphone" : false
     property bool inputPaused: false
     component ToolbarButton: ToolButton {
         id: control
@@ -111,10 +112,10 @@ ApplicationWindow {
                     Label { text: "Accept connections from your other devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     ComboBox {
                         visible: receiver.platformLabel === "Windows"
-                        model: ["Display", "Camera (preview)"]
-                        currentIndex: receiver.platformLabel === "Windows" && receiver.hostMode === "camera" ? 1 : 0
+                        model: ["Display", "Camera (preview)", "Microphone (preview)"]
+                        currentIndex: receiver.platformLabel === "Windows" ? (receiver.hostMode === "microphone" ? 2 : receiver.hostMode === "camera" ? 1 : 0) : 0
                         enabled: !receiver.hosting
-                        onActivated: if (receiver.platformLabel === "Windows") receiver.hostMode = currentIndex === 1 ? "camera" : "display"
+                        onActivated: if (receiver.platformLabel === "Windows") receiver.hostMode = currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
                     }
                     Label {
                         text: receiver.hostAvailability.length ? receiver.hostAvailability : receiver.hostDescription
@@ -134,6 +135,12 @@ ApplicationWindow {
                         text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing camera component..." : "Camera setup"
                         enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
                         onClicked: receiver.setupCamera()
+                    }
+                    Button {
+                        visible: receiver.platformLabel === "Windows" && receiver.hostMode === "microphone"
+                        text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing component..." : "Microphone setup"
+                        enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
+                        onClicked: receiver.setupMicrophone()
                     }
                     TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } enabled: !receiver.hosting }
                     CheckBox { id: requireCode; text: "Require access code"; enabled: !receiver.hosting }
@@ -158,15 +165,15 @@ ApplicationWindow {
                     ComboBox {
                         visible: receiver.platformLabel === "Windows" && !root.fullscreen
                         enabled: !receiver.active && (receiver.platformLabel === "Windows" ? !receiver.cameraScanRunning : true)
-                        model: ["Display", "Camera (preview)"]
-                        currentIndex: root.cameraClient ? 1 : 0
-                        onActivated: receiver.clientMode = currentIndex === 1 ? "camera" : "display"
+                        model: ["Display", "Camera (preview)", "Microphone (preview)"]
+                        currentIndex: root.microphoneClient ? 2 : root.cameraClient ? 1 : 0
+                        onActivated: receiver.clientMode = currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
                     }
                     ColumnLayout {
                         objectName: "cameraClientPanel"
                         visible: root.cameraClient && !root.fullscreen
                         Layout.fillWidth: true
-                        Label { text: "Send a local camera to a Windows camera server. Display and camera use separate connections in this preview."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Label { text: root.microphoneClient ? "Send a local microphone to a Windows microphone server. Resource modes use separate connections in this preview." : "Send a local camera to a Windows camera server. Display and camera use separate connections in this preview."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         RowLayout {
                             Layout.fillWidth: true
                             ComboBox {
@@ -175,17 +182,22 @@ ApplicationWindow {
                                 model: root.cameraClient ? receiver.cameras : []
                                 textRole: "label"; valueRole: "id"
                                 currentIndex: root.cameraClient ? model.findIndex(item => item.id === receiver.selectedCamera) : -1
-                                displayText: currentIndex < 0 ? "Select a camera" : currentText
+                                displayText: currentIndex < 0 ? (root.microphoneClient ? "Select a microphone" : "Select a camera") : currentText
                                 onActivated: receiver.selectedCamera = currentValue
                             }
                             Button {
-                                objectName: "cameraRefreshButton"; text: root.cameraClient && receiver.cameraScanRunning ? "Listing..." : "Refresh cameras"
+                                objectName: "cameraRefreshButton"; text: root.cameraClient && receiver.cameraScanRunning ? "Listing..." : root.microphoneClient ? "Refresh microphones" : "Refresh cameras"
                                 enabled: root.cameraClient && !receiver.active && !receiver.cameraScanRunning
                                 onClicked: receiver.refreshCameras()
                             }
                         }
                         Label { text: root.cameraClient ? receiver.cameraStatus : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                        Button { objectName: "cameraDisconnectButton"; text: "Stop sharing camera"; visible: receiver.active; onClicked: receiver.disconnectFromServer() }
+                        Button {
+                            visible: root.microphoneClient && receiver.active
+                            text: root.microphoneClient && receiver.microphoneMuted ? "Unmute microphone" : "Mute microphone"
+                            onClicked: receiver.setMicrophoneMuted(!receiver.microphoneMuted)
+                        }
+                        Button { objectName: "cameraDisconnectButton"; text: root.microphoneClient ? "Stop sharing microphone" : "Stop sharing camera"; visible: receiver.active; onClicked: receiver.disconnectFromServer() }
                     }
 
                     RowLayout {
@@ -280,7 +292,7 @@ ApplicationWindow {
                         }
                     }
                     Label { visible: !root.fullscreen; text: receiver.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { visible: !root.fullscreen; text: root.cameraClient ? "Ctrl+Shift+Q stops camera sharing" : "F8 pauses input | Ctrl+Shift+Q disconnects · F11 toggles fullscreen · F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { visible: !root.fullscreen; text: root.cameraClient ? "Ctrl+Shift+Q stops sharing" : "F8 pauses input | Ctrl+Shift+Q disconnects Â· F11 toggles fullscreen Â· F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
             Pane {

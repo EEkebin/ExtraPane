@@ -92,7 +92,8 @@ std::optional<std::wstring> property(DEVINST node,ULONG key){
 }
 // Stop at the physical USB VID/PID node, not its hub, so sibling ports do not
 // make a single-function device look composite. Any uncertain tree is rejected.
-std::optional<bool> composite(DEVINST node){
+struct UsbParent {bool composite;std::wstring identity;};
+std::optional<UsbParent> composite(DEVINST node){
     bool multi=false;
     for(unsigned depth=0;depth<32;++depth){
         wchar_t id[MAX_DEVICE_ID_LEN]{};
@@ -111,7 +112,7 @@ std::optional<bool> composite(DEVINST node){
                 if(next==CR_SUCCESS)multi=true;
                 else if(next!=CR_NO_SUCH_DEVNODE)return {};
             }else if(children!=CR_NO_SUCH_DEVNODE)return {};
-            return multi;
+            return UsbParent{multi,identity};
         }
         DEVINST parent=0;if(CM_Get_Parent(&parent,node,0)!=CR_SUCCESS)return {};node=parent;
     }
@@ -208,12 +209,14 @@ Inventory inventory(const OwnershipProbe& owned_elsewhere){
             if(!description->usb)continue;
             disk.label=description->label;
             disk.facts.removable_storage=description->removable;
+            disk.descriptor_bytes=*data;
         }
         const auto numberData=query(handle.value,IOCTL_STORAGE_GET_DEVICE_NUMBER);
         const auto number=numberData?value_at<STORAGE_DEVICE_NUMBER>(*numberData):std::nullopt;
         if(!number||number->DeviceType!=FILE_DEVICE_DISK)disk.unresolved.push_back("Physical disk number unavailable");
         else disk.disk_number=number->DeviceNumber;
         const auto layout=query(handle.value,IOCTL_DISK_GET_DRIVE_LAYOUT_EX);
+        if(layout)disk.layout_bytes=*layout;
         auto& fingerprint=fingerprints[disk.instance_id];
         for(const auto* response:{&data,&numberData,&layout}){
             const auto length=response->has_value()?response->value().size():0;
@@ -225,7 +228,7 @@ Inventory inventory(const OwnershipProbe& owned_elsewhere){
         else disk.facts.system_disk=*protection;
         const auto compositeDevice=composite(device.DevInst);
         if(!compositeDevice)disk.unresolved.push_back("USB ancestry or composite status unavailable");
-        else disk.facts.composite=*compositeDevice;
+        else{disk.facts.composite=compositeDevice->composite;disk.usb_instance_id=compositeDevice->identity;}
         if(!system)disk.unresolved.push_back("Windows volume disk mapping unavailable");
         else disk.facts.boot_disk=system->contains(disk.disk_number);
         if(!paging.complete)disk.unresolved.push_back("Paging-file disk mapping unavailable");
@@ -233,7 +236,7 @@ Inventory inventory(const OwnershipProbe& owned_elsewhere){
         if(!volumesComplete)disk.unresolved.push_back("Volume extent inventory incomplete");
         for(const auto& [name,disks]:volumes)if(disks.contains(disk.disk_number))disk.volumes.push_back(name);
         std::optional<bool> owned;
-        try{if(owned_elsewhere)owned=owned_elsewhere(disk.instance_id);}catch(...){ }
+        try{if(owned_elsewhere&&!disk.usb_instance_id.empty())owned=owned_elsewhere(disk.usb_instance_id);}catch(...){ }
         if(!owned)disk.unresolved.push_back("Local USB export ownership has not been verified");
         else disk.facts.owned_elsewhere=*owned;
         disk.facts.inventory_complete=disk.unresolved.empty();
@@ -255,6 +258,7 @@ Inventory inventory(const OwnershipProbe& owned_elsewhere){
         auto fingerprint=fingerprints[disk.instance_id];
         const auto append=[&](const std::string& value){fingerprint+=std::to_string(value.size())+":"+value;};
         append(utf8(disk.interface_path));append(std::to_string(disk.disk_number));
+        append(utf8(disk.usb_instance_id));
         for(const auto flag:{disk.facts.inventory_complete,disk.facts.removable_storage,disk.facts.composite,
             disk.facts.system_disk,disk.facts.boot_disk,disk.facts.paging_disk,disk.facts.owned_elsewhere})fingerprint+=flag?'1':'0';
         std::sort(disk.volumes.begin(),disk.volumes.end());

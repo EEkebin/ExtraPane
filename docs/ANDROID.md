@@ -1,6 +1,6 @@
 # Android client
 
-The existing Android display receiver uses protocol 9 with Windows or Linux hosts. Development on `feat/shared-resources` adds a separate camera-only client described below. Android display hosting, audio, microphone and on-screen keyboard forwarding remain unimplemented.
+The existing Android display receiver uses protocol 9 with Windows or Linux hosts. Development on `feat/shared-resources` adds separate camera and microphone sender modes described below. Android display hosting, system-audio playback and on-screen keyboard forwarding remain unimplemented.
 
 ## Architecture
 
@@ -96,3 +96,40 @@ Camera, session, codec and surface cleanup belongs to native API workers. A vend
 On 2026-11-07 the ARM64/x86_64 debug APK, instrumentation APK and lint build passed without installation or device access. Host-side Java checks passed for buffer bounds, AVCC-to-Annex-B normalization and packet size limits. These are compile/synthetic checks only: actual capture, H.264 interoperability, color/orientation, foreground-service backgrounding, revocation, reconnect and Discord/browser camera use remain unverified. The new slice is not a released feature.
 
 Android lifecycle references: [camera foreground-service requirements](https://developer.android.com/develop/background-work/services/fgs/service-types#camera) and [while-in-use permission restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start).
+
+## Microphone-sharing development slice
+
+The native Android interface also lists local audio inputs and provides **Share
+selected microphone**, **Mute**, **Unmute**, and **Stop**. Use the Windows
+microphone-only listener's address and port. Display, camera and microphone are
+mutually exclusive session modes in this preview; they are not multiplexed.
+
+The visible Activity requests `RECORD_AUDIO` before launching a non-exported
+`microphone` foreground service. Its persistent notification includes Mute/Unmute
+and Stop; it never restarts capture after process death or reboot. Android 13+
+notification permission is requested separately. If notifications are denied,
+the in-app controls and Android foreground-service task manager remain available.
+These rules follow [Android's microphone foreground-service requirements](https://developer.android.com/develop/background-work/services/fgs/service-types#microphone).
+
+After TLS/access admission and the server's resource grant, `AudioRecord` captures
+48 kHz mono PCM16 from the explicitly selected input. It checks the actual routed
+device and fails if Android silently switches inputs. A disconnected device,
+permission withdrawal, Android-silenced recording, a two-second read stall, or
+an eight-packet queue overflow stops the session. Source devices are not detached;
+concurrent recording depends on Android and other applications. Bluetooth inputs
+are listed when Android exposes them, but automatic Bluetooth communication-route
+activation is not implemented and an unavailable route fails explicitly.
+
+The C++ core serializers produce the same `EPMO`/`EPRS`/`EPMD` messages as the
+Windows sender. Audio is fixed 480-sample/960-byte little-endian PCM, with a fresh
+resource generation and contiguous sequence numbers. This is **not Opus**.
+Mute clears queued audio and transmits zeros while retaining capture cadence.
+Microphone access/cleanup stays on its worker; a vendor cleanup that does not
+return blocks a new capture generation instead of racing a second recorder.
+There is no system-audio playback or Android virtual microphone receiver.
+
+ARM64 and x86_64 APK compilation, instrumentation APK compilation and lint passed
+without installing or running the app. Actual Android-to-Windows recording,
+selected-device routing, lock/background behavior, privacy revocation and
+notification actions remain unverified on physical devices. See
+[microphone implementation](MICROPHONE.md) for endpoint and native session details.

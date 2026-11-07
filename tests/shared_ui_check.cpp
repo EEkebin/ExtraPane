@@ -1,4 +1,4 @@
-#include "resource_model.hpp"
+﻿#include "resource_model.hpp"
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -142,6 +142,8 @@ int main(int argc,char** argv){
         app.processEvents();
         require(!connect->property("enabled").toBool());
         require(picker->property("count").toInt()==0);
+        camera.insert("microphoneMuted",false);camera.insert("clientMode",QString("microphone"));app.processEvents();
+        require(!video->property("active").toBool());require(picker->property("displayText").toString()=="Select a microphone");
         cameraRoot->setProperty("page",0);app.processEvents();
         cameraRoot->setProperty("page",2);app.processEvents();
         cameraRoot->setProperty("page",3);app.processEvents();

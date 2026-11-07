@@ -21,6 +21,7 @@ class WindowsController final:public QObject {
     Q_PROPERTY(bool cameraScanRunning READ cameraScanRunning NOTIFY camerasChanged)
     Q_PROPERTY(QString cameraStatus READ cameraStatus NOTIFY camerasChanged)
     Q_PROPERTY(QString selectedCamera READ selectedCamera WRITE setSelectedCamera NOTIFY camerasChanged)
+    Q_PROPERTY(bool microphoneMuted READ microphoneMuted NOTIFY changed)
     Q_PROPERTY(QString savedAddress READ savedAddress CONSTANT)
     Q_PROPERTY(QVariantList addresses READ addresses NOTIFY addressesChanged)
     Q_PROPERTY(QString statistics READ statistics NOTIFY changed)
@@ -50,6 +51,9 @@ public:
     QString selectedCamera()const{return selectedCamera_;}
     void setSelectedCamera(QString id);
     Q_INVOKABLE void refreshCameras();
+    bool microphoneMuted()const{return microphoneMuted_;}
+    Q_INVOKABLE void setMicrophoneMuted(bool muted);
+    Q_INVOKABLE void setupMicrophone();
     QString hostAvailability()const;
     QString hostMode()const{return hostMode_;}
     void setHostMode(QString mode);
@@ -84,4 +88,5 @@ private:
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
     QString hostMode_="display",clientMode_="display",selectedCamera_,cameraStatus_="Click Refresh cameras to list local cameras. Capture starts only after connection is accepted.";
     QVariantList cameras_;
+    bool microphoneMuted_=false;
 };

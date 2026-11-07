@@ -11,9 +11,12 @@ struct Disk {
     extrapane::usb::Device facts;
     std::wstring interface_path;
     std::wstring instance_id;
+    std::wstring usb_instance_id;
     unsigned long disk_number = ~0ul;
     std::string label;
     std::vector<std::wstring> volumes;
+    std::vector<unsigned char> descriptor_bytes;
+    std::vector<unsigned char> layout_bytes;
     std::vector<std::string> unresolved;
 };
 struct Inventory {
@@ -22,7 +25,7 @@ struct Inventory {
 };
 // Only a local backend may supply this probe. The ID comes from SetupAPI, not
 // a remote request. Missing/unknown ownership keeps inventory incomplete.
-using OwnershipProbe = std::function<std::optional<bool>(const std::wstring& instance_id)>;
+using OwnershipProbe = std::function<std::optional<bool>(const std::wstring& usb_instance_id)>;
 Inventory inventory(const OwnershipProbe& owned_elsewhere = {});
 
 namespace detail {

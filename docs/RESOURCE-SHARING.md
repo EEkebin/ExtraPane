@@ -133,7 +133,8 @@ authorized device test; the checks below do not establish physical interoperabil
   package and its embedded camera-setup helper are the initial test path.
   The camera helper does not automatically change firewall rules; an existing
   display-engine rule may not cover the new executable.
-- Linux/macOS camera endpoints and sources, microphone forwarding/endpoints and
+- Windows microphone source, PCM session, local UAC2 endpoint helper and source/mute UI are implemented in development; see MICROPHONE.md. Native and isolated checks do not prove driver installation or application recording. Android microphone work is in progress.
+- Linux/macOS camera endpoints and sources, other microphone platform adapters and
   USB integration remain unimplemented. Windows audio-driver and macOS extension
   signing/distribution gates remain open.
 

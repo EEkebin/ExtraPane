@@ -1,8 +1,17 @@
-name: Shared resource core
+﻿name: Shared resource core
 on:
   pull_request:
     paths:
       - 'core/session/**'
+      - 'apps/microphone*/**'
+      - 'platform/windows/microphone*.cpp'
+      - 'platform/windows/usb*.cpp'
+      - 'platform/windows/include/dm/microphone*.hpp'
+      - 'platform/windows/include/dm/usb*.hpp'
+      - 'cmake/Microphone*.cmake'
+      - 'cmake/Usb*.cmake'
+      - 'tests/microphone*_check.cpp'
+      - 'tests/usb*_check.cpp'
       - 'tests/session_check.cpp'
       - 'tests/channel_check.cpp'
       - 'tests/media_check.cpp'
@@ -30,6 +39,15 @@ on:
     branches: [main]
     paths:
       - 'core/session/**'
+      - 'apps/microphone*/**'
+      - 'platform/windows/microphone*.cpp'
+      - 'platform/windows/usb*.cpp'
+      - 'platform/windows/include/dm/microphone*.hpp'
+      - 'platform/windows/include/dm/usb*.hpp'
+      - 'cmake/Microphone*.cmake'
+      - 'cmake/Usb*.cmake'
+      - 'tests/microphone*_check.cpp'
+      - 'tests/usb*_check.cpp'
       - 'tests/session_check.cpp'
       - 'tests/channel_check.cpp'
       - 'tests/media_check.cpp'
@@ -62,11 +80,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure camera compilation and hardware-free checks
-        run: cmake -S . -B out/camera-checks -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON
+        run: cmake -S . -B out/camera-checks -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_MICROPHONE_TESTS=ON
       - name: Build camera source and checks
-        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane_camera_setup extrapane-camera-setup-check extrapane-resources extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check --parallel 2
+        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane_camera_setup extrapane-camera-setup-check extrapane-resources extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check ExtraPane.Microphone extrapane-microphone-check extrapane-usb-inventory-check extrapane-usb-storage-check extrapane_usb_tunnel --parallel 2
       - name: Check synthetic frames, local IPC and unregistered COM activation
-        run: ctest --test-dir out/camera-checks -C Release -R "camera-|resource-.*-config" --output-on-failure
+        run: ctest --test-dir out/camera-checks -C Release -R "camera-|resource-.*-config|microphone-|usb-inventory|usb-storage" --output-on-failure
+  microphone-endpoint:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select pinned Rust compiler
+        run: rustup toolchain install 1.88.0 --profile minimal
+      - name: Check bounded PCM endpoint logic without devices
+        run: cargo +1.88.0 test --locked --manifest-path apps/microphone-endpoint/Cargo.toml --jobs 2
+      - name: Build endpoint without installing a driver
+        run: cargo +1.88.0 build --locked --release --manifest-path apps/microphone-endpoint/Cargo.toml --jobs 2
   lifecycle:
     strategy:
       fail-fast: false

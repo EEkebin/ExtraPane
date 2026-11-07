@@ -1,8 +1,11 @@
 # Microphone forwarding implementation
 
-The current Windows slice captures a locally selected microphone. It does not
-yet transmit audio, encode Opus, or create a Windows recording device. An app
-must not advertise microphone forwarding from this source code alone.
+The Windows development slice captures a locally selected microphone and forwards
+bounded PCM packets through the existing encrypted admission path. The receiver
+starts a managed local USB Audio Class endpoint helper. This code is not evidence
+of successful recording in an application: no physical capture, endpoint attach,
+or live microphone connection has been run in this implementation phase. Opus
+encoding is not implemented yet.
 
 ## Windows source
 
@@ -47,15 +50,54 @@ building it or trusting a local development certificate does not satisfy stock
 Windows production loading policy. See [Microsoft's SysVAD sample](https://learn.microsoft.com/en-us/samples/microsoft/windows-driver-samples/sysvad-virtual-audio-device-driver-sample/)
 and [driver signing policy](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/kernel-mode-code-signing-policy--windows-vista-and-later-).
 
-An alternative now under implementation review is a local USB Audio Class 2
+The current alternative implementation uses a local USB Audio Class 2
 device emulator using the existing signed usbip-win2 controller and Windows'
 inbox audio class driver. This can avoid a new ExtraPane kernel driver while
 still creating an ordinary recording endpoint. The MIT-licensed
 [usbip-audio library](https://github.com/network-audio/usbip-audio) implements that
 approach; [Microsoft documents the inbox UAC2 driver](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/usb-2-0-audio-drivers).
 Its dependency, installer ownership, actual PCM delivery, disconnect behavior and
-device compatibility still require validation before changing availability claims.
+device compatibility still require validation before release availability claims.
 No driver installation or system policy change is authorized by an isolated build.
+
+## Native microphone session
+
+`ExtraPane.Microphone.exe` exposes `list-microphones`, `serve-microphone` and
+`send-microphone`. This is a dedicated microphone-only listener, separate from the
+occupied display/camera ports. One microphone endpoint is active at a time in
+this slice. Disconnect destroys that endpoint but keeps the server listening.
+The sender uses a selected local device ID supplied on stdin, never a peer's path.
+Source leases prevent two ExtraPane connections in the same Windows login session
+from sharing the same microphone simultaneously. They do not prevent other audio
+applications from using it or coordinate separate Windows logins.
+
+TLS and optional one-time access-code admission finish before the receiver starts
+an endpoint; source capture starts only after the endpoint grant. Codes are read
+on stdin and are not command-line arguments. Automatic LAN mode provides encryption
+without peer identity verification, matching the existing product policy.
+
+The fixed `EPMO` version-1 offer declares PCM16 little-endian, 48 kHz mono and
+480 samples per frame, plus a fresh nonzero resource/generation binding. Existing
+`EPRS` capabilities/request/grant follow. `EPMD` frames have a 40-byte bounded
+header and exactly 960 payload bytes, with contiguous sequence numbers starting
+at zero, a source sample position and mute/discontinuity flags. Neither this wire
+format nor its approximately 768 kbit/s audio payload is described as Opus.
+Unexpected kinds, formats, generations, versions or sequences terminate the
+resource. The current TCP transport does not implement adaptive jitter buffering.
+
+The receiver's supervised `ExtraPane.MicrophoneEndpoint.exe --run --slot 1`
+receives fixed `EPMI` packets through inherited stdin. Launch inherits only its
+input/status handles. Endpoint startup has a 30-second deadline; PCM pipe writes
+are cancelable and limited to two seconds. Stop sends an explicit command and
+closes stdin, allowing twelve seconds for endpoint-owned detach before terminating
+the owned process job. Only that endpoint's USB/IP attachment may be removed.
+Endpoint/helper startup and driver backend are intentionally absent from
+`--check-config` validation.
+
+Sender stdin commands after selection/admission are `M` to mute, `U` to unmute,
+and `Q` to stop; EOF stops capture. Server accepts `G` for a new required access
+code and `Q` to stop. Muted frames contain zeros and continue at capture cadence,
+so silence does not disable the endpoint idle watchdog.
 
 ## Isolated validation
 

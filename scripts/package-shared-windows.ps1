@@ -1,9 +1,11 @@
-param(
+﻿param(
     [string]$UiBuild = 'out/shared-ui',
     [string]$EngineBuild = 'out/shared-engine',
     [string]$QtRoot = 'out/qt-sdk/6.8.3/msvc2022_64',
     [string]$Destination = 'out/shared-portable',
-    [switch]$IncludeCamera
+    [switch]$IncludeCamera,
+    [switch]$IncludeMicrophone,
+    [string]$MicrophoneEndpoint = 'out/microphone-endpoint/release/extrapane-microphone-endpoint.exe'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -28,9 +30,19 @@ $files = @((Join-Path $uiPath 'ExtraPane.exe'), (Join-Path $enginePath 'dm-view.
 if ($IncludeCamera) {
     $files += (Join-Path $enginePath 'ExtraPane.Resources.exe'), (Join-Path $enginePath 'ExtraPane.CameraSetup.exe')
 }
+if ($IncludeMicrophone) {
+    $files += (Join-Path $enginePath 'ExtraPane.Microphone.exe'), (Join-Path $enginePath 'ExtraPane.UsbSetup.exe')
+    $endpoint = Join-Path $projectRoot $MicrophoneEndpoint
+    if (-not (Test-Path -LiteralPath $endpoint)) { throw 'Build the pinned microphone endpoint helper before packaging.' }
+}
 foreach ($file in $files) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" } }
 New-Item -ItemType Directory -Path $destinationPath | Out-Null
 foreach ($file in $files) { Copy-Item -LiteralPath $file -Destination $destinationPath }
+if ($IncludeMicrophone) {
+    Copy-Item -LiteralPath $endpoint -Destination (Join-Path $destinationPath 'ExtraPane.MicrophoneEndpoint.exe')
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'apps/microphone-endpoint/USBIP-AUDIO-LICENSE.txt') -Destination $destinationPath
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'apps/usb-setup/USBIP-WIN2-LICENSE.txt') -Destination $destinationPath
+}
 & (Join-Path $qtPath 'bin/windeployqt.exe') --release --no-translations --verbose 0 --qmldir (Join-Path $projectRoot 'apps/shared/ui') (Join-Path $destinationPath 'ExtraPane.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Qt deployment failed' }
 Get-ChildItem -LiteralPath $crt.FullName -Filter '*.dll' | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $destinationPath }
