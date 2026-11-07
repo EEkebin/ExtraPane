@@ -278,3 +278,10 @@ forwarding. One client's choices must not replace server-wide resource settings.
 The current per-mode development dropdowns are temporary test scaffolding, not
 completion of this shared-session requirement. Preserve independent permissions,
 capability failures and stop/mute controls for each resource.
+
+The first server unification keeps existing client wire formats. One TLS listener
+classifies an encrypted, retained prefix and dispatches independent sessions;
+resource-specific components are prepared lazily. There are no separate public
+resource ports. The shared server dropdown is removed. Client checklist/grouped
+admission remains a separate unfinished item; one-use access codes have not been
+silently made reusable to simulate that feature.

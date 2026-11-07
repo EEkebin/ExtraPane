@@ -11,7 +11,7 @@ class WindowsController final:public QObject {
     Q_PROPERTY(bool hosting READ hosting NOTIFY hostChanged)
     Q_PROPERTY(QString hostStatus READ hostStatus NOTIFY hostChanged)
     Q_PROPERTY(QString hostAvailability READ hostAvailability NOTIFY hostChanged)
-    Q_PROPERTY(QString hostMode READ hostMode WRITE setHostMode NOTIFY hostChanged)
+    Q_PROPERTY(QVariantList hostComponents READ hostComponents NOTIFY hostChanged)
     Q_PROPERTY(bool cameraSetupRunning READ cameraSetupRunning NOTIFY hostChanged)
     Q_PROPERTY(bool active READ active NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
@@ -65,8 +65,7 @@ public:
     Q_INVOKABLE void refreshUsbRecovery();
     Q_INVOKABLE void recoverUsb(QString id);
     QString hostAvailability()const;
-    QString hostMode()const{return hostMode_;}
-    void setHostMode(QString mode);
+    QVariantList hostComponents()const;
     bool cameraSetupRunning()const;
     QString savedAddress()const;
     QVariantList addresses()const{return addresses_;}
@@ -92,11 +91,12 @@ signals:
     void recoveryChanged();void changed();void hostChanged();void addressesChanged();void camerasChanged();
 private:
     void poll();
+    QString resourceAvailability(const QString& kind)const;
     struct Impl;std::unique_ptr<Impl> impl_;
     ResourceModel resources_;
     QVariantList addresses_;
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
-    QString hostMode_="display",clientMode_="display",selectedCamera_,cameraStatus_="Click Refresh cameras to list local cameras. Capture starts only after connection is accepted.";
+    QString clientMode_="display",selectedCamera_,cameraStatus_="Click Refresh cameras to list local cameras. Capture starts only after connection is accepted.";
     QVariantList cameras_;
     QVariantList recoveries_;
     QString recoveryStatus_="Refresh recovery records after USB stops. Recovery never forces a busy or unverified disk online.";

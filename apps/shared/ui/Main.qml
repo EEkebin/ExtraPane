@@ -107,43 +107,52 @@ ApplicationWindow {
             currentIndex: root.page
             Layout.fillHeight: true; Layout.fillWidth: true
             Pane {
+                objectName: "serverPage"
+                ScrollView {
+                    id: serverScroll
+                    anchors.fill: parent; anchors.margins: 24
+                    contentWidth: availableWidth
                 ColumnLayout {
-                    anchors.fill: parent; anchors.margins: 24; spacing: 16
+                    width: serverScroll.availableWidth; spacing: 16
                     Label { text: "Server"; font.pixelSize: 30; font.bold: true }
                     Label { text: "Accept connections from your other devices."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    ComboBox {
-                        visible: receiver.platformLabel === "Windows"
-                        model: ["Display", "Camera (preview)", "Microphone (preview)", "USB storage (preview)"]
-                        currentIndex: receiver.platformLabel === "Windows" ? (receiver.hostMode === "usb" ? 3 : receiver.hostMode === "microphone" ? 2 : receiver.hostMode === "camera" ? 1 : 0) : 0
-                        enabled: !receiver.hosting
-                        onActivated: if (receiver.platformLabel === "Windows") receiver.hostMode = currentIndex === 3 ? "usb" : currentIndex === 2 ? "microphone" : currentIndex === 1 ? "camera" : "display"
-                    }
                     Label {
                         text: receiver.hostAvailability.length ? receiver.hostAvailability : receiver.hostDescription
                         color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
                     ComboBox {
-                        id: hostAddress; Layout.fillWidth: true; model: receiver.addresses; textRole: "label"
+                        id: hostAddress; objectName: "hostAddressPicker"; Layout.fillWidth: true; model: receiver.addresses; textRole: "label"
                         currentIndex: receiver.platformLabel === "Windows" ? 0 : receiver.addresses.length > 1 ? 1 : 0; enabled: !receiver.hosting
                     }
                     Button {
+                        objectName: "serverStartButton"
                         text: receiver.hosting ? "Stop server" : "Start server"
-                        enabled: receiver.hostAvailability.length === 0
+                        enabled: receiver.hosting || (receiver.hostAvailability.length === 0 && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning))
                         onClicked: { if (receiver.hosting) receiver.stopHost(); else { const selected=receiver.addresses[hostAddress.currentIndex]; receiver.startHost(selected ? selected.address : "0.0.0.0", Number(hostPort.text), requireCode.checked) } }
                     }
                     Button {
-                        visible: receiver.platformLabel === "Windows" && receiver.hostMode === "camera"
+                        visible: receiver.platformLabel === "Windows"
                         text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing camera component..." : "Camera setup"
                         enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
                         onClicked: receiver.setupCamera()
                     }
                     Button {
-                        visible: receiver.platformLabel === "Windows" && (receiver.hostMode === "microphone" || receiver.hostMode === "usb")
+                        visible: receiver.platformLabel === "Windows"
                         text: receiver.platformLabel === "Windows" && receiver.cameraSetupRunning ? "Installing component..." : "Receiving component setup"
                         enabled: !receiver.hosting && (receiver.platformLabel !== "Windows" || !receiver.cameraSetupRunning)
                         onClicked: receiver.setupMicrophone()
                     }
-                    Button { visible: receiver.platformLabel === "Windows" && receiver.hostMode === "usb"; text: "Eject USB"; enabled: receiver.hosting; onClicked: receiver.ejectUsb() }
+                    Repeater {
+                        objectName: "hostComponentsRepeater"
+                        model: receiver.platformLabel === "Windows" ? receiver.hostComponents : []
+                        Label {
+                            required property var modelData
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            text: modelData.label + ": " + modelData.detail
+                            color: modelData.available ? "#9eacc2" : "#f0c66e"
+                        }
+                    }
+                    Button { visible: receiver.platformLabel === "Windows"; text: "Eject USB"; enabled: receiver.hosting; onClicked: receiver.ejectUsb() }
                     TextField { id: hostPort; text: "43824"; placeholderText: "TCP port"; validator: IntValidator { bottom: 1; top: 65535 } enabled: !receiver.hosting }
                     CheckBox { id: requireCode; text: "Require access code"; enabled: !receiver.hosting }
                     Label { text: receiver.accessCode; wrapMode: Text.WordWrap; Layout.fillWidth: true }
@@ -155,7 +164,7 @@ ApplicationWindow {
                         Label { required property var modelData; visible: modelData.address !== "0.0.0.0"; text: modelData.label }
                     }
                     Button { text: "Refresh addresses"; onClicked: receiver.refreshAddresses() }
-                    Item { Layout.fillHeight: true }
+                }
                 }
             }
             Item {

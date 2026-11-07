@@ -22,7 +22,8 @@ speaker forwarding remain deferred.
 - [x] Isolated encrypted negotiation and tamper-rejection checks.
 - [x] Camera-only live protocol integrated into Windows and Android app sessions.
 - [x] Camera format negotiation and connection/status/error UI.
-- [ ] One server accepting simultaneous client-selected display, camera and microphone resources; current exclusive-mode dropdowns do not meet this requirement.
+- [x] One Windows server accepts display, camera, microphone and USB connections on the same port; no server resource dropdown. Native build and isolated routing/UI checks pass; live verification pending.
+- [ ] Client checkboxes for simultaneous resource selection and grouped access-code admission; the client currently selects one resource per connection.
 - [ ] Shared UI migration and display regression checks across all four platforms.
 
 ## Camera
@@ -130,3 +131,5 @@ Windows TLS library compiles. Unified listener integration and physical
 simultaneous-resource verification remain pending.
 
 Unified routing verification also passes an in-memory authenticated-record test: eight-byte lookahead preserves the complete camera offer and rejects tampered encrypted records before routing. No network socket, capture device or driver was exercised.
+
+2026-11-07 unified server: native dispatcher dc1fbbf and UI now start all supported receivers together. Five packaged native targets rebuild; 12 configuration checks, eight core checks, authenticated-record routing and offscreen UI pass. Optional components are prepared only for requested resources. No live listener or device tests were run.

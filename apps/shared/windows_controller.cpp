@@ -87,18 +87,18 @@ void WindowsController::refreshCameras(){
 QString WindowsController::version()const{return QString::fromUtf8(EXTRAPANE_VERSION);}
 bool WindowsController::hosting()const{return impl_->host.process!=nullptr;}
 bool WindowsController::active()const{return impl_->client.process!=nullptr;}
-QString WindowsController::hostAvailability()const{
-    if(hostMode_=="usb"&&!QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Usb.exe"))return "The USB connection engine is missing from this installation.";
-    if(hostMode_=="microphone"||hostMode_=="usb"){
+QString WindowsController::resourceAvailability(const QString& kind)const{
+    if(kind=="usb"&&!QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Usb.exe"))return "The USB connection engine is missing from this installation.";
+    if(kind=="microphone"||kind=="usb"){
         const auto dir=QCoreApplication::applicationDirPath();
-        if(hostMode_=="microphone"&&(!QFileInfo::exists(dir+"/ExtraPane.Microphone.exe")||!QFileInfo::exists(dir+"/ExtraPane.MicrophoneEndpoint.exe")))return "The microphone receiving engine is missing from this installation.";
+        if(kind=="microphone"&&(!QFileInfo::exists(dir+"/ExtraPane.Microphone.exe")||!QFileInfo::exists(dir+"/ExtraPane.MicrophoneEndpoint.exe")))return "The microphone receiving engine is missing from this installation.";
         PWSTR location=nullptr;
         if(FAILED(SHGetKnownFolderPath(FOLDERID_ProgramFilesX64,0,nullptr,&location)))return "The microphone component location is unavailable.";
         const auto root=QString::fromWCharArray(location)+"/ExtraPane Components/Microphone/";CoTaskMemFree(location);
         for(const auto* name:{"usbip.exe","libusbip.dll","resources.dll"})if(!QFileInfo::exists(root+name))return "Run receiving component setup before accepting a microphone or USB device.";
         return {}; // The endpoint verifies the protected backend before attaching.
     }
-    if(hostMode_!="camera")return hostUnavailable_;
+    if(kind!="camera")return hostUnavailable_;
     if(!QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Resources.exe"))return "The camera connection engine is missing from this build.";
     wchar_t installed[32768]{};DWORD bytes=sizeof(installed);
     const auto read=RegGetValueW(HKEY_LOCAL_MACHINE,L"Software\\Classes\\CLSID\\{5A053AD3-02CD-4281-8367-CEF990182004}\\InprocServer32",nullptr,RRF_RT_REG_SZ|RRF_SUBKEY_WOW6464KEY,nullptr,installed,&bytes);
@@ -108,15 +108,17 @@ QString WindowsController::hostAvailability()const{
     if(ownerRead!=ERROR_SUCCESS||QString::fromWCharArray(owner)!="ExtraPane.CameraSource/v1"||!QFileInfo::exists(path))return "Install the ExtraPane camera component using Camera setup before hosting a camera.";
     return {};
 }
-QString WindowsController::hostDescription()const{
-    if(hostMode_=="usb")return "Receive one removable USB storage device. Close files and eject it here before disconnecting. Interrupted transfers require recovery on the source PC.";
-    if(hostMode_=="microphone")return "Receive a microphone for use in local recording apps. Microphone setup is required. This preview uses a separate connection from display and camera.";
-    if(hostMode_=="camera")return "Receive a camera from another device for use in local apps. This preview accepts camera-only connections; display sharing remains available in Display mode.";
-    return "Creates a virtual monitor when a display client connects. The display driver must be installed. Supports up to four clients.";
+QString WindowsController::hostAvailability()const{return hostUnavailable_;}
+QVariantList WindowsController::hostComponents()const{
+    QVariantList result;
+    for(const auto& item:std::initializer_list<std::pair<QString,QString>>{{"display","Display"},{"camera","Camera"},{"microphone","Microphone"},{"usb","USB storage"}}){
+        const auto reason=resourceAvailability(item.first);
+        result.push_back(QVariantMap{{"label",item.second},{"available",reason.isEmpty()},{"detail",reason.isEmpty()?(item.first=="display"?"Requires the virtual display driver; a monitor is created when a client requests one.":"Component present; availability is checked when a client connects."):reason}});
+    }
+    return result;
 }
-void WindowsController::setHostMode(QString mode){
-    if(hosting()||(mode!="display"&&mode!="camera"&&mode!="microphone"&&mode!="usb")||mode==hostMode_)return;
-    hostMode_=std::move(mode);hostStatus_="Server stopped";emit hostChanged();
+QString WindowsController::hostDescription()const{
+    return "Clients choose which resources to use. Display, camera, microphone and USB connections share this server address and port. A missing component affects only that resource.";
 }
 bool WindowsController::cameraSetupRunning()const{return impl_->setup!=nullptr;}
 void WindowsController::setMicrophoneMuted(bool muted){
@@ -152,7 +154,7 @@ void WindowsController::refreshAddresses(){
         auto flags=nic.flags();if(!flags.testFlag(QNetworkInterface::IsUp)||!flags.testFlag(QNetworkInterface::IsRunning)||flags.testFlag(QNetworkInterface::IsLoopBack))continue;
         if(nic.type()!=QNetworkInterface::Ethernet&&nic.type()!=QNetworkInterface::Wifi)continue;
         for(const auto& item:nic.addressEntries())if(item.ip().protocol()==QAbstractSocket::IPv4Protocol&&!item.ip().isLoopback())
-            addresses_.push_back(QVariantMap{{"label",nic.humanReadableName()+" â€” "+item.ip().toString()},{"address",item.ip().toString()},{"index",nic.index()}});
+            addresses_.push_back(QVariantMap{{"label",nic.humanReadableName()+" - "+item.ip().toString()},{"address",item.ip().toString()},{"index",nic.index()}});
     }emit addressesChanged();
 }
 void WindowsController::connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex,unsigned port,QString code){
@@ -183,7 +185,7 @@ void WindowsController::connectTo(QString server,QString local,bool input,unsign
         }
         if(!code.isEmpty()){auto bytes=code.toLatin1();impl_->client.send_control(bytes.toStdString()+"\n");bytes.fill('\0');code.fill(QChar(0));}
         QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).setValue("Peer",address.toString());
-        resources_.setLocked(true);status_=camera?"Connecting source; capture starts after acceptance...":"Connecting in the native display windowâ€¦";
+        resources_.setLocked(true);status_=camera?"Connecting source; capture starts after acceptance...":"Connecting in the native display window...";
     }catch(const std::exception& e){impl_->client.stop();resources_.setLocked(false);status_=QString::fromUtf8(e.what());}
     emit changed();
 }
@@ -197,21 +199,21 @@ void WindowsController::startHost(QString address,unsigned port,bool requireCode
     if(!local){hostStatus_="Select a connected local address.";emit hostChanged();return;}
     try{
         impl_->hostFailed=false;impl_->hostPending.clear();impl_->cameraProblem.clear();
-        if(hostMode_!="display"){
-            std::vector<std::wstring> args{hostMode_=="usb"?L"serve-usb":hostMode_=="microphone"?L"serve-microphone":L"serve-camera",L"--bind",address=="0.0.0.0"?L"auto":address.toStdWString(),L"--port",std::to_wstring(port),L"--parent-pid",std::to_wstring(GetCurrentProcessId())};
-            if(requireCode)args.push_back(L"--require-code");
-            if(hostMode_=="usb"){auto at=std::find(args.begin(),args.end(),L"--parent-pid");if(at!=args.end())args.erase(at,at+2);impl_->host.start_elevated(L"ExtraPane.Usb.exe",args);}
-            else impl_->host.start((extrapane::windows_bridge::directory()/(hostMode_=="microphone"?L"ExtraPane.Microphone.exe":L"ExtraPane.Resources.exe")).wstring(),args,true);
-        }else impl_->host.start_driver(true,false,port,requireCode,address=="0.0.0.0"?L"auto":address.toStdWString());
+        impl_->host.start_driver(true,false,port,requireCode,address=="0.0.0.0"?L"auto":address.toStdWString());
         hostStatus_="Starting server...";
     }
     catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}
     emit hostChanged();
 }
-void WindowsController::stopHost(){if(hostMode_=="usb"&&hosting()){try{impl_->host.send_control("Q\n");hostStatus_="Requesting safe eject before stopping...";}catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}emit hostChanged();return;}impl_->host.stop();impl_->codeExpires=0;code_.clear();hostStatus_="Server stopped";emit hostChanged();}
+void WindowsController::stopHost(){
+    if(!hosting())return;
+    try{impl_->host.send_control("Q");hostStatus_="Stopping server; waiting for active USB storage to eject safely...";}
+    catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}
+    emit hostChanged();
+}
 void WindowsController::generateAccessCode(){
     if(!hosting())return;
-    try{impl_->host.send_control(hostMode_!="display"?"G\n":"G");}catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}emit hostChanged();
+    try{impl_->host.send_control("G");}catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}emit hostChanged();
 }
 void WindowsController::poll(){
     if(impl_->setup&&WaitForSingleObject(impl_->setup,0)==WAIT_OBJECT_0){
@@ -227,13 +229,17 @@ void WindowsController::poll(){
             if(line.startsWith("ACCESS_CODE ")){
                 auto digits=line.mid(12);
                 if(host&&digits.size()==6&&std::all_of(digits.begin(),digits.end(),[](QChar c){return c>='0'&&c<='9';})){
-                    code_=digits+" â€” one use, expires in five minutes";impl_->codeExpires=GetTickCount64()+300000;emit hostChanged();
+                    code_=digits+" - one use, expires in five minutes";impl_->codeExpires=GetTickCount64()+300000;emit hostChanged();
                 }digits.fill(QChar(0));line.fill(QChar(0));continue;
             }
             if(line.startsWith("ACCESS_STATUS ")){if(host){code_="Code "+line.mid(14)+". Generate a new code.";impl_->codeExpires=0;emit hostChanged();}continue;}
             if(line.startsWith("error:")){(host?impl_->hostFailed:impl_->clientFailed)=true;(host?hostStatus_:status_)=(!host&&clientMode_=="usb")?"USB sharing failed: "+line.mid(6).trimmed()+" Check USB recovery before reconnecting.":line.mid(6).trimmed();}
             else if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")){(host?hostStatus_:status_)="Connected";}
             else if(line.startsWith("LISTENING")||line.startsWith("HOST_LISTENING")){if(host)hostStatus_="Listening";}
+            else if(line.startsWith("SERVER_STOP_BLOCKED")){if(host)hostStatus_=line.mid(19).trimmed();}
+            else if(line.startsWith("SERVER_RESOURCE_UNAVAILABLE")){if(host)hostStatus_="Listening; "+line.mid(27).trimmed();}
+            else if(line.startsWith("SERVER_STOPPING")){if(host)hostStatus_="Stopping server...";}
+            else if(line.startsWith("SERVER_SESSION_ERROR")){if(host)hostStatus_="Listening; a resource connection ended: "+line.mid(21).trimmed();}
             else if(line.startsWith("USB_SESSION_ERROR")){(host?hostStatus_:status_)="USB session ended; server continues listening. "+line.mid(18);}
             else if(line.startsWith("USB_STARTED")){(host?hostStatus_:status_)=host?"USB storage connected. Close files and eject before disconnecting.":"USB storage is shared exclusively. Eject it on the receiving PC to return it safely.";}
             else if(line.startsWith("USB_EJECT_BUSY")){(host?hostStatus_:status_)="USB is busy; close files and try eject again. "+line.mid(14);}
@@ -258,8 +264,8 @@ void WindowsController::poll(){
 void WindowsController::shutdown(){if(impl_->recoveryScan){auto* scan=impl_->recoveryScan;impl_->recoveryScan=nullptr;scan->disconnect(this);scan->kill();scan->waitForFinished(1000);scan->deleteLater();}if(impl_->inventory){auto* process=impl_->inventory;impl_->inventory=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();}impl_->host.stop();impl_->client.stop();resources_.setLocked(false);}
 
 void WindowsController::ejectUsb(){
-    if(hostMode_!="usb"||!hosting())return;
-    try{impl_->host.send_control("E\n");hostStatus_="Requesting safe eject...";}
+    if(!hosting())return;
+    try{impl_->host.send_control("E");hostStatus_="Requesting safe eject...";}
     catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}emit hostChanged();
 }
 void WindowsController::setupUsbSource(){

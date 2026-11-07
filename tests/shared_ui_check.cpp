@@ -26,11 +26,13 @@ public:
     Q_INVOKABLE void setupUsbSource(){++setupRequests;}
     Q_INVOKABLE void refreshUsbRecovery(){++recoveryRefreshRequests;}
     Q_INVOKABLE void recoverUsb(QString id){++recoveryRequests;recoveredId=std::move(id);}
-    Q_INVOKABLE void startHost(QString,int,bool){++hostStartRequests;}
+    Q_INVOKABLE void startHost(QString address,int port,bool code){++hostStartRequests;startedAddress=std::move(address);startedPort=port;startedRequireCode=code;}
+    Q_INVOKABLE void stopHost(){++hostStopRequests;}
     Q_INVOKABLE void ejectUsb(){++ejectRequests;}
     int refreshRequests=0;
     int disconnectRequests=0;
-    int setupRequests=0,recoveryRefreshRequests=0,recoveryRequests=0,hostStartRequests=0,ejectRequests=0;
+    int setupRequests=0,recoveryRefreshRequests=0,recoveryRequests=0,hostStartRequests=0,hostStopRequests=0,ejectRequests=0;
+    QString startedAddress;int startedPort=0;bool startedRequireCode=false;
     QString recoveredId;
 };
 static QObject* named(QObject* root,const char* name){
@@ -88,7 +90,13 @@ int main(int argc,char** argv){
         camera.insert("resources",QVariant::fromValue(&cameraModel));
         for(const auto& key:controller.keys())if(key!="resources")camera.insert(key,controller.value(key));
         camera.insert("platformLabel",QString("Windows"));
-        camera.insert("hostMode",QString("camera"));
+        camera.insert("hostAvailability",QString{});
+        camera.insert("hostComponents",QVariantList{
+            QVariantMap{{"label","Display"},{"available",true},{"detail","Driver checked on connection"}},
+            QVariantMap{{"label","Camera"},{"available",false},{"detail","Camera setup required"}},
+            QVariantMap{{"label","Microphone"},{"available",false},{"detail","Receiving component setup required"}},
+            QVariantMap{{"label","USB storage"},{"available",false},{"detail","Receiving component setup required"}}
+        });
         camera.insert("clientMode",QString("camera"));
         camera.insert("availability",QString{});
         camera.insert("cameraSetupRunning",false);
@@ -109,6 +117,35 @@ int main(int argc,char** argv){
         app.processEvents();
         require(camera.refreshRequests==0&&camera.setupRequests==0&&camera.hostStartRequests==0&&camera.recoveryRefreshRequests==0);
         auto* cameraRoot=cameraEngine.rootObjects().first();
+        // One server starts independently of component readiness. Missing camera
+        // or microphone setup is information, never an exclusive server mode.
+        cameraRoot->setProperty("page",0);app.processEvents();
+        auto* serverPage=named(cameraRoot,"serverPage");
+        auto* serverStart=named(cameraRoot,"serverStartButton");
+        auto* hostAddress=named(cameraRoot,"hostAddressPicker");
+        auto* components=named(cameraRoot,"hostComponentsRepeater");
+        require(serverPage->property("visible").toBool());
+        require(components->property("count").toInt()==4);
+        int serverComboCount=0;
+        for(auto* object:serverPage->findChildren<QObject*>())if(object->inherits("QQuickComboBox")){
+            ++serverComboCount;require(object==hostAddress);
+        }
+        require(serverComboCount==1); // The address picker is the only server dropdown.
+        require(serverStart->property("enabled").toBool());
+        require(serverStart->property("text").toString()=="Start server");
+        require(QMetaObject::invokeMethod(serverStart,"clicked"));
+        require(camera.hostStartRequests==1&&camera.startedAddress=="0.0.0.0"&&camera.startedPort==43824&&!camera.startedRequireCode);
+        require(camera.setupRequests==0&&camera.refreshRequests==0);
+        camera.insert("hosting",true);app.processEvents();
+        require(serverStart->property("text").toString()=="Stop server");
+        camera.insert("hostAvailability",QString("Server helper is missing"));app.processEvents();
+        require(serverStart->property("enabled").toBool()); // An active server can always be stopped.
+        require(QMetaObject::invokeMethod(serverStart,"clicked"));require(camera.hostStopRequests==1);
+        camera.insert("hosting",false);app.processEvents();require(!serverStart->property("enabled").toBool());
+        camera.insert("hostAvailability",QString{});camera.insert("cameraSetupRunning",true);app.processEvents();
+        require(!serverStart->property("enabled").toBool());
+        camera.insert("cameraSetupRunning",false);app.processEvents();require(serverStart->property("enabled").toBool());
+        cameraRoot->setProperty("page",1);app.processEvents();
         auto* panel=named(cameraRoot,"cameraClientPanel");
         auto* picker=named(cameraRoot,"cameraSourcePicker");
         auto* refresh=named(cameraRoot,"cameraRefreshButton");
@@ -165,7 +202,7 @@ int main(int argc,char** argv){
         // setup, recovery, or host creation. Every action here is a fake counter.
         TestController usb;
         for(const auto& key:camera.keys())usb.insert(key,camera.value(key));
-        usb.insert("clientMode",QString("usb"));usb.insert("hostMode",QString("usb"));
+        usb.insert("clientMode",QString("usb"));
         usb.insert("cameraStatus",QString("Choose local storage"));
         const QVariantList storage{
             QVariantMap{{"label","System disk (blocked)"},{"id","blocked"},{"available",false}},

@@ -211,9 +211,13 @@ the server or receiver. It checks startup, not actual device delivery.
 
 ## Current Windows resource build (2026-11-07)
 
-The shared app now has separate Display, Camera, Microphone and USB storage modes.
-These are separate connections in this development build; the final multi-resource
-checklist and simultaneous display/camera/microphone transport are not complete.
+The Windows server starts once and accepts display, camera, microphone and USB
+connections on one selected address/port. Missing components fail only the
+requested resource. Existing clients select their resource using the current
+protocol; no extra public ports or server mode selection are required. The client
+UI still selects one resource per connection: a combined client checklist and
+grouped admission for several resources are not complete. Multiple resource
+connections can coexist on the server; this is not multiplexing over one TCP stream.
 Windows camera sharing currently requires a 1280 ? 720, 30 FPS capture mode.
 Windows microphone sharing accepts 48 kHz mono/stereo WASAPI sources and sends
 mono PCM16 over the encrypted connection; Opus and sample-rate conversion remain
@@ -236,3 +240,21 @@ and offscreen startup. They do not prove real camera delivery, audio recording,
 USB device import or driver installation. Physical testing is deferred until this
 implementation milestone is complete. Linux/macOS resource adapters and Android
 USB remain outside this Windows-to-Windows milestone.
+
+## Unified Windows server
+
+The product `dm-view host --serve` path accepts TLS and optional access-code
+admission once per incoming connection, then examines eight decrypted bytes to
+select the existing display, camera, microphone or USB adapter. A bounded prefix
+buffer preserves those bytes for the adapter's full protocol validation. Unknown
+protocols, component errors and client disconnects end that connection; the
+listener remains available. Limits are four display sessions, four cameras, one
+microphone and one USB session, with a bounded pending-connection pool.
+
+Starting the server does not allocate a virtual monitor, camera or microphone.
+Adapters prepare those resources after the corresponding client request. The
+server page shows component availability and setup actions without a resource
+selector. Normal Stop requests safe USB eject before shutting down; a busy eject
+keeps the server running. Process termination still follows the documented USB
+quarantine/recovery rules. Optional six-digit codes remain one-use per TLS
+connection; a future grouped client session needs its own admission lifecycle.
