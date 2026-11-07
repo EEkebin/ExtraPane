@@ -4,12 +4,18 @@ on:
     paths:
       - 'core/session/**'
       - 'tests/session_check.cpp'
+      - 'tests/channel_check.cpp'
+      - 'tests/resource_security_check.cpp'
+      - 'CMakeLists.txt'
       - '.github/workflows/shared-core.yml'
   push:
     branches: [main]
     paths:
       - 'core/session/**'
       - 'tests/session_check.cpp'
+      - 'tests/channel_check.cpp'
+      - 'tests/resource_security_check.cpp'
+      - 'CMakeLists.txt'
       - '.github/workflows/shared-core.yml'
 permissions:
   contents: read
@@ -29,3 +35,18 @@ jobs:
         run: cmake --build out/session-checks --config Release --parallel 2
       - name: Check lifecycle and envelope validation
         run: ctest --test-dir out/session-checks -C Release --output-on-failure
+  encrypted-control:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure in-memory security checks
+        run: cmake -S . -B out/resource-security -DDM_ACCESS_ONLY=ON -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build out/resource-security --config Release --parallel 2
+      - name: Check admission and encrypted control
+        run: ctest --test-dir out/resource-security -C Release --output-on-failure

@@ -38,7 +38,15 @@ bounded channels must be bound to the admitted session and use the configured po
   capability intersection are implemented but not yet wired to platform adapters.
 - Bounded resource-control envelope serialization exists separately from the
   legacy display protocol. It has not been connected to the live transport.
-- Authentication integration, wire negotiation, format negotiation, state notifications,
+- Capability/request payload codecs and a bounded control-channel adapter are
+  implemented. Negotiation rejects unsupported requests before adapter creation,
+  requires capability exchange, and isolates malformed peers. Transport failures
+  through serve_one release that session's resources and preserve the listener.
+- In-memory integration with the existing access-code encrypted Stream passes
+  capability exchange, grant, wrong-code and tamper cleanup checks. No sockets,
+  capture devices or drivers are used by those tests. The live display transport
+  has not been migrated to this protocol.
+- Live transport integration, format negotiation, state notifications,
   mute/interruption behavior and worker scheduling are not implemented here.
 - The existing Linux QML shell now lives in apps/shared/ui and is consumed by the
   Linux package through the same resource URL. Video.qml remains platform-specific.

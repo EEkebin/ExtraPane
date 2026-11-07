@@ -43,6 +43,7 @@ public:
     void stop() noexcept;
     bool listening() const noexcept { return listener_ != nullptr; }
     std::size_t client_count() const noexcept { return sessions_.size(); }
+    bool has_session(std::uint64_t id) const noexcept { return sessions_.contains(id); }
     std::vector<ResourceStatus> snapshot(std::uint64_t session_id) const;
 private:
     std::size_t capacity_;
