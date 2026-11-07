@@ -75,7 +75,7 @@ void WindowsController::refreshDevices(QString key){
             ids.insert(QString::fromLatin1(id));found.push_back(QVariantMap{{"label",available?label:label+" - "+reason},{"id",QString::fromLatin1(id)},{"available",available}});
         }
         state.inventory=nullptr;state.inventoryOutput.clear();process->deleteLater();
-        const QString message=valid&&done?(found.isEmpty()?"No devices found. Check setup/privacy settings and refresh.":i==1?"Choose a camera; its supported resolution and frame rate are selected automatically.":i==2?"Choose a microphone; supported sources use 48 kHz mono/stereo.":"Choose eligible removable storage. Eject on the server before stopping."):"Device listing failed or timed out. Check component setup and privacy settings.";
+        const QString message=valid&&done?(found.isEmpty()?"No devices found. Check privacy settings and reopen this list to scan again.":i==1?"Choose a camera; its supported resolution and frame rate are selected automatically.":i==2?"Choose a microphone; supported sources use 48 kHz mono/stereo.":"Choose eligible removable storage. Eject on the server before stopping."):"Device listing failed or timed out. Check privacy settings; for USB, run the installer with USB storage sharing enabled.";
         resources_.setDevices(resourceKind(i),valid&&done?found:QVariantList{},resources_.selectedDevice(resourceKind(i)),message,false);emit changed();
     };
     connect(process,&QProcess::readyRead,this,[this,process,i]{auto& state=impl_->clients[i];if(state.inventory!=process)return;state.inventoryOutput+=process->readAll();if(state.inventoryOutput.size()>1024*1024){state.inventoryFailed=true;state.inventoryOutput.clear();process->kill();}});
@@ -135,6 +135,19 @@ void WindowsController::setMicrophoneMuted(bool muted){
     try{state.child.send_control(muted?"M\n":"U\n");microphoneMuted_=muted;}
     catch(const std::exception& e){state.status=QString::fromUtf8(e.what());}
     resources_.setSessionState(resourceKind(2),true,state.status,microphoneMuted_);emit changed();
+}
+void WindowsController::setCameraMirrored(bool mirrored){
+    auto& state=impl_->clients[1];
+    if(state.stopping){emit changed();return;}
+    if(cameraMirrored_==mirrored)return;
+    try{
+        if(state.child.process)state.child.send_control(mirrored?"MIRROR 1\n":"MIRROR 0\n");
+        cameraMirrored_=mirrored;
+    }catch(const std::exception& e){
+        state.status=QString::fromUtf8(e.what());
+        resources_.setSessionState(resourceKind(1),state.child.process!=nullptr,state.status);
+    }
+    emit changed();
 }
 QString WindowsController::savedAddress()const{return QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).value("Peer").toString();}
 void WindowsController::refreshAddresses(){
@@ -201,6 +214,7 @@ void WindowsController::startClients(std::array<std::string,4> credentials){
             else{args.insert(args.end(),{L"--parent-pid",std::to_wstring(GetCurrentProcessId())});state.child.start((extrapane::windows_bridge::directory()/helper(i)).wstring(),args,i!=0);}
             if(i)state.child.send_control(QByteArray::fromHex(resources_.selectedDevice(resourceKind(i)).toLatin1()).toStdString()+"\n");
             if(!credentials[i].empty())state.child.send_control(credentials[i]+"\n");
+            if(i==1)state.child.send_control(cameraMirrored_?"MIRROR 1\n":"MIRROR 0\n");
             state.status="Connecting...";
         }catch(const std::exception& e){state.child.stop();state.failed=true;state.status=QString::fromUtf8(e.what());}
         std::fill(credentials[i].begin(),credentials[i].end(),'\0');resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,false);
@@ -355,17 +369,6 @@ void WindowsController::ejectUsb(){
     try{impl_->host.send_control("E");hostStatus_="Requesting safe eject...";}
     catch(const std::exception& e){hostStatus_=QString::fromUtf8(e.what());}emit hostChanged();
 }
-void WindowsController::setupUsbSource(){
-    if(active()||hosting()||cameraSetupRunning())return;
-    const auto exe=extrapane::windows_bridge::directory()/L"ExtraPane.UsbHostSetup.exe";
-    if(!std::filesystem::is_regular_file(exe)){status_="USB source setup is missing from this build.";emit changed();return;}
-    SHELLEXECUTEINFOW info{sizeof(info)};info.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;
-    info.lpVerb=L"runas";info.lpFile=exe.c_str();info.lpParameters=L"--install";info.nShow=SW_HIDE;
-    if(!ShellExecuteExW(&info))status_="USB source setup could not start or was canceled.";
-    else{impl_->setup=info.hProcess;status_="Installing USB source component...";}
-    emit changed();emit hostChanged();
-}
-
 bool WindowsController::recoveryBusy()const{return impl_->recoveryScan||cameraSetupRunning();}
 void WindowsController::refreshUsbRecovery(){
     if(active()||hosting()||recoveryBusy())return;

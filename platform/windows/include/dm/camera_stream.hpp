@@ -14,7 +14,7 @@ struct EncodedFrame {
 class EncodedSource final:public extrapane::Resource {
 public:
     using Sink=std::function<void(EncodedFrame)>;
-    EncodedSource(std::wstring local_device,std::optional<Format> format,Sink sink);
+    EncodedSource(std::wstring local_device,std::optional<Format> format,Sink sink,const std::atomic_bool* mirrored=nullptr);
     ~EncodedSource()override;
     extrapane::Availability prepare()override;
     extrapane::Availability start()override;
@@ -22,7 +22,7 @@ public:
     Format format() const { return source_.format(); }
     bool failed()const noexcept{return source_.failed();}
 private:
-    Format format_;Sink sink_;std::unique_ptr<dm::video::H264Encoder> encoder_;
+    Format format_;Sink sink_;const std::atomic_bool* mirrored_;std::unique_ptr<dm::video::H264Encoder> encoder_;
     std::uint64_t sequence_=0;
     SourceResource source_;
 };
@@ -32,7 +32,7 @@ private:
 // reports channel failures to the session owner. It never calls stop() itself.
 class QueuedSource final:public extrapane::Resource {
 public:
-    QueuedSource(std::wstring local_device,std::optional<Format> format,extrapane::media::Binding binding);
+    QueuedSource(std::wstring local_device,std::optional<Format> format,extrapane::media::Binding binding,const std::atomic_bool* mirrored=nullptr);
     ~QueuedSource() override;
     extrapane::Availability prepare() override;
     extrapane::Availability start() override;

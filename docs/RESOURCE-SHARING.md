@@ -298,3 +298,9 @@ USB source setup can reuse the reviewed, Oracle-signed 7.2.2 monitor already shi
 with usbipd-win. Its running protocol must report the supported 5.x interface;
 unknown binaries remain rejected. A read-only protocol query passed on the development
 desktop. This does not verify USB storage transfer, eject or recovery.
+
+The Windows client camera card includes Mirror Camera. It can be changed before
+connecting or while sharing; the sender mirrors native NV12 pixels before encoding,
+so receiving camera applications see the change. The setting defaults off and is
+kept only for the running app session. Camera, microphone and USB device dropdowns
+load inventory on opening; source component installation remains in the installer.

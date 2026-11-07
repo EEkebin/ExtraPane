@@ -30,6 +30,7 @@ public:
     Q_INVOKABLE void refreshDevices(QString key){++refreshRequests;refreshed=std::move(key);}
     Q_INVOKABLE void selectDevice(QString key,QString id){++deviceSelections;model.setSelectedDevice(kind(key),std::move(id));}
     Q_INVOKABLE void stopResource(QString key){++stopRequests;stopped=key;model.setSessionState(kind(key),false,"Stopped");}
+    Q_INVOKABLE void setCameraMirrored(bool value){++mirrorRequests;insert("cameraMirrored",value);}
     Q_INVOKABLE void setMicrophoneMuted(bool value){++muteRequests;model.setSessionState(Kind::microphone,true,"Sharing",value);}
     Q_INVOKABLE void disconnectFromServer(){++disconnectRequests;}
     Q_INVOKABLE void connectTo(QString,QString,bool,unsigned,unsigned,unsigned,QString){++connectRequests;}
@@ -40,7 +41,7 @@ public:
     Q_INVOKABLE void stopHost(){++hostStopRequests;}
     Q_INVOKABLE void ejectUsb(){++ejectRequests;}
     ResourceModel& model;
-    int refreshRequests=0,disconnectRequests=0,deviceSelections=0,stopRequests=0,muteRequests=0,connectRequests=0;
+    int refreshRequests=0,disconnectRequests=0,deviceSelections=0,stopRequests=0,muteRequests=0,connectRequests=0,mirrorRequests=0;
     int setupRequests=0,recoveryRefreshRequests=0,recoveryRequests=0,hostStartRequests=0,hostStopRequests=0,ejectRequests=0;
     QString startedAddress,refreshed,stopped,recoveredId;int startedPort=0;bool startedRequireCode=false;
 };
@@ -60,7 +61,7 @@ static void defaults(TestController& controller,bool windows){
     controller.insert("platformLabel",QString(windows?"Windows":"Linux"));
     controller.insert("hostAvailability",QString(windows?"":"Headless check"));
     controller.insert("availability",QString(windows?"":"Headless check"));
-    controller.insert("active",false);controller.insert("hosting",false);
+    controller.insert("active",false);controller.insert("hosting",false);controller.insert("cameraMirrored",false);
     controller.insert("status",QString("Ready"));controller.insert("sourceWidth",1280);controller.insert("sourceHeight",720);
     controller.insert("addresses",QVariantList{QVariantMap{{"label","Automatic route"},{"address","0.0.0.0"},{"index",0}}});
     if(windows){
@@ -125,15 +126,26 @@ int main(int argc,char** argv){
         // controller inventory, capture, setup or connection runs automatically.
         camera->setProperty("checked",true);require(QMetaObject::invokeMethod(camera,"clicked"));microphone->setProperty("checked",true);require(QMetaObject::invokeMethod(microphone,"clicked"));app.processEvents();
         require(model.selected(Kind::display)&&model.selected(Kind::camera)&&model.selected(Kind::microphone)&&!connect->property("enabled").toBool());
-        auto* cameraPicker=named(picker,"resourceDevicePicker_camera");auto* micPicker=named(picker,"resourceDevicePicker_microphone");auto* refresh=named(picker,"resourceRefresh_camera");
-        require(cameraPicker->property("visible").toBool()&&micPicker->property("visible").toBool());require(QMetaObject::invokeMethod(refresh,"clicked"));require(controller.refreshed=="camera"&&controller.refreshRequests==1);
+        auto* mirror=named(picker,"resourceMirror_camera");require(mirror->property("visible").toBool()&&mirror->property("enabled").toBool()&&!mirror->property("checked").toBool());
+        mirror->setProperty("checked",true);require(QMetaObject::invokeMethod(mirror,"clicked"));app.processEvents();require(controller.mirrorRequests==1&&controller.value("cameraMirrored").toBool()&&controller.connectRequests==0);
+        auto* cameraPicker=named(picker,"resourceDevicePicker_camera");auto* micPicker=named(picker,"resourceDevicePicker_microphone");
+        require(cameraPicker->property("visible").toBool()&&micPicker->property("visible").toBool());auto* cameraPopup=cameraPicker->property("popup").value<QObject*>();require(cameraPopup&&cameraPicker->property("enabled").toBool()&&cameraPicker->property("count").toInt()==0);
+        require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshed=="camera"&&controller.refreshRequests==1);require(QMetaObject::invokeMethod(cameraPopup,"close"));
+        for(auto* object:picker->findChildren<QObject*>()){require(!object->objectName().startsWith("resourceRefresh_"));require(object->property("text").toString()!="USB source setup");}
         model.setDevices(Kind::camera,devices("cam-a","Built-in camera"),{},"Choose camera",false);model.setDevices(Kind::microphone,devices("mic-a","Built-in microphone"),{},"Choose microphone",false);app.processEvents();
         require(cameraPicker->property("currentIndex").toInt()==-1&&micPicker->property("currentIndex").toInt()==-1);
         cameraPicker->setProperty("currentIndex",0);require(QMetaObject::invokeMethod(cameraPicker,"activated",Q_ARG(int,0)));micPicker->setProperty("currentIndex",0);require(QMetaObject::invokeMethod(micPicker,"activated",Q_ARG(int,0)));app.processEvents();
         require(controller.deviceSelections==2&&model.selectedDevice(Kind::camera)=="cam-a"&&model.selectedDevice(Kind::microphone)=="mic-a"&&connect->property("enabled").toBool());
+        model.setDevices(Kind::camera,model.devices(Kind::camera),"cam-a","Listing devices...",true);app.processEvents();
+        require(cameraPicker->property("enabled").toBool());require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshRequests==1);require(QMetaObject::invokeMethod(cameraPopup,"close"));
+        model.setDevices(Kind::camera,model.devices(Kind::camera),"cam-a","Ready",false);app.processEvents();
+        require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshRequests==2&&model.selectedDevice(Kind::camera)=="cam-a");require(QMetaObject::invokeMethod(cameraPopup,"close"));
         require(QMetaObject::invokeMethod(connect,"clicked"));require(controller.connectRequests==1);
         model.setLocked(true);controller.insert("active",true);model.setSessionState(Kind::display,true,"Receiving");model.setSessionState(Kind::camera,true,"Sharing");model.setSessionState(Kind::microphone,true,"Sharing");app.processEvents();
         require(picker->property("visible").toBool()&&!camera->property("enabled").toBool()&&!cameraPicker->property("enabled").toBool()&&disconnect->property("visible").toBool());
+        require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshRequests==2);require(QMetaObject::invokeMethod(cameraPopup,"close"));
+        require(mirror->property("visible").toBool()&&mirror->property("enabled").toBool());
+        mirror->setProperty("checked",false);require(QMetaObject::invokeMethod(mirror,"clicked"));app.processEvents();require(controller.mirrorRequests==2&&!controller.value("cameraMirrored").toBool()&&controller.connectRequests==1&&controller.disconnectRequests==0&&controller.stopRequests==0&&controller.muteRequests==0);
         require(QMetaObject::invokeMethod(named(picker,"resourceStop_camera"),"clicked"));app.processEvents();require(controller.stopRequests==1&&controller.stopped=="camera"&&!model.data(model.index(1),ResourceModel::Running).toBool()&&model.data(model.index(2),ResourceModel::Running).toBool()&&model.data(model.index(0),ResourceModel::Running).toBool());
         require(QMetaObject::invokeMethod(named(picker,"resourceMute_microphone"),"clicked"));require(controller.muteRequests==1&&model.data(model.index(2),ResourceModel::Muted).toBool());
         require(QMetaObject::invokeMethod(disconnect,"clicked"));require(controller.disconnectRequests==1);

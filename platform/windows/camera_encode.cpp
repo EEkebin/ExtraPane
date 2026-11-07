@@ -2,8 +2,18 @@
 #include <mfapi.h>
 #include <dm/camera_encode.hpp>
 #include <cstring>
+#include <algorithm>
 #include <stdexcept>
 namespace dm::camera {
+void mirror_nv12(std::span<std::uint8_t> pixels,Format format){
+    validate_format(format);
+    const std::size_t width=format.width,height=format.height;
+    if(pixels.size()!=width*height*3/2)throw std::invalid_argument("Invalid mirror NV12 geometry");
+    for(std::size_t y=0;y<height;++y)std::reverse(pixels.begin()+y*width,pixels.begin()+(y+1)*width);
+    // Interleaved UV pairs describe two horizontal pixels: reverse pairs, never U/V order.
+    for(std::size_t y=0;y<height/2;++y){auto row=pixels.subspan(width*height+y*width,width);
+        for(std::size_t x=0;x<width/2;x+=2){std::swap(row[x],row[width-2-x]);std::swap(row[x+1],row[width-1-x]);}}
+}
 std::vector<std::uint8_t> nv12_pixels(const Sample& sample,Format format){
     validate_format(format);
     if(!sample.native)throw std::invalid_argument("Camera sample is empty");

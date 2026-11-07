@@ -69,25 +69,26 @@ ColumnLayout {
                             id: sourcePicker
                             objectName: "resourceDevicePicker_" + card.resourceKey
                             Layout.fillWidth: true
-                            enabled: !picker.resourceModel.locked && !card.resourceScanning && !card.resourceRunning
+                            enabled: !picker.resourceModel.locked && !card.resourceRunning
                             model: card.resourceDevices
                             textRole: "label"; valueRole: "id"
                             currentIndex: card.resourceDevices.findIndex(item => item.id === card.resourceDeviceSelected && item.available !== false)
-                            displayText: currentIndex < 0 ? (card.resourceKey === "camera" ? "Select a camera" : card.resourceKey === "microphone" ? "Select a microphone" : "Select removable storage") : currentText
+                            displayText: card.resourceScanning ? "Listing devices..." : currentIndex < 0 ? (card.resourceKey === "camera" ? "Select a camera" : card.resourceKey === "microphone" ? "Select a microphone" : "Select removable storage") : currentText
                             delegate: ItemDelegate {
                                 required property int index
                                 width: sourcePicker.width
-                                text: card.resourceDevices[index].label
-                                enabled: card.resourceDevices[index].available !== false
+                                text: card.resourceDevices[index] ? card.resourceDevices[index].label : ""
+                                enabled: card.resourceDevices[index] !== undefined && card.resourceDevices[index].available !== false
                                 highlighted: sourcePicker.highlightedIndex === index
                             }
                             onActivated: if (picker.controller !== null) picker.controller.selectDevice(card.resourceKey,currentValue)
-                        }
-                        Button {
-                            objectName: "resourceRefresh_" + card.resourceKey
-                            text: card.resourceScanning ? "Listing..." : "Refresh"
-                            enabled: !picker.resourceModel.locked && !card.resourceScanning && !card.resourceRunning
-                            onClicked: if (picker.controller !== null) picker.controller.refreshDevices(card.resourceKey)
+                            Connections {
+                                target: sourcePicker.popup
+                                function onOpened() {
+                                    if (picker.controller !== null && !picker.resourceModel.locked && !card.resourceScanning && !card.resourceRunning)
+                                        picker.controller.refreshDevices(card.resourceKey)
+                                }
+                            }
                         }
                     }
                     Label {
@@ -95,6 +96,15 @@ ColumnLayout {
                         wrapMode: Text.WordWrap; Layout.fillWidth: true
                         visible: text.length > 0
                     }
+                }
+                CheckBox {
+                    objectName: card.resourceKey === "camera" ? "resourceMirror_camera" : ""
+                    visible: picker.controller !== null && card.resourceKey === "camera" && card.resourceSelected && card.resourceAvailable
+                    text: "Mirror Camera"
+                    checked: picker.controller !== null && picker.controller.cameraMirrored === true
+                    onClicked: if (picker.controller !== null) picker.controller.setCameraMirrored(checked)
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Flip the camera horizontally for apps on the server. Changes apply while sharing."
                 }
                 Label {
                     text: card.resourceStatus
@@ -121,11 +131,6 @@ ColumnLayout {
                     Label {
                         text: "USB storage is shared exclusively. Close its files first and use Eject USB on the receiving PC before stopping. An interrupted transfer may require source recovery."
                         wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#f0c66e"
-                    }
-                    Button {
-                        objectName: card.resourceKey === "usb" ? "usbSourceSetupButton" : ""; text: "USB source setup"
-                        enabled: picker.controller !== null && !picker.controller.active && !picker.controller.hosting && !picker.controller.cameraSetupRunning
-                        onClicked: picker.controller.setupUsbSource()
                     }
                     Label { text: "USB recovery"; font.bold: true }
                     Label {

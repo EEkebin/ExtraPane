@@ -23,6 +23,7 @@ class WindowsController final:public QObject {
     Q_PROPERTY(QString recoveryStatus READ recoveryStatus NOTIFY recoveryChanged)
     Q_PROPERTY(bool recoveryBusy READ recoveryBusy NOTIFY recoveryChanged)
     Q_PROPERTY(bool microphoneMuted READ microphoneMuted NOTIFY changed)
+    Q_PROPERTY(bool cameraMirrored READ cameraMirrored NOTIFY changed)
     Q_PROPERTY(QString savedAddress READ savedAddress CONSTANT)
     Q_PROPERTY(QVariantList addresses READ addresses NOTIFY addressesChanged)
     Q_PROPERTY(QString statistics READ statistics NOTIFY changed)
@@ -50,7 +51,8 @@ public:
     Q_INVOKABLE void stopResource(QString kind);
     bool microphoneMuted()const{return microphoneMuted_;}
     Q_INVOKABLE void setMicrophoneMuted(bool muted);
-    Q_INVOKABLE void setupUsbSource();
+    bool cameraMirrored()const{return cameraMirrored_;}
+    Q_INVOKABLE void setCameraMirrored(bool mirrored);
     Q_INVOKABLE void ejectUsb();
     QVariantList usbRecoveries()const{return recoveries_;}
     QString recoveryStatus()const{return recoveryStatus_;}
@@ -95,5 +97,5 @@ private:
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
     QVariantList recoveries_;
     QString recoveryStatus_="Refresh recovery records after USB stops. Recovery never forces a busy or unverified disk online.";
-    bool microphoneMuted_=false;
+    bool microphoneMuted_=false,cameraMirrored_=false;
 };

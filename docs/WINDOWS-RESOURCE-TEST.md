@@ -29,8 +29,8 @@ USB test, and use expendable test data on the selected removable drive.
 
 ## USB storage
 
-1. Install the USB source component on the sending PC by checking USB on Client and clicking USB source setup. On the recipient use Server ? Receiving component setup. Do not replace independently installed incompatible backends.
-2. Refresh storage on the source. Only eligible removable storage with complete
+1. Install with USB storage sharing enabled on the sending PC and Server + Client on the recipient. These components are prepared by installation; there is no USB source setup button in the client. Do not replace independently installed incompatible backends.
+2. Open the USB device dropdown on the source to load its current devices. Only eligible removable storage with complete
    identity and ownership information can connect. Protected disks, uncertain
    identities and already-owned devices must remain unavailable.
 3. Close source files, start the recipient, then connect the selected source.
@@ -61,3 +61,11 @@ resources and raw USB are not covered by this Windows milestone. Android camera
 and microphone source code/APK are present but require their own physical checks.
 The combined portable package contains setup helpers; drivers still require
 explicit machine-wide setup. The 2026.11.07-pre.1 installer has been compiled with all receiving components; installation is awaiting end-to-end user testing. Choose Server + Client on the receiving desktop and Client only on the source laptop.
+
+## Live camera mirroring and device pickers
+
+On the Windows client, open each camera, microphone or USB dropdown to load its
+current inventory. No separate device Refresh action is needed. While sharing a
+camera, toggle Mirror Camera and confirm horizontal mirroring changes in the
+receiving application without reconnecting. Toggle off to restore the original
+orientation. Check colored objects as well as text so UV chroma ordering is tested.

@@ -9,7 +9,7 @@
 #include <string_view>
 
 namespace {
-std::atomic_bool stopped=false;
+std::atomic_bool stopped=false,mirrored=false;
 BOOL WINAPI control(DWORD event){if(event==CTRL_C_EVENT||event==CTRL_BREAK_EVENT||event==CTRL_CLOSE_EVENT){stopped=true;return TRUE;}return FALSE;}
 void report(const std::string& line){std::osyncstream(std::cout)<<line<<std::endl;}
 unsigned number(const std::string& value,unsigned limit,bool zero=false){unsigned result=0;auto [end,error]=std::from_chars(value.data(),value.data()+value.size(),result);if(error!=std::errc{}||end!=value.data()+value.size()||result>limit||(!zero&&!result))throw std::invalid_argument("Invalid numeric option");return result;}
@@ -95,8 +95,8 @@ int main(int argc,char** argv){try{
     }
     // stdin is launcher-owned; EOF revokes every resource. This detached reader
     // only captures process-lifetime stop state and a shared admission gate.
-    std::thread([gate]{std::string line;while(std::getline(std::cin,line)){if(line=="Q"){stopped=true;return;}if(line=="G"&&gate){try{report("ACCESS_CODE "+gate->generate());}catch(...){report("error: Access code generation failed");}}}stopped=true;}).detach();
+    std::thread([gate]{std::string line;while(std::getline(std::cin,line)){if(line=="Q"){stopped=true;return;}if(line=="MIRROR 1"||line=="MIRROR 0"){mirrored.store(line.back()=='1',std::memory_order_relaxed);report(line.back()=='1'?"CAMERA_MIRROR on":"CAMERA_MIRROR off");continue;}if(line=="G"&&gate){try{report("ACCESS_CODE "+gate->generate());}catch(...){report("error: Access code generation failed");}}}stopped=true;}).detach();
     if(server)dm::resources::serve_camera(options,stopped,report);
-    else dm::resources::send_camera(options,device,format,stopped,report);
+    else dm::resources::send_camera(options,device,format,stopped,report,&mirrored);
     report("STOPPED");return 0;
 }catch(const std::exception& error){report(std::string("error: ")+error.what());return 1;}}

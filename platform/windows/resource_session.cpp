@@ -124,14 +124,14 @@ void serve_camera(const net::Options& requested,std::atomic_bool& stop,const Rep
         }catch(const std::runtime_error& error){if(std::string_view(error.what())!="Accept timed out")throw;}
     }
 }
-void send_camera(const net::Options& options,const std::wstring& local_device,std::optional<camera::Format> format,std::atomic_bool& stop,const Report& report){
+void send_camera(const net::Options& options,const std::wstring& local_device,std::optional<camera::Format> format,std::atomic_bool& stop,const Report& report,const std::atomic_bool* mirrored){
     if(!report||local_device.empty())throw std::invalid_argument("Camera client requires a selected local device");
     if(format)camera::validate_format(*format);Com com;
     LocalLease sourceLease(source_lease_name(local_device),"This camera is already being shared by another ExtraPane connection");
     security::TlsStream tls(net::connect_stream(options),false,"");Cancellation cancellation(tls,stop);
     tls.handshake(Clock::now()+std::chrono::seconds(10));check_stop(stop);
     Channels transport(tls,stop);const auto binding=random_binding();
-    camera::QueuedSource source(local_device,format,binding);
+    camera::QueuedSource source(local_device,format,binding,mirrored);
     const auto prepared=source.prepare();if(!prepared.available)throw std::runtime_error(prepared.reason);
     check_stop(stop);const auto selected=source.format();
     report("CAMERA_FORMAT "+std::to_string(selected.width)+"x"+std::to_string(selected.height)+" @ "+std::to_string(selected.fps)+" FPS");
