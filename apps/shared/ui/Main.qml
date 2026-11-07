@@ -151,6 +151,8 @@ ApplicationWindow {
                 ScrollView {
                     id: serverScroll
                     anchors.fill: parent; anchors.margins: root.width < 700 ? 16 : 32
+                    // Keep a stable gutter even while the scrollbar is faded out.
+                    rightPadding: ScrollBar.vertical.implicitWidth + 12
                     contentWidth: availableWidth
                 ColumnLayout {
                     width: serverScroll.availableWidth; spacing: 16
@@ -258,6 +260,8 @@ ApplicationWindow {
                         id: resourceScroll
                         visible: root.windowsClient && !root.multiClient
                         Layout.fillWidth: true; Layout.fillHeight: true
+                        // Keep a stable gutter even while the scrollbar is faded out.
+                        rightPadding: ScrollBar.vertical.implicitWidth + 12
                         contentWidth: availableWidth
                         Loader {
                             width: resourceScroll.availableWidth
@@ -270,11 +274,14 @@ ApplicationWindow {
                     Rectangle {
                         id: viewport; visible: !root.windowsClient; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
                         ScrollView {
+                            id: linuxResourceScroll
                             anchors.fill: parent; anchors.margins: 18
                             visible: !receiver.active
+                            // Keep a stable gutter even while the scrollbar is faded out.
+                            rightPadding: ScrollBar.vertical.implicitWidth + 12
                             contentWidth: availableWidth
                             Loader {
-                                width: parent.width
+                                width: linuxResourceScroll.availableWidth
                                 active: !root.windowsClient
                                 sourceComponent: Component {
                                     ResourcePicker { resourceModel: receiver.resources }

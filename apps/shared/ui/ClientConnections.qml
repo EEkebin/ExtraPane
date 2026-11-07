@@ -9,6 +9,8 @@ ScrollView {
     property var controller: null
     required property var addresses
     property bool inputAllowed: true
+    // Keep a stable gutter even while the scrollbar is faded out.
+    rightPadding: ScrollBar.vertical.implicitWidth + 12
     contentWidth: availableWidth
     component DestinationFields: ColumnLayout {
         id: fields
