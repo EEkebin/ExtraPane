@@ -19,7 +19,7 @@ static void wait(const std::shared_ptr<Completion>& c,int seconds){
     if(c->failed)throw std::runtime_error(c->message.empty()?"Connection closed or network operation failed":c->message);
 }
 Transport::Transport(const char* peer,const char* local,unsigned port,std::string code):code_(std::move(code)){
-    if(!port||port>65535||(!code_.empty()&&!access::validCode(code_)))throw std::runtime_error("Invalid port or six-digit access code");
+    if(!port||port>65535||(!code_.empty()&&!access::validCredential(code_)))throw std::runtime_error("Invalid port or access credential");
     if(!ipv4(peer) || (*local && !ipv4(local)))throw std::runtime_error("Enter a reachable numeric LAN IPv4 address");
     queue_=dispatch_queue_create("io.github.eekebin.extrapane.network",DISPATCH_QUEUE_SERIAL);
     auto params=nw_parameters_create_secure_tcp(^(nw_protocol_options_t tls){
@@ -37,7 +37,7 @@ Transport::Transport(const char* peer,const char* local,unsigned port,std::strin
     connection_=nw_connection_create(nw_endpoint_create_host(peer,std::to_string(port).c_str()),params);
     nw_connection_set_queue(connection_,queue_);
 }
-Transport::~Transport(){cancel();}
+Transport::~Transport(){cancel();std::fill(code_.begin(),code_.end(),0);}
 void Transport::cancel(){nw_connection_cancel(connection_);}
 void Transport::connect(){
     auto done=std::make_shared<Completion>();auto once=std::make_shared<std::atomic_bool>(false);

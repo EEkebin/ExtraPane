@@ -4,6 +4,7 @@
 #include "host.hpp"
 #include "network.hpp"
 #include "display.hpp"
+#include "resource_ui.hpp"
 #import <ApplicationServices/ApplicationServices.h>
 #include <dm/video_protocol.hpp>
 #include <dm/input_protocol.hpp>
@@ -33,7 +34,7 @@ struct InputQueue {
     std::vector<uint8_t> take(uint64_t epoch,unsigned seq){std::lock_guard lock(mutex);if(overflow)throw std::runtime_error("Input queue overflow; disconnected to release input");
         auto h=input::encode_header({epoch,seq,unsigned(events.size())});auto p=input::encode_events(events);events.clear();std::vector<uint8_t> result(h.begin(),h.end());result.insert(result.end(),p.begin(),p.end());return result;}
 };
-struct Session {std::atomic_bool stopped=false;std::shared_ptr<dm::mac::Transport> transport;InputQueue input;void cancel(){stopped=true;transport->cancel();input.grant(0);}};
+struct Session {std::atomic_bool stopped=false;std::mutex mutex;std::shared_ptr<dm::mac::Transport> transport;InputQueue input;void setTransport(std::shared_ptr<dm::mac::Transport> value){std::lock_guard lock(mutex);transport=std::move(value);if(stopped)transport->cancel();}void cancel(){stopped=true;{std::lock_guard lock(mutex);if(transport)transport->cancel();}input.grant(0);}};
 @class App;
 @interface VideoView:NSView
 @property(nonatomic,weak) App* owner;
@@ -62,13 +63,16 @@ struct Session {std::atomic_bool stopped=false;std::shared_ptr<dm::mac::Transpor
 @property(nonatomic,strong) NSButton* serverButton;
 @property(nonatomic,strong) NSTextField* serverStatus;
 @property(nonatomic,strong) NSStatusItem* tray;
+@property(nonatomic,strong) EPResourcePanel* resources;
 @property(nonatomic) BOOL quitting;
 @property(nonatomic,strong) dispatch_source_t quitSignal;
 @property(nonatomic) BOOL paused;
 @property(nonatomic) BOOL showStats;
 - (void)resetInput;
 - (void)showControls;
+- (void)updateActive;
 - (void)disconnect:(id)sender;
+- (void)disconnectAll:(id)sender;
 - (void)key:(NSEvent*)event down:(BOOL)down;
 - (void)mouse:(NSEvent*)event action:(input::Action)action;
 @end
@@ -109,12 +113,16 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
     self.accessCode=[[NSSecureTextField alloc]initWithFrame:NSZeroRect];self.accessCode.placeholderString=@"Access code (optional)";[self.accessCode.widthAnchor constraintGreaterThanOrEqualToConstant:150].active=YES;
     self.routes=[[NSPopUpButton alloc]initWithFrame:NSZeroRect pullsDown:NO];[self refresh:nil];
     self.connectButton=button(@"Connect",self,@selector(connect:));
-    self.controls=[NSStackView stackViewWithViews:@[self.address,self.port,self.accessCode,self.routes,button(@"Refresh",self,@selector(refresh:)),self.connectButton,button(@"Disconnect",self,@selector(disconnect:)),button(@"Settings",self,@selector(settings:)),button(@"About",self,@selector(about:))]];self.controls.spacing=8;
+    self.controls=[NSStackView stackViewWithViews:@[self.address,self.port,self.accessCode,self.routes,button(@"Refresh",self,@selector(refresh:)),self.connectButton,button(@"Disconnect all",self,@selector(disconnectAll:)),button(@"Settings",self,@selector(settings:)),button(@"About",self,@selector(about:))]];self.controls.spacing=8;
     [root addArrangedSubview:self.controls];self.serverButton=button(@"Start Server",self,@selector(toggleServer:));self.serverStatus=label(@"Server stopped. Automatic listens on connected Ethernet/Wi-Fi addresses.");NSStackView* serverRow=[NSStackView stackViewWithViews:@[self.serverButton,self.serverStatus]];serverRow.spacing=12;[root addArrangedSubview:serverRow];[NSTimer scheduledTimerWithTimeInterval:0.5 target:self selector:@selector(refreshAccessStatus:) userInfo:nil repeats:YES];self.requireCode=[NSButton checkboxWithTitle:@"Require access code" target:nil action:nil];self.generatedCode=label(@"One use, expires in 5 minutes");NSStackView* gateRow=[NSStackView stackViewWithViews:@[self.requireCode,self.generatedCode,button(@"Generate new code",self,@selector(generateCode:))]];gateRow.spacing=12;[root addArrangedSubview:gateRow];self.status=label(@"Client ready");[root addArrangedSubview:self.status];
     self.video=[[VideoView alloc]initWithFrame:NSMakeRect(0,0,960,550)];self.video.owner=self;[root addArrangedSubview:self.video];[self.video.widthAnchor constraintEqualToAnchor:root.widthAnchor constant:-24].active=YES;[self.video.heightAnchor constraintGreaterThanOrEqualToConstant:240].active=YES;
+    __weak App* resourceOwner=self;
+    self.resources=[[EPResourcePanel alloc]initWithTarget:[resourceOwner]{App* app=resourceOwner;dm::mac::ResourceOptions options;if(!app)return options;options.target.address=app.address.stringValue.UTF8String;options.target.local=[(NSString*)app.routes.selectedItem.representedObject UTF8String]?:"";try{options.target.port=[app selectedPort];}catch(...){options.target.port=0;}options.code=app.accessCode.stringValue.UTF8String;return options;} changed:^{App* app=resourceOwner;if(app)[app updateActive];}];
+    [root insertArrangedSubview:self.resources.view atIndex:4];[self.resources.view.widthAnchor constraintEqualToAnchor:root.widthAnchor constant:-24].active=YES;
     self.statistics=label(@"");self.statistics.hidden=YES;[root addArrangedSubview:self.statistics];[root addArrangedSubview:label(@"F10 controls · Control+Command+F fullscreen · F8 pause input · Ctrl+Shift+Q disconnect")];
     NSMenu* menu=[NSMenu new];NSMenuItem* appItem=[NSMenuItem new];[menu addItem:appItem];NSMenu* appMenu=[NSMenu new];[appMenu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@"q"];appItem.submenu=appMenu;
     NSMenuItem* viewItem=[[NSMenuItem alloc]initWithTitle:@"View" action:nil keyEquivalent:@""];[menu addItem:viewItem];NSMenu* viewMenu=[[NSMenu alloc]initWithTitle:@"View"];viewItem.submenu=viewMenu;
+    NSMenuItem* disconnectAll=[viewMenu addItemWithTitle:@"Disconnect all clients" action:@selector(disconnectAll:) keyEquivalent:@"q"];disconnectAll.target=self;disconnectAll.keyEquivalentModifierMask=NSEventModifierFlagControl|NSEventModifierFlagShift;
     NSMenuItem* fullscreen=[viewMenu addItemWithTitle:@"Toggle Full Screen" action:@selector(fullscreen:) keyEquivalent:@"f"];fullscreen.target=self;fullscreen.keyEquivalentModifierMask=NSEventModifierFlagControl|NSEventModifierFlagCommand;
     NSMenuItem* controls=[viewMenu addItemWithTitle:@"Show Controls" action:@selector(showControls) keyEquivalent:@""];controls.target=self;NSApp.mainMenu=menu;
     [self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];
@@ -133,6 +141,17 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 }
 - (void)resetInput{heldKeys.clear();heldButtons.clear();if(session)session->input.reset();}
 - (void)finishQuit{[NSApp replyToApplicationShouldTerminate:YES];}
+- (void)updateActive {
+    const BOOL active=session!=nullptr||self.resources.active||(host&&host->running());
+    if(active&&!self.tray){
+        self.tray=[[NSStatusBar systemStatusBar]statusItemWithLength:NSVariableStatusItemLength];self.tray.button.title=@"ExtraPane";
+        NSMenu* menu=[NSMenu new];NSMenuItem* show=[menu addItemWithTitle:@"Open ExtraPane" action:@selector(showWindow:) keyEquivalent:@""];show.target=self;
+        NSMenuItem* disconnect=[menu addItemWithTitle:@"Disconnect all clients" action:@selector(disconnectAll:) keyEquivalent:@""];disconnect.target=self;
+        [menu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@""];self.tray.menu=menu;
+    }
+    if(!active){if(self.tray){[[NSStatusBar systemStatusBar]removeStatusItem:self.tray];self.tray=nil;}if(self.quitting){self.quitting=NO;[self performSelector:@selector(finishQuit) withObject:nil afterDelay:0];}else if(!self.window.visible)[NSApp terminate:nil];}
+}
+- (void)disconnectAll:(id)sender{[self disconnect:sender];[self.resources stopAll];}
 - (void)showWindow:(id)sender{(void)sender;[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];}
 - (unsigned)selectedPort{NSString* text=self.port.stringValue;NSCharacterSet* invalid=[[NSCharacterSet characterSetWithCharactersInString:@"0123456789"]invertedSet];if(!text.length || [text rangeOfCharacterFromSet:invalid].location!=NSNotFound || text.integerValue<1 || text.integerValue>65535)throw std::runtime_error("Enter a TCP port from 1 to 65535");return unsigned(text.integerValue);}
 - (void)refreshAccessStatus:(NSTimer*)timer{(void)timer;if(!accessGate)return;auto state=accessGate->status();if(state==dm::access::Gate::Status::active)return;
@@ -148,25 +167,31 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
     unsigned selectedPort=0;try{selectedPort=[self selectedPort];}catch(const std::exception& e){self.serverStatus.stringValue=[NSString stringWithUTF8String:e.what()];return;}
     accessGate=self.requireCode.state==NSControlStateValueOn?std::make_shared<dm::access::Gate>():nullptr;if(accessGate)[self generateCode:nil];
     __weak App* weak=self;host=std::make_unique<dm::mac::Host>(address.UTF8String,[weak](std::string message){NSString* text=[NSString stringWithUTF8String:message.c_str()];NSLog(@"ExtraPane host: %@",text);dispatch_async(dispatch_get_main_queue(),^{App* app=weak;if(!app)return;app.serverStatus.stringValue=text;
-        if([text isEqualToString:@"Server stopped"]){if(app->accessGate)app->accessGate->revoke();app->accessGate.reset();app.generatedCode.stringValue=@"No active code";app.requireCode.enabled=YES;app.serverButton.title=@"Start Server";app.serverButton.enabled=YES;if(app.tray){[[NSStatusBar systemStatusBar]removeStatusItem:app.tray];app.tray=nil;}if(app.quitting)[app performSelector:@selector(finishQuit) withObject:nil afterDelay:0];else if(!app.window.visible)[NSApp terminate:nil];}
+        if([text isEqualToString:@"Server stopped"]){if(app->accessGate)app->accessGate->revoke();app->accessGate.reset();app.generatedCode.stringValue=@"No active code";app.requireCode.enabled=YES;app.serverButton.title=@"Start Server";app.serverButton.enabled=YES;[app updateActive];}
     });},selectedPort,accessGate);self.requireCode.enabled=NO;self.serverButton.title=@"Stop Server";self.serverStatus.stringValue=@"Starting listener…";
-    self.tray=[[NSStatusBar systemStatusBar]statusItemWithLength:NSVariableStatusItemLength];self.tray.button.title=@"ExtraPane";NSMenu* menu=[NSMenu new];NSMenuItem* show=[menu addItemWithTitle:@"Open ExtraPane" action:@selector(showWindow:) keyEquivalent:@""];show.target=self;NSMenuItem* stop=[menu addItemWithTitle:@"Stop Server" action:@selector(toggleServer:) keyEquivalent:@""];stop.target=self;[menu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@""];self.tray.menu=menu;
+    [self updateActive];
 }
 - (void)fullscreen:(id)sender{(void)sender;[self resetInput];[self.window toggleFullScreen:nil];}
 - (void)showControls{BOOL wasHidden=self.controls.hidden;self.controls.hidden=NO;if(wasHidden)[self resetInput];self.video.remoteEnabled=session && !self.paused;[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideControls) object:nil];if(session && !self.paused)[self performSelector:@selector(hideControls) withObject:nil afterDelay:5];}
 - (void)hideControls {if(session && !self.paused){NSPoint p=[self.controls convertPoint:self.window.mouseLocationOutsideOfEventStream fromView:nil];if(!self.controls.hidden && NSPointInRect(p,self.controls.bounds)){[self performSelector:@selector(hideControls) withObject:nil afterDelay:1];return;}self.controls.hidden=YES;self.video.remoteEnabled=YES;[self.window makeFirstResponder:self.video];}}
 - (void)disconnect:(id)sender{(void)sender;[NSObject cancelPreviousPerformRequestsWithTarget:self];[self resetInput];self.video.remoteEnabled=NO;if(session){session->cancel();self.status.stringValue=@"Disconnecting…";}}
 - (void)connect:(id)sender{(void)sender;if(session)return;try{
-    auto current=std::make_shared<Session>();current->transport=std::make_shared<dm::mac::Transport>(self.address.stringValue.UTF8String,[(NSString*)self.routes.selectedItem.representedObject UTF8String],[self selectedPort],self.accessCode.stringValue.UTF8String);self.accessCode.stringValue=@"";session=current;
+    dm::mac::ResourceTarget target{self.address.stringValue.UTF8String,[(NSString*)self.routes.selectedItem.representedObject UTF8String]?:"",[self selectedPort]};
+    if(!dm::mac::ipv4(target.address.c_str()))throw std::runtime_error("Enter a reachable server IPv4 address");
+    std::string code=self.accessCode.stringValue.UTF8String;auto current=std::make_shared<Session>();self.accessCode.stringValue=@"";session=current;[self updateActive];
     [[NSUserDefaults standardUserDefaults]setObject:self.address.stringValue forKey:@"server"];self.connectButton.enabled=NO;self.address.enabled=NO;self.routes.enabled=NO;self.status.stringValue=@"Connecting…";self.paused=NO;
     auto screen=self.window.screen;auto size=screen.frame.size;double scale=screen.backingScaleFactor;wire::ClientDisplay preferred{uint32_t(size.width*scale),uint32_t(size.height*scale),60};
-    std::thread([current,self,preferred]{@autoreleasepool{NSString* ending=@"Disconnected";try{
-        auto& transport=*current->transport;transport.connect();NSLog(@"ExtraPane: TLS ready");auto request=wire::request;request[7]=1;request[8]=3;wire::set_client_display(request,preferred);transport.write(request);
+    std::thread([current,self,preferred,target,code=std::move(code)]() mutable {@autoreleasepool{struct Wipe{std::string& code;~Wipe(){std::fill(code.begin(),code.end(),0);}}wipe{code};NSString* ending=@"Disconnected";try{
+        auto admission=dm::mac::acquireAdmission(target,code,0,[current]{return current->stopped.load();});std::fill(code.begin(),code.end(),0);code.clear();
+        auto ownedTransport=std::make_shared<dm::mac::Transport>(target.address.c_str(),target.local.c_str(),target.port,admission->credential);current->setTransport(ownedTransport);
+        if(current->stopped)throw std::runtime_error("Disconnected");
+        auto& transport=*ownedTransport;transport.connect();NSLog(@"ExtraPane: TLS ready");auto request=wire::request;request[7]=1;request[8]=3;wire::set_client_display(request,preferred);transport.write(request);
         auto offer=wire::decode_offer(transport.read(32,45));NSLog(@"ExtraPane: offer %ux%u caps=%u",offer.width,offer.height,offer.input_caps);dm::mac::Media media;
         auto prepare=[&]{if(offer.codec!=wire::Codec::h264 || (offer.input_caps&~3))throw std::runtime_error("Unsupported codec or input grant");current->input.grant(offer.input_caps);media.reset();
             dispatch_sync(dispatch_get_main_queue(),^{[self resetInput];[self.video.display flushAndRemoveImage];self.video.sourceSize=NSMakeSize(offer.width,offer.height);self.video.remoteEnabled=!self.paused;self.status.stringValue=[NSString stringWithFormat:@"Connected · TLS 1.3 · %u × %u · input: %@%@",offer.width,offer.height,(offer.input_caps&1)?@"mouse ":@"",(offer.input_caps&2)?@"keyboard":@""];[self.window makeFirstResponder:self.video];[self performSelector:@selector(hideControls) withObject:nil afterDelay:5];});transport.write(wire::ready);};prepare();
         uint32_t sequence=0,count=0;uint64_t previous=0,total=0;auto tick=std::chrono::steady_clock::now();
         while(!current->stopped && (!offer.frames || sequence<offer.frames)){
+            if(!admission->alive())throw std::runtime_error("Server admission ended");
             auto header=wire::decode_header(transport.read(24));if(header.sequence!=sequence || header.micros<previous)throw std::runtime_error("Out-of-order frame");previous=header.micros;
             if(!header.bytes){auto next=wire::decode_offer(transport.read(32));if(next.frames!=offer.frames || next.codec!=offer.codec || next.input_caps!=offer.input_caps || (next.input_caps && next.input_epoch==offer.input_epoch))throw std::runtime_error("Invalid display reconfiguration");offer=next;prepare();continue;}
             auto bytes=transport.read(header.bytes);if(offer.input_caps)transport.write(current->input.take(offer.input_epoch,sequence));
@@ -179,13 +204,13 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
         }
         if(!current->stopped && offer.frames){const uint8_t done[]={'D','O','N','E'};transport.write(done);}
     }catch(const std::exception& e){if(!current->stopped)ending=[NSString stringWithUTF8String:e.what()];}NSLog(@"ExtraPane: session ended: %@",ending);
-    current->cancel();dispatch_async(dispatch_get_main_queue(),^{if(self->session!=current)return;[NSObject cancelPreviousPerformRequestsWithTarget:self];self->session.reset();[self resetInput];self.video.remoteEnabled=NO;[self.video.display flushAndRemoveImage];self.controls.hidden=NO;self.connectButton.enabled=YES;self.address.enabled=YES;self.routes.enabled=YES;self.status.stringValue=ending;});}}).detach();
-    }catch(const std::exception& e){self.status.stringValue=[NSString stringWithUTF8String:e.what()];session.reset();}}
-- (void)settings:(id)sender{(void)sender;BOOL wasPaused=self.paused;self.paused=YES;[self resetInput];[self showControls];NSAlert* a=[NSAlert new];a.messageText=@"Client settings";a.informativeText=@"Mouse and physical keyboard use the host layout. Command maps to the Windows key. macOS-reserved shortcuts remain local. Trackpad gestures are mouse/scroll input, not remote multi-touch. Native pen/touch, audio and microphone are not implemented. Mac server shortcuts: Ctrl becomes Command, Windows/Super becomes Control, and Alt becomes Option (left/right preserved). Hosting requires Screen Recording permission; remote mouse/keyboard also requires Accessibility.\n\nTLS encrypts the connection but does not verify peer identity. Use a trusted LAN. Statistics measure reception, not end-to-end latency.";[a addButtonWithTitle:self.showStats?@"Hide statistics":@"Show statistics"];[a addButtonWithTitle:@"Close"];if([a runModal]==NSAlertFirstButtonReturn)self.showStats=!self.showStats;self.statistics.hidden=!self.showStats;self.paused=wasPaused;[self showControls];}
+    current->cancel();dispatch_async(dispatch_get_main_queue(),^{if(self->session!=current)return;[NSObject cancelPreviousPerformRequestsWithTarget:self];self->session.reset();[self resetInput];self.video.remoteEnabled=NO;[self.video.display flushAndRemoveImage];self.controls.hidden=NO;self.connectButton.enabled=YES;self.address.enabled=YES;self.routes.enabled=YES;self.status.stringValue=ending;[self updateActive];});}}).detach();
+    }catch(const std::exception& e){self.status.stringValue=[NSString stringWithUTF8String:e.what()];session.reset();[self updateActive];}}
+- (void)settings:(id)sender{(void)sender;BOOL wasPaused=self.paused;self.paused=YES;[self resetInput];[self showControls];NSAlert* a=[NSAlert new];a.messageText=@"Client settings";a.informativeText=@"Mouse and physical keyboard use the host layout. Command maps to the Windows key. macOS-reserved shortcuts remain local. Trackpad gestures are mouse/scroll input, not remote multi-touch. Native pen/touch and system audio playback are not implemented. Camera and microphone sending use the resource rows; virtual receiving endpoints are unavailable. Mac server shortcuts: Ctrl becomes Command, Windows/Super becomes Control, and Alt becomes Option (left/right preserved). Hosting requires Screen Recording permission; remote mouse/keyboard also requires Accessibility.\n\nTLS encrypts the connection but does not verify peer identity. Use a trusted LAN. Statistics measure reception, not end-to-end latency.";[a addButtonWithTitle:self.showStats?@"Hide statistics":@"Show statistics"];[a addButtonWithTitle:@"Close"];if([a runModal]==NSAlertFirstButtonReturn)self.showStats=!self.showStats;self.statistics.hidden=!self.showStats;self.paused=wasPaused;[self showControls];}
 - (void)about:(id)sender{(void)sender;BOOL wasPaused=self.paused;self.paused=YES;[self resetInput];[self showControls];NSAlert* a=[NSAlert new];a.messageText=@"ExtraPane";a.informativeText=@"Another screen for your desktop.\nRunning version: " EXTRAPANE_MAC_VERSION @"\nmacOS client preview · Apple Silicon and Intel\nA project-wide license has not been selected.";[a addButtonWithTitle:@"GitHub / README"];[a addButtonWithTitle:@"Close"];if([a runModal]==NSAlertFirstButtonReturn)[[NSWorkspace sharedWorkspace]openURL:[NSURL URLWithString:@"https://github.com/EEkebin/ExtraPane"]];self.paused=wasPaused;[self showControls];}
 - (void)key:(NSEvent*)event down:(BOOL)down{
     if(!session)return;unsigned code=event.keyCode;BOOL repeat=event.type==NSEventTypeKeyDown && event.isARepeat;BOOL quit=code==12 && (event.modifierFlags&NSEventModifierFlagControl) && (event.modifierFlags&NSEventModifierFlagShift);
-    if(code==109 || code==103 || code==100 || quit){if(down && !repeat){[self resetInput];if(quit)[self disconnect:nil];else if(code==103)[self.window toggleFullScreen:nil];else if(code==100){self.paused=!self.paused;self.video.remoteEnabled=!self.paused;if(self.paused)[self showControls];else [self hideControls];}else [self showControls];}return;}
+    if(code==109 || code==103 || code==100 || quit){if(down && !repeat){[self resetInput];if(quit){[self disconnect:nil];[self.resources stopAll];}else if(code==103)[self.window toggleFullScreen:nil];else if(code==100){self.paused=!self.paused;self.video.remoteEnabled=!self.paused;if(self.paused)[self showControls];else [self hideControls];}else [self showControls];}return;}
     if(!self.video.remoteEnabled)return;auto key=mapKey(code);if(!key.vk)return;
     if(down){if(repeat && !heldKeys.contains(code))return;heldKeys.insert(code);}else if(!heldKeys.erase(code))return;
     input::Event e;e.kind=input::Kind::key;e.action=down?input::Action::down:input::Action::up;e.id=key.vk;e.code=key.scan;e.value=key.ext;session->input.add(e);
@@ -201,10 +226,10 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 }
 - (void)windowDidResignKey:(NSNotification*)note{(void)note;[self resetInput];self.video.remoteEnabled=NO;}
 - (void)windowDidBecomeKey:(NSNotification*)note{(void)note;self.video.remoteEnabled=session && !self.paused;}
-- (BOOL)windowShouldClose:(NSWindow*)window{[self disconnect:nil];if(host && host->running()){[window orderOut:nil];return NO;}return YES;}
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)app{(void)app;return !host || !host->running();}
-- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)app{(void)app;[self disconnect:nil];if(host && host->running()){self.quitting=YES;host->stop();return NSTerminateLater;}return NSTerminateNow;}
-- (void)applicationWillTerminate:(NSNotification*)note{(void)note;[self disconnect:nil];host.reset();}
+- (BOOL)windowShouldClose:(NSWindow*)window{if(session||self.resources.active||(host&&host->running())){[window orderOut:nil];[self updateActive];return NO;}return YES;}
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)app{(void)app;return !session&&!self.resources.active&&(!host||!host->running());}
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)app{(void)app;if(session||self.resources.active||(host&&host->running())){self.quitting=YES;[self disconnect:nil];[self.resources stopAll];if(host&&host->running())host->stop();[self performSelector:@selector(updateActive) withObject:nil afterDelay:0];return NSTerminateLater;}return NSTerminateNow;}
+- (void)applicationWillTerminate:(NSNotification*)note{(void)note;[self disconnect:nil];[self.resources stopAll];host.reset();}
 @end
 void mediaCheck();
 static int checks(){try{
@@ -222,5 +247,5 @@ static int checks(){try{
     mediaCheck();puts("macOS protocol, input cleanup and native H.264 color round-trip checks passed");return 0;
 }catch(const std::exception& e){fprintf(stderr,"%s\n",e.what());return 1;}}
 int main(int argc,const char* argv[]){@autoreleasepool{if(argc==6 && !strcmp(argv[1],"--virtual-display-owner"))return dm::mac::displayOwner(unsigned(strtoul(argv[2],nullptr,10)),unsigned(strtoul(argv[3],nullptr,10)),unsigned(strtoul(argv[4],nullptr,10)),unsigned(strtoul(argv[5],nullptr,10)));if(argc>1 && !strcmp(argv[1],"--display-list"))return dm::mac::displayList();if(argc>1 && !strcmp(argv[1],"--virtual-display-check"))return dm::mac::displayCheck();if(argc>1 && !strcmp(argv[1],"--self-test"))return checks();[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];App* app=[App new];NSApp.delegate=app;
-    if(argc>1 && !strcmp(argv[1],"--ui-smoke"))dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(!app.window || !app.video || !app.address || !app.connectButton.enabled)exit(1);puts("macOS AppKit startup/shutdown passed");[NSApp terminate:nil];});
+    if(argc>1 && !strcmp(argv[1],"--ui-smoke"))dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(!app.window || !app.video || !app.address || !app.connectButton.enabled || !app.resources.view || app.resources.active)exit(1);puts("macOS AppKit startup/shutdown passed");[NSApp terminate:nil];});
     [NSApp run];return 0;}}

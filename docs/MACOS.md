@@ -77,3 +77,9 @@ For connection diagnostics, the app logs TLS state, negotiated dimensions/grants
 ## Access-code connections
 
 Code-enabled builds add a TCP port (default 43824) and optional six-digit access code on the Client page. Use matching releases. Enable Require access code before starting the server; Generate new code admits another connection without disconnecting existing sessions. See [access-code setup and security](ACCESS-CODES.md) for expiry, retry limits and reachable internet endpoints. No-code mode is still restricted to trusted-network use.
+
+## Resource-sharing development branch (2026-11-07)
+
+The development branch adds native AVFoundation camera/microphone sources and repeatable AppKit resource rows with independent destinations, source selection, microphone mute and grouped disconnect. Display and capture connections reuse one protected admission session per destination rather than consuming the same one-time code repeatedly. Camera sends H.264; microphone sends PCM16 48 kHz mono. Permissions are requested before capture and resources stop independently. Native compilation and actual application delivery remain separate gates; existing display test evidence above does not validate these new paths.
+
+This remains the native AppKit frontend, not the completed shared Qt migration. macOS virtual camera receiving requires a signed Core Media I/O system extension; virtual microphone receiving requires an installed HAL plug-in. Neither is supplied by the current ad-hoc portable ZIP/DMG, and USB remains unavailable. Camera/microphone sending does not install these receiver components or detach physical devices. Intel and Apple Silicon packages remain required. See IMPLEMENTATION-CHECKLIST.md for current build evidence.
