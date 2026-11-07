@@ -74,6 +74,8 @@ add_library(extrapane_camera_source SHARED platform/windows/camera_dll.cpp platf
 target_link_libraries(extrapane_camera_source PRIVATE extrapane_camera runtimeobject)
 set_target_properties(extrapane_camera_source PROPERTIES OUTPUT_NAME "ExtraPane.CameraSource")
 include(cmake/CameraSetup.cmake)
+include(cmake/Microphone.cmake)
+include(cmake/UsbInventory.cmake)
 if(EXTRAPANE_RESOURCE_SECURITY_TESTS)
   add_executable(extrapane-camera-format-check tests/camera_format_check.cpp)
   target_link_libraries(extrapane-camera-format-check PRIVATE extrapane_camera)
