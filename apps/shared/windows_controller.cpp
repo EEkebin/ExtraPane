@@ -100,11 +100,12 @@ QString WindowsController::hostAvailability()const{
     }
     if(hostMode_!="camera")return hostUnavailable_;
     if(!QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Resources.exe"))return "The camera connection engine is missing from this build.";
-    QSettings component("HKEY_LOCAL_MACHINE\\Software\\Classes\\CLSID\\{5A053AD3-02CD-4281-8367-CEF990182004}",QSettings::Registry64Format);
     wchar_t installed[32768]{};DWORD bytes=sizeof(installed);
     const auto read=RegGetValueW(HKEY_LOCAL_MACHINE,L"Software\\Classes\\CLSID\\{5A053AD3-02CD-4281-8367-CEF990182004}\\InprocServer32",nullptr,RRF_RT_REG_SZ|RRF_SUBKEY_WOW6464KEY,nullptr,installed,&bytes);
     const auto path=read==ERROR_SUCCESS?QString::fromWCharArray(installed):QString{};
-    if(component.value("ExtraPaneOwner").toString()!="ExtraPane.CameraSource/v1"||!QFileInfo::exists(path))return "Install the ExtraPane camera component using Camera setup before hosting a camera.";
+    wchar_t owner[128]{};DWORD ownerBytes=sizeof(owner);
+    const auto ownerRead=RegGetValueW(HKEY_LOCAL_MACHINE,L"Software\\Classes\\CLSID\\{5A053AD3-02CD-4281-8367-CEF990182004}",L"ExtraPaneOwner",RRF_RT_REG_SZ|RRF_SUBKEY_WOW6464KEY,nullptr,owner,&ownerBytes);
+    if(ownerRead!=ERROR_SUCCESS||QString::fromWCharArray(owner)!="ExtraPane.CameraSource/v1"||!QFileInfo::exists(path))return "Install the ExtraPane camera component using Camera setup before hosting a camera.";
     return {};
 }
 QString WindowsController::hostDescription()const{

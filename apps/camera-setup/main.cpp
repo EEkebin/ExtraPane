@@ -97,6 +97,17 @@ public:
 };
 bool owned_path(const fs::path& path,const fs::path& root){return path.parent_path()==root&&setup::payload_name(path.filename().wstring());}
 bool class_exists(){Key key;const auto result=RegOpenKeyExW(HKEY_LOCAL_MACHINE,class_key,0,KEY_QUERY_VALUE|KEY_WOW64_64KEY,&key.value);if(result==ERROR_FILE_NOT_FOUND)return false;check(result==ERROR_SUCCESS,"Inspect camera COM class failed");return true;}
+// An empty class key is not an existing COM registration. Older UI status
+// checks could create this key without writing any values. Preserve every
+// nonempty key, including unknown values or subkeys.
+bool empty_class(){
+    Key key;const auto result=RegOpenKeyExW(HKEY_LOCAL_MACHINE,class_key,0,KEY_QUERY_VALUE|KEY_ENUMERATE_SUB_KEYS|KEY_WOW64_64KEY,&key.value);
+    if(result==ERROR_FILE_NOT_FOUND)return true;
+    check(result==ERROR_SUCCESS,"Inspect empty camera COM class failed");
+    DWORD children=0,values=0;
+    check(RegQueryInfoKeyW(key.value,nullptr,nullptr,nullptr,&children,nullptr,nullptr,&values,nullptr,nullptr,nullptr,nullptr)==ERROR_SUCCESS,"Inspect camera COM contents failed");
+    return children==0&&values==0;
+}
 void verify_ownership(const setup::Snapshot& state,const fs::path& root){
     check(setup::owner_matches(state)&&owned_path(fs::path(*state[0]),root),"Camera COM class belongs to another registration; no changes made");
 }
@@ -124,7 +135,7 @@ void remove_empty_key(const wchar_t* path){
     RegCloseKey(key.value);key.value=nullptr;RegDeleteKeyExW(HKEY_LOCAL_MACHINE,path,KEY_WOW64_64KEY,0);
 }
 int status(){
-    Registry store;const auto state=setup::snapshot(store);if(setup::absent(state)){check(!class_exists(),"Camera COM class exists without ExtraPane ownership");std::wcout<<L"not-installed\n";return 3;}
+    Registry store;const auto state=setup::snapshot(store);if(setup::absent(state)){check(empty_class(),"Camera COM class exists without ExtraPane ownership");std::wcout<<L"not-installed\n";return 3;}
     const auto root=component_root();verify_ownership(state,root);const fs::path path(*state[0]);const auto digest=sha256(read_file(path));
     check(path.filename()==L"ExtraPane.CameraSource."+digest+L".dll","Registered camera payload hash mismatch");
     std::wcout<<L"installed\npath="<<path.wstring()<<L"\nsha256="<<digest<<L'\n';return 0;
@@ -138,7 +149,7 @@ int modify(bool install){
     struct Unlock{HANDLE value;~Unlock(){ReleaseMutex(value);}} unlock{mutex.value};
     Registry store;const auto state=setup::snapshot(store);const auto root=component_root();
     if(!setup::absent(state))verify_ownership(state,root);
-    else if(install)check(!class_exists(),"Camera COM class already exists without ExtraPane ownership; no changes made");
+    else if(install)check(empty_class(),"Camera COM class already exists without ExtraPane ownership; no changes made");
     if(!install&&setup::absent(state)){std::wcout<<L"not-installed\n";return 0;}
     protected_directory(root.parent_path());protected_directory(root);
     if(install){
@@ -181,5 +192,8 @@ int wmain(int argc,wchar_t** argv){
         if(mode==L"--check-package"){const auto bytes=payload();std::wcout<<L"valid-x64-camera-payload\nsha256="<<sha256(bytes)<<L'\n';return 0;}
         if(mode==L"--install")return modify(true);if(mode==L"--remove")return modify(false);
         throw std::runtime_error("Unknown camera setup operation");
-    }catch(const std::exception& error){std::cerr<<"Camera setup: "<<error.what()<<'\n';return 1;}
+    }catch(const std::exception& error){std::cerr<<"Camera setup: "<<error.what()<<'\n';
+        if(argc==2&&(std::wstring_view(argv[1])==L"--install"||std::wstring_view(argv[1])==L"--remove"))
+            MessageBoxA(nullptr,error.what(),"ExtraPane camera setup failed",MB_OK|MB_ICONERROR);
+        return 1;}
 }

@@ -268,3 +268,13 @@ Host/client Universal deployment validation passed in run 41738412800 on both ho
 ## Four-platform release authorization (2026-11-03)
 
 The user deferred iOS before implementation and explicitly requested merging the completed Windows, Linux, Android and macOS work and publishing a release. Consolidate the platform branches, keep all four package jobs required for publication, preserve the existing Android signing identity and Windows upgrade identifiers, and retain the documented preview limitations. No installation on the user's Mac is authorized.
+
+## Server accepts client-selected resources (2026-11-07)
+
+The user reconfirmed that the server starts once without an exclusive resource
+mode. Each client independently selects display, camera and microphone (and
+eligible USB storage), including concurrent display reception and reverse media
+forwarding. One client's choices must not replace server-wide resource settings.
+The current per-mode development dropdowns are temporary test scaffolding, not
+completion of this shared-session requirement. Preserve independent permissions,
+capability failures and stop/mute controls for each resource.

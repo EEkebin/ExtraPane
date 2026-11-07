@@ -22,6 +22,7 @@ speaker forwarding remain deferred.
 - [x] Isolated encrypted negotiation and tamper-rejection checks.
 - [x] Camera-only live protocol integrated into Windows and Android app sessions.
 - [x] Camera format negotiation and connection/status/error UI.
+- [ ] One server accepting simultaneous client-selected display, camera and microphone resources; current exclusive-mode dropdowns do not meet this requirement.
 - [ ] Shared UI migration and display regression checks across all four platforms.
 
 ## Camera
@@ -118,3 +119,5 @@ speaker forwarding remain deferred.
 | 2026-11-07 Android microphone / USB transport | Android microphone sender and native storage/tunnel foundations | Android APK/instrumentation compilation/lint; 7 core suites; synthetic native storage lifecycle checks. No live USB or audio access. |
 
 Concurrent implementation is authorized. Device testing is deferred until camera, microphone and USB implementation is complete. CAMERA-TEST.md is a future test guide, not a request to test now.
+
+2026-11-07 camera setup correction: status now uses read-only registry APIs; setup can initialize an entirely empty class key while preserving nonempty registrations. Setup policy/payload checks and offscreen UI pass. Actual installation retry remains pending.
