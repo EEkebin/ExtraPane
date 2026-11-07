@@ -36,6 +36,7 @@ CameraMode modeFor(AVCaptureDevice* device,const Choice* requested=nullptr){
 struct Shared {
     std::mutex mutex;std::condition_variable changed;std::deque<Packet> packets;
     std::size_t bytes=0;std::string error;std::atomic_bool stopping=false;std::atomic_uint pending=0;
+    std::function<bool()> muted;
     void fail(std::string reason){std::lock_guard lock(mutex);if(error.empty())error=std::move(reason);changed.notify_all();}
     void push(Packet packet){
         std::lock_guard lock(mutex);if(stopping||!error.empty())return;
@@ -85,6 +86,8 @@ void encoded(void* context,void*,OSStatus status,VTEncodeInfoFlags flags,CMSampl
             auto block=CMSampleBufferGetDataBuffer(sample);require(block,"Missing microphone samples");auto size=CMBlockBufferGetDataLength(block);require(size>0&&size<=192000&&size%2==0,"Invalid microphone sample size");
             Packet packet;packet.timestamp100ns=timestamp(CMSampleBufferGetPresentationTimeStamp(sample));packet.bytes.resize(size);
             require(CMBlockBufferCopyDataBytes(block,0,size,packet.bytes.data())==noErr,"Cannot read microphone samples");
+            packet.muted=shared->muted&&shared->muted();
+            if(packet.muted)std::fill(packet.bytes.begin(),packet.bytes.end(),0);
             const auto start=CMSampleBufferGetPresentationTimeStamp(sample);
             packet.discontinuity=!CMTIME_IS_NUMERIC(previousAudioEnd)||std::abs(CMTimeGetSeconds(CMTimeSubtract(start,previousAudioEnd)))>0.002;
             previousAudioEnd=CMTimeAdd(start,CMTimeMake(size/2,48000));shared->push(std::move(packet));
@@ -130,9 +133,9 @@ struct Capture::State {
         sink=nil;session=nil;
     }
 };
-Capture::Capture(Choice choice):state_(std::make_unique<State>()){
+Capture::Capture(Choice choice,std::function<bool()> muted):state_(std::make_unique<State>()){
     @autoreleasepool { @try {
-        require(!NSThread.isMainThread,"Capture must start on a worker thread");auto& s=*state_;s.choice=std::move(choice);
+        require(!NSThread.isMainThread,"Capture must start on a worker thread");auto& s=*state_;s.choice=std::move(choice);s.shared->muted=std::move(muted);
         require([AVCaptureDevice authorizationStatusForMediaType:mediaType(s.choice.kind)]==AVAuthorizationStatusAuthorized,"Camera or microphone permission is required");
         for(AVCaptureDevice* device in [AVCaptureDevice devicesWithMediaType:mediaType(s.choice.kind)])if(text(device.uniqueID)==s.choice.id){require(!s.device,"Capture device identity is ambiguous");s.device=device;}
         require(s.device&&s.device.connected&&!s.device.suspended,"Selected capture device is no longer available");
@@ -140,6 +143,9 @@ Capture::Capture(Choice choice):state_(std::make_unique<State>()){
         s.session=[AVCaptureSession new];s.sink=[ExtraPaneResourceSink new];s.sink->shared=s.shared;s.sink->camera=s.choice.kind==Kind::Camera;s.sink->previousAudioEnd=kCMTimeInvalid;
         [s.session beginConfiguration];s.configuring=true;require([s.session canAddInput:s.input],"Cannot add selected capture input");[s.session addInput:s.input];
         if(s.choice.kind==Kind::Camera){
+            require([s.session canSetSessionPreset:AVCaptureSessionPresetInputPriority],"Camera session cannot preserve an explicit capture mode");
+            s.session.sessionPreset=AVCaptureSessionPresetInputPriority;
+            require([s.session.sessionPreset isEqualToString:AVCaptureSessionPresetInputPriority],"Camera session did not accept the explicit capture mode");
             const bool requested=s.choice.width||s.choice.height||s.choice.fps;const auto mode=modeFor(s.device,requested?&s.choice:nullptr);require(mode.format,"Selected camera mode is unavailable");
             s.choice.width=mode.width;s.choice.height=mode.height;s.choice.fps=mode.fps;
             s.sink->width=mode.width;s.sink->height=mode.height;
@@ -158,6 +164,10 @@ Capture::Capture(Choice choice):state_(std::make_unique<State>()){
             [audio setSampleBufferDelegate:s.sink queue:s.queue];s.output=audio;
         }
         require([s.session canAddOutput:s.output],"Selected capture output is unavailable");[s.session addOutput:s.output];[s.session commitConfiguration];s.configuring=false;
+        if(s.choice.kind==Kind::Camera){
+            const auto actual=CMVideoFormatDescriptionGetDimensions(s.device.activeFormat.formatDescription);
+            require(actual.width==static_cast<int>(s.choice.width)&&actual.height==static_cast<int>(s.choice.height)&&CMTimeCompare(s.device.activeVideoMinFrameDuration,CMTimeMake(1,s.choice.fps))==0&&CMTimeCompare(s.device.activeVideoMaxFrameDuration,CMTimeMake(1,s.choice.fps))==0,"Camera session changed the negotiated format or frame rate");
+        }
         s.connection=[s.output connectionWithMediaType:mediaType(s.choice.kind)];
         if(s.choice.kind==Kind::Camera&&s.connection.isVideoMirroringSupported){s.connection.automaticallyAdjustsVideoMirroring=NO;s.connection.videoMirrored=NO;}
         const auto shared=s.shared;

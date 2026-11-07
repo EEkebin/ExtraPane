@@ -16,7 +16,7 @@ struct Choice {
 struct Packet {
     std::vector<std::uint8_t> bytes;
     std::int64_t timestamp100ns=0;
-    bool keyframe=false,discontinuity=false;
+    bool keyframe=false,discontinuity=false,muted=false;
 };
 std::vector<Choice> enumerate(Kind);
 // Callback may run off the main thread. Capture never prompts implicitly.
@@ -24,7 +24,7 @@ void requestPermission(Kind,std::function<void(bool,std::string)>);
 class Capture {
     struct State;std::unique_ptr<State> state_;
 public:
-    explicit Capture(Choice); // Call off the main thread.
+    explicit Capture(Choice,std::function<bool()> muted={}); // Call off the main thread.
     ~Capture();
     Capture(const Capture&)=delete;Capture& operator=(const Capture&)=delete;
     const Choice& choice()const;

@@ -42,13 +42,13 @@ void ResourceSession::run(){@autoreleasepool{
         control.send({{wire::Operation::request,options_.kind,binding.resource,static_cast<uint32_t>(payload.size())},std::move(payload)});
         reply=control.receive();require(reply.header.operation==wire::Operation::grant&&reply.header.kind==options_.kind&&reply.header.resource_id==binding.resource&&reply.payload.empty(),"Server rejected this resource; check its receiving component");
         require(!cancelled(),"Connection cancelled");
-        resource::Capture capture(choice);media::Channel camera(binding,read,write);microphone_wire::Channel microphone(binding,read,write);
+        resource::Capture capture(choice,[this]{return muted_.load();});media::Channel camera(binding,read,write);microphone_wire::Channel microphone(binding,read,write);
         bool announced=false;auto announce=[&]{if(!announced){announced=true;if(callbacks_.connected)callbacks_.connected(choice.width,choice.height,choice.fps);}};
         dm::linux_client::PcmPacketizer pcm(binding,[&](const auto& frame){microphone.send(frame);announce();});uint64_t sequence=0;
         while(!cancelled()){
             auto packet=capture.nextPacket(cancelled);if(packet.bytes.empty())continue;
             if(kind==resource::Kind::Camera){camera.send({binding,sequence++,packet.timestamp100ns,packet.bytes});announce();}
-            else pcm.push(packet.bytes,muted_,packet.discontinuity);
+            else pcm.push(packet.bytes,packet.muted||muted_.load(),packet.discontinuity);
         }
         if(!cancelled_)ending="Server admission ended";
     }catch(const std::exception& error){if(!cancelled_)ending=error.what();}
