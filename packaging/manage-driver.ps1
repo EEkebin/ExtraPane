@@ -11,10 +11,14 @@ $state=Join-Path $PSScriptRoot 'state'
 $log=Join-Path $PSScriptRoot 'driver-setup.log'
 $mutex=$null;$held=$false
 function Write-Log([string]$text){Add-Content -LiteralPath $log -Value ((Get-Date).ToString('o')+' '+$text);Write-Output $text}
+function Get-PackageCertificateName($manifest){
+ if(@($manifest.files.name) -contains 'ExtraPane-Driver.cer'){return 'ExtraPane-Driver.cer'}
+ return 'SideScreen-Driver.cer'
+}
 function Verify-Package([string]$directory){
  $manifest=Get-Content -LiteralPath (Join-Path $directory 'manifest.json') -Raw | ConvertFrom-Json
  if($manifest.schema -ne 1 -or $manifest.certificateThumbprint -notmatch '^[A-Fa-f0-9]{40}$'){throw 'Invalid driver manifest'}
- $certificateName=if(@($manifest.files.name) -contains 'ExtraPane-Driver.cer'){'ExtraPane-Driver.cer'}else{'SideScreen-Driver.cer'}
+ $certificateName=Get-PackageCertificateName $manifest
  $expected=@('DMIndirectDisplay.dll','DMIndirectDisplay.inf','DMIndirectDisplay.cat',$certificateName,'LICENSE','UPSTREAM.md')
  if(@($manifest.files).Count -ne $expected.Count){throw 'Unexpected driver package contents'}
  $seen=@{}
@@ -66,6 +70,7 @@ try {
  New-Item -ItemType Directory -Path $state -Force | Out-Null
  if($Action -eq 'Install'){
   $manifest=Verify-Package $package
+  $certificateName=Get-PackageCertificateName $manifest
   $infHash=(Get-FileHash -LiteralPath (Join-Path $package 'DMIndirectDisplay.inf') -Algorithm SHA256).Hash
   $catHash=(Get-FileHash -LiteralPath (Join-Path $package 'DMIndirectDisplay.cat') -Algorithm SHA256).Hash
   $recordPath=Join-Path $state ($catHash+'.json')
@@ -86,7 +91,7 @@ try {
     if(!(Test-Path -LiteralPath $entry)){
      # Record ownership first so an interrupted import is recoverable.
      if($store -eq 'Root'){$record.addedRoot=$true}else{$record.addedTrustedPublisher=$true};Save-Record $record $recordPath
-     Import-Certificate -FilePath (Join-Path $package 'ExtraPane-Driver.cer') -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
+     Import-Certificate -FilePath (Join-Path $package $certificateName) -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
     }
    }
    $signature=Get-AuthenticodeSignature -LiteralPath (Join-Path $package 'DMIndirectDisplay.cat')
