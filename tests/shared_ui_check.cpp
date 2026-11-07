@@ -1,6 +1,7 @@
 #include "resource_model.hpp"
 #include "connection_model.hpp"
 #include <QGuiApplication>
+#include <QJSValue>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlPropertyMap>
@@ -55,7 +56,7 @@ class TestConnectionRuntime final : public QQmlPropertyMap {
     Q_OBJECT
 public:
     explicit TestConnectionRuntime(ConnectionModel& connections):QQmlPropertyMap(this,nullptr),model(connections){}
-    Q_INVOKABLE void toggle(QString id,bool enabled){requests.push_back(id);model.setEnabled(id,enabled);if(!enabled)model.setState(id,ConnectionModel::State::idle);}
+    Q_INVOKABLE void toggle(QString id,bool enabled,QString code={},bool input=true){Q_UNUSED(code);Q_UNUSED(input);requests.push_back(id);model.setEnabled(id,enabled);if(!enabled)model.setState(id,ConnectionModel::State::idle);}
     ConnectionModel& model;QStringList requests;
 };
 static QObject* named(QObject* root,const char* name){
@@ -195,7 +196,29 @@ int main(int argc,char** argv){
         for(auto* object:repeatedRoot->findChildren<QObject*>())require(object->property("text").toString()!="Connect to server");
         auto monitorMode=instances.connection(instanceDisplay)["displayMode"].toMap();monitorMode["mode"]="native";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();require(monitorControl->property("visible").toBool());
         monitorMode["mode"]="custom";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();require(!monitorControl->property("visible").toBool()&&!warnings);
+        // Invalid attempts must mark all relevant fields without starting a runtime.
+        auto* enableDisplay=named(repeatedRoot,("connectionEnable_"+instanceDisplay).toUtf8().constData());
+        auto* connectionPanel=named(repeatedRoot,"clientConnectionsPanel");
+        monitorMode["mode"]="native";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();
+        enableDisplay->setProperty("checked",true);require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
+        require(runtime.requests.empty()&&!instances.connection(instanceDisplay)["connectionEnabled"].toBool());
+        require(connectionPanel->property("invalidControls").value<QJSValue>().toVariant().toList().size()>=2);
+        require(named(repeatedRoot,"connectionValidationToast")->property("visible").toBool());
+        if(const auto directory=qEnvironmentVariable("EXTRAPANE_UI_SCREENSHOTS");!directory.isEmpty()){
+            require(QDir().mkpath(directory));for(int i=0;i<35;++i){app.processEvents();QThread::msleep(10);}
+            require(qobject_cast<QQuickWindow*>(repeatedRoot)->grabWindow().save(directory+"/client-validation.png"));
+        }
+
+        monitorMode["mode"]="custom";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();
         require(instances.setSharedTarget(QVariantMap{{"address","192.0.2.1"},{"port",43824},{"localAddress","0.0.0.0"},{"interfaceIndex",0}}));
+        app.processEvents();
+        auto* codeField=named(named(repeatedRoot,"sharedDestinationFields"),"connectionCode");
+        codeField->setProperty("text","12");enableDisplay->setProperty("checked",true);require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
+        require(runtime.requests.empty()&&connectionPanel->property("invalidControls").value<QJSValue>().toVariant().toList().size()==1);
+        codeField->setProperty("text","");enableDisplay->setProperty("checked",true);require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
+        require(runtime.requests.size()==1&&runtime.requests.back()==instanceDisplay&&instances.connection(instanceDisplay)["connectionEnabled"].toBool());
+        waitFor([&]{return !named(repeatedRoot,"connectionValidationToast")->property("visible").toBool();});
+        runtime.requests.clear();instances.setEnabled(instanceDisplay,false);
         for(const auto& id:{instanceDisplay,instanceCamera,secondCamera,instanceMic}){instances.setSource(id,"fake-source");instances.setEnabled(id,true);require(instances.beginConnection(id));require(instances.setState(id,ConnectionModel::State::active,"Connected"));}
         app.processEvents();auto* displayMode=named(repeatedRoot,("displayModeChoice_"+instanceDisplay).toUtf8().constData());
         require(!displayMode->property("visible").toBool()&&!named(repeatedRoot,"sharedDestinationFields")->property("visible").toBool()&&named(repeatedRoot,"sharedDestinationSummary")->property("visible").toBool());

@@ -10,6 +10,37 @@ ScrollView {
     property var controller: null
     required property var addresses
     property bool inputAllowed: true
+    objectName: "clientConnectionsPanel"
+    property var invalidControls: []
+    property bool editShared: false
+    function spinValue(control) {
+        try { return Number.fromLocaleString(control.locale, control.contentItem.text) } catch (error) { return NaN }
+    }
+    function mark(control) {
+        if (invalidControls.indexOf(control) < 0) invalidControls = invalidControls.concat([control])
+    }
+    function invalid(control) { return invalidControls.indexOf(control) >= 0 }
+    function notifyInvalid() { validationToast.open(); validationTimer.restart() }
+    function validAddress(value, local) {
+        if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) return false
+        const parts = value.split(".").map(Number)
+        if (parts.some(v => v > 255)) return false
+        return local && value === "0.0.0.0" || (parts[0] !== 127 && parts[0] < 224 && value !== "0.0.0.0")
+    }
+    component ErrorBorder: Rectangle {
+        required property var control
+        anchors.fill: parent; z: 20; color: "transparent"; radius: 5
+        border.width: 2; border.color: "#ff6577"
+        visible: panel.invalid(control)
+    }
+    Timer { id: validationTimer; interval: 5000; onTriggered: { panel.invalidControls = []; validationToast.close() } }
+    Popup {
+        id: validationToast; objectName: "connectionValidationToast"
+        parent: Overlay.overlay; x: (parent.width - width) / 2; y: parent.height - height - 32
+        width: Math.min(420, parent.width - 32); padding: 16; modal: false; focus: false
+        background: Rectangle { color: "#48232d"; radius: 10; border.color: "#ff6577" }
+        contentItem: Label { text: "Check the highlighted fields to connect."; color: "white"; wrapMode: Text.WordWrap; Accessible.role: Accessible.AlertMessage }
+    }
     // Keep a stable gutter even while the scrollbar is faded out.
     rightPadding: ScrollBar.vertical.implicitWidth + 12
     contentWidth: availableWidth
@@ -28,22 +59,31 @@ ScrollView {
         property alias accessCode: code.text
         property var commit
         property bool valid: true
+        function validate() {
+            let good = true
+            if (!panel.validAddress(host.text.trim(), false)) { panel.mark(host); good = false }
+            if (!/^\d+$/.test(port.text) || Number(port.text) < 1 || Number(port.text) > 65535) { panel.mark(port); good = false }
+            if (route.currentIndex < 0 || route.currentIndex >= addresses.length || !panel.validAddress(addresses[route.currentIndex].address, true)) { panel.mark(route); good = false }
+            if (code.text.length && !/^\d{6}$/.test(code.text)) { panel.mark(code); good = false }
+            return good
+        }
+        function rejectCode() { panel.mark(code); panel.editShared = true; panel.notifyInvalid() }
         function save() {
             const local = addresses[route.currentIndex]
-            valid = commit({address: host.text, port: Number(port.text), localAddress: local ? local.address : "0.0.0.0", interfaceIndex: local ? local.index : 0})
+            valid = commit({address: host.text.trim(), port: Number(port.text), localAddress: local ? local.address : "0.0.0.0", interfaceIndex: local ? local.index : 0})
             return valid
         }
         Label { visible: !fields.valid; text: "Enter a valid IPv4 address and port."; color: "#f0c66e" }
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
-            TextField { id: host; Layout.fillWidth: true; Layout.minimumWidth: 0; placeholderText: "Server IPv4 address"; text: fields.destination.address; onEditingFinished: fields.save() }
-            TextField { id: port; Layout.preferredWidth: 100; placeholderText: "Port"; text: fields.destination.port; validator: IntValidator { bottom: 1; top: 65535 } onEditingFinished: fields.save() }
+            TextField { id: host; objectName: "connectionAddress"; ErrorBorder { control: host } Layout.fillWidth: true; Layout.minimumWidth: 0; placeholderText: "Server IPv4 address"; text: fields.destination.address; onEditingFinished: fields.save() }
+            TextField { id: port; ErrorBorder { control: port } Layout.preferredWidth: 100; placeholderText: "Port"; text: fields.destination.port; validator: IntValidator { bottom: 1; top: 65535 } onEditingFinished: fields.save() }
         }
         GridLayout {
             columns: fields.width < 480 ? 1 : 2
             Layout.fillWidth: true; Layout.minimumWidth: 0
-            ComboBox { id: route; Layout.fillWidth: true; Layout.minimumWidth: 0; model: fields.addresses; textRole: "label"; currentIndex: Math.max(0, fields.addresses.findIndex(item => item.address === fields.destination.localAddress)); onActivated: fields.save() }
-            TextField { id: code; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 190; placeholderText: "Access code (optional)"; echoMode: TextInput.Password; maximumLength: 6 }
+            ComboBox { id: route; ErrorBorder { control: route } Layout.fillWidth: true; Layout.minimumWidth: 0; model: fields.addresses; textRole: "label"; currentIndex: Math.max(0, fields.addresses.findIndex(item => item.address === fields.destination.localAddress)); onActivated: fields.save() }
+            TextField { id: code; objectName: "connectionCode"; ErrorBorder { control: code } Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 190; placeholderText: "Access code (optional)"; echoMode: TextInput.Password; maximumLength: 6 }
         }
     }
     ColumnLayout {
@@ -54,7 +94,7 @@ ScrollView {
         DestinationFields {
             id: shared
             objectName: "sharedDestinationFields"
-            visible: panel.runtime.connections.singleServer && panel.runtime.connections.activeConnectionCount === 0
+            visible: panel.runtime.connections.singleServer && (panel.runtime.connections.activeConnectionCount === 0 || panel.editShared)
             Layout.fillWidth: true; Layout.minimumWidth: 0
             destination: panel.runtime.connections.sharedTarget
             addresses: panel.addresses
@@ -198,6 +238,31 @@ ScrollView {
                                 readonly property string status: instance.status
                                 readonly property bool busy: instance.busy
                                 readonly property bool destinationVisible: instance.destinationVisible
+                                function validateConnection() {
+                                    panel.invalidControls = []
+                                    const fields = panel.runtime.connections.singleServer ? shared : perRow
+                                    let good = fields.validate()
+                                    if (resourceKind !== "display") {
+                                        if (source.currentIndex < 0 || source.model[source.currentIndex].available === false) { panel.mark(source); good = false }
+                                    } else if (displayChoice.currentIndex === 1) {
+                                        if (monitor.currentIndex < 0) { panel.mark(monitor); good = false }
+                                    } else {
+                                        const w = panel.spinValue(widthSpin), h = panel.spinValue(heightSpin), f = panel.spinValue(fpsSpin)
+                                        if (!Number.isInteger(w) || w < 2 || w > 4096 || w % 2) { panel.mark(widthSpin); good = false }
+                                        if (!Number.isInteger(h) || h < 2 || h > 4096 || h % 2) { panel.mark(heightSpin); good = false }
+                                        if (w * h > 8847360) { panel.mark(widthSpin); panel.mark(heightSpin); good = false }
+                                        if (!Number.isInteger(f) || f < 1 || f > 360) { panel.mark(fpsSpin); good = false }
+                                        if (good) { widthSpin.value = w; heightSpin.value = h; fpsSpin.value = f }
+                                    }
+                                    if (!good) { panel.notifyInvalid(); return false }
+                                    if (resourceKind === "display") displayChoice.parent.saveDisplay()
+                                    if (!fields.save()) { panel.mark(fields); panel.notifyInvalid(); return false }
+                                    validationToast.close(); return true
+                                }
+                                onStatusChanged: {
+                                    if (phase === "failed" && /access.code|authentication|unauthorized/i.test(status))
+                                        (panel.runtime.connections.singleServer ? shared : perRow).rejectCode()
+                                }
                                 property bool displayOptionsValid: true
                                 property string connectedDescription: ""
                                 function freezeDescription() {
@@ -223,12 +288,13 @@ ScrollView {
                                         Layout.fillWidth: true; Layout.minimumWidth: 0
                                         CheckBox {
                                             text: row.resourceKind === "usb" ? "USB storage" : row.resourceKind.charAt(0).toUpperCase() + row.resourceKind.slice(1)
-                                            enabled: row.connectionEnabled || row.displayOptionsValid
+                                            objectName: "connectionEnable_" + row.connectionId
                                             checked: row.connectionEnabled
                                             onClicked: {
-                                                if (checked && !(panel.runtime.connections.singleServer ? shared.save() : perRow.save())) { checked = Qt.binding(() => row.connectionEnabled); return }
+                                                if (checked && !row.validateConnection()) { checked = Qt.binding(() => row.connectionEnabled); return }
                                                 const code = panel.runtime.connections.singleServer ? shared.accessCode : perRow.accessCode
                                                 panel.runtime.toggle(row.connectionId, checked, code, panel.inputAllowed)
+                                                panel.editShared = false
                                                 if (panel.runtime.connections.singleServer) shared.accessCode = ""; else perRow.accessCode = ""
                                             }
                                         }
@@ -265,7 +331,7 @@ ScrollView {
                                         visible: row.resourceKind === "display" && !row.busy; enabled: !row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0
                                         function saveDisplay() { row.displayOptionsValid = panel.runtime.connections.setDisplayMode(row.connectionId, {mode: displayChoice.currentIndex === 0 ? "custom" : "native", monitorId: displayChoice.currentIndex === 1 ? (monitor.currentValue || "") : "", width: widthSpin.value, height: heightSpin.value, fps: fpsSpin.value}) }
                                         ComboBox { id: displayChoice; objectName: "displayModeChoice_" + row.connectionId; Layout.fillWidth: true; Layout.minimumWidth: 0; model: ["Custom resolution and frame rate", "Match local monitor"]; currentIndex: row.displayMode.mode === "native" ? 1 : 0; onActivated: parent.saveDisplay() }
-                                        ComboBox { id: monitor; objectName: "displayMonitor_" + row.connectionId; visible: displayChoice.currentIndex === 1; Layout.fillWidth: true; Layout.minimumWidth: 0; model: panel.runtime.monitors; textRole: "label"; valueRole: "id"; currentIndex: model.findIndex(item => item.id === row.displayMode.monitorId); displayText: currentIndex < 0 ? "Choose a local monitor" : currentText; onActivated: parent.saveDisplay(); Connections { target: monitor.popup; function onOpened() { panel.runtime.refreshMonitors() } } }
+                                        ComboBox { id: monitor; ErrorBorder { control: monitor } objectName: "displayMonitor_" + row.connectionId; visible: displayChoice.currentIndex === 1; Layout.fillWidth: true; Layout.minimumWidth: 0; model: panel.runtime.monitors; textRole: "label"; valueRole: "id"; currentIndex: model.findIndex(item => item.id === row.displayMode.monitorId); displayText: currentIndex < 0 ? "Choose a local monitor" : currentText; onActivated: parent.saveDisplay(); Connections { target: monitor.popup; function onOpened() { panel.runtime.refreshMonitors() } } }
                                         GridLayout {
                                             visible: displayChoice.currentIndex === 0
                                             Layout.fillWidth: true; Layout.minimumWidth: 0
@@ -273,17 +339,17 @@ ScrollView {
                                             ColumnLayout {
                                                 Layout.fillWidth: true; Layout.minimumWidth: 0
                                                 Label { text: "Width"; color: "#9eacc2"; font.pixelSize: 12 }
-                                                SpinBox { id: widthSpin; Layout.fillWidth: true; Layout.minimumWidth: 0; from: 2; to: 4096; stepSize: 2; value: row.displayMode.width; editable: true; onValueModified: displayChoice.parent.saveDisplay() }
+                                                SpinBox { id: widthSpin; ErrorBorder { control: widthSpin } Layout.fillWidth: true; Layout.minimumWidth: 0; from: 2; to: 4096; stepSize: 2; value: row.displayMode.width; editable: true; onValueModified: displayChoice.parent.saveDisplay() }
                                             }
                                             ColumnLayout {
                                                 Layout.fillWidth: true; Layout.minimumWidth: 0
                                                 Label { text: "Height"; color: "#9eacc2"; font.pixelSize: 12 }
-                                                SpinBox { id: heightSpin; Layout.fillWidth: true; Layout.minimumWidth: 0; from: 2; to: 4096; stepSize: 2; value: row.displayMode.height; editable: true; onValueModified: displayChoice.parent.saveDisplay() }
+                                                SpinBox { id: heightSpin; ErrorBorder { control: heightSpin } Layout.fillWidth: true; Layout.minimumWidth: 0; from: 2; to: 4096; stepSize: 2; value: row.displayMode.height; editable: true; onValueModified: displayChoice.parent.saveDisplay() }
                                             }
                                             ColumnLayout {
                                                 Layout.fillWidth: true; Layout.minimumWidth: 0
                                                 Label { text: "Target FPS"; color: "#9eacc2"; font.pixelSize: 12 }
-                                                SpinBox { id: fpsSpin; Layout.fillWidth: true; Layout.minimumWidth: 0; from: 1; to: 360; value: Math.min(360, row.displayMode.fps); editable: true; onValueModified: displayChoice.parent.saveDisplay() }
+                                                SpinBox { id: fpsSpin; ErrorBorder { control: fpsSpin } Layout.fillWidth: true; Layout.minimumWidth: 0; from: 1; to: 360; value: Math.min(360, row.displayMode.fps); editable: true; onValueModified: displayChoice.parent.saveDisplay() }
                                             }
                                         }
                                         Label { visible: !row.displayOptionsValid; text: "This custom mode is outside the current engine limits. Use even dimensions and stay below the total-pixel limit."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#f0c66e" }
