@@ -1,7 +1,39 @@
 #include <dm/usb_recovery.hpp>
+#include <dm/usb_runner.hpp>
 #include <algorithm>
+#include <cwctype>
 #include <stdexcept>
 namespace dm::usb {
+extrapane::Availability interrupted_return_policy(const RecoveryRecord& record){
+    if(record.version!=2||record.state!=RecoveryState::bound||(record.prior_attributes&1)||record.bus_id.empty()||record.binding_id.empty())
+        return {false,"Interrupted return requires a version 2 bound record for an originally online disk"};
+    // Exercise the same bounded codec validation used for protected records.
+    try{(void)encode_recovery(record);}catch(const std::exception& e){return {false,e.what()};}
+    return {true,{}};
+}
+extrapane::Availability ejected_binding_adoption_policy(const PendingRecovery& selected,const PendingRecovery& current,
+    const HostDevice& device,const std::wstring& reserved){
+    auto same=[](const std::wstring& a,const std::wstring& b){return a.size()==b.size()&&std::equal(a.begin(),a.end(),b.begin(),[](auto x,auto y){return std::towupper(x)==std::towupper(y);});};
+    if(!selected.record||!current.record||!selected.error.empty()||!current.error.empty()||selected.journal_id.empty()||
+       selected.journal_id!=current.journal_id||*selected.record!=*current.record||selected.record->state!=RecoveryState::ejected)
+        return {false,"Binding adoption requires the unchanged protected destination-eject journal"};
+    const auto& record=*current.record;std::wstring binding(record.binding_id.begin(),record.binding_id.end());
+    if(reserved.empty()||!same(device.instance_id,reserved)||device.attached||device.forced||record.bus_id.empty()||
+       record.binding_id.empty()||device.bus_id!=record.bus_id||!same(device.binding_id,binding))
+        return {false,"The reserved source and current unoccupied binding do not match the eject journal"};
+    return {true,{}};
+}
+extrapane::Availability interrupted_binding_adoption_policy(const PendingRecovery& selected,const PendingRecovery& current,
+    const HostDevice& device,const std::wstring& reserved,bool acknowledged){
+    if(!acknowledged||!selected.record||!current.record||!selected.error.empty()||!current.error.empty()||selected.journal_id.empty()||selected.journal_id!=current.journal_id||*selected.record!=*current.record)
+        return {false,"Interrupted binding adoption requires the unchanged protected record and explicit durable acknowledgment"};
+    const auto policy=interrupted_return_policy(*current.record);if(!policy.available)return policy;
+    const auto& record=*current.record;const std::wstring binding(record.binding_id.begin(),record.binding_id.end());
+    auto same=[](const std::wstring& a,const std::wstring& b){return a.size()==b.size()&&std::equal(a.begin(),a.end(),b.begin(),[](auto x,auto y){return std::towupper(x)==std::towupper(y);});};
+    if(reserved.empty()||!same(device.instance_id,reserved)||device.attached||device.forced||device.bus_id!=record.bus_id||!same(device.binding_id,binding))
+        return {false,"Interrupted source binding is attached, ambiguous or differs from the acknowledged record"};
+    return {true,{}};
+}
 namespace detail {
 std::vector<std::uint8_t> partition_metadata(const SectorReader& read,std::uint32_t sector,std::uint64_t size){
     auto need=[](bool ok){if(!ok)throw std::invalid_argument("USB partition metadata is unsupported, corrupt or changed");};

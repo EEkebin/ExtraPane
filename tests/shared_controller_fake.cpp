@@ -29,11 +29,14 @@ int main(int argc,char** argv){
     }
     if(args.find("send-usb")!=args.npos){
         bool veto=std::getenv("EXTRAPANE_TEST_USB_BUSY")!=nullptr;
-        std::cout<<"USB_STARTED"<<std::endl;
+        bool notready=std::getenv("EXTRAPANE_TEST_USB_NOT_READY")!=nullptr;
+        if(notready)std::cout<<"USB_WAITING enumerating\nUSB_NOT_READY exact disk missing"<<std::endl;
+        else std::cout<<"USB_STARTED"<<std::endl;
         while(std::getline(std::cin,line)){
             if(line=="X"){std::cout<<"USB_RECOVERY_REQUIRED simulated forced session loss"<<std::endl;return 0;}
             if(line!="Q")return 3;
             std::cout<<"USB_RETURNING"<<std::endl;Sleep(200);
+            if(notready){notready=false;std::cout<<"USB_RETURN_FAILED not-ready: exact disk missing; access code=123456"<<std::endl;continue;}
             if(veto){veto=false;std::cout<<"USB_STOP_BLOCKED receiver-busy"<<std::endl;continue;}
             std::cout<<"USB_RETURNED"<<std::endl;return 0;
         }

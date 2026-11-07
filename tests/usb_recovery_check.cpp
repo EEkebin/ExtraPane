@@ -1,4 +1,5 @@
 #include <dm/usb_recovery.hpp>
+#include <dm/usb_runner.hpp>
 #include <iostream>
 #include <algorithm>
 #include <limits>
@@ -83,6 +84,29 @@ int main(){try{
     require(valid_recovery_transition(RecoveryState::ejected,RecoveryState::released));
     require(!valid_recovery_transition(RecoveryState::bound,RecoveryState::released));
     auto ejected=record;ejected.state=RecoveryState::ejected;
+    PendingRecovery selected;selected.journal_id=L"protected-journal";selected.record=ejected;
+    HostDevice bound{L"USB\\TEST","1-2",L"{01234567-89ab-cdef-0123-456789abcdef}",false,false};
+    require(ejected_binding_adoption_policy(selected,selected,bound,L"usb\\test").available);
+    auto changed=selected;changed.record->state=RecoveryState::bound;require(!ejected_binding_adoption_policy(changed,changed,bound,L"USB\\TEST").available);
+    changed=selected;changed.record->owner[0]^=1;require(!ejected_binding_adoption_policy(selected,changed,bound,L"USB\\TEST").available);
+    changed=selected;changed.record.reset();require(!ejected_binding_adoption_policy(selected,changed,bound,L"USB\\TEST").available);
+    auto foreign=bound;foreign.binding_id=L"{ffffffff-89ab-cdef-0123-456789abcdef}";require(!ejected_binding_adoption_policy(selected,selected,foreign,L"USB\\TEST").available);
+    foreign=bound;foreign.attached=true;require(!ejected_binding_adoption_policy(selected,selected,foreign,L"USB\\TEST").available);
+    foreign=bound;foreign.forced=true;require(!ejected_binding_adoption_policy(selected,selected,foreign,L"USB\\TEST").available);
+    foreign=bound;foreign.bus_id="1-3";require(!ejected_binding_adoption_policy(selected,selected,foreign,L"USB\\TEST").available);
+    require(!ejected_binding_adoption_policy(selected,selected,bound,L"USB\\OTHER").available);
+    auto interrupted=selected;interrupted.record->state=RecoveryState::bound;interrupted.record->version=2;
+    require(interrupted_return_policy(*interrupted.record).available);
+    require(interrupted_binding_adoption_policy(interrupted,interrupted,bound,L"USB\\TEST",true).available);
+    require(!interrupted_binding_adoption_policy(interrupted,interrupted,bound,L"USB\\TEST",false).available);
+    require(!interrupted_binding_adoption_policy(interrupted,selected,bound,L"USB\\TEST",true).available);
+    require(!interrupted_binding_adoption_policy(interrupted,interrupted,foreign,L"USB\\TEST",true).available);
+    require(!interrupted_binding_adoption_policy(interrupted,interrupted,bound,L"USB\\OTHER",true).available);
+    auto invalidInterrupted=*interrupted.record;invalidInterrupted.version=1;require(!interrupted_return_policy(invalidInterrupted).available);
+    invalidInterrupted=*interrupted.record;invalidInterrupted.state=RecoveryState::ejected;require(!interrupted_return_policy(invalidInterrupted).available);
+    invalidInterrupted=*interrupted.record;invalidInterrupted.prior_attributes|=1;require(!interrupted_return_policy(invalidInterrupted).available);
+    invalidInterrupted=*interrupted.record;invalidInterrupted.fingerprint.fill(0);require(!interrupted_return_policy(invalidInterrupted).available);
+    invalidInterrupted=*interrupted.record;invalidInterrupted.binding_id.clear();require(!interrupted_return_policy(invalidInterrupted).available);
     // A crash after verified eject but before unbind preserves sufficient proof
     // for explicit recovery to finish only the journal's exact owned GUID.
     require(decode_recovery(encode_recovery(ejected))==ejected);

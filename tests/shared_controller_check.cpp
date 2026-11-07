@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QThread>
+#include <QFile>
 #include <iostream>
 #include <stdexcept>
 #include <source_location>
@@ -77,6 +78,17 @@ int main(int argc,char** argv){
         until([&]{return !model->scanning(Kind::usb);});
         require(model->devices(Kind::usb).size()==1&&model->devices(Kind::usb)[0].toMap()["label"]=="Fake returned disk");
         controller.disconnectFromServer();until([&]{return !controller.active();});
+        qputenv("EXTRAPANE_TEST_USB_NOT_READY","1");model->select(3,true);
+        controller.connectTo("192.0.2.1","0.0.0.0",false,0,0,43824,{});
+        until([&]{return status(model,3).startsWith("USB is not available");});
+        require(!status(model,3).contains("shared"));
+        controller.disconnectFromServer();
+        until([&]{return model->selected(Kind::usb)&&status(model,3).startsWith("USB could not be returned safely");});
+        require(controller.active()&&!status(model,3).contains("close its files"));
+        QFile usbLog(QCoreApplication::applicationDirPath()+"/usb-diagnostics/usb.log");require(usbLog.open(QIODevice::ReadOnly));
+        const auto diagnostics=usbLog.readAll();require(diagnostics.contains("USB_RETURN_FAILED")&&!diagnostics.contains("123456"));
+        controller.disconnectFromServer();until([&]{return !controller.active();});
+        qunsetenv("EXTRAPANE_TEST_USB_NOT_READY");
         qputenv("EXTRAPANE_TEST_SESSION_EXIT","1");model->select(1,true);
         controller.connectTo("192.0.2.1","0.0.0.0",false,0,0,43824,{});
         until([&]{return status(model,1).startsWith("Sharing camera");});

@@ -74,6 +74,13 @@ extrapane::Availability assess_online_preexport(const Disk&,const PendingRecover
     const RecoveryReleaseVerifier& verify_no_binding);
 extrapane::Availability retire_online_preexport(const Disk&,const PendingRecovery&,
     const RecoveryReleaseVerifier& verify_no_binding);
+// Explicit operator recovery only. Never called by ordinary disconnect, UI or
+// uninstallation. Keeps an independently protected audit of the original bound
+// record and acknowledgment that receiver writes may not have been flushed.
+extrapane::Availability interrupted_return_policy(const RecoveryRecord&);
+bool interrupted_return_authorized(const Disk&,const PendingRecovery&);
+extrapane::Availability recover_interrupted_disk(const Disk&,const PendingRecovery&,
+    const RecoveryReleaseVerifier& verify_exclusive_binding_release);
 extrapane::Availability recover_quarantined_disk(const Disk& locally_selected,
     const RecoveryReleaseVerifier& verify_destination_ejected_and_binding_released);
 }

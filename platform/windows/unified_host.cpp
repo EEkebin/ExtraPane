@@ -51,6 +51,7 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
     report("SERVER_STARTED resources=display,camera,microphone,usb");report("LISTENING "+listener.endpoints());
     auto events=[&](const std::string& text){
         if(text.starts_with("USB_EJECT_BUSY")){control.quit=false;quit_pending=false;report("SERVER_STOP_BLOCKED USB storage is busy; close its files and retry Stop server.");}
+        else if(text.starts_with("USB_RETURN_FAILED")){control.quit=false;quit_pending=false;report("SERVER_STOP_BLOCKED USB return failed: "+text.substr(18)+". The device remains reserved; inspect USB diagnostics before retrying.");}
         report(text);
     };
     struct Join{std::array<Worker,16>& workers;Control& control;~Join(){control.stop=true;for(auto& w:workers)if(w.thread.joinable())w.thread.join();}}join{workers,control};

@@ -308,8 +308,17 @@ until return succeeds; a busy refusal cancels the pending full disconnect.
 Only a verified eject receipt and exact owned-binding release authorize automatic
 source restoration. Network loss does not supply that proof.
 
-The bounded EPUT/EPUS v2 protocol carries return requests and busy responses
-separately from USB/IP payload. Both endpoints require matching builds.
+The bounded EPUT/EPUS v3 protocol carries readiness, return requests and distinct
+return-failure responses separately from USB/IP payload. Both endpoints require
+matching builds. A transfer is not reported shared until the receiver confirms
+the exact imported disk. A missing device, identity mismatch or flush failure
+must not be described as an open-file veto.
+
+Windows retains bounded USB diagnostics in
+`%LOCALAPPDATA%\ExtraPane\logs\usb.log` and one rotated file (256 KiB each).
+These contain USB lifecycle/errors, not admission messages; credentials and
+access-code patterns are redacted. Initial enumeration and native subprocess
+errors are recorded so restarting the UI does not discard the failure.
 
 `ExtraPane.UsbRecovery --reconcile-online` retires only protected `prepared` or
 `offline` journals with no binding history when the identified local disk slot

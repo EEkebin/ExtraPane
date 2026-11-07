@@ -3,6 +3,8 @@
 #include <ExtraPaneVersion.h>
 #include <QCoreApplication>
 #include <QFileInfo>
+#include <QFile>
+#include <QDateTime>
 #include <QDir>
 #include <QRegularExpression>
 #include <QHostAddress>
@@ -18,6 +20,26 @@
 
 using extrapane::windows_bridge::Child;
 namespace {
+// USB diagnostics only: bounded local history, never admission/code messages.
+void usbDiagnostic(QString role,QString event){
+    event=event.left(2048);
+    event.replace(QRegularExpression("EPCT1:[^\\s]+"),"[redacted credential]");
+    event.replace(QRegularExpression("(?i)(access[ _-]?code|password|credential|ticket)[ :=]+.*"),"[redacted sensitive detail]");
+    event.replace(QRegularExpression("\\b[0-9]{6}\\b"),"[redacted code]");
+    event.replace('\r',' ');event.replace('\n',' ');
+#ifdef EXTRAPANE_CONTROLLER_TEST_CHILDREN
+    const auto directory=QCoreApplication::applicationDirPath()+"/usb-diagnostics";
+#else
+    PWSTR local=nullptr;if(FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&local)))return;
+    const auto directory=QString::fromWCharArray(local)+"/ExtraPane/logs";CoTaskMemFree(local);
+#endif
+    if(!QDir().mkpath(directory))return;
+    const auto path=directory+"/usb.log";
+    const auto entry=(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)+" "+role+" "+event+"\n").toUtf8();
+    constexpr qint64 limit=256*1024;
+    if(QFileInfo(path).size()+entry.size()>limit){QFile::remove(path+".1");if(!QFile::rename(path,path+".1"))return;}
+    QFile log(path);if(log.open(QIODevice::WriteOnly|QIODevice::Append))log.write(entry);
+}
 constexpr std::array<const char*,4> resourceNames{"display","camera","microphone","usb"};
 int resourceIndex(const QString& key){for(int i=0;i<4;++i)if(key==resourceNames[i])return i;return -1;}
 extrapane::ResourceKind resourceKind(int i){return static_cast<extrapane::ResourceKind>(i);}
@@ -35,6 +57,7 @@ struct WindowsController::Impl {
     ~Impl(){if(setup)CloseHandle(setup);}
 };
 WindowsController::WindowsController(QObject* parent,bool rememberAddress):QObject(parent),impl_(std::make_unique<Impl>()),rememberAddress_(rememberAddress){
+    usbDiagnostic("app","CONTROLLER_STARTED");
     const auto dir=QCoreApplication::applicationDirPath();
     if(!QFileInfo::exists(dir+"/dm-view.exe"))unavailable_="The native display engine is missing from this installation.";
     if(!QFileInfo::exists(dir+"/ExtraPane.Service.exe"))hostUnavailable_="The server helper is missing from this installation.";
@@ -254,7 +277,7 @@ void WindowsController::startClients(std::array<std::string,4> credentials){
             if(!credentials[i].empty())state.child.send_control(credentials[i]+"\n");
             if(i==1)state.child.send_control(cameraMirrored_?"MIRROR 1\n":"MIRROR 0\n");
             state.status="Connecting...";
-        }catch(const std::exception& e){state.child.stop();state.failed=true;state.status=QString::fromUtf8(e.what());resources_.select(i,false);}
+        }catch(const std::exception& e){if(i==3)usbDiagnostic("client","LAUNCH_FAILED "+QString::fromUtf8(e.what()));state.child.stop();state.failed=true;state.status=QString::fromUtf8(e.what());resources_.select(i,false);}
         std::fill(credentials[i].begin(),credentials[i].end(),'\0');resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,false);
     }
     status_="Connected. Use the checkboxes to start or stop sharing.";emit changed();
@@ -265,7 +288,7 @@ void WindowsController::cancelAdmission(){
 }
 void WindowsController::stopResource(QString key){
     const auto i=resourceIndex(key);if(i<0)return;auto& state=impl_->clients[i];if(!state.child.process){resources_.setSessionState(resourceKind(i),false,(state.failed||state.returned)?state.status:"Disconnected");return;}if(state.stopping)return;
-    try{if(i==0){state.child.stop();state.status="Disconnected";}else{state.child.send_control("Q\n");state.stopping=true;state.status=i==3?"Returning USB to this PC; waiting for the server to safely eject it...":"Stopping...";}}
+    try{if(i==3)usbDiagnostic("client","RETURN_REQUESTED");if(i==0){state.child.stop();state.status="Disconnected";}else{state.child.send_control("Q\n");state.stopping=true;state.status=i==3?"Returning USB to this PC; waiting for the server to safely eject it...":"Stopping...";}}
     catch(const std::exception& e){state.status=QString::fromUtf8(e.what());}
     resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,i==2&&microphoneMuted_);emit changed();
 }
@@ -363,6 +386,7 @@ void WindowsController::poll(){
         pending+=QString::fromUtf8(child.drain());
         while(pending.contains('\n')){
             auto at=pending.indexOf('\n');auto line=pending.left(at).trimmed();pending.remove(0,at+1);
+            if(line.startsWith("USB_")||(!host&&index==3&&line.startsWith("error:")))usbDiagnostic(host?"server":"client",line);
             if(line.startsWith("ACCESS_CODE ")){
                 auto digits=line.mid(12);
                 if(host&&digits.size()==6&&std::all_of(digits.begin(),digits.end(),[](QChar c){return c>='0'&&c<='9';})){
@@ -378,6 +402,12 @@ void WindowsController::poll(){
             else if(line.startsWith("SERVER_STOPPING")){if(host)hostStatus_="Stopping server...";}
             else if(line.startsWith("SERVER_SESSION_ERROR")){if(host)hostStatus_="Listening; a resource connection ended: "+line.mid(21).trimmed();}
             else if(line.startsWith("USB_SESSION_ERROR")){currentStatus="USB session ended; server continues listening. "+line.mid(18);}
+            else if(line.startsWith("USB_WAITING")){currentStatus="Waiting for USB storage to appear on the server. "+line.mid(11).trimmed();}
+            else if(line.startsWith("USB_NOT_READY")){currentStatus="USB is not available on the server. "+line.mid(13).trimmed();}
+            else if(line.startsWith("USB_RETURN_FAILED")){
+                currentStatus="USB could not be returned safely. "+line.mid(17).trimmed()+" The transfer remains reserved; this does not mean the disk is usable on the server.";
+                if(!host&&index==3&&impl_->sessionReady){impl_->clients[3].stopping=false;impl_->disconnectPending=false;resources_.select(3,true);status_="USB return failed. See the USB details; disconnect was cancelled.";}
+            }
             else if(line.startsWith("USB_STARTED")){currentStatus=host?"USB storage connected. Close files and eject before disconnecting.":"USB storage is shared exclusively. Uncheck USB to return it safely to this PC.";}
             else if(line.startsWith("USB_RETURNING")){currentStatus="Returning USB to this PC; waiting for safe eject...";}
             else if(line.startsWith("USB_RETURNED")){currentStatus="USB returned to this PC.";if(!host&&index==3)impl_->clients[3].returned=true;}
@@ -400,7 +430,7 @@ void WindowsController::poll(){
             if(host)emit hostChanged();else{if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("USB_STARTED"))status_="Resources are active. Manage each one below.";resources_.setSessionState(resourceKind(index),true,currentStatus,index==2&&microphoneMuted_);emit changed();}
         }
         if(pending.size()>16384)pending.clear();
-        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{if(!failed&&index!=3)currentStatus="Disconnected";auto& state=impl_->clients[index];const bool restart=state.stopping&&resources_.selected(resourceKind(index))&&impl_->sessionReady&&!impl_->disconnectPending;state.stopping=false;resources_.setSessionState(resourceKind(index),false,currentStatus,false);if(!restart)resources_.select(index,false);if(index==3&&state.returned)refreshDevices("usb");if(restart)reconcileResources();status_=impl_->sessionReady?"Connected. Check resources to start sharing.":"All resources have stopped.";emit changed();}}
+        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){if(host||index==3){DWORD exit=0;if(GetExitCodeProcess(child.process,&exit))usbDiagnostic(host?"server":"client","HELPER_EXIT "+QString::number(exit));}child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{if(!failed&&index!=3)currentStatus="Disconnected";auto& state=impl_->clients[index];const bool restart=state.stopping&&resources_.selected(resourceKind(index))&&impl_->sessionReady&&!impl_->disconnectPending;state.stopping=false;resources_.setSessionState(resourceKind(index),false,currentStatus,false);if(!restart)resources_.select(index,false);if(index==3&&state.returned)refreshDevices("usb");if(restart)reconcileResources();status_=impl_->sessionReady?"Connected. Check resources to start sharing.":"All resources have stopped.";emit changed();}}
     };
     drain(impl_->host,impl_->hostPending,true);for(int i=0;i<4;++i)drain(impl_->clients[i].child,impl_->clients[i].pending,false,i);
     if(impl_->disconnectPending&&!impl_->clients[3].child.process){cancelAdmission();status_=active()?"Stopping resources...":"Disconnected";emit changed();}

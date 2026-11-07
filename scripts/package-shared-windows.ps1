@@ -97,6 +97,7 @@ if ($IncludeMicrophone) {
 if ($IncludeUsb) {
     Copy-Item -LiteralPath $usbSource -Destination (Join-Path $destinationPath 'usb-host-source') -Recurse
     Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/USB.md') -Destination (Join-Path $destinationPath 'USB-RECOVERY.md')
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/USB-INTERRUPTED-RECOVERY.md') -Destination (Join-Path $destinationPath 'USB-INTERRUPTED-RECOVERY.md')
     if (-not $IncludeMicrophone) { Copy-Item -LiteralPath (Join-Path $projectRoot 'apps/usb-setup/USBIP-WIN2-LICENSE.txt') -Destination $destinationPath }
 }
 # Windows PowerShell turns redirected native stderr into ErrorRecords. Qt emits

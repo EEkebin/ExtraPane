@@ -14,7 +14,7 @@ int main(){
     {Pump sender,receiver("1-2");auto bytes=import("1-2");bytes[3]=5;rejects([&]{receiver.accept(sender.next(bytes));});}
     {Pump sender,receiver;std::vector<std::uint8_t> bytes(maximum_payload,0x7b);for(unsigned i=0;i<capacity/maximum_payload;++i){receiver.accept(wire(sender.next(bytes)));sender.accept(wire(receiver.next()));}check(sender.read_limit()==0&&receiver.pending().size()==capacity);rejects([&]{sender.next(std::span(bytes).first(1));});receiver.consume(31);receiver.accept(wire(sender.next()));sender.accept(wire(receiver.next()));check(sender.read_limit()==31);receiver.accept(wire(sender.next(std::span(bytes).first(31))));check(receiver.pending().size()==capacity);}
     {Pump a,b;auto f=a.next();b.accept(f);rejects([&]{b.accept(f);});}
-    {Frame f;f.payload.resize(maximum_payload+1);rejects([&]{encode(f);});Header h{};rejects([&]{decode(h);});h=encode(Frame{});h[16]=0xff;rejects([&]{decode(h);});h=encode(Frame{});h[6]=3;rejects([&]{decode(h);});}
+    {Frame f;f.payload.resize(maximum_payload+1);rejects([&]{encode(f);});Header h{};rejects([&]{decode(h);});h=encode(Frame{});h[16]=0xff;rejects([&]{decode(h);});h=encode(Frame{});h[6]=9;rejects([&]{decode(h);});}
     {Pump a,b;b.accept(a.next({},true));check(b.stopped()&&b.pending().empty());rejects([&]{b.next();});}
     // Side-channel controls survive framing without contaminating USB payload.
     {Pump source,receiver;std::vector<std::uint8_t> data{'E','P','U','T',2,0,1,0};
@@ -28,11 +28,21 @@ int main(){
         source.accept(wire(receiver.next({},true)));check(source.stopped());
     }
     {rejects([]{validate_control(Control::return_request,false);});rejects([]{validate_control(Control::return_busy,true);});
-        rejects([]{validate_control(static_cast<Control>(3),true);});
+        rejects([]{validate_control(static_cast<Control>(9),true);});
         Frame f;f.stop=true;f.control=Control::return_request;rejects([&]{encode(f);});
         auto h=encode(Frame{});h[4]=1;rejects([&]{decode(h);});
         h=encode(Frame{});h[5]=1;h[6]=2;rejects([&]{decode(h);});
     }
+    // Only the receiver can report readiness or categorized return failures.
+    // None of these notices ends transport or injects notice bytes into USB/IP.
+    for(auto notice:{Control::storage_ready,Control::storage_not_ready,Control::return_not_ready,Control::return_identity,Control::return_flush,Control::return_failed}){
+        Pump receiver,source;auto frame=wire(receiver.next({},false,notice));check(frame.control==notice);
+        validate_control(notice,false);rejects([&]{validate_control(notice,true);});source.accept(frame);
+        check(!source.stopped()&&source.pending().empty());
+        receiver.accept(wire(source.next({},false,Control::return_request)));check(!receiver.stopped());
+        source.accept(wire(receiver.next({},false,Control::return_busy)));check(!source.stopped());
+    }
+    {auto legacy=encode(Frame{});legacy[4]=2;rejects([&]{decode(legacy);});}
     // Requests still travel when all payload credit is exhausted; retries keep
     // the same live tunnel and are sequence checked, never treated as EOF.
     {Pump source,receiver;std::vector<std::uint8_t> data(maximum_payload,42);

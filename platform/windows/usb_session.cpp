@@ -19,6 +19,16 @@
 namespace dm::usb {
 namespace {
 using Clock=std::chrono::steady_clock;
+using TunnelControl=extrapane::usb::tunnel::Control;
+struct EjectFailure:std::runtime_error{TunnelControl reason;EjectFailure(TunnelControl code,const char* message):std::runtime_error(message),reason(code){}};
+void eject_check(bool value,TunnelControl code,const char* message){if(!value)throw EjectFailure(code,message);}
+const char* return_reason(TunnelControl code){switch(code){
+case TunnelControl::return_not_ready:return "The receiver has no enumerated storage disk for this session. USB has not been returned.";
+case TunnelControl::return_identity:return "The receiver could not verify this session's imported device identity. USB has not been returned.";
+case TunnelControl::return_flush:return "The receiver could not flush the imported storage volumes. USB has not been returned.";
+default:return "The receiver could not complete safe USB return. Check its USB diagnostics; ownership is retained.";
+}}
+
 void check(bool value,const char* text){if(!value)throw std::runtime_error(text);}
 struct Cancellation {std::jthread thread;Cancellation(security::TlsStream& stream,std::atomic_bool& stop):thread([&stream,&stop](std::stop_token token){while(!token.stop_requested()&&!stop.load())std::this_thread::sleep_for(std::chrono::milliseconds(25));if(stop.load())stream.cancel();}){}};
 struct Com{HRESULT result=CoInitializeEx(nullptr,COINIT_MULTITHREADED);Com(){check(SUCCEEDED(result),"USB session COM initialization failed");}~Com(){CoUninitialize();}};
@@ -51,7 +61,7 @@ extrapane::Availability reconcile_preexport(const Disk& disk,std::span<const Pen
 }
 std::uint16_t endpoint_port(const std::string& endpoint){const auto at=endpoint.rfind(':');check(at!=std::string::npos,"Invalid local USB listener");unsigned value=0;const auto text=endpoint.substr(at+1);const auto [end,error]=std::from_chars(text.data(),text.data()+text.size(),value);check(error==std::errc{}&&end==text.data()+text.size()&&value&&value<=65535,"Invalid local USB port");return static_cast<std::uint16_t>(value);}
 std::uint16_t reserve_port(){net::Options options{"127.0.0.1","",0,std::chrono::milliseconds(250)};net::TcpListener listener(options);return endpoint_port(listener.endpoints());}
-std::array<std::uint8_t,8> control(unsigned kind){return {'E','P','U','S',2,static_cast<std::uint8_t>(kind),0,0};}
+std::array<std::uint8_t,8> control(unsigned kind){return {'E','P','U','S',3,static_cast<std::uint8_t>(kind),0,0};}
 void expect(security::TlsStream& stream,unsigned kind,std::chrono::seconds timeout=std::chrono::seconds(15)){std::array<std::uint8_t,8> packet{};stream.read(packet,Clock::now()+timeout);check(packet==control(kind),"USB resource negotiation failed");}
 struct Offer{std::array<std::uint8_t,16> nonce{};std::uint16_t vendor=0,product=0;std::string bus;};
 std::array<std::uint8_t,64> encode(const Offer& offer){check(!offer.bus.empty()&&offer.bus.size()<16,"Invalid selected bus");std::array<std::uint8_t,64> bytes{};auto prefix=control(1);std::copy(prefix.begin(),prefix.end(),bytes.begin());std::copy(offer.nonce.begin(),offer.nonce.end(),bytes.begin()+8);bytes[24]=offer.vendor>>8;bytes[25]=offer.vendor;bytes[26]=offer.product>>8;bytes[27]=offer.product;bytes[28]=static_cast<std::uint8_t>(offer.bus.size());std::copy(offer.bus.begin(),offer.bus.end(),bytes.begin()+29);return bytes;}
@@ -79,15 +89,30 @@ DEVINST own_node(const Offer& offer,const std::string& serial){
     for(DWORD i=0;i<4096;++i){SP_DEVINFO_DATA device{sizeof(device)};if(!SetupDiEnumDeviceInfo(set,i,&device)){check(GetLastError()==ERROR_NO_MORE_ITEMS,"USB node enumeration failed");break;}const auto id=node_id(device.DevInst);const auto slash=id.rfind(L'\\');if(slash==id.npos||!same(id.substr(slash+1),suffix)||id.size()<prefix.str().size()||!same(id.substr(0,prefix.str().size()),prefix.str()))continue;if(!ude_ancestor(device.DevInst))continue;check(!found,"Imported USB identity is ambiguous");found=device.DevInst;}
     check(found!=0,"Owned imported USB device has not appeared; retry eject after enumeration");return found;
 }
-void eject_owned(ImportRunner& runner,unsigned port,std::uint16_t local,const Offer& offer,const std::string& serial){
-    check(runner.verify_owned(port,local,offer.bus,serial),"Imported port identity changed; refusing eject");const auto node=own_node(offer,serial);const auto id=node_id(node);
-    const auto disks=inventory([](const std::wstring&)->std::optional<bool>{return false;});check(disks.errors.empty(),"Cannot prove destination volume inventory");unsigned matched=0;
+Disk owned_disk(const Offer& offer,const std::string& serial){
+    DEVINST node=0;try{node=own_node(offer,serial);}catch(const std::exception& error){throw EjectFailure(TunnelControl::return_not_ready,error.what());}
+    const auto id=node_id(node);const auto disks=inventory([](const std::wstring&)->std::optional<bool>{return false;});
+    eject_check(disks.errors.empty(),TunnelControl::return_failed,"Cannot prove destination volume inventory");
+    std::optional<Disk> found;
     for(const auto& disk:disks.disks)if(same(disk.usb_instance_id,id)){
-        check(extrapane::usb::eligible(disk.facts).available,"Imported disk is not safely removable");++matched;
-        for(auto volume:disk.volumes){if(volume.ends_with(L"\\"))volume.pop_back();Handle handle(CreateFileW(volume.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr));check(handle.value!=INVALID_HANDLE_VALUE,"Cannot open destination volume for flush");verify_volume_disk(handle.value,disk.disk_number);check(FlushFileBuffers(handle.value),"Destination volume cannot be flushed; close its files and retry");}
+        eject_check(!found,TunnelControl::return_identity,"Multiple destination disks match the imported device");
+        const auto eligibility=extrapane::usb::eligible(disk.facts);
+        eject_check(eligibility.available,TunnelControl::return_failed,eligibility.reason.c_str());found=disk;
     }
-    check(matched==1,"Expected exactly one owned destination storage disk");check(runner.verify_owned(port,local,offer.bus,serial)&&own_node(offer,serial)==node&&same(node_id(node),id),"USB destination changed before eject");PNP_VETO_TYPE veto=PNP_VetoTypeUnknown;wchar_t name[512]{};
-    check(CM_Request_Device_EjectW(node,&veto,name,512,0)==CR_SUCCESS,"Destination is busy or Windows vetoed safe eject; close its files and retry");
+    eject_check(found.has_value(),TunnelControl::return_not_ready,"Owned USB port exists, but its storage disk has not enumerated");return *found;
+}
+void eject_owned(ImportRunner& runner,unsigned port,std::uint16_t local,const Offer& offer,const std::string& serial){
+    eject_check(runner.verify_owned(port,local,offer.bus,serial),TunnelControl::return_identity,"Imported port identity changed; refusing eject");
+    const auto disk=owned_disk(offer,serial);const auto node=own_node(offer,serial);const auto id=node_id(node);
+    for(auto volume:disk.volumes){
+        if(volume.ends_with(L"\\"))volume.pop_back();Handle handle(CreateFileW(volume.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr));
+        eject_check(handle.value!=INVALID_HANDLE_VALUE,TunnelControl::return_flush,"Cannot open destination volume for flush");
+        try{verify_volume_disk(handle.value,disk.disk_number);}catch(const std::exception& error){throw EjectFailure(TunnelControl::return_identity,error.what());}
+        eject_check(FlushFileBuffers(handle.value),TunnelControl::return_flush,"Destination volume cannot be flushed");
+    }
+    eject_check(runner.verify_owned(port,local,offer.bus,serial)&&own_node(offer,serial)==node&&same(node_id(node),id),TunnelControl::return_identity,"USB destination changed before eject");
+    PNP_VETO_TYPE veto=PNP_VetoTypeUnknown;wchar_t name[512]{};const auto result=CM_Request_Device_EjectW(node,&veto,name,512,0);
+    if(result!=CR_SUCCESS){const auto detail="Windows refused device eject: CONFIGRET="+std::to_string(result)+", veto="+std::to_string(static_cast<unsigned>(veto));throw EjectFailure(result==CR_REMOVE_VETOED?TunnelControl::return_busy:TunnelControl::return_failed,detail.c_str());}
 }
 }
 void list_storage(const Report& report){Com com;const auto all=current_inventory();check(all.errors.empty()&&all.disks.size()<=128,"USB ownership inventory is incomplete or exceeds the device limit");const auto pending=pending_recoveries();for(const auto& disk:all.disks){check(!disk.facts.id.empty()&&disk.facts.id.size()<=4096,"USB inventory identifier exceeds limit");auto eligibility=extrapane::usb::eligible(disk.facts);if(eligibility.available&&has_pending_recovery(disk,pending))eligibility=reconcile_preexport(disk,pending,false);report("USB_DEVICE_V1\t"+hex(std::span(reinterpret_cast<const std::uint8_t*>(disk.facts.id.data()),disk.facts.id.size()))+"\t"+clean(disk.label)+"\t"+(eligibility.available?"available":clean(eligibility.reason)));}report("USB_LIST_DONE");}
@@ -107,7 +132,12 @@ void send_storage(const net::Options& options,const std::string& id,std::atomic_
     if(return_requested.load()){report("USB_RETURNED USB was canceled before export; the source disk was not changed.");return;}
     const auto result=transfer.start(selected.facts.id,selected.facts.generation,true);if(!result.available){report("USB_RECOVERY_REQUIRED "+result.reason);throw std::runtime_error(result.reason);}
     try{
-        remote.write(encode(offer),Clock::now()+std::chrono::seconds(5));expect(remote,3);report("USB_STARTED sending");pump_tunnel(remote,*local,false,offer.bus,stop,true,&return_requested,nullptr,[&]{report("USB_STOP_BLOCKED Destination is busy; close its files and uncheck USB again to retry.");});
+        remote.write(encode(offer),Clock::now()+std::chrono::seconds(5));expect(remote,3);report("USB_WAITING Waiting for the receiver to enumerate the storage disk.");pump_tunnel(remote,*local,false,offer.bus,stop,true,&return_requested,nullptr,[&](TunnelControl event){
+            if(event==TunnelControl::storage_ready)report("USB_STARTED sending");
+            else if(event==TunnelControl::storage_not_ready)report("USB_NOT_READY The receiver has an imported USB port, but its storage disk has not become available. Check receiver diagnostics.");
+            else if(event==TunnelControl::return_busy)report("USB_STOP_BLOCKED Windows vetoed eject on the receiver. Close its files and uncheck USB again to retry.");
+            else report("USB_RETURN_FAILED "+std::string(return_reason(event)));
+        });
         if(!stop.load()){std::array<std::uint8_t,32> proof_receipt{};remote.read(proof_receipt,Clock::now()+std::chrono::seconds(10));clean_eject=proof_receipt==receipt(offer);}
         if(clean_eject){const auto ejected=transfer.eject();check(ejected.available,ejected.reason.c_str());check(source_restored.available,source_restored.reason.c_str());report("USB_RETURNED USB safely returned to this computer.");}
         else transfer.transport_lost();
@@ -120,13 +150,31 @@ void receive_storage_admitted(security::TlsStream& remote,std::atomic_bool& stop
     std::jthread parent_cancel([&](std::stop_token token){while(!token.stop_requested()&&!session_stop.load()&&!stop.load())std::this_thread::sleep_for(std::chrono::milliseconds(25));if(stop.load())session_stop=true;});
 Cancellation cancellation(remote,session_stop);expect(remote,0);remote.write(control(2),Clock::now()+std::chrono::seconds(5));std::array<std::uint8_t,64> packet{};remote.read(packet,Clock::now()+std::chrono::seconds(30));const auto offer=decode(packet);
     net::Options loopback{"127.0.0.1","",0,std::chrono::milliseconds(250)};net::TcpListener local_listener(loopback);const auto local_port=endpoint_port(local_listener.endpoints());const auto serial=virtual_serial();remote.write(control(3),Clock::now()+std::chrono::seconds(5));
-    std::atomic_bool clean_eject=false,in_eject=false,return_busy=false;std::atomic_uint owned_port=0;
-    std::jthread importer([&](std::stop_token token){try{Com worker_com;const auto port=runner->attach(local_port,offer.bus,serial);owned_port=port;report("USB_STARTED receiving");while(!token.stop_requested()&&!session_stop.load()){
-        if(eject.exchange(false)){in_eject=true;try{eject_owned(*runner,port,local_port,offer,serial);clean_eject=true;in_eject=false;report("USB_EJECTED receiving");return;}catch(const std::exception& e){in_eject=false;return_busy=true;report("USB_EJECT_BUSY "+std::string(e.what()));}}std::this_thread::sleep_for(std::chrono::milliseconds(50));}
-    }catch(const std::exception& e){report("error: "+std::string(e.what()));session_stop=true;}});
+    std::atomic_bool clean_eject=false,in_eject=false;std::atomic<TunnelControl> notice=TunnelControl::none;std::atomic_uint owned_port=0;
+    std::jthread importer([&](std::stop_token token){try{
+        Com worker_com;const auto port=runner->attach(local_port,offer.bus,serial);owned_port=port;
+        report("USB_WAITING Import port allocated; waiting for the owned storage disk.");
+        bool ready=false,not_ready_reported=false;std::string last_enumeration_error;
+        auto next_probe=Clock::now();const auto enumeration_deadline=Clock::now()+std::chrono::seconds(30);
+        while(!token.stop_requested()&&!session_stop.load()){
+            if(!ready&&Clock::now()>=next_probe){
+                try{const auto disk=owned_disk(offer,serial);eject_check(runner->verify_owned(port,local_port,offer.bus,serial),TunnelControl::return_identity,"Imported port identity changed during enumeration");ready=true;notice=TunnelControl::storage_ready;report("USB_STARTED receiving");}
+                catch(const std::exception& error){const std::string detail=clean(error.what());if(detail!=last_enumeration_error){last_enumeration_error=detail;report("USB_ENUMERATING "+detail);}}
+                next_probe=Clock::now()+std::chrono::milliseconds(500);
+                if(!ready&&!not_ready_reported&&Clock::now()>=enumeration_deadline){not_ready_reported=true;notice=TunnelControl::storage_not_ready;report("USB_NOT_READY "+last_enumeration_error);}
+            }
+            if(eject.exchange(false)){
+                in_eject=true;
+                try{eject_owned(*runner,port,local_port,offer,serial);clean_eject=true;in_eject=false;report("USB_EJECTED receiving");return;}
+                catch(const EjectFailure& error){in_eject=false;notice=error.reason;report(std::string(error.reason==TunnelControl::return_busy?"USB_EJECT_BUSY ":"USB_RETURN_FAILED ")+clean(error.what()));}
+                catch(const std::exception& error){in_eject=false;notice=TunnelControl::return_failed;report("USB_RETURN_FAILED "+clean(error.what()));}
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }catch(const std::exception& error){report("USB_IMPORT_FAILED "+clean(error.what()));session_stop=true;}});
     std::unique_ptr<net::TcpStream> local;const auto deadline=Clock::now()+std::chrono::seconds(20);while(!session_stop.load()&&Clock::now()<deadline){try{local=std::make_unique<net::TcpStream>(local_listener.accept());break;}catch(const std::exception& e){if(std::string(e.what())!="Accept timed out")throw;}}
     check(local!=nullptr,"USB driver did not connect to its private tunnel");
-    try{pump_tunnel(remote,*local,true,"",session_stop,true,&eject,&return_busy,{},[&](bool local_failure){
+    try{pump_tunnel(remote,*local,true,"",session_stop,true,&eject,&notice,{},[&](bool local_failure){
         // Device eject may close/reset its loopback socket before the PnP call
         // returns. Only a completed successful eject authorizes the receipt.
         const auto limit=Clock::now()+std::chrono::seconds(2);

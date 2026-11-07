@@ -107,9 +107,10 @@ ColumnLayout {
                     ToolTip.text: "Flip the camera horizontally for apps on the server. Changes apply while sharing."
                 }
                 Label {
+                    objectName: "resourceStatus_" + card.resourceKey
                     text: card.resourceStatus
                     wrapMode: Text.WordWrap; Layout.fillWidth: true
-                    visible: picker.controller !== null && text.length > 0
+                    visible: picker.controller !== null && text.length > 0 && (card.resourceSelected || card.resourceRunning || text !== "Disconnected")
                 }
                 RowLayout {
                     visible: picker.controller !== null && card.resourceRunning

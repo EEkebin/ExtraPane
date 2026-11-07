@@ -159,6 +159,12 @@ int main(int argc,char** argv){
         const QString blockedId(64,'a'),releasedId(64,'b');controller.insert("usbRecoveries",QVariantList{QVariantMap{{"label","Bound"},{"id",blockedId},{"available",false}},QVariantMap{{"label","Released"},{"id",releasedId},{"available",true}}});app.processEvents();
         auto* recovery=named(picker,"usbRecoveryPicker");auto* restore=named(picker,"usbRecoveryRestoreButton");recovery->setProperty("currentIndex",0);app.processEvents();require(!restore->property("enabled").toBool());recovery->setProperty("currentIndex",1);app.processEvents();require(restore->property("enabled").toBool());require(QMetaObject::invokeMethod(restore,"clicked"));require(controller.recoveryRequests==1&&controller.recoveredId==releasedId);
         controller.insert("recoveryBusy",true);app.processEvents();require(!restore->property("enabled").toBool());controller.insert("recoveryBusy",false);controller.insert("hosting",true);app.processEvents();require(!restore->property("enabled").toBool());controller.insert("hosting",false);
+        // Hide only redundant idle Disconnected; preserve failures and stop progress.
+        model.select(3,false);model.setSessionState(Kind::usb,false,"Disconnected");app.processEvents();
+        auto* usbStatus=named(picker,"resourceStatus_usb");require(!usbStatus->property("visible").toBool());
+        model.setSessionState(Kind::usb,false,"USB recovery required on the source PC.");app.processEvents();require(usbStatus->property("visible").toBool());
+        model.setSessionState(Kind::usb,true,"Returning USB to this PC...");app.processEvents();require(usbStatus->property("visible").toBool());
+        model.setSessionState(Kind::usb,false,"Disconnected");model.select(3,true);app.processEvents();require(usbStatus->property("visible").toBool());
         model.setDevices(Kind::camera,{},"cam-a","Camera unplugged",false);app.processEvents();require(connect->property("enabled").toBool()&&model.selectedDevice(Kind::microphone)=="mic-a");
         model.setCapability(Kind::camera,{false,"Camera unavailable"});app.processEvents();require(!model.selected(Kind::camera)&&connect->property("enabled").toBool());
         auto* window=qobject_cast<QWindow*>(root);require(window);window->resize(390,844);app.processEvents();window->resize(1120,760);app.processEvents();
