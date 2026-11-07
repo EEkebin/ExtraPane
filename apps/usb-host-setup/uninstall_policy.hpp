@@ -1,6 +1,9 @@
 #pragma once
 #include <string_view>
 namespace extrapane::usb_uninstall {
+constexpr bool empty_removal_ready(bool empty_record,bool empty_current_payload,bool empty_legacy_payload) {
+    return empty_record&&empty_current_payload&&empty_legacy_payload;
+}
 constexpr bool removable_stub(bool stub_id,bool exact_owned_inf,bool usb_service,bool presence_known,bool present) {
     return stub_id&&exact_owned_inf&&usb_service&&presence_known&&!present;
 }

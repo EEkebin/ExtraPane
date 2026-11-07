@@ -20,6 +20,7 @@ for(int stage=1;stage<=4;++stage){ReuseCheck rejected;rejected.fail=stage;bool t
 if(!reviewed(legacy_7_2_2,L"bundle")||!reviewed(L"bundle",L"bundle")||reviewed(L"unknown",L"bundle"))throw std::runtime_error("only reviewed shared files");
 if(!compatible(5,0,8)||!compatible(5,1,8)||compatible(4,99,8)||compatible(6,0,8)||compatible(5,0,7)||compatible(5,0,9))throw std::runtime_error("exact version reply and supported ABI");
 using namespace extrapane::usb_uninstall;
+for(unsigned bits=0;bits<8;++bits)if(empty_removal_ready(bits&1,bits&2,bits&4)!=(bits==7))throw std::runtime_error("empty retry record accepted only after both payloads gone");
 for(unsigned bits=0;bits<32;++bits){
     const bool eligible=removable_stub(bits&1,bits&2,bits&4,bits&8,bits&16);
     if(eligible!=(bits==15))throw std::runtime_error("only absent exact owned USB stubs may be removed");

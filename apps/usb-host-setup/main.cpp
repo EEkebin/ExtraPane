@@ -361,7 +361,13 @@ int check_removal(){
     Key ownership;const auto status=RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE\\ExtraPane\\UsbHostSetup",REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&ownership.value);
     if(status==ERROR_FILE_NOT_FOUND||status==ERROR_PATH_NOT_FOUND){check(!fs::exists(root)||fs::is_empty(root),"Unowned USB host directory is not empty; no changes made");std::cout<<"not-installed\n";return 0;}
     check(status==ERROR_SUCCESS,"Cannot read USB host ownership");trusted_registry(ownership.value);
-    const auto source=string_value(ownership.value,L"Source");check(source==setup::source,"USB host ownership version differs");
+    const auto source=string_value(ownership.value,L"Source");
+    if(source.empty()){
+        known_registry_contents(ownership.value,{},{});
+        check(extrapane::usb_uninstall::empty_removal_ready(true,!fs::exists(root)||fs::is_empty(root),!fs::exists(legacy_root())||fs::is_empty(legacy_root())),"Unowned USB host directory is not empty; preserved");
+        std::cout<<"not-installed\n";return 0;
+    }
+    check(source==setup::source,"USB host ownership version differs");
     if(fs::exists(root))validate_tree(root,false);if(fs::exists(legacy_root()))validate_tree(legacy_root(),false);
     registration_preflight(root);no_pending_recovery();removal_registration_preflight(ownership.value);
     remove_owned_driver(root,ownership.value,true);return 0;
@@ -403,7 +409,13 @@ int modify(bool install){
     const auto source=string_value(ownership.value,L"Source");check(source.empty()||source==setup::source,"Existing managed USB host version differs; upgrade requires explicit migration");
     if(fs::exists(root)){if(source.empty())check(fs::is_empty(root),"Unowned USB host directory is not empty; no changes made");else validate_tree(root,false);}
     if(!install){
-        if(source.empty()){std::cout<<"not-installed\n";return 0;}
+        if(source.empty()){
+            known_registry_contents(ownership.value,{},{});
+            check(extrapane::usb_uninstall::empty_removal_ready(true,!fs::exists(root)||fs::is_empty(root),!fs::exists(legacy_root())||fs::is_empty(legacy_root())),"Unowned USB host directory is not empty; preserved");
+            RegCloseKey(ownership.value);ownership.value=nullptr;
+            check(RegDeleteKeyW(app.value,L"UsbHostSetup")==ERROR_SUCCESS,"Cannot retire empty USB setup record");
+            std::cout<<"not-installed\n";return 0;
+        }
         // All files were hash/ACL checked above. Pending journals and unknown
         // private registrations block removal before any component is deleted.
         no_pending_recovery();removal_registration_preflight(ownership.value);std::vector<std::unique_ptr<Handle>> files;
