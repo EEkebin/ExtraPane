@@ -267,3 +267,5 @@ The live consumer probe subsequently reported MF_E_INVALID_STATE_TRANSITION. Sou
 2026-11-07 collapsed sidebar alignment: menu, navigation and About icons now share the exact rail center, with explicit button padding and geometry instead of text-layout margins. Expanded labels retain consistent icon spacing. Final pre19 includes this adjustment.
 
 2026-11-07 pre.19 delivery: scrollbar gutters, clickable group header backgrounds with independent icon actions, About logo and centered collapsed navigation. Offscreen UI check and visual server/collapsed-client review passed; packaged startup and Inno compile passed. Source6feb38b. Installer verified on local Desktop SHA256 cf17d30b9aef2fbca1a8ef406dc65b9c5ddd9fef9eadc316a6ffced8d7e2f38a. Surface SSH10.0.20.130 connection timed out before transfer; laptop delivery remains pending. No installation or live device test performed.
+
+2026-11-07 pre.19 Surface delivery completed after user started SSH: installer copied to KEBINBOOK Desktop and SHA256 cf17d30b9aef2fbca1a8ef406dc65b9c5ddd9fef9eadc316a6ffced8d7e2f38a verified against local build. No installation performed.
