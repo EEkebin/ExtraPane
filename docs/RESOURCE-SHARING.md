@@ -48,6 +48,14 @@ bounded channels must be bound to the admitted session and use the configured po
   has not been migrated to this protocol.
 - Live transport integration, format negotiation, state notifications,
   mute/interruption behavior and worker scheduling are not implemented here.
+- Camera media framing has a 2 MiB access-unit limit, resource/generation binding
+  and monotonically increasing sequence validation. Its encrypted-stream adapter
+  permanently closes after framing or transport failure. The Windows camera
+  source now has a three-frame native queue for a network worker to drain.
+  Overflow stops that camera resource instead of dropping H.264 reference frames;
+  restarting requires a new resource generation and encoder. This is not yet
+  connected to sockets or a virtual-camera endpoint. Isolated tests cover malformed
+  lengths, stale generations, truncated streams, overflow and cancellation.
 - The existing Linux QML shell now lives in apps/shared/ui and is consumed by the
   Linux package through the same resource URL. Video.qml remains platform-specific.
   A shared resource checklist is connected to the Linux controller. The Windows

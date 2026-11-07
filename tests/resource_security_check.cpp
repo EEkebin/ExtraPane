@@ -1,5 +1,6 @@
 #include <dm/access.hpp>
 #include <extrapane/negotiation.hpp>
+#include <extrapane/media.hpp>
 #include <condition_variable>
 #include <deque>
 #include <thread>
@@ -48,5 +49,16 @@ int main(){try{
     bool rejected=false;try{negotiation.serve_one(host);}catch(...){rejected=true;}
     check(rejected&&host.failed()&&stopped==1&&server.listening());
     code=gate.generate();code[0]=code[0]=='0'?'1':'0';Pair wrong;check(!wrong.authenticate(gate,code));check(server.client_count()==0&&allocated==1);
+    // Exercise media framing through real encrypted record splitting, without
+    // sockets or camera hardware. This does not test live channel admission.
+    code=gate.generate();Pair mediaPair;check(mediaPair.authenticate(gate,code));
+    media::Channel camera({5,8},[&](auto data){mediaPair.client.read(data);},[&](auto data){mediaPair.client.write(data);});
+    media::Channel destination({5,8},[&](auto data){mediaPair.server.read(data);},[&](auto data){mediaPair.server.write(data);});
+    media::Frame frame{{5,8},0,123456,Bytes(200000,91)};
+    camera.send(frame);auto delivered=destination.receive();
+    check(delivered.payload==frame.payload&&delivered.timestamp==frame.timestamp);
+    mediaPair.c2s.tamper=true;frame.sequence=1;camera.send(frame);
+    rejected=false;try{destination.receive();}catch(...){rejected=true;}
+    check(rejected&&destination.failed());
     std::cout<<"Encrypted resource exchange and tamper checks passed\n";
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}
