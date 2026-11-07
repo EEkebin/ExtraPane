@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <winioctl.h>
 #include "monitor_policy.hpp"
+#include "uninstall_policy.hpp"
 #include <shlobj.h>
 #include <sddl.h>
 #include <aclapi.h>
@@ -231,6 +232,70 @@ void package_driver(const fs::path& root,HKEY ownership){
     set_string(ownership,L"StagedInf",installed);if(copied)set_string(ownership,L"CreatedInf",installed);
     if(monitor(root,true))set_string(ownership,L"CreatedMonitor",L"true");
 }
+bool external_usb_consumer(SC_HANDLE manager){
+    for(const auto* name:{L"usbipd",L"VBoxSup",L"VBoxDrv",L"VBoxUSB"}){
+        Service service(OpenServiceW(manager,name,SERVICE_QUERY_CONFIG));
+        if(service.value)return true;
+        check(GetLastError()==ERROR_SERVICE_DOES_NOT_EXIST,"Cannot rule out another USB driver consumer");
+    }
+    for(const auto* name:{L"SOFTWARE\\usbipd-win",L"SOFTWARE\\Oracle\\VirtualBox",L"SOFTWARE\\WOW6432Node\\Oracle\\VirtualBox"}){
+        Key key;const auto result=RegOpenKeyExW(HKEY_LOCAL_MACHINE,name,REG_OPTION_OPEN_LINK,KEY_READ|KEY_WOW64_64KEY,&key.value);
+        if(result==ERROR_SUCCESS)return true;
+        check(result==ERROR_FILE_NOT_FOUND||result==ERROR_PATH_NOT_FOUND,"Cannot inspect shared USB ownership");
+    }
+    return false;
+}
+void known_registry_contents(HKEY key,std::initializer_list<std::wstring_view> subkeys,std::initializer_list<std::wstring_view> values){
+    for(DWORD index=0;;++index){wchar_t name[256]{};DWORD length=256;const auto result=RegEnumKeyExW(key,index,name,&length,nullptr,nullptr,nullptr,nullptr);if(result==ERROR_NO_MORE_ITEMS)break;
+        check(result==ERROR_SUCCESS&&std::find(subkeys.begin(),subkeys.end(),std::wstring_view(name,length))!=subkeys.end(),"Unknown USB host registry child; preserved");}
+    for(DWORD index=0;;++index){wchar_t name[256]{};DWORD length=256;const auto result=RegEnumValueW(key,index,name,&length,nullptr,nullptr,nullptr,nullptr);if(result==ERROR_NO_MORE_ITEMS)break;
+        check(result==ERROR_SUCCESS&&std::find(values.begin(),values.end(),std::wstring_view(name,length))!=values.end(),"Unknown USB host registry value; preserved");}
+}
+void removal_registration_preflight(HKEY ownership){
+    known_registry_contents(ownership,{}, {L"Source",L"State",L"StagedInf",L"CreatedInf",L"CreatedMonitor"});
+    Key host;const auto result=RegOpenKeyExW(HKEY_LOCAL_MACHINE,host_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&host.value);
+    if(result==ERROR_FILE_NOT_FOUND||result==ERROR_PATH_NOT_FOUND)return;
+    check(result==ERROR_SUCCESS,"Cannot verify USB host removal registry");trusted_registry(host.value);
+    known_registry_contents(host.value,{L"Devices",L"Policy"},{L"APPLICATIONFOLDER"});
+    for(const auto* name:{L"Devices",L"Policy"}){Key child;const auto opened=RegOpenKeyExW(host.value,name,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&child.value);if(opened==ERROR_FILE_NOT_FOUND)continue;check(opened==ERROR_SUCCESS,"Cannot verify private USB bindings");trusted_registry(child.value);known_registry_contents(child.value,{},{});}
+}
+fs::path removable_inf(HKEY ownership){
+    const auto recorded=string_value(ownership,L"CreatedInf");if(recorded.empty())return {};
+    wchar_t windows[MAX_PATH]{};check(GetWindowsDirectoryW(windows,MAX_PATH)!=0,"Windows location unavailable");
+    const fs::path path(recorded);const auto expected=fs::path(windows)/L"INF"/path.filename();
+    check(extrapane::usb_uninstall::published_inf(path.filename().wstring())&&_wcsicmp(path.c_str(),expected.c_str())==0,"Owned USB INF record is not an exact published INF path");
+    no_reparse(path);if(!fs::exists(path))return {}; // successful earlier removal can be retried
+    check(sha256(read_file(path))==setup::files[4].digest,"Published USB INF changed; preserved");
+    wchar_t stored[32768]{};DWORD needed=0;
+    check(SetupGetInfDriverStoreLocationW(path.c_str(),nullptr,nullptr,stored,32768,&needed),"Cannot verify installed USB driver package");
+    const fs::path store(stored);no_reparse(store);
+    check(sha256(read_file(store))==setup::files[4].digest&&sha256(read_file(store.parent_path()/L"VBoxUSB.cat"))==setup::files[5].digest,"Installed USB package identity differs; preserved");
+    signed_file(store.parent_path()/L"VBoxUSB.cat");return path;
+}
+void remove_owned_driver(const fs::path& root,HKEY ownership){
+    Service manager(OpenSCManagerW(nullptr,nullptr,SC_MANAGER_CONNECT));check(manager.value,"Open service manager failed");
+    Service service(OpenServiceW(manager.value,L"VBoxUSBMon",SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS));
+    if(!service.value)check(GetLastError()==ERROR_SERVICE_DOES_NOT_EXIST,"Cannot inspect USB monitor for removal");
+    const auto created=string_value(ownership,L"CreatedMonitor");check(created.empty()||created==L"true","Unknown USB monitor ownership record");
+    const auto path=service.value?monitor_path(service.value):fs::path{};
+    const bool managed=service.value&&(_wcsicmp(path.c_str(),(root/L"Drivers"/L"VBoxUSBMon.sys").c_str())==0||_wcsicmp(path.c_str(),(legacy_root()/L"Drivers"/L"VBoxUSBMon.sys").c_str())==0);
+    bool exact=false;if(managed){verify_security(path);exact=sha256(read_file(path))==setup::files[7].digest;signed_file(path);}
+    const bool external=external_usb_consumer(manager.value);
+    const auto action=extrapane::usb_uninstall::monitor_action(service.value!=nullptr,created==L"true",managed,exact,external);
+    check(action!=extrapane::usb_uninstall::MonitorAction::refuse,"USB monitor ownership changed or another application uses it; preserved");
+    const auto inf=removable_inf(ownership);
+    check(inf.empty()||!external,"Owned USB package now has another installed consumer; preserved");
+    if(action==extrapane::usb_uninstall::MonitorAction::remove){
+        Service writable(OpenServiceW(manager.value,L"VBoxUSBMon",SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS|SERVICE_STOP|DELETE));check(writable.value,"Cannot open owned USB monitor for removal");
+        check(_wcsicmp(monitor_path(writable.value).c_str(),path.c_str())==0,"USB monitor changed before removal");
+        SERVICE_STATUS status{};check(QueryServiceStatus(writable.value,&status),"Cannot inspect owned USB monitor state");
+        if(status.dwCurrentState==SERVICE_RUNNING)check(ControlService(writable.value,SERVICE_CONTROL_STOP,&status),"Owned USB monitor is busy; eject USB devices and retry uninstall");
+        for(unsigned i=0;status.dwCurrentState==SERVICE_STOP_PENDING&&i<50;++i){Sleep(100);check(QueryServiceStatus(writable.value,&status),"Cannot wait for owned USB monitor to stop");}
+        check(status.dwCurrentState==SERVICE_STOPPED,"Owned USB monitor is busy; retry uninstall after stopping USB sessions");
+        check(DeleteService(writable.value),"Remove owned USB monitor failed");
+    }
+    if(!inf.empty())check(SetupUninstallOEMInfW(inf.filename().c_str(),0,nullptr),"USB driver package is still in use; retained for recovery, retry uninstall after ejecting USB devices");
+}
 int modify(bool install){
     check(IsUserAnAdmin(),"USB host setup requires administrator permission");SYSTEM_INFO system{};GetNativeSystemInfo(&system);check(system.wProcessorArchitecture==PROCESSOR_ARCHITECTURE_AMD64,"USB host setup requires native x64 Windows");
     Handle lock(CreateMutexW(nullptr,FALSE,L"Global\\ExtraPane.UsbHostSetup"));check(lock.value&&lock.value!=INVALID_HANDLE_VALUE,"USB host setup mutex unavailable");const auto acquired=WaitForSingleObject(lock.value,0);check(acquired==WAIT_OBJECT_0||acquired==WAIT_ABANDONED,"USB host setup is already running");struct Unlock{HANDLE h;~Unlock(){ReleaseMutex(h);}}unlock{lock.value};
@@ -242,16 +307,27 @@ int modify(bool install){
     if(fs::exists(root)){if(source.empty())check(fs::is_empty(root),"Unowned USB host directory is not empty; no changes made");else validate_tree(root,false);}
     if(!install){
         if(source.empty()){std::cout<<"not-installed\n";return 0;}
-        // Reject live ownership before removing any executable. Driver store and
-        // shared monitor service/binary are always retained, never stopped here.
-        no_pending_recovery();std::vector<std::unique_ptr<Handle>> files;
+        // All files were hash/ACL checked above. Pending journals and unknown
+        // private registrations block removal before any component is deleted.
+        no_pending_recovery();removal_registration_preflight(ownership.value);std::vector<std::unique_ptr<Handle>> files;
         const auto hold=[&](const fs::path& path){if(fs::exists(path)){auto file=std::make_unique<Handle>(CreateFileW(path.c_str(),GENERIC_READ|DELETE,0,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));check(file->value!=INVALID_HANDLE_VALUE,"Stop USB host sessions before removing their components");files.push_back(std::move(file));}};
-        for(const auto& item:setup::files)if(!std::wstring_view(item.name).starts_with(L"Drivers/"))hold(root/item.name);hold(root/manifest_name);
+        // Check executable use before touching drivers. Driver files are opened
+        // only after the owned service stops (the kernel may hold its image).
+        for(const auto& location:{root,legacy_root()}){for(const auto& item:setup::files)if(!std::wstring_view(item.name).starts_with(L"Drivers/"))hold(location/item.name);hold(location/manifest_name);}
+        remove_owned_driver(root,ownership.value);
+        for(const auto& location:{root,legacy_root()})for(const auto& item:setup::files)if(std::wstring_view(item.name).starts_with(L"Drivers/"))hold(location/item.name);
         private_registration(root,false);set_string(ownership.value,L"State",L"removing");
         std::size_t marked=0;try{for(auto& file:files){FILE_DISPOSITION_INFO remove{TRUE};check(SetFileInformationByHandle(file->value,FileDispositionInfo,&remove,sizeof(remove)),"Mark USB host file for removal failed");++marked;}}
         catch(...){for(std::size_t i=0;i<marked;++i){FILE_DISPOSITION_INFO keep{FALSE};SetFileInformationByHandle(files[i]->value,FileDispositionInfo,&keep,sizeof(keep));}throw;}
         files.clear();
-        set_string(ownership.value,L"State",L"inactive");std::cout<<"removed; shared signed driver package, monitor service and protected driver files retained\n";return 0;
+        for(const auto& location:{root,legacy_root()})for(const auto& directory:{location/L"Drivers",location})if(fs::exists(directory))check(RemoveDirectoryW(directory.c_str()),"Owned USB host directory is not empty or is busy; retry uninstall");
+        // Delete only the two private keys after bindings/recovery checks.
+        const auto removedHost=RegDeleteTreeW(app.value,L"UsbHost");
+        check(removedHost==ERROR_SUCCESS||removedHost==ERROR_FILE_NOT_FOUND||removedHost==ERROR_PATH_NOT_FOUND,"Remove private USB host registration failed");
+        RegCloseKey(ownership.value);ownership.value=nullptr;
+        const auto removedSetup=RegDeleteTreeW(app.value,L"UsbHostSetup");
+        check(removedSetup==ERROR_SUCCESS||removedSetup==ERROR_FILE_NOT_FOUND||removedSetup==ERROR_PATH_NOT_FOUND,"Remove USB host ownership record failed");
+        std::cout<<"removed owned USB host files, registration and unused owned drivers; independent shared drivers preserved\n";return 0;
     }
     protected_directory(root.parent_path().parent_path());protected_directory(root.parent_path());protected_directory(root);protected_directory(root/L"Drivers");
     set_string(ownership.value,L"Source",setup::source);set_string(ownership.value,L"State",L"preparing");

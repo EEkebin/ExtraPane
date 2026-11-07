@@ -82,6 +82,7 @@ var
   CameraInstalled, RemoveCamera: Boolean;
   MicrophoneInstalled: Boolean;
   UsbHostInstalled: Boolean;
+  ComponentRestart: Boolean;
   UsbHostChoice: TNewCheckBox;
 
 #include "shutdown.iss"
@@ -267,68 +268,14 @@ function CredDelete(Target: String; CredType, Flags: LongWord): Boolean;
   external 'CredDeleteW@advapi32.dll stdcall uninstallonly';
 
 function InitializeUninstall: Boolean;
-var
-  Dialog: TSetupForm;
-  Choice, CameraChoice: TNewCheckBox;
-  Description: TNewStaticText;
-  ConfirmButton, CancelButton: TNewButton;
 begin
-  RemoveUserData := ExpandConstant('{param:REMOVEUSERDATA|0}') = '1';
-  RemoveCamera := ExpandConstant('{param:REMOVECAMERA|0}') = '1';
-  Result := True;
-  if UninstallSilent then begin
-    Result := StopRunningExtraPane;
-    Exit;
-  end;
-#if Ver < EncodeVer(6, 6, 0)
-  Dialog := CreateCustomForm;
-  Dialog.ClientWidth := ScaleX(460);
-  Dialog.ClientHeight := ScaleY(220);
-#else
-  Dialog := CreateCustomForm(460, 220, True, True);
-#endif
-  try
-    Dialog.Caption := 'Uninstall ExtraPane';
-    Description := TNewStaticText.Create(Dialog);
-    Description.Parent := Dialog;
-    Description.SetBounds(ScaleX(20), ScaleY(20), ScaleX(420), ScaleY(65));
-    Description.AutoSize := False;
-    Description.WordWrap := True;
-    Description.Caption := 'Remove ExtraPane from this PC. The owned display driver is removed with ExtraPane. Independently installed USB drivers are preserved. Finish pending USB eject/recovery before uninstalling.';
-    Choice := TNewCheckBox.Create(Dialog);
-    Choice.Parent := Dialog;
-    Choice.SetBounds(ScaleX(20), ScaleY(90), ScaleX(420), ScaleY(25));
-    Choice.Caption := 'Remove saved settings on this PC';
-    Choice.Checked := RemoveUserData;
-    CameraChoice := TNewCheckBox.Create(Dialog);
-    CameraChoice.Parent := Dialog;
-    CameraChoice.SetBounds(ScaleX(20), ScaleY(120), ScaleX(420), ScaleY(35));
-    CameraChoice.Caption := 'Remove the machine-wide camera component (affects all users)';
-    CameraChoice.Checked := RemoveCamera;
-    CameraChoice.Enabled := FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe'));
-    ConfirmButton := TNewButton.Create(Dialog);
-    ConfirmButton.Parent := Dialog;
-    ConfirmButton.SetBounds(ScaleX(230), ScaleY(170), ScaleX(100), ScaleY(28));
-    ConfirmButton.Caption := 'Uninstall';
-    ConfirmButton.ModalResult := mrOk;
-    ConfirmButton.Default := True;
-    CancelButton := TNewButton.Create(Dialog);
-    CancelButton.Parent := Dialog;
-    CancelButton.SetBounds(ScaleX(340), ScaleY(170), ScaleX(100), ScaleY(28));
-    CancelButton.Caption := 'Cancel';
-    CancelButton.ModalResult := mrCancel;
-    CancelButton.Cancel := True;
-    Result := Dialog.ShowModal = mrOk;
-    RemoveUserData := Result and Choice.Checked;
-    RemoveCamera := Result and CameraChoice.Enabled and CameraChoice.Checked;
-  finally
-    Dialog.Free;
-  end;
-  if Result then begin
-    Result := StopRunningExtraPane;
-    if not Result then
-      SuppressibleMsgBox('ExtraPane could not finish shutting down. Close it and stop its driver before uninstalling.', mbError, MB_OK, IDOK);
-  end;
+  { One uninstall removes ExtraPane-owned components and current-user settings.
+    Inno Setup supplies the normal confirmation dialog; no per-component toggles. }
+  RemoveUserData := True;
+  RemoveCamera := True;
+  Result := StopRunningExtraPane;
+  if not Result then
+    SuppressibleMsgBox('ExtraPane could not finish shutting down. Close it and stop its server before uninstalling.', mbError, MB_OK, IDOK);
 end;
 
 procedure DeleteSettingsKey(Key: String);
@@ -342,7 +289,28 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ErrorCode: LongWord;
   CameraCode: Integer;
+  Component: Integer;
+  Helper, ComponentFolder: String;
 begin
+  if CurUninstallStep = usUninstall then begin
+    { USB first: a busy source or unrecovered device stops removal while every
+      recovery helper is still present. Independently owned USB drivers remain. }
+    for Component := 0 to 1 do begin
+      if Component = 0 then begin Helper := 'ExtraPane.UsbHostSetup.exe'; ComponentFolder := 'UsbHost'; end
+      else begin Helper := 'ExtraPane.UsbSetup.exe'; ComponentFolder := 'Microphone'; end;
+      if FileExists(ExpandConstant('{app}\') + Helper) then begin
+        if not Exec(ExpandConstant('{app}\') + Helper, '--remove', '', SW_HIDE, ewWaitUntilTerminated, CameraCode) then
+          RaiseException('Component cleanup could not start: ' + Helper + '. ExtraPane files were retained.');
+        if CameraCode = 3010 then ComponentRestart := True;
+        if (CameraCode <> 0) and (CameraCode <> 3010) then
+          RaiseException('Component cleanup failed: ' + Helper + ' (exit ' + IntToStr(CameraCode) + '). Finish USB eject/recovery and retry. ExtraPane files were retained.');
+      end else if DirExists(ExpandConstant('{app}\Components\') + ComponentFolder) then
+        RaiseException('Missing cleanup helper for ' + ComponentFolder + '. Repair ExtraPane before uninstalling.');
+    end;
+  end;
+  if (CurUninstallStep = usUninstall) and DirExists(ExpandConstant('{app}\Components\Display')) and
+     not FileExists(ExpandConstant('{app}\Components\Display\unins000.exe')) then
+    RaiseException('The display component uninstaller is missing. Repair ExtraPane before uninstalling.');
   if (CurUninstallStep = usUninstall) and FileExists(ExpandConstant('{app}\Components\Display\unins000.exe')) then begin
     if not Exec(ExpandConstant('{app}\Components\Display\unins000.exe'),
       '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, CameraCode) then
@@ -357,6 +325,7 @@ begin
       RaiseException('Camera removal could not start or administrator permission was canceled.');
     if (CameraCode <> 0) and (CameraCode <> 3010) then
       RaiseException('Camera component removal failed (exit ' + IntToStr(CameraCode) + ').');
+    if CameraCode = 3010 then ComponentRestart := True;
     if CameraCode = 3010 then
       SuppressibleMsgBox('The camera registration was removed. Restart Windows to finish deleting camera files currently loaded by Windows.', mbInformation, MB_OK, IDOK);
   end;
@@ -371,6 +340,12 @@ begin
     DeleteSettingsKey('Software\DM\Host');
     DeleteSettingsKey('Software\DM\Receiver');
     DeleteSettingsKey('Software\DM\Display');
+    DeleteSettingsKey('Software\ExtraPane\ExtraPane');
     Log('Removed ExtraPane pairing, server address and saved app/display settings.');
   end;
+end;
+
+function UninstallNeedRestart: Boolean;
+begin
+  Result := ComponentRestart;
 end;

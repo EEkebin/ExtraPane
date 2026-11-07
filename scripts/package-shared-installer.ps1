@@ -51,10 +51,11 @@ requires a package containing DriverSetup; otherwise setup refuses that role.
 
 Managed components live under Program Files/ExtraPane/Components. The display
 component uninstaller is invoked by the main ExtraPane uninstaller.
-The camera component stays installed when its server stops. App uninstall keeps
-the shared camera component unless you explicitly select its removal, which
-affects every user on this PC. Loaded camera files may require a Windows restart
-to finish removal. See DEVELOPMENT-STATUS.md for remaining verification limits.
+The camera component stays installed when its server stops. Uninstall ExtraPane
+removes its managed camera, microphone and USB source components, owned display
+driver and current-user app settings by default. Shared independently installed
+USB drivers are preserved. Pending USB recovery blocks uninstall. Loaded camera
+files may require a restart. See DEVELOPMENT-STATUS.md for verification limits.
 '@ | Set-Content -LiteralPath $readme -Encoding utf8
     }
     New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null

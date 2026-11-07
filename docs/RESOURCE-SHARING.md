@@ -304,3 +304,11 @@ connecting or while sharing; the sender mirrors native NV12 pixels before encodi
 so receiving camera applications see the change. The setting defaults off and is
 kept only for the running app session. Camera, microphone and USB device dropdowns
 load inventory on opening; source component installation remains in the installer.
+
+Uninstall ExtraPane now removes its managed resources and the executing Windows
+account's saved settings by default, without component checkboxes. Component cleanup
+runs before application files are removed, so pending USB recovery or removal errors
+keep the helpers available for retry. Shared USB/IP backend installations are retained.
+Other Windows users' settings are not erased. Exact legacy-driver retirement and
+outer-folder cleanup remain blocked by automatic approval review; rollback folders
+and migration.log can remain. Full uninstall has not yet been exercised on the test PCs.

@@ -103,16 +103,12 @@ def verify(installer):
                     if not exists(UNINSTALL): break
                     time.sleep(.1)
                 assert not exists(UNINSTALL), 'Windows uninstall registration remains'
-                assert paired(PAIR) == (not reset)
-                assert all(exists(key) == (not reset) for key in KEYS)
-                if not reset:
-                    for name in KEYS:
-                        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, name) as key:
-                            assert winreg.QueryValueEx(key, 'InstallerFixture')[0] == 'preserve-me'
+                assert not paired(PAIR)
+                assert all(not exists(key) for key in KEYS)
                 assert paired(OTHER), 'Unrelated credential was removed'
     finally:
         for name in (PAIR, OTHER): api.CredDeleteW(name, 1, 0)
         for name in KEYS:
             try: winreg.DeleteKey(winreg.HKEY_CURRENT_USER, name)
             except FileNotFoundError: pass
-    print('Installer passed: all instances/helper cleanup; uninstall registration, preserve, reset, missing-data reset, unrelated credential survives')
+    print('Installer passed: all instances/helper cleanup; uninstall registration, default reset, missing-data reset, unrelated credential survives')

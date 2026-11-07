@@ -171,15 +171,17 @@ int modify(bool install){
     const auto installer=root/L"USBip-0.9.8.1-x64.exe";const bool owned=fs::exists(root/manifest_name);
     if(owned)verify_owned(root);
     if(!install){
-        if(!owned){check(!fs::exists(root)||fs::is_empty(root),"No valid ownership marker; no files removed");std::cout<<"not-installed\n";return 0;}
+        if(!owned){no_reparse(root);check(!fs::exists(root)||fs::is_empty(root),"No valid ownership marker; no files removed");cleanup_legacy();if(fs::exists(root))check(RemoveDirectoryW(root.c_str())!=FALSE,"Remove empty microphone folder failed");RemoveDirectoryW(root.parent_path().c_str());std::cout<<"not-installed\n";return 0;}
         if(fs::exists(installer))check(sha256(read_file(installer))==setup::digest,"Managed installer changed; no files removed");
+        for(const auto& entry:fs::directory_iterator(root))check(entry.is_regular_file()&&(setup::allowed(entry.path().filename().wstring())||entry.path().filename()==manifest_name||entry.path()==installer),"Unexpected microphone file; uninstall stopped");
+        cleanup_legacy();
         std::vector<std::unique_ptr<Handle>> files;
         auto open_delete=[&](const fs::path& path){auto handle=std::make_unique<Handle>(CreateFileW(path.c_str(),DELETE|GENERIC_READ,0,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));check(handle->value!=INVALID_HANDLE_VALUE,"Stop microphone sessions before removing their components");files.push_back(std::move(handle));};
         for(auto name:setup::files)open_delete(root/name);if(fs::exists(installer))open_delete(installer);open_delete(root/manifest_name);
         std::size_t marked=0;
         try{for(auto& file:files){FILE_DISPOSITION_INFO disposition{TRUE};check(SetFileInformationByHandle(file->value,FileDispositionInfo,&disposition,sizeof(disposition)),"Cannot mark component for removal");++marked;}}
         catch(...){for(std::size_t i=0;i<marked;++i){FILE_DISPOSITION_INFO keep{FALSE};SetFileInformationByHandle(files[i]->value,FileDispositionInfo,&keep,sizeof(keep));}throw;}
-        files.clear();RemoveDirectoryW(root.c_str());RemoveDirectoryW(root.parent_path().c_str());
+        files.clear();check(RemoveDirectoryW(root.c_str())!=FALSE,"Remove microphone folder failed");RemoveDirectoryW(root.parent_path().c_str());
         std::cout<<"removed; shared USB/IP driver and installation preserved\n";return 0;
     }
     if(owned){verify_backend(standard);cleanup_legacy();std::cout<<"installed\n";return 0;}
