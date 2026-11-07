@@ -19,7 +19,8 @@ from release_version import current
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = {'linuxdeploy', 'linuxdeploy-plugin-qt', 'linuxdeploy-plugin-gstreamer.sh'}
 REQUIRED_PLUGINS = ('app', 'coreelements', 'playback', 'typefindfunctions',
-                    'videoparsersbad', 'opengl', 'qml6', 'videoconvertscale', 'videorate', 'pipewire', 'openh264')
+                    'videoparsersbad', 'opengl', 'qml6', 'videoconvertscale', 'videorate', 'pipewire', 'openh264',
+                    'videofilter', 'video4linux2', 'audioconvert', 'audioresample', 'pulseaudio')
 DECODER_PLUGINS = ('va', 'vaapi', 'nvcodec', 'v4l2codecs')
 
 

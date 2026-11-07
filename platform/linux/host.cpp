@@ -1,6 +1,10 @@
 #include "host.hpp"
 #include "portal.hpp"
 #include "tls.hpp"
+#include "resource_receiver.hpp"
+#include <dm/control.hpp>
+#include <extrapane/session_route.hpp>
+#include <vector>
 #include <dm/video_protocol.hpp>
 #include <QCoreApplication>
 #include <gst/app/gstappsink.h>
@@ -39,32 +43,66 @@ QString Host::unavailable(){
     }return {};
 }
 void Host::run(){
-    int listener=-1;
+    int listener=-1;stopping_=false;std::atomic_uint pending=0;
+    std::vector<std::unique_ptr<QThread>> workers;
+    struct Join {std::vector<std::unique_ptr<QThread>>& workers;std::atomic_bool& stopping;~Join(){stopping=true;for(auto& worker:workers)worker->wait();}} join{workers,stopping_};
     try{
         sockaddr_in address{};address.sin_family=AF_INET;address.sin_port=htons(port_);
         if(inet_pton(AF_INET,address_.toStdString().c_str(),&address.sin_addr)!=1 || address.sin_addr.s_addr==INADDR_ANY)throw std::runtime_error("Select a connected server IPv4 address");
         listener=socket(AF_INET,SOCK_STREAM|SOCK_NONBLOCK|SOCK_CLOEXEC,0);if(listener<0)throw std::runtime_error(std::strerror(errno));
         int yes=1;setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
-        if(bind(listener,reinterpret_cast<sockaddr*>(&address),sizeof(address))<0 || listen(listener,4)<0)throw std::runtime_error(std::strerror(errno));
+        if(bind(listener,reinterpret_cast<sockaddr*>(&address),sizeof(address))<0 || listen(listener,32)<0)throw std::runtime_error(std::strerror(errno));
         emit state("Listening on "+address_+":"+QString::number(port_)+" — waiting for a client");
         while(!isInterruptionRequested()){
             pollfd fd{listener,POLLIN,0};int ready=poll(&fd,1,100);
             if(ready<0){if(errno==EINTR)continue;throw std::runtime_error(std::strerror(errno));}if(!ready)continue;
             int peer=accept4(listener,nullptr,nullptr,SOCK_NONBLOCK|SOCK_CLOEXEC);if(peer<0)continue;
-            try{serve(peer);}catch(const std::exception& e){emit state("Client disconnected: "+QString::fromUtf8(e.what()));}
-            // Discard queued clients: each client must explicitly retry after the
-            // active session ends, rather than unexpectedly opening a monitor.
-            while((peer=accept4(listener,nullptr,nullptr,SOCK_NONBLOCK|SOCK_CLOEXEC))>=0)close(peer);
-            if(!isInterruptionRequested())emit state("Listening on "+address_+":"+QString::number(port_)+" - waiting for a client");
+            for(auto it=workers.begin();it!=workers.end();){if((*it)->isFinished()){(*it)->wait();it=workers.erase(it);}else ++it;}
+            if(pending.load()>=32){close(peer);emit state("Too many pending admissions; retry shortly");continue;}
+            ++pending;
+            try{
+                auto worker=std::unique_ptr<QThread>(QThread::create([this,peer,&pending]{
+                    try{serve(peer,pending);}catch(const std::exception& e){emit state("Resource ended: "+QString::fromUtf8(e.what()));}
+                }));
+                workers.push_back(std::move(worker));workers.back()->start();
+            }catch(...){--pending;close(peer);emit state("Cannot allocate another connection worker; existing sessions continue");}
+
         }
         emit state("Server stopped");
     }catch(const std::exception& e){emit state("Server error: "+QString::fromUtf8(e.what()));}
     if(listener>=0)close(listener);
 }
-void Host::serve(int socket){
+void Host::serve(int socket,std::atomic_uint& pending){
+    struct Admission {std::atomic_uint& count;bool held=true;void ready(){if(held){--count;held=false;}}~Admission(){ready();}} admission{pending};
+    const auto cancelled=[this]{return stopping_.load()||isInterruptionRequested();};
+    Tls stream(socket,cancelled,gate_.get());
+    std::array<uint8_t,8> prefix{};stream.read(prefix,deadline());
+    if(prefix==access::control_prefix){
+        access::ControlRequest request{};std::copy(prefix.begin(),prefix.end(),request.begin());stream.read(std::span(request).subspan(prefix.size()),deadline());
+        if(access::parse_control(request).first!=access::ControlOperation::open)throw std::runtime_error("Control must open first");
+        const bool protectedMode=stream.openControl();admission.ready();
+        stream.write(access::control_reply(access::ControlOperation::open,0,protectedMode),deadline());
+        while(!cancelled()){
+            stream.read(request,deadline(15));const auto [operation,kind]=access::parse_control(request);
+            if(operation==access::ControlOperation::close)return;
+            if(operation==access::ControlOperation::open)throw std::runtime_error("Control already open");
+            std::string credential;
+            if(operation==access::ControlOperation::add){auto tickets=stream.controlChannels(kind);if(protectedMode){credential=access::formatCredential(tickets.at(0));std::fill(tickets[0].secret.begin(),tickets[0].secret.end(),0);}}
+            auto reply=access::control_reply(operation,kind,protectedMode,credential);
+            struct Wipe{std::string& code;access::ControlReply& reply;~Wipe(){volatile char* c=code.data();for(size_t i=0;i<code.size();++i)c[i]=0;volatile uint8_t* p=reply.data();for(size_t i=0;i<reply.size();++i)p[i]=0;}}wipe{credential,reply};
+            stream.write(reply,deadline());
+        }
+        return;
+    }
+    const auto kind=extrapane::classify_session_prefix(prefix);stream.requireResource(static_cast<unsigned>(kind));admission.ready();
+    if(kind==extrapane::ResourceKind::display)serveDisplay(stream,prefix);
+    else receiveResource(stream,kind,prefix,cancelled,[this](QString text){emit state(text);});
+}
+void Host::serveDisplay(Tls& stream,std::span<const uint8_t> prefix){
     namespace wire=dm::video::wire;using namespace dm::input;
-    auto cancelled=[this]{return isInterruptionRequested();};
-    Tls stream(socket,cancelled,gate_.get());auto request=wire::request;stream.read(request,deadline());
+    auto cancelled=[this]{return stopping_.load()||isInterruptionRequested();};
+    const auto unavailableReason=unavailable();if(!unavailableReason.isEmpty())throw std::runtime_error(unavailableReason.toStdString());
+    auto request=wire::request;std::copy(prefix.begin(),prefix.end(),request.begin());stream.read(std::span(request).subspan(prefix.size()),deadline());
     const auto display=wire::take_client_display(request);
     const auto input=request[7],caps=request[8],scale=request[9],keyboard=request[10];request[7]=request[8]=request[9]=request[10]=0;
     if(request!=wire::request || input>1 || caps>all_caps || (bool(input)!=bool(caps)) || scale>2 || keyboard>2 || (keyboard&&(!input||!(caps&touch_cap))))throw std::runtime_error("Invalid client request");

@@ -1,4 +1,5 @@
 #include "controller.hpp"
+#include "connection_runtime.hpp"
 #include <ExtraPaneVersion.h>
 #include <QGuiApplication>
 #include <QHostAddress>
@@ -9,9 +10,11 @@
 #include <algorithm>
 #include <cmath>
 
-Controller::Controller(QString availability,QObject* parent):QObject(parent),availability_(std::move(availability)){
+Controller::Controller(QString availability,QObject* parent,bool multiClient):QObject(parent),availability_(std::move(availability)){
     resources_.setCapability(extrapane::ResourceKind::display,{availability_.isEmpty(),availability_.toStdString()});
-    hostAvailability_=dm::linux_client::Host::unavailable();
+    // Missing display/endpoint integrations reject only that resource, not the listener.
+    hostAvailability_.clear();
+    if(multiClient){runtime_=std::make_unique<LinuxConnectionRuntime>(availability_,this);connect(runtime_.get(),&LinuxConnectionRuntime::changed,this,&Controller::changed);}
     refreshAddresses();
     auto* timer=new QTimer(this);timer->setInterval(500);
     connect(timer,&QTimer::timeout,this,[this]{if(!accessGate_)return;auto state=accessGate_->status();if(state==dm::access::Gate::Status::active)return;
@@ -26,6 +29,8 @@ Controller::Controller(QString availability,QObject* parent):QObject(parent),ava
     });
 }
 Controller::~Controller(){shutdown();}
+bool Controller::active()const{return receiver_!=nullptr||(runtime_&&runtime_->active());}
+void Controller::setEngine(QQmlEngine* engine){if(runtime_)runtime_->setEngine(engine);}
 QString Controller::version()const{return QString::fromUtf8(EXTRAPANE_VERSION);}
 QString Controller::savedAddress()const{return QSettings().value("serverAddress").toString();}
 void Controller::refreshAddresses(){
@@ -52,7 +57,7 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
     if(!resources_.canConnect() || !resources_.selected(extrapane::ResourceKind::display)){
         status_="Select an available resource before connecting.";emit changed();return;
     }
-    if(!port||port>65535||(!code.isEmpty()&&!dm::access::validCode(code.toStdString()))){status_="Enter a valid port and six-digit access code";emit changed();return;}
+    if(!port||port>65535||(!code.isEmpty()&&!dm::access::validCode(code.toStdString())&&!dm::access::channelCredential(code.toStdString()))){status_="Enter a valid port and six-digit access code";emit changed();return;}
     const QHostAddress address(server.trimmed());
     if(address.protocol()!=QAbstractSocket::IPv4Protocol || !address.toIPv4Address() || address.toIPv4Address()==0xffffffffu || address.isMulticast() || address.isLoopback()){
         status_="Enter the server's LAN IPv4 address.";emit changed();return;
@@ -72,6 +77,11 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
     const unsigned hz=static_cast<unsigned>(std::clamp(std::lround(screen->refreshRate()),1L,60L));
     dm::linux_client::Receiver::Options options{address.toString(),local,
         {static_cast<unsigned>(size.width()),static_cast<unsigned>(size.height()),hz},scale,input,interfaceIndex};
+    if(displayMode_.value("mode")=="custom"){
+        const auto width=displayMode_.value("width").toUInt(),height=displayMode_.value("height").toUInt(),fps=displayMode_.value("fps").toUInt();
+        if(width<2||height<2||width>4096||height>4096||width%2||height%2||static_cast<uint64_t>(width)*height>8847360||fps<1||fps>360){status_="Invalid custom display mode";emit changed();return;}
+        options.display={width,height,fps,true};
+    }
     options.port=port;options.code=code;
     QSettings().setValue("serverAddress",options.server);
     releaseInput();input_.grant(0);media_.resetCounters();failed_=false;statistics_.clear();decoder_="Waiting for decoder";
@@ -90,8 +100,8 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
     });
     resources_.setLocked(true);status_="Connecting...";receiver_->start();emit changed();emit statisticsChanged();
 }
-void Controller::disconnectFromServer(){releaseInput();if(receiver_)receiver_->requestInterruption();}
-void Controller::releaseInput(){if(inputSurface_)inputSurface_->resetInput();else input_.reset();}
+void Controller::disconnectFromServer(){releaseInput();if(runtime_)runtime_->disconnectAll();if(receiver_)receiver_->requestInterruption();}
+void Controller::releaseInput(){if(runtime_)runtime_->releaseInput();if(inputSurface_)inputSurface_->resetInput();else input_.reset();}
 void Controller::startHost(QString address,unsigned port,bool requireCode){
     if(!port||port>65535){hostStatus_="Enter a port from 1 to 65535";emit hostChanged();return;}
     if(host_)return;
@@ -107,6 +117,7 @@ void Controller::startHost(QString address,unsigned port,bool requireCode){
 }
 void Controller::stopHost(){if(host_){host_->requestInterruption();hostStatus_="Stopping server...";emit hostChanged();}}
 void Controller::shutdown(){
+    if(runtime_)runtime_->shutdown();
     if(host_){host_->requestInterruption();host_->wait();QObject::disconnect(host_,nullptr,this,nullptr);delete host_;host_=nullptr;}
 
     if(receiver_){receiver_->requestInterruption();receiver_->wait();QObject::disconnect(receiver_,nullptr,this,nullptr);delete receiver_;receiver_=nullptr;}

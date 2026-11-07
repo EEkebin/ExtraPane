@@ -1,6 +1,6 @@
 # Android client
 
-The existing Android display receiver uses protocol 9 with Windows or Linux hosts. Development on `feat/shared-resources` adds separate camera and microphone sender modes described below. Android display hosting, system-audio playback and on-screen keyboard forwarding remain unimplemented.
+The existing Android display receiver uses protocol 9 with Windows or Linux hosts. Development on `feat/shared-resources` adds combined display, camera and microphone connections described below. Android display hosting, system-audio playback and on-screen keyboard forwarding remain unimplemented.
 
 ## Architecture
 
@@ -9,7 +9,7 @@ The existing Android display receiver uses protocol 9 with Windows or Linux host
 - Android platform Java UI, network/TLS APIs, SurfaceView and MediaCodec. H.264 is decoded directly to a Surface; pixels do not pass through UI JSON or bitmap copies.
 - TLS 1.3 over TCP 43824. Automatic LAN mode intentionally encrypts without checking peer identity, matching Windows/Linux. Its socket-local trust policy does not change system trust. No pairing or discovery.
 - Numeric IPv4, with automatic routing or a connected Wi-Fi/Ethernet network/address selection. No DHCP or DNS dependency in the protocol.
-- Client screen dimensions and refresh capped at 60 FPS are requested. The host chooses a supported mode; arbitrary phone-native virtual monitor sizes are not promised.
+- Native phone display requests its dimensions and refresh capped at 60 FPS. Custom mode requests exact even dimensions up to 4096 per axis, 8,847,360 total pixels and 1?360 target FPS. The host/codec/hardware must support the request; this is not a promise of achieved throughput.
 - Bounded input and decoder queues, input acknowledgements before decode, and same-session decoder recreation when the host sends a new display offer. A stalled decoder ends the connection rather than accumulating latency.
 - Native multi-touch, mouse, physical keyboard and stylus capture. Only host-granted input families are sent. Stylus events are never converted into mouse events.
 - Aspect-fit SurfaceView coordinates match input mapping. Native touch pressure/contact area is sent when available; fidelity needs physical application verification.
@@ -19,7 +19,21 @@ That background behavior describes display sessions. Camera sessions use a separ
 
 ## Controls
 
-Enter the server IPv4 address and select Connect. The top-center handle reveals Settings, Hide and Disconnect. Controls hide automatically, and touch elsewhere goes to the host. Android Back reveals controls during a session. Ctrl+Shift+Q disconnects with a physical keyboard; F10/F8 reveal controls and pause input. Settings contains optional reception statistics and negotiated capabilities. Stats are off by default and are not end-to-end latency measurements.
+Enter the server IPv4 address and port, choose an optional network route/access
+code, then check Display, Camera or Microphone in its collapsible group. Each
+checkbox starts/stops only its resource; Disconnect all stops all three. Selectors
+refresh when opened and retain a still-present device selection. Missing/invalid
+configuration receives temporary red borders and one toast. On successful
+connection, a toast names the resource and destination; connected configuration
+collapses into a summary with a red disconnect action. Server address fields
+collapse while connected, except when validation needs attention.
+
+The display toolbar contains Settings, Hide, Resources and Disconnect. Resources
+returns to the configuration page without stopping the display or media sharing;
+Show display returns to the streamed screen. Android Back opens Resources during
+a display session. Ctrl+Shift+Q disconnects all; F10/F8 reveal controls and pause
+input. Settings contains optional reception statistics and negotiated capabilities.
+Stats are off by default and are not end-to-end latency measurements.
 
 Physical keyboard uses Linux evdev scan codes mapped to Windows set-1 codes and the host keyboard layout. IME text, virtual keyboard composition, media/system keys and arbitrary vendor keys are not implemented. System navigation and power keys remain Android-owned.
 
@@ -83,7 +97,12 @@ Code-enabled builds add a TCP port (default 43824) and optional six-digit access
 
 ## Camera-sharing development slice
 
-The app now has a camera picker, **Share selected camera**, and **Stop camera sharing** controls. Enter the Windows camera listener's IPv4 address and port, select the local route if needed, and optionally enter its access code. This preview uses a separate camera-only connection; stop the display session first. The existing display receiver remains available. Starting a camera session requests no virtual monitor or remote input.
+The Cameras group lists supported camera choices. Check Camera to send the
+selected source to the same unified server address/port used for display and
+microphone. Capture stays on Android and requires its permission. A camera
+connection does not allocate a monitor; other selected resources may run alongside
+it when hardware and permissions allow. Current Android camera capture still
+selects one predefined candidate mode per camera (30 FPS at 720p, 480p or 1080p).
 
 Camera permission is requested before starting a non-exported `camera` foreground service from the visible Activity. The service provides a Stop action in its persistent notification and is `START_NOT_STICKY`: Android/process restarts never automatically reopen the camera. Notification permission is requested on Android 13+; if denied, Android's foreground-service task manager and ExtraPane's in-app Stop control remain available. Background operation is subject to Android's permission, privacy and device policies. Physical background/lock behavior has not been verified.
 
@@ -99,10 +118,10 @@ Android lifecycle references: [camera foreground-service requirements](https://d
 
 ## Microphone-sharing development slice
 
-The native Android interface also lists local audio inputs and provides **Share
-selected microphone**, **Mute**, **Unmute**, and **Stop**. Use the Windows
-microphone-only listener's address and port. Display, camera and microphone are
-mutually exclusive session modes in this preview; they are not multiplexed.
+The Microphones group lists local audio inputs. Check Microphone to send the
+selected input; the live Mute checkbox and persistent notification control its
+audio. Display, camera and microphone can run together against a unified server;
+individual failures and disconnects release only their own resource.
 
 The visible Activity requests `RECORD_AUDIO` before launching a non-exported
 `microphone` foreground service. Its persistent notification includes Mute/Unmute
@@ -133,3 +152,40 @@ without installing or running the app. Actual Android-to-Windows recording,
 selected-device routing, lock/background behavior, privacy revocation and
 notification actions remain unverified on physical devices. See
 [microphone implementation](MICROPHONE.md) for endpoint and native session details.
+
+
+## Combined-resource admission and remaining parity work
+
+Protected connections share one authenticated control connection per exact server,
+port and selected network. The native control codec validates requests/replies;
+resource-specific one-use tickets admit the independent display/camera/microphone
+streams. Heartbeats retain the control session; its loss cancels its resource
+sessions. Releasing the last resource closes the broker. Automatic LAN mode uses
+independent encrypted resource connections and does not claim peer verification.
+Access codes are held only in memory while related resources are pending/running,
+not saved to preferences. Each foreground service keeps its own notification and
+requires visible-activity permission before capture starts.
+
+This increment is one display, one camera and one microphone per Android app
+process. Multiple rows/sources, fanout to several servers and a shared Qt Android
+frontend remain unfinished. USB/IP export, Android virtual receiving devices,
+display hosting and camera mirroring are not implemented. USB is visible but
+unavailable with an explanation; USB/Bluetooth keyboard input is separate from
+USB device export. No storage is detached by these Android changes.
+
+2026-11-07 verification: ARM64/x86_64 APK and instrumentation APK compilation and
+Android lint pass; pure Java configuration and production admission-pool lifecycle
+checks run on the build host. The broker checks use a fake transport with no
+Android/JNI/network and cover exact-target reuse, route isolation, last-lease
+cleanup, canceled pending acquisition, initial code rejection and established
+control loss. Added
+custom-mode JNI checks compile but have not run on a device. Combined capture,
+control-session reuse, app lifecycle/permission revocation and the new UI still
+need authorized device testing. Existing physical display/touch evidence predates
+this increment and does not validate these changes.
+
+To repeat the host-only Android checks in this checkout (no device needed):
+
+```powershell
+./apps/android/tests/run-host-checks.ps1
+```

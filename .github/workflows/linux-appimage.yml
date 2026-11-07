@@ -43,6 +43,9 @@ jobs:
           cmake --preset linux-release -DEXTRAPANE_LINUX_TESTS=ON
           cmake --build --preset linux-release --parallel 2
           QT_QPA_PLATFORM=offscreen out/build/linux-release/platform/linux/extrapane-linux-input-check
+          out/build/linux-release/platform/linux/extrapane-linux-resource-pcm-check
+          out/build/linux-release/platform/linux/ui-checks/extrapane-linux-window-check
+          out/build/linux-release/platform/linux/ui-checks/extrapane-linux-admission-check
       - name: Prepare tools and dependency notices
         run: python scripts/prepare_linux_ci.py
       - name: Package AppImage

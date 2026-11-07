@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(extrapane_android LANGUAGES C CXX)
 set(ROOT "${CMAKE_CURRENT_LIST_DIR}/../../..")
-add_library(extrapane SHARED protocol_jni.cpp access_jni.cpp camera_jni.cpp microphone_jni.cpp
+add_library(extrapane SHARED protocol_jni.cpp access_jni.cpp admission_jni.cpp camera_jni.cpp microphone_jni.cpp
     "${ROOT}/core/session/wire.cpp"
     "${ROOT}/core/session/channel.cpp"
     "${ROOT}/core/session/media.cpp"

@@ -1,5 +1,7 @@
 #include "controller.hpp"
-#include <QGuiApplication>
+#include <QApplication>
+#include <QSystemTrayIcon>
+#include <QMenu>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -20,7 +22,8 @@ int main(int argc,char** argv){
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTabletEvents,false);
     // A consistent Controls style honors our palette on KDE light and dark desktops.
     QQuickStyle::setStyle("Material");
-    QGuiApplication app(argc,argv);
+    QApplication app(argc,argv);
+    app.setQuitOnLastWindowClosed(false);
     QTimer shutdownTimer;QObject::connect(&shutdownTimer,&QTimer::timeout,&app,[]{if(quitRequested)QCoreApplication::quit();});shutdownTimer.start(100);
     QCoreApplication::setOrganizationName("ExtraPane");QCoreApplication::setApplicationName("ExtraPane");
     QGuiApplication::setDesktopFileName("io.github.EEkebin.ExtraPane");
@@ -46,10 +49,29 @@ int main(int argc,char** argv){
     qmlRegisterType<dm::linux_client::InputSurface>("ExtraPane.Native",1,0,"InputSurface");
     Controller controller(unavailable);
     QQmlApplicationEngine engine;
+    controller.setEngine(&engine);
     engine.rootContext()->setContextProperty("receiver",&controller);
     engine.load(QUrl("qrc:/Main.qml"));
     if(engine.rootObjects().isEmpty())return 1;
-    controller.setWindow(qobject_cast<QQuickWindow*>(engine.rootObjects().first()));
+    auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+    if(!window)return 1;
+    controller.setWindow(window);
+    QSystemTrayIcon tray(QIcon(":/extrapane.png"));tray.setToolTip("ExtraPane");
+    QMenu trayMenu;auto* open=trayMenu.addAction("Open ExtraPane");auto* stop=trayMenu.addAction("Stop server");
+    auto* disconnect=trayMenu.addAction("Disconnect all");trayMenu.addSeparator();auto* exit=trayMenu.addAction("Exit ExtraPane");tray.setContextMenu(&trayMenu);
+    auto restore=[&]{if(window->visibility()==QWindow::Minimized)window->showNormal();else window->show();window->raise();window->requestActivate();tray.hide();};
+    QObject::connect(open,&QAction::triggered,&app,restore);
+    QObject::connect(&tray,&QSystemTrayIcon::activated,&app,[&](QSystemTrayIcon::ActivationReason reason){if(reason==QSystemTrayIcon::DoubleClick)restore();});
+    QObject::connect(stop,&QAction::triggered,&controller,&Controller::stopHost);
+    QObject::connect(disconnect,&QAction::triggered,&controller,&Controller::disconnectFromServer);
+    QObject::connect(exit,&QAction::triggered,&app,&QCoreApplication::quit);
+    QObject::connect(&app,&QGuiApplication::lastWindowClosed,&app,[&]{
+        if(controller.active()||controller.hosting()){
+            if(QSystemTrayIcon::isSystemTrayAvailable())tray.show();else restore();
+        }else app.quit();
+    });
+    auto updateTray=[&]{stop->setEnabled(controller.hosting());disconnect->setEnabled(controller.active());if(!window->isVisible()&&!controller.hosting()&&!controller.active())app.quit();};
+    QObject::connect(&controller,&Controller::changed,&app,updateTray);QObject::connect(&controller,&Controller::hostChanged,&app,updateTray);updateTray();
     QObject::connect(&controller,&Controller::hostChanged,&controller,[&controller]{qInfo().noquote()<<controller.hostStatus();});
     const auto hostOption=app.arguments().indexOf("--host");
     if(hostOption>=0 && hostOption+1<app.arguments().size())QTimer::singleShot(0,&controller,[&controller,&app,hostOption]{controller.startHost(app.arguments().at(hostOption+1));});

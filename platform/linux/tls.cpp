@@ -111,9 +111,25 @@ Tls::Tls(int acceptedSocket,std::function<bool()> cancelled,access::Gate* gate):
     s.ssl=SSL_new(s.context);if(!s.ssl || SSL_set_fd(s.ssl,s.socket)!=1)failure("Create TLS server connection");
     const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);
     for(;;){s.check(until);ERR_clear_error();int result=SSL_accept(s.ssl);if(result==1)break;s.retry(result,until,"Server TLS handshake");}
+    gate_=gate;
     if(gate)protect({},gate);
 }
-Tls::~Tls()=default;
+Tls::~Tls(){if(gate_&&control_)gate_->close_control(control_);}
+bool Tls::openControl(){
+    if(control_)throw std::runtime_error("Control is already open");
+    if(!gate_)return false;
+    if(!protected_)throw std::runtime_error("Control authentication is required");
+    control_=protected_->open_control(*gate_);return true;
+}
+std::vector<access::ChannelCredential> Tls::controlChannels(unsigned kind){
+    if(kind>3)throw std::runtime_error("Unknown resource kind");
+    if(!gate_)return {};
+    if(!control_)throw std::runtime_error("Control must open first");
+    return gate_->control_channels(1u<<kind,control_);
+}
+void Tls::requireResource(unsigned kind)const{
+    if(protected_){const auto allowed=protected_->authorized_kind();if(allowed&&*allowed!=kind)throw std::runtime_error("Credential does not authorize this resource");}
+}
 void Tls::readRaw(std::span<std::uint8_t> bytes,Deadline deadline){
     while(!bytes.empty()){
         state_->check(deadline);std::size_t size=0;ERR_clear_error();

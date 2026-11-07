@@ -220,6 +220,9 @@ int main(int argc,char** argv){
         waitFor([&]{return !named(repeatedRoot,"connectionValidationToast")->property("visible").toBool();});
         runtime.requests.clear();instances.setEnabled(instanceDisplay,false);
         for(const auto& id:{instanceDisplay,instanceCamera,secondCamera,instanceMic}){instances.setSource(id,"fake-source");instances.setEnabled(id,true);require(instances.beginConnection(id));require(instances.setState(id,ConnectionModel::State::active,"Connected"));}
+        app.processEvents();require(named(repeatedRoot,"connectionSuccessToast")->property("visible").toBool());
+        require(named(repeatedRoot,"connectionSuccessMessage")->property("text").toString().contains("Display connected to 192.0.2.1:43824"));
+        require(named(repeatedRoot,"connectionSuccessMessage")->property("text").toString().contains("Microphone connected to 192.0.2.1:43824"));
         app.processEvents();auto* displayMode=named(repeatedRoot,("displayModeChoice_"+instanceDisplay).toUtf8().constData());
         require(!displayMode->property("visible").toBool()&&!named(repeatedRoot,"sharedDestinationFields")->property("visible").toBool()&&named(repeatedRoot,"sharedDestinationSummary")->property("visible").toBool());
         auto* displaySummary=named(repeatedRoot,("connectedDescription_"+instanceDisplay).toUtf8().constData());

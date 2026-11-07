@@ -40,6 +40,8 @@ public final class ProtocolChecks extends Instrumentation {
     }
     @Override public void onStart(){Bundle result=new Bundle();try{
         byte[] request=Protocol.request(1080,2400,60,7,0);
+        byte[] custom=Protocol.customRequest(1920,1080,360,7,0);require(custom[28]==1&&ByteBuffer.wrap(custom).getInt(24)==360,"Custom mode and target FPS");
+        rejected(()->Protocol.customRequest(1921,1080,60,7,0));rejected(()->Protocol.customRequest(1920,1080,361,7,0));
         require(request.length==32 && request[4]==9 && request[8]==7,"Request version/grant");
         require(ByteBuffer.wrap(request).getInt(16)==1080,"Request dimensions");
         rejected(()->Protocol.request(0,2400,60,7,0));rejected(()->Protocol.request(1080,2400,60,16,0));

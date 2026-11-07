@@ -31,7 +31,7 @@ ApplicationWindow {
     palette.toolTipBase: "#253349"
     palette.toolTipText: "#edf1f8"
     palette.placeholderText: "#aab8cc"
-    readonly property bool multiClient: windowsClient && typeof receiver.connectionRuntime !== "undefined"
+    readonly property bool multiClient: typeof receiver.connectionRuntime !== "undefined"
     property bool windowsClient: receiver.platformLabel === "Windows"
     property bool sidebarCollapsed: false
     property bool inputPaused: false
@@ -78,7 +78,7 @@ ApplicationWindow {
         revealToolbar()
     }
     function revealToolbar() { toolbarVisible = true; hideToolbar.restart() }
-    Shortcut { sequence: "Ctrl+Shift+Q"; onActivated: receiver.disconnectFromServer() }
+    Shortcut { sequence: "Ctrl+Shift+Q"; onActivated: { if (root.multiClient) receiver.connectionRuntime.disconnectAll(); else receiver.disconnectFromServer() } }
     Shortcut { sequence: "F11"; onActivated: root.toggleFullscreen() }
     Shortcut { enabled: !root.windowsClient; sequence: "F10"; onActivated: root.pauseInput() }
     Shortcut { enabled: !root.windowsClient; sequence: "F8"; onActivated: root.toggleInput() }
@@ -261,7 +261,7 @@ ApplicationWindow {
                         active: root.multiClient
                         visible: active
                         Layout.fillWidth: true; Layout.fillHeight: true
-                        sourceComponent: Component { ClientConnections { controller: receiver; runtime: receiver.connectionRuntime; addresses: receiver.addresses; inputAllowed: globalInputAllowed.checked } }
+                        sourceComponent: Component { ClientConnections { controller: root.windowsClient ? receiver : null; runtime: receiver.connectionRuntime; addresses: receiver.addresses; inputAllowed: globalInputAllowed.checked } }
                     }
                     ScrollView {
                         id: resourceScroll
@@ -279,7 +279,7 @@ ApplicationWindow {
                         }
                     }
                     Rectangle {
-                        id: viewport; visible: !root.windowsClient; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
+                        id: viewport; visible: !root.windowsClient && !root.multiClient; color: "#080b11"; Layout.fillWidth: true; Layout.fillHeight: true
                         ScrollView {
                             id: linuxResourceScroll
                             anchors.fill: parent; anchors.margins: 18
@@ -289,7 +289,7 @@ ApplicationWindow {
                             contentWidth: availableWidth
                             Loader {
                                 width: linuxResourceScroll.availableWidth
-                                active: !root.windowsClient
+                                active: !root.windowsClient && !root.multiClient
                                 sourceComponent: Component {
                                     ResourcePicker { resourceModel: receiver.resources }
                                 }
@@ -345,7 +345,7 @@ ApplicationWindow {
                         }
                     }
                     Label { visible: !root.fullscreen && !root.multiClient; text: receiver.status; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { visible: !root.fullscreen; text: root.windowsClient ? "Ctrl+Shift+Q disconnects all selected resources. Display opens in its own native window." : "F8 pauses input | Ctrl+Shift+Q disconnects | F11 toggles fullscreen | F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { visible: !root.fullscreen; text: root.multiClient || root.windowsClient ? "Ctrl+Shift+Q disconnects all selected resources. Display opens in its own native window." : "F8 pauses input | Ctrl+Shift+Q disconnects | F11 toggles fullscreen | F10 pauses input and shows controls"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
             Pane {

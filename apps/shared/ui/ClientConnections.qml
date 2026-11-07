@@ -20,7 +20,21 @@ ScrollView {
         if (invalidControls.indexOf(control) < 0) invalidControls = invalidControls.concat([control])
     }
     function invalid(control) { return invalidControls.indexOf(control) >= 0 }
-    function notifyInvalid() { validationToast.open(); validationTimer.restart() }
+    function notifyInvalid() { connectionToastTimer.stop(); connectionToast.close(); connectedMessages = []; validationToast.open(); validationTimer.restart() }
+    property var connectedMessages: []
+    function notifyConnected(kind, target) {
+        const name = kind === "usb" ? "USB storage" : kind.charAt(0).toUpperCase() + kind.slice(1)
+        connectedMessages = connectedMessages.concat([name + " connected to " + target.address + ":" + target.port]).slice(-5)
+        if (!validationToast.visible) { connectionToast.open(); connectionToastTimer.restart() }
+    }
+    Timer { id: connectionToastTimer; interval: 5000; onTriggered: { connectionToast.close(); panel.connectedMessages = [] } }
+    Popup {
+        id: connectionToast; objectName: "connectionSuccessToast"
+        parent: Overlay.overlay; x: (parent.width - width) / 2; y: parent.height - height - 32
+        width: Math.min(460, parent.width - 32); padding: 16; modal: false; focus: false
+        background: Rectangle { color: "#193b32"; radius: 10; border.color: "#67c6a0" }
+        contentItem: Label { objectName: "connectionSuccessMessage"; text: panel.connectedMessages.join("\n"); color: "white"; wrapMode: Text.WordWrap; Accessible.role: Accessible.AlertMessage }
+    }
     function validAddress(value, local) {
         if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) return false
         const parts = value.split(".").map(Number)
@@ -36,6 +50,7 @@ ScrollView {
     Timer { id: validationTimer; interval: 5000; onTriggered: { panel.invalidControls = []; validationToast.close() } }
     Popup {
         id: validationToast; objectName: "connectionValidationToast"
+        onClosed: { if (panel.connectedMessages.length) { connectionToast.open(); connectionToastTimer.restart() } }
         parent: Overlay.overlay; x: (parent.width - width) / 2; y: parent.height - height - 32
         width: Math.min(420, parent.width - 32); padding: 16; modal: false; focus: false
         background: Rectangle { color: "#48232d"; radius: 10; border.color: "#ff6577" }
@@ -278,6 +293,7 @@ ScrollView {
                                         connectedDescription = device ? device.label : sourceId || resourceKind
                                     }
                                 }
+                                onPhaseChanged: { if (phase === "active") panel.notifyConnected(resourceKind, effectiveTarget) }
                                 onBusyChanged: freezeDescription()
                                 Component.onCompleted: freezeDescription()
                                 width: instance.width
@@ -367,7 +383,7 @@ ScrollView {
                 }
             }
         }
-        CheckBox { id: recoveryOpen; visible: panel.controller !== null; text: "Advanced: interrupted USB transfer recovery" }
+        CheckBox { id: recoveryOpen; visible: panel.controller !== null && typeof panel.controller.refreshUsbRecovery === "function"; text: "Advanced: interrupted USB transfer recovery" }
         ColumnLayout {
             visible: recoveryOpen.checked && panel.controller !== null; Layout.fillWidth: true; Layout.minimumWidth: 0
             Label { text: panel.controller ? panel.controller.recoveryStatus : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }

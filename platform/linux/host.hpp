@@ -2,7 +2,10 @@
 #include <QThread>
 #include <QString>
 #include <dm/access.hpp>
+#include <atomic>
+#include <span>
 namespace dm::linux_client {
+class Tls;
 class Host final:public QThread {
     Q_OBJECT
 public:
@@ -14,6 +17,8 @@ protected:
     void run() override;
 private:
     QString address_;unsigned port_;std::shared_ptr<access::Gate> gate_;
-    void serve(int socket);
+    std::atomic_bool stopping_{false};
+    void serve(int socket,std::atomic_uint& pending);
+    void serveDisplay(Tls& stream,std::span<const uint8_t> prefix);
 };
 }
