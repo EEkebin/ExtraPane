@@ -79,5 +79,6 @@ $changes = & git -C $projectRoot status --porcelain
     usbStorage = [bool]$IncludeUsb
     deviceVerified = $false
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $destinationPath 'BUILD-INFO.json') -Encoding UTF8
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/WINDOWS-RESOURCE-TEST.md') -Destination (Join-Path $destinationPath 'TEST-GUIDE.md')
 Write-Host "Staged development resource-sharing app: $destinationPath"
 Write-Host 'No app was launched, no driver installed, and no connection was attempted.'

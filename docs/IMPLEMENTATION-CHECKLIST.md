@@ -86,7 +86,7 @@ speaker forwarding remain deferred.
 
 ## Packaging and release
 
-- [x] Shared Windows development staging and isolated startup check.
+- [x] Combined Windows camera/microphone/USB portable development package staged at `out/windows-resources-test-20261107`; packaged offscreen startup, USB configuration, microphone endpoint and setup-payload checks pass.
 - [x] CI definitions for isolated resource and camera checks.
 - [x] Windows camera installer integration source and graceful app shutdown protocol.
 - [ ] Compile and verify the new installer; compiler staging was blocked by automatic approval review.
@@ -112,6 +112,7 @@ speaker forwarding remain deferred.
 | 2026-11-07 native sources | WASAPI source, local microphone endpoint helper and native USB inventory | Native builds/PCM and inventory checks; 4 Rust unit checks. No capture, attachment or disk enumeration executed. |
 | 2026-11-07 microphone connection | Windows microphone session/UI and managed component setup | 6 core suites, UI checks, native configuration/payload checks pass. No live sockets or driver installation. |
 | `dc802ce` | Microphone backend ownership hardening | Five isolated Rust checks and release build pass; protected payload hashes/ACLs and exact port identity checked before cleanup. No driver/device execution. |
+| 2026-11-07 combined Windows package | Camera/microphone/USB app and internal setup helpers staged together; test guide and source materials included | Packaged offscreen startup and helper checks pass. No device tests or driver installations. Inno installer compilation remains blocked. |
 | 2026-11-07 Windows USB session | Native source/receiver, scoped import, safe eject, durable recovery, shared controls and package integration | 15 isolated USB checks, offscreen UI and native builds pass. Driver handoff and actual device delivery still need physical verification. |
 | 2026-11-07 USB ownership and recovery | Protected backend, offline journal, source setup and guided Windows controls | Native recovery/setup payload checks and offscreen UI pass. No storage enumeration, driver setup or real USB session run. |
 | 2026-11-07 Android microphone / USB transport | Android microphone sender and native storage/tunnel foundations | Android APK/instrumentation compilation/lint; 7 core suites; synthetic native storage lifecycle checks. No live USB or audio access. |
