@@ -11,7 +11,7 @@ ColumnLayout {
     spacing: 10
     Label { text: "Share with the server"; font.bold: true; font.pixelSize: 16 }
     Label {
-        text: "Select everything you want to use together."
+        text: "Connect, then check resources to start sharing. Uncheck a resource to stop it."
         visible: picker.controller !== null
         wrapMode: Text.WordWrap; Layout.fillWidth: true
     }
@@ -119,11 +119,7 @@ ColumnLayout {
                         text: card.resourceMuted ? "Unmute microphone" : "Mute microphone"
                         onClicked: if (picker.controller !== null) picker.controller.setMicrophoneMuted(!card.resourceMuted)
                     }
-                    Button {
-                        objectName: "resourceStop_" + card.resourceKey
-                        text: card.resourceKey === "usb" ? "Stop USB (recovery may be required)" : "Stop " + card.resourceName.toLowerCase()
-                        onClicked: if (picker.controller !== null) picker.controller.stopResource(card.resourceKey)
-                    }
+
                 }
                 ColumnLayout {
                     visible: picker.controller !== null && card.resourceSelected && card.resourceKey === "usb"

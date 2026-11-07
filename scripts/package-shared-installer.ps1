@@ -13,7 +13,7 @@ foreach($path in @($stagePath,$destinationPath)) {
         throw 'Development installer paths must stay under this checkout out directory.'
     }
 }
-foreach($name in @('ExtraPane.exe','ExtraPane.DriverSetup.exe','ExtraPane.CameraSetup.exe','ExtraPane.UsbSetup.exe','ExtraPane.MicrophoneEndpoint.exe','ExtraPane.Usb.exe','ExtraPane.Session.exe')) {
+foreach($name in @('ExtraPane.exe','Components/Display/manage-driver.ps1','Components/Display/package/manifest.json','ExtraPane.CameraSetup.exe','ExtraPane.UsbSetup.exe','ExtraPane.MicrophoneEndpoint.exe','ExtraPane.Usb.exe','ExtraPane.Session.exe')) {
     if(-not (Test-Path -LiteralPath (Join-Path $stagePath $name))) {throw "Missing staged output: $name"}
 }
 if(-not $Compiler) {$Compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'}
@@ -46,11 +46,11 @@ and microphone/USB receiving components.
 Camera setup requires administrator permission. Camera use remains subject to
 Windows camera privacy settings. No physical camera is detached or replaced.
 
-Server + Client also requires the virtual-display driver installer. That choice
-requires a package containing DriverSetup; otherwise setup refuses that role.
+Server + Client requires the bundled virtual-display driver package. The main
+installer owns its installation, repair and removal; no second installer runs.
 
-Managed components live under Program Files/ExtraPane/Components. The display
-component uninstaller is invoked by the main ExtraPane uninstaller.
+Managed components live under Program Files/ExtraPane/Components. There is one
+ExtraPane uninstall entry, including its managed display driver.
 The camera component stays installed when its server stops. Uninstall ExtraPane
 removes its managed camera, microphone and USB source components, owned display
 driver and current-user app settings by default. Shared independently installed

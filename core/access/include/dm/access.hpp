@@ -23,8 +23,10 @@ std::string formatCredential(const ChannelCredential& credential);
 class Gate {
     std::function<Clock::time_point()> now_;
     std::mutex mutex_;std::string code_;Clock::time_point expires_{};uint64_t generation_=0;unsigned attempts_=0;bool used_=true;
-    struct Channel {std::string secret;unsigned kind=0,attempts=0;Clock::time_point expires;uint64_t generation=0;};
+    struct Channel {std::string secret;unsigned kind=0,attempts=0;Clock::time_point expires;uint64_t generation=0,control=0;};
     std::map<std::string,Channel> channels_;
+    std::map<uint64_t,bool> controls_;uint64_t next_control_=0;
+    std::vector<ChannelCredential> issue_locked(unsigned mask,uint64_t control);
     void clear_channels();
 public:
     explicit Gate(std::function<Clock::time_point()> now=Clock::now):now_(std::move(now)){}
@@ -37,6 +39,9 @@ public:
     void consume(uint64_t generation);
     void revoke();
     std::vector<ChannelCredential> issue_channels(unsigned mask,uint64_t admitted_generation);
+    uint64_t open_control(uint64_t admitted_generation);
+    std::vector<ChannelCredential> control_channels(unsigned mask,uint64_t control);
+    void close_control(uint64_t control);
     Ticket begin_channel(const std::string& id,unsigned kind);
     void consume_channel(const std::string& id,unsigned kind,uint64_t generation);
 };
@@ -51,6 +56,7 @@ public:
     void server(Gate& gate);
     std::optional<unsigned> authorized_kind()const;
     std::vector<ChannelCredential> issue_channels(Gate& gate,unsigned mask);
+    uint64_t open_control(Gate& gate);
     void read(std::span<uint8_t> bytes);
     void write(std::span<const uint8_t> bytes);
 };

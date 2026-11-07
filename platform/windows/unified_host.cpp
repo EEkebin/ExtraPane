@@ -8,6 +8,7 @@
 #include <dm/usb_session.hpp>
 #include <extrapane/session_route.hpp>
 #include <dm/group.hpp>
+#include <dm/control.hpp>
 #include <array>
 #include <thread>
 #include <mutex>
@@ -70,7 +71,24 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     security::TlsStream tls(std::move(socket),true,pair);Cancel cancel(tls,control.stop);
                     tls.handshake(Clock::now()+std::chrono::seconds(10));
                     std::array<std::uint8_t,extrapane::session_prefix_size> prefix{};tls.peek(prefix,Clock::now()+std::chrono::seconds(30));
-                    if(prefix==access::group_prefix){
+                    if(prefix==access::control_prefix){
+                        resource="control";
+                        access::ControlRequest request{};tls.read(request,Clock::now()+std::chrono::seconds(5));
+                        if(access::parse_control(request).first!=access::ControlOperation::open)throw std::runtime_error("Control must open first");
+                        if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping");
+                        const bool protected_mode=tls.open_control();
+                        tls.write(access::control_reply(access::ControlOperation::open,0,protected_mode),Clock::now()+std::chrono::seconds(5));
+                        while(!control.stop.load()&&!control.quit.load()){
+                            tls.read(request,Clock::now()+std::chrono::seconds(15));const auto [op,kind]=access::parse_control(request);
+                            if(op==access::ControlOperation::close)break;
+                            if(op==access::ControlOperation::open)throw std::runtime_error("Control is already open");
+                            std::string credential;
+                            if(op==access::ControlOperation::add){auto tickets=tls.control_channels(kind);if(protected_mode){credential=access::formatCredential(tickets.at(0));SecureZeroMemory(tickets[0].secret.data(),tickets[0].secret.size());}}
+                            auto reply=access::control_reply(op,kind,protected_mode,credential);
+                            struct Wipe{std::string& credential;access::ControlReply& reply;~Wipe(){SecureZeroMemory(credential.data(),credential.size());SecureZeroMemory(reply.data(),reply.size());}}wipe{credential,reply};
+                            tls.write(reply,Clock::now()+std::chrono::seconds(5));
+                        }
+                    }else if(prefix==access::group_prefix){
                         if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping");
                         access::GroupRequest request{};tls.read(request,Clock::now()+std::chrono::seconds(5));const auto mask=access::group_mask(request);
                         auto tickets=tls.issue_channels(mask);auto reply=access::group_reply(mask,tickets);

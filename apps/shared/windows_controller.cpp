@@ -24,17 +24,17 @@ extrapane::ResourceKind resourceKind(int i){return static_cast<extrapane::Resour
 const wchar_t* helper(int i){return i==0?L"dm-view.exe":i==1?L"ExtraPane.Resources.exe":i==2?L"ExtraPane.Microphone.exe":L"ExtraPane.Usb.exe";}
 }
 struct WindowsController::Impl {
-    struct Client{Child child;QProcess* inventory=nullptr;QByteArray inventoryOutput;bool inventoryFailed=false,failed=false,stopping=false;QString pending,format,status="Ready";};
+    struct Client{Child child;QProcess* inventory=nullptr;QByteArray inventoryOutput;bool inventoryFailed=false,failed=false,stopping=false,ticketPending=false;QString pending,format,status="Ready";};
     struct Request{QString server,local;unsigned port=0,scale=0;bool input=false;std::array<bool,4> selected{};} request;
     std::array<Client,4> clients;
-    QProcess* admission=nullptr;QByteArray admissionOutput;bool admissionFailed=false;
+    QProcess* admission=nullptr;QByteArray admissionOutput,admissionError;bool admissionFailed=false,sessionReady=false,sessionAuthenticated=false,reconciling=false;
     QProcess* recoveryScan=nullptr;QByteArray recoveryOutput;bool recoveryInvalid=false,recovering=false;
     Child host;QString hostPending,cameraProblem;bool hostFailed=false;quint64 codeExpires=0;HANDLE setup=nullptr;
     bool preparing=false,setupAttempted=false;int component=0;QProcess* probe=nullptr;QByteArray probeOutput;
     QString cameraHash;QString hostAddress;unsigned hostPort=0;bool hostRequireCode=false;
     ~Impl(){if(setup)CloseHandle(setup);}
 };
-WindowsController::WindowsController(QObject* parent):QObject(parent),impl_(std::make_unique<Impl>()){
+WindowsController::WindowsController(QObject* parent,bool rememberAddress):QObject(parent),impl_(std::make_unique<Impl>()),rememberAddress_(rememberAddress){
     const auto dir=QCoreApplication::applicationDirPath();
     if(!QFileInfo::exists(dir+"/dm-view.exe"))unavailable_="The native display engine is missing from this installation.";
     if(!QFileInfo::exists(dir+"/ExtraPane.Service.exe"))hostUnavailable_="The server helper is missing from this installation.";
@@ -42,17 +42,17 @@ WindowsController::WindowsController(QObject* parent):QObject(parent),impl_(std:
     for(int i=0;i<4;++i){const bool present=QFileInfo::exists(dir+"/"+QString::fromWCharArray(helper(i)));
         resources_.setCapability(resourceKind(i),{present,present?"":"The packaged resource engine is missing."});
     }
-    connect(&resources_,&ResourceModel::selectionChanged,this,&WindowsController::changed);
+    connect(&resources_,&ResourceModel::selectionChanged,this,[this]{reconcileResources();emit changed();});
     connect(this,&WindowsController::hostChanged,this,&WindowsController::changed);
     refreshAddresses();auto* timer=new QTimer(this);timer->setInterval(100);
     connect(timer,&QTimer::timeout,this,&WindowsController::poll);timer->start();
 }
 WindowsController::~WindowsController(){shutdown();}
 QString WindowsController::availability()const{return {};}
-bool WindowsController::clientReady()const{return !active()&&!cameraSetupRunning()&&resources_.canConnect();}
-void WindowsController::selectDevice(QString kind,QString id){const auto i=resourceIndex(kind);if(i<1||active())return;resources_.setSelectedDevice(resourceKind(i),id);emit changed();}
+bool WindowsController::clientReady()const{return !active()&&!cameraSetupRunning()&&QFileInfo::exists(QCoreApplication::applicationDirPath()+"/ExtraPane.Session.exe");}
+void WindowsController::selectDevice(QString kind,QString id){const auto i=resourceIndex(kind);if(i<1||impl_->clients[i].child.process||impl_->clients[i].ticketPending||impl_->clients[i].stopping)return;resources_.setSelectedDevice(resourceKind(i),id);emit changed();}
 void WindowsController::refreshDevices(QString key){
-    const auto i=resourceIndex(key);if(i<1||active()||cameraSetupRunning())return;
+    const auto i=resourceIndex(key);if(i<1||impl_->clients[i].child.process||impl_->clients[i].ticketPending||impl_->clients[i].stopping||cameraSetupRunning())return;
     auto& state=impl_->clients[i];if(state.inventory)return;
     auto* process=new QProcess(this);state.inventory=process;state.inventoryOutput.clear();state.inventoryFailed=false;
     resources_.setDevices(resourceKind(i),resources_.devices(resourceKind(i)),resources_.selectedDevice(resourceKind(i)),"Listing devices...",true);
@@ -167,36 +167,65 @@ void WindowsController::connectTo(QString server,QString local,bool input,unsign
     bool valid=interfaceIndex==0&&local=="0.0.0.0";
     for(const auto& item:addresses_){const auto entry=item.toMap();if(entry["address"].toString()==local&&entry["index"].toUInt()==interfaceIndex)valid=true;}
     if(!valid){status_="Refresh and select a connected local address.";emit changed();return;}
-    auto& request=impl_->request;request={address.toString(),local,port,scale,input,{}};unsigned mask=0,count=0;
-    for(int i=0;i<4;++i){request.selected[i]=resources_.selected(resourceKind(i));if(request.selected[i]){mask|=1u<<i;++count;}}
-    resources_.setLocked(true);microphoneMuted_=false;
-    QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).setValue("Peer",address.toString());
-    if(code.isEmpty()||count==1){std::array<std::string,4> credentials;for(int i=0;i<4;++i)if(request.selected[i])credentials[i]=code.toStdString();code.fill(QChar(0));startClients(std::move(credentials));return;}
-    auto* process=new QProcess(this);impl_->admission=process;impl_->admissionOutput.clear();impl_->admissionFailed=false;status_="Authorizing the selected resources...";emit changed();
-    auto finish=[this,process](bool ok){
-        if(impl_->admission!=process)return;impl_->admissionOutput+=process->readAllStandardOutput();
-        bool valid=ok&&!impl_->admissionFailed&&impl_->admissionOutput.size()<=16384,done=false;std::array<std::string,4> credentials;
-        if(valid)for(auto line:impl_->admissionOutput.split('\n')){
-            if(line.endsWith('\r'))line.chop(1);if(line.isEmpty())continue;
-            if(line=="SESSION_READY"){if(done)valid=false;done=true;continue;}
-            const auto fields=line.split('\t');if(done||fields.size()!=3||fields[0]!="SESSION_TICKET_V1"){valid=false;break;}
-            const auto i=resourceIndex(QString::fromLatin1(fields[1]));if(i<0||!impl_->request.selected[i]||!credentials[i].empty()){valid=false;break;}
-            const auto ticket=fields[2].split(':');
-            auto hex=[](const QByteArray& bytes,int size){return bytes.size()==size&&std::all_of(bytes.begin(),bytes.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');});};
-            if(ticket.size()!=4||ticket[0]!="EPCT1"||ticket[1]!=QByteArray::number(i)||!hex(ticket[2],32)||!hex(ticket[3],64)){valid=false;break;}
-            credentials[i]=fields[2].toStdString();line.fill('\0');
+    impl_->request={address.toString(),local,port,scale,input,{}};
+    microphoneMuted_=false;
+    if(rememberAddress_)QSettings("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat).setValue("Peer",address.toString());
+    auto* process=new QProcess(this);impl_->admission=process;impl_->admissionOutput.clear();impl_->admissionError.clear();impl_->admissionFailed=false;impl_->sessionReady=false;impl_->sessionAuthenticated=!code.isEmpty();
+    status_="Connecting to server...";emit changed();
+    connect(process,&QProcess::readyReadStandardOutput,this,[this,process]{
+        if(impl_->admission!=process)return;
+        impl_->admissionOutput+=process->readAllStandardOutput();
+        if(impl_->admissionOutput.size()>16384){impl_->admissionFailed=true;impl_->admissionError="Server session response exceeded its limit.";process->kill();return;}
+        while(impl_->admissionOutput.contains('\n')){
+            const auto at=impl_->admissionOutput.indexOf('\n');auto line=impl_->admissionOutput.left(at);impl_->admissionOutput.remove(0,at+1);if(line.endsWith('\r'))line.chop(1);
+            if(line=="SESSION_READY"&&!impl_->sessionReady){impl_->sessionReady=true;status_="Connected. Check resources to start sharing.";reconcileResources();emit changed();continue;}
+            auto fields=line.split('\t');bool valid=impl_->sessionReady&&fields.size()==3&&fields[0]=="SESSION_TICKET_V1";
+            const auto i=valid?resourceIndex(QString::fromLatin1(fields[1])):-1;valid=valid&&i>=0&&impl_->clients[i].ticketPending;
+            if(valid&&fields[2]=="-"&&impl_->sessionAuthenticated)valid=false;
+            if(valid&&fields[2]!="-"){
+                const auto ticket=fields[2].split(':');
+                auto hex=[](const QByteArray& value,int size){return value.size()==size&&std::all_of(value.begin(),value.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');});};
+                valid=ticket.size()==4&&ticket[0]=="EPCT1"&&ticket[1]==QByteArray::number(i)&&hex(ticket[2],32)&&hex(ticket[3],64);
+            }
+            if(!valid){line.fill('\0');impl_->admissionFailed=true;impl_->admissionError="Invalid server session response. Use matching builds on both PCs.";process->kill();return;}
+            auto& state=impl_->clients[i];state.ticketPending=false;
+            if(resources_.selected(resourceKind(i))&&!state.child.process&&!state.stopping){
+                impl_->request.selected.fill(false);impl_->request.selected[i]=true;
+                std::array<std::string,4> credentials;if(fields[2]!="-")credentials[i]=fields[2].toStdString();
+                startClients(std::move(credentials));
+            }else resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.child.process?state.status:"Disconnected");
+            fields[2].fill('\0');line.fill('\0');
         }
-        for(int i=0;i<4;++i)if(impl_->request.selected[i]&&credentials[i].empty())valid=false;
-        impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();impl_->admission=nullptr;process->deleteLater();
-        if(valid&&done)startClients(std::move(credentials));else{for(auto& credential:credentials)std::fill(credential.begin(),credential.end(),'\0');resources_.setLocked(false);status_="Resource authorization failed. Check the access code and use matching builds on both PCs.";emit changed();}
+    });
+    connect(process,&QProcess::readyReadStandardError,this,[this,process]{if(impl_->admission!=process)return;impl_->admissionError+=process->readAllStandardError();if(impl_->admissionError.size()>4096)impl_->admissionError=impl_->admissionError.right(4096);});
+    auto finish=[this,process]{
+        if(impl_->admission!=process)return;
+        impl_->admissionError+=process->readAllStandardError();
+        const auto detail=QString::fromUtf8(impl_->admissionError).trimmed().left(1000);
+        impl_->admission=nullptr;impl_->sessionReady=false;impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();process->deleteLater();
+        for(int i=0;i<4;++i){impl_->clients[i].ticketPending=false;resources_.select(i,false);stopResource(resourceNames[i]);}
+        status_=detail.isEmpty()?"Server connection ended. Connect again to resume sharing.":detail;emit changed();
     };
-    connect(process,&QProcess::readyReadStandardOutput,this,[this,process]{if(impl_->admission!=process)return;impl_->admissionOutput+=process->readAllStandardOutput();if(impl_->admissionOutput.size()>16384){impl_->admissionFailed=true;impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();process->kill();}});
-    connect(process,&QProcess::readyReadStandardError,this,[process]{process->readAllStandardError();});
-    connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[finish](int result,QProcess::ExitStatus state){finish(result==0&&state==QProcess::NormalExit);});
-    connect(process,&QProcess::errorOccurred,this,[finish](QProcess::ProcessError error){if(error==QProcess::FailedToStart)finish(false);});
-    QTimer::singleShot(25000,process,[this,process]{if(impl_->admission==process){impl_->admissionFailed=true;process->kill();}});
-    process->start(QCoreApplication::applicationDirPath()+"/ExtraPane.Session.exe",QStringList{"--bind",local=="0.0.0.0"?"auto":local,"--peer",address.toString(),"--port",QString::number(port),"--resources",QString::number(mask),"--access-stdin","--parent-pid",QString::number(GetCurrentProcessId())});
-    auto bytes=code.toLatin1();bytes+='\n';process->write(bytes);bytes.fill('\0');code.fill(QChar(0));process->closeWriteChannel();
+    connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[finish](int,QProcess::ExitStatus){finish();});
+    connect(process,&QProcess::errorOccurred,this,[finish](QProcess::ProcessError error){if(error==QProcess::FailedToStart)finish();});
+    QTimer::singleShot(25000,process,[this,process]{if(impl_->admission==process&&!impl_->sessionReady){impl_->admissionError="Server connection timed out.";process->kill();}});
+    QStringList args{"--session","--access-stdin","--bind",local=="0.0.0.0"?"auto":local,"--peer",address.toString(),"--port",QString::number(port),"--parent-pid",QString::number(GetCurrentProcessId())};
+    process->start(QCoreApplication::applicationDirPath()+"/ExtraPane.Session.exe",args);
+    auto bytes=code.toLatin1();bytes+='\n';process->write(bytes);bytes.fill('\0');code.fill(QChar(0));
+}
+void WindowsController::reconcileResources(){
+    if(impl_->reconciling)return;impl_->reconciling=true;
+    for(int i=0;i<4;++i){
+        auto& state=impl_->clients[i];
+        if(!resources_.selected(resourceKind(i))){if(!state.stopping)stopResource(resourceNames[i]);continue;}
+        if(!impl_->sessionReady||!impl_->admission||state.child.process||state.ticketPending||state.stopping)continue;
+        if(i&& (resources_.selectedDevice(resourceKind(i)).isEmpty()||resources_.scanning(resourceKind(i)))){
+            state.status="Choose a source device to start sharing.";resources_.setSessionState(resourceKind(i),false,state.status);continue;
+        }
+        state.ticketPending=true;state.status="Authorizing resource...";resources_.setSessionState(resourceKind(i),true,state.status);
+        impl_->admission->write("ADD "+QByteArray::number(i)+"\n");
+    }
+    impl_->reconciling=false;
 }
 void WindowsController::startClients(std::array<std::string,4> credentials){
     const auto request=impl_->request;
@@ -216,21 +245,22 @@ void WindowsController::startClients(std::array<std::string,4> credentials){
             if(!credentials[i].empty())state.child.send_control(credentials[i]+"\n");
             if(i==1)state.child.send_control(cameraMirrored_?"MIRROR 1\n":"MIRROR 0\n");
             state.status="Connecting...";
-        }catch(const std::exception& e){state.child.stop();state.failed=true;state.status=QString::fromUtf8(e.what());}
+        }catch(const std::exception& e){state.child.stop();state.failed=true;state.status=QString::fromUtf8(e.what());resources_.select(i,false);}
         std::fill(credentials[i].begin(),credentials[i].end(),'\0');resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,false);
     }
-    resources_.setLocked(active());status_=active()?"Selected resources are connecting. Each resource can be stopped independently.":"No selected resource could start; see its status above.";emit changed();
+    status_="Connected. Use the checkboxes to start or stop sharing.";emit changed();
 }
 void WindowsController::cancelAdmission(){
-    if(!impl_->admission)return;auto* process=impl_->admission;impl_->admission=nullptr;process->disconnect(this);process->kill();process->waitForFinished(1000);process->deleteLater();impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();
+    impl_->sessionReady=false;for(auto& state:impl_->clients)state.ticketPending=false;
+    if(!impl_->admission)return;auto* process=impl_->admission;impl_->admission=nullptr;process->disconnect(this);process->write("Q\n");process->closeWriteChannel();if(!process->waitForFinished(1000)){process->kill();process->waitForFinished(1000);}process->deleteLater();impl_->admissionOutput.fill('\0');impl_->admissionOutput.clear();
 }
 void WindowsController::stopResource(QString key){
-    const auto i=resourceIndex(key);if(i<0||impl_->admission)return;auto& state=impl_->clients[i];if(!state.child.process)return;
+    const auto i=resourceIndex(key);if(i<0)return;auto& state=impl_->clients[i];if(!state.child.process){resources_.setSessionState(resourceKind(i),false,state.failed?state.status:"Disconnected");return;}if(state.stopping)return;
     try{if(i==0){state.child.stop();state.status="Disconnected";}else{state.child.send_control("Q\n");state.stopping=true;state.status=i==3?"Stopping USB; source recovery may be required unless the server already ejected it.":"Stopping...";}}
     catch(const std::exception& e){state.status=QString::fromUtf8(e.what());}
-    resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,i==2&&microphoneMuted_);resources_.setLocked(active());emit changed();
+    resources_.setSessionState(resourceKind(i),state.child.process!=nullptr,state.status,i==2&&microphoneMuted_);emit changed();
 }
-void WindowsController::disconnectFromServer(){cancelAdmission();for(const auto* key:resourceNames)stopResource(key);resources_.setLocked(active());status_=active()?"Stopping selected resources...":"Disconnected";emit changed();}
+void WindowsController::disconnectFromServer(){cancelAdmission();for(int i=0;i<4;++i){resources_.select(i,false);stopResource(resourceNames[i]);}status_=active()?"Stopping resources...":"Disconnected";emit changed();}
 void WindowsController::startHost(QString address,unsigned port,bool requireCode){
     if(hosting()||cameraSetupRunning())return;
     if(!hostAvailability().isEmpty()){hostStatus_=hostAvailability();emit hostChanged();return;}
@@ -350,7 +380,7 @@ void WindowsController::poll(){
             if(host)emit hostChanged();else{if(line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("USB_STARTED"))status_="Resources are active. Manage each one below.";resources_.setSessionState(resourceKind(index),true,currentStatus,index==2&&microphoneMuted_);emit changed();}
         }
         if(pending.size()>16384)pending.clear();
-        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{if(!failed&&index!=3)currentStatus="Disconnected";resources_.setSessionState(resourceKind(index),false,currentStatus,false);resources_.setLocked(active());status_=active()?"Other selected resources remain active. See each resource status.":"All resources have stopped. See their individual status above.";emit changed();}}
+        if(WaitForSingleObject(child.process,0)==WAIT_OBJECT_0){child.stop();if(host){impl_->codeExpires=0;code_.clear();if(!impl_->hostFailed)hostStatus_="Server stopped";emit hostChanged();}else{if(!failed&&index!=3)currentStatus="Disconnected";auto& state=impl_->clients[index];const bool restart=state.stopping&&resources_.selected(resourceKind(index))&&impl_->sessionReady;state.stopping=false;resources_.setSessionState(resourceKind(index),false,currentStatus,false);if(!restart)resources_.select(index,false);else reconcileResources();status_=impl_->sessionReady?"Connected. Check resources to start sharing.":"All resources have stopped.";emit changed();}}
     };
     drain(impl_->host,impl_->hostPending,true);for(int i=0;i<4;++i)drain(impl_->clients[i].child,impl_->clients[i].pending,false,i);
     if(impl_->codeExpires&&GetTickCount64()>=impl_->codeExpires){impl_->codeExpires=0;code_="Code expired. Generate a new code.";emit hostChanged();}

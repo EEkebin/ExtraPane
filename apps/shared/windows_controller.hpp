@@ -36,7 +36,7 @@ class WindowsController final:public QObject {
     Q_PROPERTY(QString inputDescription READ inputDescription CONSTANT)
     Q_PROPERTY(QString rendererDescription READ rendererDescription CONSTANT)
 public:
-    explicit WindowsController(QObject* parent=nullptr);
+    explicit WindowsController(QObject* parent=nullptr,bool rememberAddress=true);
     ~WindowsController() override;
     ResourceModel* resources(){return &resources_;}
     QString accessCode()const{return code_;}
@@ -90,6 +90,7 @@ private:
     void launchHost();
     void startClients(std::array<std::string,4> credentials);
     void cancelAdmission();
+    void reconcileResources();
     QString resourceAvailability(const QString& kind)const;
     struct Impl;std::unique_ptr<Impl> impl_;
     ResourceModel resources_;
@@ -97,5 +98,5 @@ private:
     QString code_,hostStatus_="Server stopped",status_="Ready",unavailable_,hostUnavailable_;
     QVariantList recoveries_;
     QString recoveryStatus_="Refresh recovery records after USB stops. Recovery never forces a busy or unverified disk online.";
-    bool microphoneMuted_=false,cameraMirrored_=false;
+    bool microphoneMuted_=false,cameraMirrored_=false,rememberAddress_=true;
 };

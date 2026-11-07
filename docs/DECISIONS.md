@@ -1,5 +1,19 @@
 # Decisions, assumptions, and evidence
 
+## Live resource selection (2026-11-07)
+
+The client must be able to connect with no resources selected. While connected,
+checking Display, Camera, Microphone or USB starts that resource; unchecking stops
+only that resource. One Disconnect all action clears all selections and closes
+the client session. Source selection remains available for idle resources.
+USB still requires its existing safe eject/recovery lifecycle.
+
+Implement a real persistent control connection, including in automatic LAN mode,
+rather than treating a saved server address as a successful connection. Access-code
+admission happens once for that connection; resource starts use fresh scoped
+credentials. Neither codes nor channel credentials belong in saved settings or
+process arguments. Track implementation and verification in IMPLEMENTATION-CHECKLIST.md.
+
 ## Device-sharing completion before testing (2026-11-07)
 
 The user requested camera (including Windows sender controls), microphone and

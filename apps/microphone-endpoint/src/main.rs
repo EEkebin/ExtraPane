@@ -48,6 +48,7 @@ fn main(){
     let args:Vec<String>=std::env::args().skip(1).collect();
     let result=match args.as_slice(){
         [arg] if arg=="--check"=>pcm::check().and_then(|_|configuration(1).validate()).map(|_|println!("MICROPHONE_CHECK_OK")),
+        [arg] if arg=="--check-backend"=>backend::installed().map(|_|println!("MICROPHONE_BACKEND_OK")),
         [arg] if arg=="--help"=>{println!("ExtraPane.MicrophoneEndpoint.exe --run --slot <1..4>\n--check performs isolated framing/format checks only.\nInput: EPMI v1 PCM16LE mono48k packets, mute, stop. Requires the managed signed USB/IP backend.");Ok(())},
         [run_arg,slot_arg,slot] if run_arg=="--run"&&slot_arg=="--slot"=>match slot.parse::<u8>(){Ok(slot @ 1..=4)=>run(slot),_=>Err("Microphone slot must be 1..4".into())},
         _=>Err("Use --run --slot <1..4>, --check or --help".into()),

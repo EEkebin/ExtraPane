@@ -272,7 +272,7 @@ fs::path removable_inf(HKEY ownership){
     check(sha256(read_file(store))==setup::files[4].digest&&sha256(read_file(store.parent_path()/L"VBoxUSB.cat"))==setup::files[5].digest,"Installed USB package identity differs; preserved");
     signed_file(store.parent_path()/L"VBoxUSB.cat");return path;
 }
-void remove_owned_driver(const fs::path& root,HKEY ownership){
+void remove_owned_driver(const fs::path& root,HKEY ownership,bool inspect=false){
     Service manager(OpenSCManagerW(nullptr,nullptr,SC_MANAGER_CONNECT));check(manager.value,"Open service manager failed");
     Service service(OpenServiceW(manager.value,L"VBoxUSBMon",SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS));
     if(!service.value)check(GetLastError()==ERROR_SERVICE_DOES_NOT_EXIST,"Cannot inspect USB monitor for removal");
@@ -283,8 +283,15 @@ void remove_owned_driver(const fs::path& root,HKEY ownership){
     const bool external=external_usb_consumer(manager.value);
     const auto action=extrapane::usb_uninstall::monitor_action(service.value!=nullptr,created==L"true",managed,exact,external);
     check(action!=extrapane::usb_uninstall::MonitorAction::refuse,"USB monitor ownership changed or another application uses it; preserved");
-    const auto inf=removable_inf(ownership);
-    check(inf.empty()||!external,"Owned USB package now has another installed consumer; preserved");
+    const bool created_inf=!string_value(ownership,L"CreatedInf").empty();
+    const auto inf_action=extrapane::usb_uninstall::inf_action(created_inf,external);
+    const auto inf=inf_action==extrapane::usb_uninstall::InfAction::remove?removable_inf(ownership):fs::path{};
+    if(inspect){
+        std::cout<<"USB_HOST_REMOVAL_READY monitor="<<(action==extrapane::usb_uninstall::MonitorAction::remove?"remove-owned":"preserve")
+                 <<" inf="<<(inf.empty()?(created_inf&&external?"preserve-shared":"preserve-or-absent"):"remove-unused-owned")
+                 <<" private-payload=remove-if-not-busy\n";return;
+    }
+    if(created_inf&&external)std::cout<<"Preserving USB DriverStore package used by an independent USB installation.\n";
     if(action==extrapane::usb_uninstall::MonitorAction::remove){
         Service writable(OpenServiceW(manager.value,L"VBoxUSBMon",SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS|SERVICE_STOP|DELETE));check(writable.value,"Cannot open owned USB monitor for removal");
         check(_wcsicmp(monitor_path(writable.value).c_str(),path.c_str())==0,"USB monitor changed before removal");
@@ -295,6 +302,16 @@ void remove_owned_driver(const fs::path& root,HKEY ownership){
         check(DeleteService(writable.value),"Remove owned USB monitor failed");
     }
     if(!inf.empty())check(SetupUninstallOEMInfW(inf.filename().c_str(),0,nullptr),"USB driver package is still in use; retained for recovery, retry uninstall after ejecting USB devices");
+}
+int check_removal(){
+    const auto root=component_root();
+    Key ownership;const auto status=RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE\\ExtraPane\\UsbHostSetup",REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&ownership.value);
+    if(status==ERROR_FILE_NOT_FOUND||status==ERROR_PATH_NOT_FOUND){check(!fs::exists(root)||fs::is_empty(root),"Unowned USB host directory is not empty; no changes made");std::cout<<"not-installed\n";return 0;}
+    check(status==ERROR_SUCCESS,"Cannot read USB host ownership");trusted_registry(ownership.value);
+    const auto source=string_value(ownership.value,L"Source");check(source==setup::source,"USB host ownership version differs");
+    if(fs::exists(root))validate_tree(root,false);if(fs::exists(legacy_root()))validate_tree(legacy_root(),false);
+    registration_preflight(root);no_pending_recovery();removal_registration_preflight(ownership.value);
+    remove_owned_driver(root,ownership.value,true);return 0;
 }
 int modify(bool install){
     check(IsUserAnAdmin(),"USB host setup requires administrator permission");SYSTEM_INFO system{};GetNativeSystemInfo(&system);check(system.wProcessorArchitecture==PROCESSOR_ARCHITECTURE_AMD64,"USB host setup requires native x64 Windows");
@@ -351,8 +368,9 @@ int modify(bool install){
 }
 }
 int wmain(int argc,wchar_t** argv){try{
-    check(argc==2,"Use --check-package, --install, --status or --remove");const std::wstring mode=argv[1];
+    check(argc==2,"Use --check-package, --check-removal, --install, --status or --remove");const std::wstring mode=argv[1];
     if(mode==L"--check-package"){for(const auto& item:setup::files)payload(item);std::cout<<"USB_HOST_PACKAGE_OK\n";return 0;}
+    if(mode==L"--check-removal")return check_removal();
     if(mode==L"--check-monitor"){monitor(component_root(),false);std::cout<<"USB_MONITOR_COMPATIBLE\n";return 0;}
     if(mode==L"--status"){const auto root=component_root();if(!fs::exists(root/manifest_name)){std::cout<<"not-installed\n";return 3;}validate_tree(root,true);monitor(root,false);Key host;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,host_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&host.value)==ERROR_SUCCESS,"USB host registration missing");trusted_registry(host.value);check(fs::path(string_value(host.value,L"APPLICATIONFOLDER"))==root,"USB host registration points elsewhere");std::cout<<"installed\n";return 0;}
     if(mode==L"--install")return modify(true);if(mode==L"--remove")return modify(false);throw std::runtime_error("Unknown USB host setup command");

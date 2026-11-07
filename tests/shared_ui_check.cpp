@@ -23,8 +23,8 @@ class TestController final : public QQmlPropertyMap {
 public:
     explicit TestController(ResourceModel& resources):QQmlPropertyMap(this,nullptr),model(resources){
         insert("resources",QVariant::fromValue(&model));
-        connect(&model,&ResourceModel::selectionChanged,this,[this]{insert("clientReady",model.canConnect());});
-        insert("clientReady",model.canConnect());
+        connect(&model,&ResourceModel::selectionChanged,this,[this]{insert("clientReady",true);});
+        insert("clientReady",true);
     }
     Q_INVOKABLE void releaseInput(){}
     Q_INVOKABLE void refreshDevices(QString key){++refreshRequests;refreshed=std::move(key);}
@@ -32,7 +32,7 @@ public:
     Q_INVOKABLE void stopResource(QString key){++stopRequests;stopped=key;model.setSessionState(kind(key),false,"Stopped");}
     Q_INVOKABLE void setCameraMirrored(bool value){++mirrorRequests;insert("cameraMirrored",value);}
     Q_INVOKABLE void setMicrophoneMuted(bool value){++muteRequests;model.setSessionState(Kind::microphone,true,"Sharing",value);}
-    Q_INVOKABLE void disconnectFromServer(){++disconnectRequests;}
+    Q_INVOKABLE void disconnectFromServer(){++disconnectRequests;for(int i=0;i<model.rowCount();++i)model.select(i,false);}
     Q_INVOKABLE void connectTo(QString,QString,bool,unsigned,unsigned,unsigned,QString){++connectRequests;}
     Q_INVOKABLE void setupUsbSource(){++setupRequests;}
     Q_INVOKABLE void refreshUsbRecovery(){++recoveryRefreshRequests;}
@@ -125,7 +125,7 @@ int main(int argc,char** argv){
         // Check multiple resources through the actual checkbox signals; no fake
         // controller inventory, capture, setup or connection runs automatically.
         camera->setProperty("checked",true);require(QMetaObject::invokeMethod(camera,"clicked"));microphone->setProperty("checked",true);require(QMetaObject::invokeMethod(microphone,"clicked"));app.processEvents();
-        require(model.selected(Kind::display)&&model.selected(Kind::camera)&&model.selected(Kind::microphone)&&!connect->property("enabled").toBool());
+        require(model.selected(Kind::display)&&model.selected(Kind::camera)&&model.selected(Kind::microphone)&&connect->property("enabled").toBool());
         auto* mirror=named(picker,"resourceMirror_camera");require(mirror->property("visible").toBool()&&mirror->property("enabled").toBool()&&!mirror->property("checked").toBool());
         mirror->setProperty("checked",true);require(QMetaObject::invokeMethod(mirror,"clicked"));app.processEvents();require(controller.mirrorRequests==1&&controller.value("cameraMirrored").toBool()&&controller.connectRequests==0);
         auto* cameraPicker=named(picker,"resourceDevicePicker_camera");auto* micPicker=named(picker,"resourceDevicePicker_microphone");
@@ -141,23 +141,26 @@ int main(int argc,char** argv){
         model.setDevices(Kind::camera,model.devices(Kind::camera),"cam-a","Ready",false);app.processEvents();
         require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshRequests==2&&model.selectedDevice(Kind::camera)=="cam-a");require(QMetaObject::invokeMethod(cameraPopup,"close"));
         require(QMetaObject::invokeMethod(connect,"clicked"));require(controller.connectRequests==1);
-        model.setLocked(true);controller.insert("active",true);model.setSessionState(Kind::display,true,"Receiving");model.setSessionState(Kind::camera,true,"Sharing");model.setSessionState(Kind::microphone,true,"Sharing");app.processEvents();
-        require(picker->property("visible").toBool()&&!camera->property("enabled").toBool()&&!cameraPicker->property("enabled").toBool()&&disconnect->property("visible").toBool());
+        model.setLocked(false);controller.insert("active",true);model.setSessionState(Kind::display,true,"Receiving");model.setSessionState(Kind::camera,true,"Sharing");model.setSessionState(Kind::microphone,true,"Sharing");app.processEvents();
+        require(picker->property("visible").toBool()&&camera->property("enabled").toBool()&&!cameraPicker->property("enabled").toBool()&&disconnect->property("visible").toBool());
         require(QMetaObject::invokeMethod(cameraPopup,"open"));for(int tick=0;tick<10;++tick)app.processEvents();require(controller.refreshRequests==2);require(QMetaObject::invokeMethod(cameraPopup,"close"));
         require(mirror->property("visible").toBool()&&mirror->property("enabled").toBool());
         mirror->setProperty("checked",false);require(QMetaObject::invokeMethod(mirror,"clicked"));app.processEvents();require(controller.mirrorRequests==2&&!controller.value("cameraMirrored").toBool()&&controller.connectRequests==1&&controller.disconnectRequests==0&&controller.stopRequests==0&&controller.muteRequests==0);
-        require(QMetaObject::invokeMethod(named(picker,"resourceStop_camera"),"clicked"));app.processEvents();require(controller.stopRequests==1&&controller.stopped=="camera"&&!model.data(model.index(1),ResourceModel::Running).toBool()&&model.data(model.index(2),ResourceModel::Running).toBool()&&model.data(model.index(0),ResourceModel::Running).toBool());
+        camera->setProperty("checked",false);require(QMetaObject::invokeMethod(camera,"clicked"));app.processEvents();require(!model.selected(Kind::camera)&&model.selected(Kind::microphone)&&model.selected(Kind::display));
+        for(auto* object:picker->findChildren<QObject*>())require(!object->objectName().startsWith("resourceStop_"));
+
         require(QMetaObject::invokeMethod(named(picker,"resourceMute_microphone"),"clicked"));require(controller.muteRequests==1&&model.data(model.index(2),ResourceModel::Muted).toBool());
-        require(QMetaObject::invokeMethod(disconnect,"clicked"));require(controller.disconnectRequests==1);
+        require(QMetaObject::invokeMethod(disconnect,"clicked"));require(controller.disconnectRequests==1&&!model.selected(Kind::camera)&&!model.selected(Kind::display)&&!model.selected(Kind::microphone));
         controller.insert("active",false);model.setLocked(false);model.setSessionState(Kind::display,false,"Stopped");model.setSessionState(Kind::microphone,false,"Stopped");
-        usb->setProperty("checked",true);require(QMetaObject::invokeMethod(usb,"clicked"));app.processEvents();require(!connect->property("enabled").toBool());
+        usb->setProperty("checked",true);require(QMetaObject::invokeMethod(usb,"clicked"));app.processEvents();require(connect->property("enabled").toBool());
         model.setDevices(Kind::usb,QVariantList{QVariantMap{{"label","Protected disk"},{"id","blocked"},{"available",false}},QVariantMap{{"label","Removable storage"},{"id","safe"},{"available",true}}},{},"Choose storage",false);
         model.setSelectedDevice(Kind::usb,"blocked");require(model.selectedDevice(Kind::usb).isEmpty());model.setSelectedDevice(Kind::usb,"safe");app.processEvents();require(connect->property("enabled").toBool());
+        model.setSessionState(Kind::camera,false,"Stopped");
         const QString blockedId(64,'a'),releasedId(64,'b');controller.insert("usbRecoveries",QVariantList{QVariantMap{{"label","Bound"},{"id",blockedId},{"available",false}},QVariantMap{{"label","Released"},{"id",releasedId},{"available",true}}});app.processEvents();
         auto* recovery=named(picker,"usbRecoveryPicker");auto* restore=named(picker,"usbRecoveryRestoreButton");recovery->setProperty("currentIndex",0);app.processEvents();require(!restore->property("enabled").toBool());recovery->setProperty("currentIndex",1);app.processEvents();require(restore->property("enabled").toBool());require(QMetaObject::invokeMethod(restore,"clicked"));require(controller.recoveryRequests==1&&controller.recoveredId==releasedId);
         controller.insert("recoveryBusy",true);app.processEvents();require(!restore->property("enabled").toBool());controller.insert("recoveryBusy",false);controller.insert("hosting",true);app.processEvents();require(!restore->property("enabled").toBool());controller.insert("hosting",false);
-        model.setDevices(Kind::camera,{},"cam-a","Camera unplugged",false);app.processEvents();require(!connect->property("enabled").toBool()&&model.selectedDevice(Kind::microphone)=="mic-a");
-        model.setCapability(Kind::camera,{false,"Camera unavailable"});app.processEvents();require(!model.selected(Kind::camera)&&model.selected(Kind::microphone)&&connect->property("enabled").toBool());
+        model.setDevices(Kind::camera,{},"cam-a","Camera unplugged",false);app.processEvents();require(connect->property("enabled").toBool()&&model.selectedDevice(Kind::microphone)=="mic-a");
+        model.setCapability(Kind::camera,{false,"Camera unavailable"});app.processEvents();require(!model.selected(Kind::camera)&&connect->property("enabled").toBool());
         auto* window=qobject_cast<QWindow*>(root);require(window);window->resize(390,844);app.processEvents();window->resize(1120,760);app.processEvents();
         require(controller.setupRequests==0&&controller.recoveryRefreshRequests==0&&controller.ejectRequests==0&&!warnings);
         std::cout<<"Shared UI multi-resource model and offscreen shell checks passed\n";

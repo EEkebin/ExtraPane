@@ -15,6 +15,7 @@ foreach($role in @('ExtraPane')){
  Expand-Archive -LiteralPath (Join-Path $env:EXTRAPANE_DIST "ExtraPane-$Version-win-x64.zip") -DestinationPath $stage -Force
  $env:EXTRAPANE_ROLE=$role
  $env:EXTRAPANE_STAGE=Join-Path $stage $role
+ & (Join-Path $PSScriptRoot 'stage-driver-component.ps1') -Stage $env:EXTRAPANE_STAGE
  & $iscc (Join-Path $root 'packaging\ExtraPane.iss')
  if($LASTEXITCODE -ne 0){throw "$role installer compilation failed"}
 }

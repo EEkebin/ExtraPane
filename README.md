@@ -34,10 +34,10 @@ Run `ExtraPane-<version>-Setup-win-x64.exe` and select how this PC will be used:
 
 | Setup choice | What it installs |
 | --- | --- |
-| **Client only** | The per-user ExtraPane app. No driver or certificate changes. |
+| **Client only** | The ExtraPane app. No display-driver or certificate changes. |
 | **Server + Client** | The same app, plus the required machine-wide virtual-display driver. Driver installation asks for explicit certificate consent and administrator permission. |
 
-Server + Client setup stops if the required driver installation fails or administrator permission is canceled. You can retry or return to Client only. Client only does not hide the Server page; to host later, rerun setup as Server + Client or run the bundled `ExtraPane.DriverSetup.exe`.
+Server + Client requires administrator permission and certificate consent. If driver installation fails after the app is copied, setup reports failure and retains ExtraPane for repair or removal. Client only does not hide the Server page; to host later, rerun setup as Server + Client. The main installer manages the display driver directly, and Windows Apps lists one ExtraPane uninstall entry.
 
 The app is registered in Windows **Settings > Apps > Installed apps**. Setup offers a desktop shortcut and a checked **Launch ExtraPane** option on its Finish page. Silent setup does not launch the app. Updating requests that running ExtraPane instances shut down and waits for their server helpers to stop before replacing files.
 

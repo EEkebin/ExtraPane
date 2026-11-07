@@ -2,7 +2,7 @@
 #define ReleaseVersion GetEnv("EXTRAPANE_VERSION")
 #define SourceDir GetEnv("EXTRAPANE_STAGE")
 #define OutputPath GetEnv("EXTRAPANE_DIST")
-#define HasDriver FileExists(SourceDir + "\ExtraPane.DriverSetup.exe")
+#define HasDriver FileExists(SourceDir + "\Components\Display\package\manifest.json") && FileExists(SourceDir + "\Components\Display\manage-driver.ps1")
 #define HasCamera FileExists(SourceDir + "\ExtraPane.CameraSetup.exe")
 #define HasUsb FileExists(SourceDir + "\ExtraPane.UsbSetup.exe")
 #define HasUsbHost FileExists(SourceDir + "\ExtraPane.UsbHostSetup.exe")
@@ -40,10 +40,7 @@ CloseApplications=no
 RestartApplications=no
 InfoBeforeFile={#SourceDir}\README.txt
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-#if HasDriver
-Source: "{#SourceDir}\ExtraPane.DriverSetup.exe"; Flags: dontcopy
-#endif
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "ExtraPane.DriverSetup.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
 #if HasCamera
 Source: "{#SourceDir}\ExtraPane.CameraSetup.exe"; Flags: dontcopy
 #endif
@@ -65,6 +62,11 @@ Type: files; Name: "{app}\SideScreen.pri"
 Type: files; Name: "{app}\SideScreen.winmd"
 Type: files; Name: "{autodesktop}\SideScreen.lnk"
 Type: files; Name: "{userprograms}\SideScreen\SideScreen.lnk"
+[UninstallDelete]
+; These managed journal/log rules previously belonged to the child display
+; uninstaller. They run only after the main removal callback succeeds.
+Type: filesandordirs; Name: "{app}\Components\Display\state"
+Type: files; Name: "{app}\Components\Display\driver-setup.log"
 [Tasks]
 Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 [Icons]
@@ -72,17 +74,18 @@ Name: "{group}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch ExtraPane"; Flags: postinstall nowait skipifsilent runasoriginaluser
+Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch ExtraPane"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: CanLaunchApplication
 
 [Code]
 var
   RemoveUserData: Boolean;
   RoleChoice, DriverConsent: TInputOptionWizardPage;
-  DriverInstalled: Boolean;
+  DriverInstalled, DriverInstallFailed: Boolean;
   CameraInstalled, RemoveCamera: Boolean;
   MicrophoneInstalled: Boolean;
   UsbHostInstalled: Boolean;
   ComponentRestart: Boolean;
+  ComponentError: String;
   UsbHostChoice: TNewCheckBox;
 
 #include "shutdown.iss"
@@ -196,16 +199,8 @@ begin
       Result := 'Server setup requires development certificate consent. Silent installs need /SERVER=1 /ACCEPTDEVELOPMENTCERT=1.';
       Exit;
     end;
-#if HasDriver
-    ExtractTemporaryFile('ExtraPane.DriverSetup.exe');
-    if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.DriverSetup.exe'),
-      '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /ACCEPTDEVELOPMENTCERT=1', '', SW_HIDE, ewWaitUntilTerminated, Code) then
-      Result := 'The driver installer could not start or administrator permission was canceled. Server setup cannot continue.'
-    else if Code <> 0 then
-      Result := 'The required server driver was not installed (exit ' + IntToStr(Code) + '). See Program Files\ExtraPane\Components\Display\driver-setup.log. Retry or go Back and choose Client only.'
-    else DriverInstalled := True;
-#else
-    Result := 'This setup does not contain the required driver installer. Server setup cannot continue.';
+#if !HasDriver
+    Result := 'This setup does not contain the required display-driver package. Server setup cannot continue.';
 #endif
   end;
 #if HasCamera
@@ -245,10 +240,86 @@ begin
 #endif
 end;
 
+procedure CaptureComponentOutput(const S: String; const Error, FirstLine: Boolean);
+begin
+  Log(S);
+  if Trim(S) <> '' then ComponentError := Copy(Trim(S), 1, 1024);
+end;
+
+function RunComponent(const Filename, Params, WorkingDir: String; var Code: Integer): Boolean;
+begin
+  Code := -1;
+  ComponentError := '';
+  Result := ExecAndLogOutput(Filename, Params, WorkingDir, SW_HIDE,
+    ewWaitUntilTerminated, Code, @CaptureComponentOutput);
+end;
+
+function RunDisplayManager(Action: String; var Code: Integer): Boolean;
+begin
+  Result := RunComponent(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' +
+    ExpandConstant('{app}\Components\Display\manage-driver.ps1') + '" -Action ' + Action,
+    ExpandConstant('{app}\Components\Display'), Code);
+  Result := Result and (Code = 0);
+  if not Result then Log('Display manager ' + Action + ' failed with code ' + IntToStr(Code));
+end;
+
+function CanLaunchApplication: Boolean;
+begin
+  Result := not DriverInstallFailed;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  Result := 0;
+  if DriverInstallFailed then Result := 1;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and DriverInstallFailed then begin
+    WizardForm.FinishedHeadingLabel.Caption := 'Server driver installation failed';
+    WizardForm.FinishedLabel.Caption := 'ExtraPane remains installed for repair or removal, but the server driver is not ready. Check Program Files\ExtraPane\Components\Display\driver-setup.log and run this installer again to repair it. No boot-security settings were changed.';
+  end;
+end;
+
+procedure RetireManagedDriverEntry;
+var Key, Location, Name, UninstallCommand, Expected: String;
+begin
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen.VirtualDisplayDriver_is1';
+  if not RegQueryStringValue(HKLM64, Key, 'InstallLocation', Location) then Exit;
+  Location := RemoveBackslashUnlessRoot(Location);
+  Expected := ExpandConstant('{app}\Components\Display');
+  if (CompareText(Location, Expected) <> 0) and
+     (CompareText(Location, ExpandConstant('{autopf}\SideScreen Driver')) <> 0) then Exit;
+  if (CompareText(Location, Expected) <> 0) and not DriverInstalled then Exit;
+  if not RegQueryStringValue(HKLM64, Key, 'DisplayName', Name) then Exit;
+  if (Pos('ExtraPane Virtual Display Driver', Name) <> 1) and
+     (Pos('SideScreen Virtual Display Driver', Name) <> 1) then Exit;
+  if not RegQueryStringValue(HKLM64, Key, 'UninstallString', UninstallCommand) then Exit;
+  if CompareText(UninstallCommand, '"' + Location + '\unins000.exe"') <> 0 then Exit;
+  { Install has verified/migrated the ownership journal. Never execute the old
+    uninstaller: it would remove the driver that the main app now owns. }
+  if not RegDeleteKeyIncludingSubkeys(HKLM64, Key) then
+    Log('Could not retire verified duplicate display-driver uninstall entry.');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var LegacyLocation, LegacyName, LegacyKey, ExpectedLocation: String;
+    Code: Integer;
 begin
-  if CurStep <> ssDone then Exit;
+  if (CurStep = ssPostInstall) and (RoleChoice.SelectedValueIndex = 1) then begin
+    { Files and the main uninstall record exist before any driver changes. A
+      failed driver install leaves this app available for repair/uninstall. }
+    DriverInstalled := RunDisplayManager('Install', Code);
+    DriverInstallFailed := not DriverInstalled;
+    if DriverInstallFailed then
+      SuppressibleMsgBox('The server driver could not be installed (exit ' + IntToStr(Code) + '). ' + ComponentError + #13#10 + 'ExtraPane is retained for repair or uninstall. See Program Files\ExtraPane\Components\Display\driver-setup.log.', mbError, MB_OK, IDOK);
+  end;
+  if (CurStep <> ssDone) or DriverInstallFailed then Exit;
+  if DriverInstalled then RetireManagedDriverEntry
+  else if DirExists(ExpandConstant('{app}\Components\Display\state')) and
+          RunDisplayManager('ValidateOwnership', Code) then RetireManagedDriverEntry;
   LegacyKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen_is1';
   ExpectedLocation := ExpandConstant('{localappdata}\Programs\ExtraPane');
   if RegQueryStringValue(HKCU, LegacyKey, 'InstallLocation', LegacyLocation) and
@@ -299,32 +370,30 @@ begin
       if Component = 0 then begin Helper := 'ExtraPane.UsbHostSetup.exe'; ComponentFolder := 'UsbHost'; end
       else begin Helper := 'ExtraPane.UsbSetup.exe'; ComponentFolder := 'Microphone'; end;
       if FileExists(ExpandConstant('{app}\') + Helper) then begin
-        if not Exec(ExpandConstant('{app}\') + Helper, '--remove', '', SW_HIDE, ewWaitUntilTerminated, CameraCode) then
+        if not RunComponent(ExpandConstant('{app}\') + Helper, '--remove', '', CameraCode) then
           RaiseException('Component cleanup could not start: ' + Helper + '. ExtraPane files were retained.');
         if CameraCode = 3010 then ComponentRestart := True;
         if (CameraCode <> 0) and (CameraCode <> 3010) then
-          RaiseException('Component cleanup failed: ' + Helper + ' (exit ' + IntToStr(CameraCode) + '). Finish USB eject/recovery and retry. ExtraPane files were retained.');
+          RaiseException('Component cleanup failed: ' + Helper + ' (exit ' + IntToStr(CameraCode) + '). ' + ComponentError + #13#10 + 'ExtraPane files were retained for retry.');
       end else if DirExists(ExpandConstant('{app}\Components\') + ComponentFolder) then
         RaiseException('Missing cleanup helper for ' + ComponentFolder + '. Repair ExtraPane before uninstalling.');
     end;
   end;
-  if (CurUninstallStep = usUninstall) and DirExists(ExpandConstant('{app}\Components\Display')) and
-     not FileExists(ExpandConstant('{app}\Components\Display\unins000.exe')) then
-    RaiseException('The display component uninstaller is missing. Repair ExtraPane before uninstalling.');
-  if (CurUninstallStep = usUninstall) and FileExists(ExpandConstant('{app}\Components\Display\unins000.exe')) then begin
-    if not Exec(ExpandConstant('{app}\Components\Display\unins000.exe'),
-      '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, CameraCode) then
-      RaiseException('The display component uninstaller could not start. ExtraPane files were retained.');
-    if CameraCode <> 0 then
-      RaiseException('Display component removal failed (exit ' + IntToStr(CameraCode) + '). ExtraPane files were retained for retry.');
+  if (CurUninstallStep = usUninstall) and DirExists(ExpandConstant('{app}\Components\Display\state')) then begin
+    if not FileExists(ExpandConstant('{app}\Components\Display\manage-driver.ps1')) then
+      RaiseException('The display driver manager is missing. Repair ExtraPane before uninstalling.');
+    if not RunDisplayManager('Remove', CameraCode) then
+      RaiseException('Display driver removal failed (exit ' + IntToStr(CameraCode) + '). ' + ComponentError + #13#10 + 'ExtraPane and its ownership records were retained for retry.');
   end;
-  if (CurUninstallStep = usUninstall) and RemoveCamera then begin
+  if (CurUninstallStep = usUninstall) and RemoveCamera and
+     (FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe')) or
+      DirExists(ExpandConstant('{app}\Components\Camera'))) then begin
     if not FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe')) then
       RaiseException('Camera setup helper is missing. The shared camera component was not removed.');
-    if not ShellExec('runas', ExpandConstant('{app}\ExtraPane.CameraSetup.exe'), '--remove', '', SW_HIDE, ewWaitUntilTerminated, CameraCode) then
+    if not RunComponent(ExpandConstant('{app}\ExtraPane.CameraSetup.exe'), '--remove', '', CameraCode) then
       RaiseException('Camera removal could not start or administrator permission was canceled.');
     if (CameraCode <> 0) and (CameraCode <> 3010) then
-      RaiseException('Camera component removal failed (exit ' + IntToStr(CameraCode) + ').');
+      RaiseException('Camera component removal failed (exit ' + IntToStr(CameraCode) + '). ' + ComponentError);
     if CameraCode = 3010 then ComponentRestart := True;
     if CameraCode = 3010 then
       SuppressibleMsgBox('The camera registration was removed. Restart Windows to finish deleting camera files currently loaded by Windows.', mbInformation, MB_OK, IDOK);

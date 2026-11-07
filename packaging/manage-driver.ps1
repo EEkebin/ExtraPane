@@ -1,5 +1,5 @@
-# Invoked by the elevated, separately registered driver installer/uninstaller.
-param([ValidateSet('Install','Remove','Validate')][string]$Action='Validate')
+# Invoked by the elevated ExtraPane installer/uninstaller (or portable driver setup).
+param([ValidateSet('Install','Remove','Validate','ValidateOwnership')][string]$Action='Validate')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 # Use only this Windows PowerShell installation's built-in modules. Setup may
@@ -94,6 +94,17 @@ try {
  if([IO.Path]::GetFullPath($PSScriptRoot) -ne $expected){throw 'Driver manager must run from Program Files\ExtraPane\Components\Display'}
  foreach($dir in @($PSScriptRoot,$state)){
   if((Test-Path -LiteralPath $dir) -and ((Get-Item -LiteralPath $dir).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Driver management directory cannot be a reparse point'}
+ }
+ if($Action -eq 'ValidateOwnership'){
+  $records=@(Get-ChildItem -LiteralPath $state -Filter '*.json' -File)
+  if(!$records.Count){throw 'No current driver ownership records to migrate'}
+  foreach($file in $records){
+   $record=Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+   if($record.schema -ne 1 -or $record.catHash -notmatch '^[A-Fa-f0-9]{64}$' -or $file.BaseName -ne $record.catHash){throw 'Invalid driver ownership record'}
+   $backup=Join-Path $state $record.catHash;$manifest=Verify-Package $backup
+   if($record.thumbprint -ne $manifest.certificateThumbprint -or $record.infHash -ne (Get-FileHash -LiteralPath (Join-Path $backup 'DMIndirectDisplay.inf') -Algorithm SHA256).Hash -or $record.catHash -ne (Get-FileHash -LiteralPath (Join-Path $backup 'DMIndirectDisplay.cat') -Algorithm SHA256).Hash){throw 'Ownership record does not match verified package'}
+  }
+  Write-Output 'DRIVER_OWNERSHIP_VALID';exit 0
  }
  $mutex=[Threading.Mutex]::new($false,'Global\SideScreen.DriverSetup');$held=$mutex.WaitOne(0)
  if(!$held){throw 'Another ExtraPane driver installation is running'}

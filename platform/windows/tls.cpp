@@ -120,7 +120,19 @@ TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair
     } catch (...) { erase(); throw; }
     erase();
 }
-TlsStream::~TlsStream() = default;
+TlsStream::~TlsStream(){if(control_gate_&&control_)control_gate_->close_control(control_);}
+bool TlsStream::open_control(){
+    if(!server_||control_)throw std::runtime_error("Invalid control admission");
+    if(!protected_)return false;
+    if(!accessGate)throw std::runtime_error("Control gate unavailable");
+    control_gate_=accessGate;control_=protected_->open_control(*control_gate_);return true;
+}
+std::vector<access::ChannelCredential> TlsStream::control_channels(unsigned kind){
+    if(!server_||kind>3)throw std::runtime_error("Invalid control resource");
+    if(!protected_)return {};
+    if(!control_gate_||!control_)throw std::runtime_error("Control not admitted");
+    return control_gate_->control_channels(1u<<kind,control_);
+}
 std::vector<access::ChannelCredential> TlsStream::issue_channels(unsigned mask){
     if(!server_||!accessGate||!protected_)throw std::runtime_error("Grouped admission requires a one-time access code");
     return protected_->issue_channels(*accessGate,mask);

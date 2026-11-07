@@ -1,4 +1,5 @@
 #include <dm/group.hpp>
+#include <dm/control.hpp>
 #include <condition_variable>
 #include <deque>
 #include <thread>
@@ -35,5 +36,15 @@ int main(){try{
  Pair replaced;check(replaced.authenticate(gate,gate.generate()));auto old=replaced.server.issue_channels(gate,1);gate.generate();Pair revoked;check(!revoked.authenticate(gate,formatCredential(old[0])));
  Pair raceRoot;check(raceRoot.authenticate(gate,gate.generate()));auto race=raceRoot.server.issue_channels(gate,1);auto a=gate.begin_channel(race[0].id,0),b=gate.begin_channel(race[0].id,0);std::atomic_uint winners=0;std::thread x([&]{try{gate.consume_channel(race[0].id,0,a.generation);++winners;}catch(...){}}),y([&]{try{gate.consume_channel(race[0].id,0,b.generation);++winners;}catch(...){}});x.join();y.join();check(winners==1);
  rejects([&]{group_request(0);});rejects([&]{group_request(16);});auto malformed=request;malformed[15]=1;rejects([&]{group_mask(malformed);});auto extra=got;extra[6]=1;rejects([&]{group_tickets(extra,15);});check(!validCredential("EPCT1:0:bad"));
+ // A live control connection survives its original OTP expiry and rotation.
+ Pair live;check(live.authenticate(gate,gate.generate()));const auto control=live.server.open_control(gate);rejects([&]{live.server.open_control(gate);});rejects([&]{live.server.issue_channels(gate,1);});
+ now+=std::chrono::minutes(6);auto liveTicket=gate.control_channels(2,control);auto liveWrong=liveTicket[0];liveWrong.kind=2;Pair liveMismatch;check(!liveMismatch.authenticate(gate,formatCredential(liveWrong)));
+ gate.generate();Pair liveChild;check(liveChild.authenticate(gate,formatCredential(liveTicket[0])));Pair liveReplay;check(!liveReplay.authenticate(gate,formatCredential(liveTicket[0])));
+ auto superseded=gate.control_channels(4,control);auto replacement=gate.control_channels(4,control);Pair supersededChild;check(!supersededChild.authenticate(gate,formatCredential(superseded[0])));Pair replacementChild;check(replacementChild.authenticate(gate,formatCredential(replacement[0])));
+ auto closing=gate.control_channels(8,control);gate.close_control(control);Pair closedChild;check(!closedChild.authenticate(gate,formatCredential(closing[0])));rejects([&]{gate.control_channels(1,control);});gate.close_control(control);
+ Pair live2;check(live2.authenticate(gate,gate.generate()));const auto control2=live2.server.open_control(gate);auto expiredLive=gate.control_channels(1,control2);now+=std::chrono::seconds(61);Pair expiredLiveChild;check(!expiredLiveChild.authenticate(gate,formatCredential(expiredLive[0])));auto revokedLive=gate.control_channels(1,control2);gate.revoke();Pair revokedLiveChild;check(!revokedLiveChild.authenticate(gate,formatCredential(revokedLive[0])));rejects([&]{gate.control_channels(1,control2);});
+ for(auto op:{ControlOperation::open,ControlOperation::ping,ControlOperation::add,ControlOperation::close}){auto request=control_request(op);check(parse_control(request).first==op);request[15]=1;rejects([&]{parse_control(request);});}
+ auto lan=control_reply(ControlOperation::add,2,false);check(control_credential(lan,ControlOperation::add,2,false).empty());rejects([&]{control_credential(lan,ControlOperation::add,2,true);});lan[127]=1;rejects([&]{control_credential(lan,ControlOperation::add,2,false);});
+ auto coded=control_reply(ControlOperation::add,0,true,formatCredential(revokedLive[0]));check(control_credential(coded,ControlOperation::add,0,true)==formatCredential(revokedLive[0]));rejects([&]{control_credential(coded,ControlOperation::add,1,true);});
  std::cout<<"Grouped code admission, per-kind tickets, replay/expiry/revocation, concurrency and independent protected streams passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

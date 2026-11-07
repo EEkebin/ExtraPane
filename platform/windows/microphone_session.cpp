@@ -83,7 +83,9 @@ private:
             for(auto newline=outputText_.find('\n');newline!=std::string::npos;newline=outputText_.find('\n')){
                 auto line=outputText_.substr(0,newline);outputText_.erase(0,newline+1);if(!line.empty()&&line.back()=='\r')line.pop_back();
                 if(line=="MICROPHONE_READY slot=1")ready_=true;
-                if(line.starts_with("error:"))throw std::runtime_error("Microphone endpoint could not attach or deliver audio");
+                // This detail stays on the receiving PC; negotiation sends a
+                // generic rejection to the peer, never local paths/identities.
+                if(line.starts_with("error:"))throw std::runtime_error("Microphone endpoint: "+line.substr(6,512));
             }
             if(!PeekNamedPipe(output_.h,nullptr,0,nullptr,&available,nullptr))break;
         }
@@ -141,7 +143,12 @@ void receive_payload(security::TlsStream& tls,std::atomic_bool& stop,const Repor
     Negotiation negotiation(server,1,caps,[&](ResourceKind kind)->std::unique_ptr<Resource>{if(kind!=ResourceKind::microphone)throw std::runtime_error("Microphone listener received another resource");auto result=std::make_unique<Endpoint>(stop);endpoint=result.get();return result;});
     negotiation.serve_one(transport.control);auto request=transport.control.receive();
     need(request.header.operation==wire::Operation::request&&request.header.kind==ResourceKind::microphone&&request.header.resource_id==binding.resource,"Microphone request does not match offer");
-    const auto result=negotiation.handle(request);transport.control.send(result);need(result.header.operation==wire::Operation::grant&&endpoint,"Microphone endpoint unavailable; install the managed component");report("MICROPHONE_STARTED receiving");
+    const auto result=negotiation.handle(request);transport.control.send(result);
+    if(result.header.operation!=wire::Operation::grant||!endpoint){
+        for(const auto& state:server.snapshot(1))if(state.request.id==binding.resource&&!state.detail.empty())throw std::runtime_error(state.detail);
+        throw std::runtime_error("Microphone endpoint unavailable; check the managed component");
+    }
+    report("MICROPHONE_STARTED receiving");
     microphone_wire::Channel frames(binding,[&](auto b){transport.read(b);},[&](auto b){transport.write(b);});
     while(!stop){auto frame=frames.receive();endpoint->pcm(frame);}
 }
@@ -169,7 +176,7 @@ void send(const net::Options& options,const std::wstring& device,std::atomic_boo
     auto request=wire::encode_request({binding.resource,ResourceKind::microphone,"microphone"});transport.control.send({{wire::Operation::request,ResourceKind::microphone,binding.resource,static_cast<std::uint32_t>(request.size())},std::move(request)});
     // Receiver may need to attach its managed UAC endpoint before granting.
     wire::ControlChannel startup([&](auto b){transport.read(b,35);},[&](auto b){transport.write(b);});reply=startup.receive();
-    need(reply.header.operation==wire::Operation::grant&&reply.header.kind==ResourceKind::microphone&&reply.header.resource_id==binding.resource&&reply.payload.empty(),"Server rejected microphone endpoint");
+    need(reply.header.operation==wire::Operation::grant&&reply.header.kind==ResourceKind::microphone&&reply.header.resource_id==binding.resource&&reply.payload.empty(),"Server could not start microphone output; check its server status for details");
     Capture source(device);source.set_muted(mute);source.start();report("MICROPHONE_STARTED sending");
     microphone_wire::Channel frames(binding,[&](auto b){transport.read(b);},[&](auto b){transport.write(b);});
     microphone_wire::Frame frame;frame.binding=binding;std::size_t filled=0;bool previousMute=mute;

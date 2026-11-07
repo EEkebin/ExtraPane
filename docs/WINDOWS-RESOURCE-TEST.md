@@ -7,20 +7,19 @@ USB test, and use expendable test data on the selected removable drive.
 
 ## Camera
 
-1. On the receiving PC open Server, run Camera setup, then start it on
+1. Install Server + Client on the receiving PC, open Server, then start it on
    the selected interface and port. If access codes are enabled, generate one.
-2. On the sending PC open Client, check Camera, refresh and explicitly select the
+2. On the sending PC open Client, check Camera, open the device list and explicitly select the
    source, enter the receiving address/port/code, and connect.
 3. Select ExtraPane Camera in a recording app or browser. Verify picture,
-   orientation, permissions, stop, reconnect and device unplug. Capture currently
-   requires 1280 ? 720 at 30 FPS.
+   orientation, permissions, stop, reconnect and device unplug. The source negotiates its supported resolution and frame rate within the documented camera limits.
 4. Check whether a second local application can open the source camera. The app
    does not detach it, but hardware/application exclusivity may prevent sharing.
 
 ## Microphone
 
-1. On the receiving PC open Server and run Receiving component setup. Restart Windows if setup requests it, then start the server.
-2. On the sending PC open Client, check Microphone, refresh/select a source, and
+1. Install Server + Client on the receiving PC. Restart Windows if setup requests it, then start the server.
+2. On the sending PC open Client, check Microphone, open its list and select a source, and
    connect. The source must expose a supported 48 kHz mono/stereo shared format.
 3. Select ExtraPane Microphone in a recording application. Check real recorded
    audio, mute/unmute, permission withdrawal, stop and reconnect. This build sends
@@ -50,17 +49,17 @@ USB test, and use expendable test data on the selected removable drive.
 ## Current limits
 
 The server accepts all supported resource types on the same port; there is no
-server resource selector. Clients select any combination of available resource checkboxes before Connect.
+server resource selector. Clients can select resources before or after Connect. Also test Connect with nothing checked: the status should show connected without creating a monitor or capturing media.
 Check Display, Camera and Microphone together, choose both source devices, and
 verify that the server receives the camera/microphone while its extended desktop
-shows on the client. Stop one resource and confirm the others continue. Mute the
+shows on the client. Uncheck one resource and confirm the others continue. Recheck it to restart; Disconnect all must clear every checkbox. Mute the
 microphone independently. For access-code mode, enter one fresh code for the
-whole selection; it issues short-lived, single-use resource tickets.
+connection; it issues fresh short-lived, single-use resource tickets when checkboxes start resources.
 Windows USB is one removable-storage session per receiver. Linux/macOS new media
 resources and raw USB are not covered by this Windows milestone. Android camera
 and microphone source code/APK are present but require their own physical checks.
 The combined portable package contains setup helpers; drivers still require
-explicit machine-wide setup. The 2026.11.07-pre.1 installer has been compiled with all receiving components; installation is awaiting end-to-end user testing. Choose Server + Client on the receiving desktop and Client only on the source laptop.
+explicit machine-wide setup. The current development installer bundles receiving components; the new live-resource and unified-uninstall changes still require end-to-end user testing. Choose Server + Client on the receiving desktop and Client only on the source laptop.
 
 ## Live camera mirroring and device pickers
 

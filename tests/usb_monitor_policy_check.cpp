@@ -13,6 +13,11 @@ for(unsigned bits=0;bits<32;++bits){
     if(!exists&&result!=MonitorAction::preserve)throw std::runtime_error("retry after service removal");
 }
 if(monitor_action(true,true,true,true,false)!=MonitorAction::remove)throw std::runtime_error("remove verified owned monitor");
+// Desktop regression: ExtraPane staged an INF but reused an independent
+// usbipd-win monitor. Preserve both shared drivers and allow private cleanup.
+if(monitor_action(true,false,false,false,true)!=MonitorAction::preserve||inf_action(true,true)!=InfAction::preserve)throw std::runtime_error("independent usbipd must not block private component removal");
+if(monitor_action(true,true,true,true,true)!=MonitorAction::refuse)throw std::runtime_error("shared monitor still needs owned private file");
+if(inf_action(true,false)!=InfAction::remove||inf_action(false,false)!=InfAction::preserve||inf_action(false,true)!=InfAction::preserve)throw std::runtime_error("remove only unshared owned INF");
 for(auto name:{L"oem0.inf",L"oem123.inf"})if(!published_inf(name))throw std::runtime_error("valid published INF");
 for(auto name:{L"oem.inf",L"VBoxUSB.inf",L"oem1.inf.old",L"../oem1.inf",L"oem-1.inf",L"oem1/2.inf"})if(published_inf(name))throw std::runtime_error("reject non-published INF identity");
 }

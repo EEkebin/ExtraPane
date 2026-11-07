@@ -41,22 +41,39 @@ std::string formatCredential(const ChannelCredential& value){auto text="EPCT1:"+
 void Gate::clear_channels(){for(auto& [id,value]:channels_)wipe(value.secret);channels_.clear();}
 std::vector<ChannelCredential> Gate::issue_channels(unsigned mask,uint64_t admitted_generation){
     std::lock_guard lock(mutex_);need(mask&&mask<=15&&used_&&admitted_generation&&generation_==admitted_generation&&now_()<expires_);
+    return issue_locked(mask,0);
+}
+std::vector<ChannelCredential> Gate::issue_locked(unsigned mask,uint64_t control){
     for(auto it=channels_.begin();it!=channels_.end();)if(now_()>=it->second.expires){wipe(it->second.secret);it=channels_.erase(it);}else ++it;
     need(channels_.size()+4<=128);std::vector<ChannelCredential> result;
     auto random_hex=[](unsigned n){std::vector<uint8_t> bytes(n);need(RAND_bytes(bytes.data(),bytes.size())==1);std::string text;for(auto b:bytes){text+="0123456789abcdef"[b>>4];text+="0123456789abcdef"[b&15];}OPENSSL_cleanse(bytes.data(),bytes.size());return text;};
     for(unsigned kind=0;kind<4;++kind)if(mask&(1u<<kind)){
         ChannelCredential item{kind,random_hex(16),random_hex(32)};need(!channels_.contains(item.id));
-        channels_.emplace(item.id,Channel{item.secret,kind,0,now_()+std::chrono::seconds(60),generation_});result.push_back(std::move(item));
+        channels_.emplace(item.id,Channel{item.secret,kind,0,now_()+std::chrono::seconds(60),generation_,control});result.push_back(std::move(item));
     }
     return result;
 }
+uint64_t Gate::open_control(uint64_t admitted_generation){
+    std::lock_guard lock(mutex_);need(used_&&admitted_generation&&generation_==admitted_generation&&now_()<expires_&&controls_.size()<16&&next_control_!=std::numeric_limits<uint64_t>::max());
+    const auto id=++next_control_;controls_.emplace(id,true);return id;
+}
+std::vector<ChannelCredential> Gate::control_channels(unsigned mask,uint64_t control){
+    std::lock_guard lock(mutex_);need(mask&&mask<=15&&control&&controls_.contains(control));
+    // At most one unused ticket per kind belongs to a control connection.
+    for(auto it=channels_.begin();it!=channels_.end();)if(it->second.control==control&&(mask&(1u<<it->second.kind))){wipe(it->second.secret);it=channels_.erase(it);}else ++it;
+    return issue_locked(mask,control);
+}
+void Gate::close_control(uint64_t control){
+    std::lock_guard lock(mutex_);controls_.erase(control);
+    for(auto it=channels_.begin();it!=channels_.end();)if(it->second.control==control){wipe(it->second.secret);it=channels_.erase(it);}else ++it;
+}
 Gate::Ticket Gate::begin_channel(const std::string& id,unsigned kind){
     std::lock_guard lock(mutex_);const auto found=channels_.find(id);need(found!=channels_.end());auto& value=found->second;
-    need(kind==value.kind&&now_()<value.expires&&value.attempts<5&&value.generation==generation_);++value.attempts;return {value.secret,value.generation};
+    need(kind==value.kind&&now_()<value.expires&&value.attempts<5&&(value.control?controls_.contains(value.control):value.generation==generation_));++value.attempts;return {value.secret,value.generation};
 }
 void Gate::consume_channel(const std::string& id,unsigned kind,uint64_t generation){
     std::lock_guard lock(mutex_);const auto found=channels_.find(id);need(found!=channels_.end());auto& value=found->second;
-    need(kind==value.kind&&generation==value.generation&&generation==generation_&&now_()<value.expires);wipe(value.secret);channels_.erase(found);
+    need(kind==value.kind&&generation==value.generation&&(value.control?controls_.contains(value.control):generation==generation_)&&now_()<value.expires);wipe(value.secret);channels_.erase(found);
 }
 Gate::Status Gate::status(){std::lock_guard lock(mutex_);if(used_)return Status::used;if(now_()>=expires_)return Status::expired;if(attempts_>=5)return Status::exhausted;return Status::active;}
 Gate::~Gate(){revoke();}
@@ -64,11 +81,11 @@ std::string Gate::generate(){
     uint32_t value=0;constexpr uint32_t limit=4294000000u;
     do{need(RAND_bytes(reinterpret_cast<uint8_t*>(&value),sizeof(value))==1);}while(value>=limit);
     auto code=std::to_string(value%1000000);code.insert(0,6-code.size(),'0');
-    std::lock_guard lock(mutex_);clear_channels();wipe(code_);code_=code;expires_=now_()+std::chrono::minutes(5);++generation_;attempts_=0;used_=false;return code;
+    std::lock_guard lock(mutex_);for(auto it=channels_.begin();it!=channels_.end();)if(!it->second.control){wipe(it->second.secret);it=channels_.erase(it);}else ++it;wipe(code_);code_=code;expires_=now_()+std::chrono::minutes(5);++generation_;attempts_=0;used_=false;return code;
 }
 Gate::Ticket Gate::begin(){std::lock_guard lock(mutex_);need(!used_ && now_()<expires_ && attempts_<5);++attempts_;return {code_,generation_};}
 void Gate::consume(uint64_t generation){std::lock_guard lock(mutex_);need(!used_ && generation==generation_ && now_()<expires_);used_=true;wipe(code_);}
-void Gate::revoke(){std::lock_guard lock(mutex_);used_=true;++generation_;wipe(code_);clear_channels();}
+void Gate::revoke(){std::lock_guard lock(mutex_);used_=true;++generation_;wipe(code_);clear_channels();controls_.clear();}
 struct Stream::State {
     Read readRaw;Write writeRaw;bool ready=false,attempted=false,groupIssued=false;std::optional<unsigned> kind;uint64_t admitted_generation=0;uint64_t sent=0,received=0;
     std::array<uint8_t,128> keys{};bssl::UniquePtr<EVP_AEAD_CTX> tx,rx;Bytes buffered;size_t offset=0;
@@ -118,6 +135,7 @@ void Stream::server(Gate& gate){auto& s=*state_;need(!s.attempted);s.attempted=t
 }
 std::optional<unsigned> Stream::authorized_kind()const{return state_->kind;}
 std::vector<ChannelCredential> Stream::issue_channels(Gate& gate,unsigned mask){auto& s=*state_;need(s.ready&&!s.kind&&!s.groupIssued&&s.admitted_generation);auto result=gate.issue_channels(mask,s.admitted_generation);s.groupIssued=true;return result;}
+uint64_t Stream::open_control(Gate& gate){auto& s=*state_;need(s.ready&&!s.kind&&!s.groupIssued&&s.admitted_generation);const auto id=gate.open_control(s.admitted_generation);s.groupIssued=true;return id;}
 void Stream::write(std::span<const uint8_t> bytes){auto& s=*state_;need(s.ready);struct Guard{bool& ready;bool ok=false;~Guard(){if(!ok)ready=false;}}guard{s.ready};
     while(!bytes.empty()){
         need(s.sent!=std::numeric_limits<uint64_t>::max());size_t n=std::min(bytes.size(),maxRecord);

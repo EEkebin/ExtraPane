@@ -17,4 +17,5 @@ if($Stage){
  $stagePath=[IO.Path]::GetFullPath((Join-Path $root $Stage))
  if(!$stagePath.StartsWith($root+'\out\',[StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $stagePath -PathType Container)){throw 'Stage must be an existing build directory under out'}
  Copy-Item -LiteralPath (Join-Path $env:EXTRAPANE_DRIVER_DIST 'ExtraPane.DriverSetup.exe') -Destination (Join-Path $stagePath 'ExtraPane.DriverSetup.exe') -Force
+ & (Join-Path $PSScriptRoot 'stage-driver-component.ps1') -Stage $stagePath
 }

@@ -71,6 +71,8 @@ mod trust {
         fn BCryptHash(handle:*mut c_void,key:*mut u8,key_len:u32,input:*mut u8,input_len:u32,output:*mut u8,output_len:u32)->i32;
     }
     #[link(name="advapi32")] extern "system" {
+        fn ConvertStringSidToSidW(text:*const u16,sid:*mut *mut c_void)->i32;
+        fn EqualSid(first:*const c_void,second:*const c_void)->i32;
         fn GetNamedSecurityInfoW(name:*const u16,kind:u32,info:u32,owner:*mut *mut c_void,group:*mut *mut c_void,acl:*mut *mut u8,sacl:*mut *mut c_void,descriptor:*mut *mut c_void)->u32;
         fn IsWellKnownSid(sid:*const c_void,kind:u32)->i32;
         fn GetAce(acl:*const u8,index:u32,ace:*mut *mut u8)->i32;
@@ -86,11 +88,21 @@ mod trust {
         struct Descriptor(*mut c_void);impl Drop for Descriptor{fn drop(&mut self){unsafe{LocalFree(self.0);}}}let _descriptor=Descriptor(descriptor);
         let trusted=|sid:*const c_void|unsafe{IsWellKnownSid(sid,26)!=0||IsWellKnownSid(sid,22)!=0}; // Administrators/System
         if owner.is_null()||!trusted(owner)||acl.is_null(){return Err("Untrusted microphone component ownership".into());}
+        // Program Files parents also grant Windows servicing access. Match the
+        // installer policy without accepting arbitrary service/user writers.
+        let installer_sid:Vec<u16>="S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464\0".encode_utf16().collect();
+        let mut installer=std::ptr::null_mut();
+        if unsafe{ConvertStringSidToSidW(installer_sid.as_ptr(),&mut installer)}==0{return Err("Cannot resolve Windows servicing identity".into());}
+        let _installer=Descriptor(installer);
         let count=unsafe{u16::from_le_bytes([*acl.add(4),*acl.add(5)])};
         for i in 0..count{let mut ace=std::ptr::null_mut();if unsafe{GetAce(acl,i as u32,&mut ace)}==0||ace.is_null(){return Err("Invalid component ACL".into());}
+            // INHERIT_ONLY does not grant rights on this object. Every payload
+            // file and the manifest are checked separately below.
+            if unsafe{*ace.add(1)}&0x08!=0{continue;}
             let kind=unsafe{*ace};if kind==1{continue;}if kind!=0{return Err("Unsupported component ACL".into());}
             let mask=unsafe{std::ptr::read_unaligned(ace.add(4).cast::<u32>())};
-            if mask&0x500d0156!=0&&!trusted(unsafe{ace.add(8).cast()}){return Err("Microphone component is writable by an untrusted user".into());}
+            let principal=unsafe{ace.add(8).cast()};
+            if mask&0x500d0156!=0&&!trusted(principal)&&unsafe{EqualSid(principal,installer)}==0{return Err("Microphone component is writable by an untrusted user".into());}
         }Ok(())
     }
     fn hash(path:&Path)->Result<String,String>{

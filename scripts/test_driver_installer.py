@@ -47,6 +47,13 @@ def driver_uninstaller():
     assert command.startswith('"')
     return Path(command.split('"')[1])
 
+def driver_entry_exists():
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, DRIVER_KEY, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY):
+            return True
+    except FileNotFoundError:
+        return False
+
 def wait_absent(path):
     for _ in range(100):
         if not path.exists(): return
@@ -79,7 +86,8 @@ def main():
         assert not (target/'ExtraPane.exe').exists(), 'Refusing existing app'
         run(installer, '/SERVER=1', f'/DIR={target}', '/TASKS=', success=False)
         assert not folder.exists() and not (target/'ExtraPane.exe').exists()
-        # A real manager failure must propagate through both installer layers.
+        # A real manager failure returns failure but leaves the main app and
+        # uninstaller available for repair; no child installer is invoked.
         # Hold the manager's mutex to reject installation before trust/store changes.
         kernel = ctypes.WinDLL('kernel32', use_last_error=True)
         kernel.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
@@ -93,14 +101,16 @@ def main():
         try:
             run(driver_setup, '/ACCEPTDEVELOPMENTCERT=1', success=False)
             run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
-            assert not (target/'ExtraPane.exe').exists()
+            assert (target/'ExtraPane.exe').is_file()
+            assert registered_uninstaller(target).is_file()
             assert ps(trust_count).stdout.strip() == '0'
         finally:
             kernel.ReleaseMutex(lock)
             kernel.CloseHandle(lock)
         run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=')
         assert (target/'ExtraPane.exe').is_file()
-        assert driver_uninstaller().is_file()
+        assert not driver_entry_exists(), 'Duplicate display-driver uninstall registration remains'
+        assert (folder/'manage-driver.ps1').is_file()
         records = list((folder/'state').glob('*.json')); assert len(records) == 1
         record = json.loads(records[0].read_text(encoding='utf-8-sig'))
         assert record['ownedDriver'] and record['addedRoot'] and record['addedTrustedPublisher'] and record['status'] == 'installed'
@@ -125,7 +135,7 @@ def main():
         try:
             backup_dll.write_bytes(backup_original+b'tamper')
             run(app_uninstaller, success=False)
-            assert driver_uninstaller().is_file() and records[0].exists()
+            assert app_uninstaller.is_file() and (folder/'manage-driver.ps1').is_file() and records[0].exists()
             assert ps(trust_count).stdout.strip() == '2'
         finally:
             backup_dll.write_bytes(backup_original)

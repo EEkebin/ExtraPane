@@ -27,6 +27,8 @@ public:
     // Group tickets are issued only from a code-authenticated root connection.
     std::vector<access::ChannelCredential> issue_channels(unsigned mask);
     void require_resource(unsigned kind)const;
+    bool open_control();
+    std::vector<access::ChannelCredential> control_channels(unsigned kind);
 private:
     void read_raw(std::span<std::uint8_t>,std::chrono::steady_clock::time_point);
     void write_raw(std::span<const std::uint8_t>,std::chrono::steady_clock::time_point);
@@ -34,6 +36,7 @@ private:
     std::unique_ptr<access::Stream> protected_;
     std::chrono::steady_clock::time_point access_deadline_;
     bool server_=false;
+    uint64_t control_=0;std::shared_ptr<access::Gate> control_gate_;
     struct State;
     std::unique_ptr<State> state_;
 };

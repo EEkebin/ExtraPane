@@ -261,30 +261,42 @@ Adapters prepare those resources after the corresponding client request. The
 server page shows component availability without manual camera/receiving setup
 buttons or a resource selector. Normal Stop requests safe USB eject before shutting down; a busy eject
 keeps the server running. Process termination still follows the documented USB
-quarantine/recovery rules. Optional six-digit codes remain single-use. For a multi-resource selection, a
-short admission connection exchanges that code for one ticket per selected
-resource. Tickets expire after 60 seconds, can be used once, and are bound to the
-resource and server code generation. Regenerating the code revokes unused tickets.
-Credentials pass through private child-process stdin/stdout rather than command
-arguments or saved preferences. Canceling admission launches no resources.
+quarantine/recovery rules. Optional six-digit codes remain single-use.
 
-The client retains the checkbox list while connected. Camera and microphone have
-separate source pickers; no source is selected automatically. Each resource has
-its own status and Stop button, microphone has Mute, and Disconnect all stops the
-selected resource processes. A missing/failed resource does not stop the other
-resources. Selection and source changes are locked while connected; disconnect
-before choosing a different combination. USB retains its explicit server-side
-eject and source recovery requirements. These changes have passed isolated UI,
-protocol and authorization checks; simultaneous physical delivery is unverified.
+The Windows client opens a persistent control connection before starting resources.
+Connect works with no selections and reports connected only after a server reply.
+Checking a resource starts it; unchecking stops it independently. Camera, microphone
+and USB wait for an explicit source selection. Their source pickers remain available
+while idle, even if other resources are active. Disconnect all clears all selections
+and closes the connection. A rejected resource is unchecked and keeps its error;
+it does not retry automatically or stop the other resources.
+
+With access codes enabled, the control connection authenticates once and requests
+fresh, single-use, resource-specific tickets as needed. Tickets expire after 60
+seconds; pending tickets are revoked when their control connection closes. The
+admitted control connection survives the original code's expiry or rotation.
+Heartbeat/timeout detection ends a lost connection, and the client stops its owned
+resource processes. Automatic LAN mode retains its existing encryption without
+peer identity verification. Credentials use private process pipes, never command
+arguments or saved preferences. Use matching builds on both PCs.
+
+USB retains its explicit receiving-PC eject and source recovery requirements;
+unchecking does not force a disk online. Isolated protocol, offscreen UI and
+fake-process controller checks cover this behavior. Live simultaneous device
+delivery and repeated toggling still need user verification. Other platform UIs
+have not yet adopted the Windows persistent-control workflow.
 
 ## Consolidated Windows installation
 
 The development installer now uses `C:\Program Files\ExtraPane` for the app
 and `Components\Display`, `Components\Camera`, `Components\Microphone`, and
-`Components\UsbHost` beneath that directory. The app has a machine-wide Windows
-Apps entry. Its internal display manager retains its stable upgrade identity but
-is hidden from Windows Apps; the main uninstaller invokes it for owned driver removal.
-Per-user settings remain in the Windows user profile.
+`Components\UsbHost` beneath that directory. The main installer owns the display package and manager files alongside the app.
+It calls the driver manager directly for installation and removal; the installed
+app does not need a separate display-driver installer or uninstaller. After a
+successful server upgrade, the installer retires the verified older driver entry
+from Windows Apps. Only ExtraPane is registered by the main installer. A failed
+driver installation leaves ExtraPane available for repair/removal and reports a
+nonzero setup result. Per-user settings remain in the Windows user profile.
 
 Display migration copies verified legacy ownership records before changing the
 manager location. The old `SideScreen Driver` folder currently remains as a rollback
