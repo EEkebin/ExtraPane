@@ -92,6 +92,11 @@ ScrollView {
                     Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredHeight: 48
                     color: "#142238"; radius: 12
                     border.color: "#243650"
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: resourceGroup.expanded = !resourceGroup.expanded
+                    }
                     IconButton {
                         objectName: "connectionGroupToggle_" + resourceGroup.modelData.kind
                         anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter
@@ -107,7 +112,6 @@ ScrollView {
                         font.pixelSize: 15; font.weight: Font.DemiBold
                         horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                         color: "#e4edfc"
-                        TapHandler { onTapped: resourceGroup.expanded = !resourceGroup.expanded }
                     }
                     Row {
                         anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
