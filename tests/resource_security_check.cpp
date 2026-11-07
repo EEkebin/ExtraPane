@@ -1,6 +1,9 @@
 #include <dm/access.hpp>
 #include <extrapane/negotiation.hpp>
 #include <extrapane/media.hpp>
+#include <extrapane/session_route.hpp>
+#include <extrapane/camera_protocol.hpp>
+#include "../core/protocol/include/dm/prefix_buffer.hpp"
 #include <condition_variable>
 #include <deque>
 #include <thread>
@@ -49,6 +52,20 @@ int main(){try{
     bool rejected=false;try{negotiation.serve_one(host);}catch(...){rejected=true;}
     check(rejected&&host.failed()&&stopped==1&&server.listening());
     code=gate.generate();code[0]=code[0]=='0'?'1':'0';Pair wrong;check(!wrong.authenticate(gate,code));check(server.client_count()==0&&allocated==1);
+    // The unified router reads only eight admitted bytes. This must preserve
+    // the remainder buffered inside the authenticated record layer and replay
+    // the prefix exactly once to the existing adapter parser.
+    code=gate.generate();Pair routePair;check(routePair.authenticate(gate,code));
+    const auto offered=camera_wire::encode({1280,720,30,{9,4}});
+    routePair.client.write(offered);
+    dm::protocol::PrefixBuffer lookahead;std::array<std::uint8_t,8> prefix{};
+    const auto admittedRead=[&](auto data){routePair.server.read(data);};
+    lookahead.peek(prefix,admittedRead);check(classify_session_prefix(prefix)==ResourceKind::camera);
+    camera_wire::OfferBytes routed{};lookahead.read(routed,admittedRead);
+    check(routed==offered&&camera_wire::decode(routed).binding.resource==9);
+    routePair.c2s.tamper=true;routePair.client.write(offered);
+    rejected=false;try{lookahead.peek(prefix,admittedRead);}catch(...){rejected=true;}
+    check(rejected); // No classifier/resource allocation sees tampered bytes.
     // Exercise media framing through real encrypted record splitting, without
     // sockets or camera hardware. This does not test live channel admission.
     code=gate.generate();Pair mediaPair;check(mediaPair.authenticate(gate,code));

@@ -128,3 +128,5 @@ prefixes. Existing clients need no wire change. Eight isolated core checks pass,
 including prefix preservation across split reads and failed-stream rejection;
 Windows TLS library compiles. Unified listener integration and physical
 simultaneous-resource verification remain pending.
+
+Unified routing verification also passes an in-memory authenticated-record test: eight-byte lookahead preserves the complete camera offer and rejects tampered encrypted records before routing. No network socket, capture device or driver was exercised.
