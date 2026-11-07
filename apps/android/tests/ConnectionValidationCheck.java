@@ -7,6 +7,14 @@ public final class ConnectionValidationCheck {
         require(ConnectionValidation.port("1")&&ConnectionValidation.port("65535"));for(String p:new String[]{"","0","65536","999999999999","-1","1.5"})require(!ConnectionValidation.port(p));
         require(ConnectionValidation.code("")&&ConnectionValidation.code("012345"));for(String code:new String[]{"12345","abcdef","1234567","123 56"})require(!ConnectionValidation.code(code));
         require(ConnectionValidation.dimension(1920)&&ConnectionValidation.dimension(4096)&&!ConnectionValidation.dimension(4097)&&!ConnectionValidation.dimension(1919));
+        require(ConnectionValidation.sameTarget("B",false,"",true,"B",false,""));
+        require(!ConnectionValidation.sameTarget("A",false,"",true,"B",false,""));
+        require(!ConnectionValidation.sameTarget("A",false,"",true,"",false,"")); // service survived activity: unknown route must stay visible
+        require(!ConnectionValidation.sameTarget("B@wifi",false,"",true,"B@ethernet",false,""));
+        require(ConnectionValidation.initialDisplayMode(true,1920,1080,360,new long[]{1920,1080,360}));
+        require(!ConnectionValidation.initialDisplayMode(true,1920,1080,360,new long[]{1920,1080,60}));
+        require(!ConnectionValidation.initialDisplayMode(true,1920,1080,60,new long[]{1280,720,60}));
+        require(ConnectionValidation.initialDisplayMode(false,1920,1080,60,new long[]{1280,720,30}));
         System.out.println("Android connection validation checks passed");
     }
 }

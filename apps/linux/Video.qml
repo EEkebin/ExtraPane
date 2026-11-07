@@ -4,6 +4,7 @@ import ExtraPane.Native 1.0
 
 Item {
     property bool inputPaused: false
+    property alias exclusionRects: input.exclusionRects
     GstGLQt6VideoItem { id: video; anchors.fill: parent }
     InputSurface {
         id: input

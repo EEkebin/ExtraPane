@@ -2,6 +2,8 @@ package io.github.eekebin.extrapane;
 
 /** Pure configuration checks; reachability, credentials and hardware are checked by native sessions. */
 final class ConnectionValidation {
+    static boolean initialDisplayMode(boolean exact,int width,int height,int fps,long[] offer){return !exact||(offer[0]==width&&offer[1]==height&&offer[2]==fps);}
+    static boolean sameTarget(String configured,boolean display,String displayTarget,boolean camera,String cameraTarget,boolean microphone,String microphoneTarget){return !configured.isEmpty()&&(!display||configured.equals(displayTarget))&&(!camera||configured.equals(cameraTarget))&&(!microphone||configured.equals(microphoneTarget));}
     static int number(String text){if(!text.matches("[0-9]+"))return -1;try{return Integer.parseInt(text);}catch(NumberFormatException error){return -1;}}
     static boolean port(String text){int value=number(text);return value>=1&&value<=65535;}
     static boolean code(String text){return text.isEmpty()||text.matches("[0-9]{6}");}

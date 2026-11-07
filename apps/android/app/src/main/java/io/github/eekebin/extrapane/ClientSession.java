@@ -71,7 +71,9 @@ final class ClientSession extends Thread {
             if(!accessCode.isEmpty()){status("Authenticating access code?");java.util.Timer deadline=new java.util.Timer(true);deadline.schedule(new java.util.TimerTask(){public void run(){try{tls.close();}catch(IOException ignored){}}},10000);
                 try{accessChannel=new AccessChannel(in,out,accessCode);}finally{deadline.cancel();}accessCode="";in=new DataInputStream(accessChannel.input);out=accessChannel.output;}
             out.write(exactMode?Protocol.customRequest(width,height,hz,requested,scale):Protocol.request(width,height,hz,requested,scale));tls.setSoTimeout(45000);
-            long[] offer=Protocol.offer(read(in,32));prepare(offer,out);tls.setSoTimeout(15000);
+            long[] offer=Protocol.offer(read(in,32));
+            if(!ConnectionValidation.initialDisplayMode(exactMode,width,height,hz,offer))throw new IOException("Server cannot provide the requested custom display resolution and frame rate");
+            prepare(offer,out);tls.setSoTimeout(15000);
             long sequence=0,previous=0,frames=0,bytes=0,start=SystemClock.elapsedRealtime();
             while(!cancelled && (offer[3]==0 || sequence<offer[3])){
                 long[] frame=Protocol.frame(read(in,24));

@@ -280,6 +280,7 @@ ScrollView {
                                 }
                                 property bool displayOptionsValid: true
                                 property string connectedDescription: ""
+                                property bool microphoneMuted: false
                                 function freezeDescription() {
                                     if (!busy) return
                                     if (resourceKind === "display") {
@@ -294,7 +295,7 @@ ScrollView {
                                     }
                                 }
                                 onPhaseChanged: { if (phase === "active") panel.notifyConnected(resourceKind, effectiveTarget) }
-                                onBusyChanged: freezeDescription()
+                                onBusyChanged: { freezeDescription(); if (!busy) microphoneMuted = false }
                                 Component.onCompleted: freezeDescription()
                                 width: instance.width
                                 ColumnLayout {
@@ -372,7 +373,7 @@ ScrollView {
                                         Label { text: "Each display opens its own window. Limits: 4096 pixels per dimension, 8,847,360 pixels total, and 360 target FPS. Hardware and network limits apply."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#9eacc2" }
                                     }
                                     CheckBox { visible: row.resourceKind === "camera" && row.busy; text: "Mirror camera (all connections using this source)"; checked: panel.runtime.mirrorStates[row.sourceId] === true; onClicked: panel.runtime.setMirror(row.connectionId, checked) }
-                                    CheckBox { visible: row.resourceKind === "microphone" && row.busy; text: "Mute microphone for this connection"; onClicked: panel.runtime.setMuted(row.connectionId, checked) }
+                                    CheckBox { visible: row.resourceKind === "microphone" && row.busy; text: "Mute microphone for this connection"; checked: row.microphoneMuted; onClicked: { row.microphoneMuted = checked; panel.runtime.setMuted(row.connectionId, checked) } }
                                     Button { visible: row.resourceKind === "usb" && row.phase === "recovery"; text: "Recheck USB availability"; onClicked: panel.runtime.refreshDevices("usb") }
                                     Label { visible: row.resourceKind === "usb"; text: "USB storage is exclusive. Uncheck to return it safely; an interrupted transfer can require recovery."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#f0c66e" }
                                     Label { visible: text.length > 0 && text !== "Disconnected"; text: row.status; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }

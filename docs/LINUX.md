@@ -1,5 +1,17 @@
 # Linux hosting, client and AppImage work
 
+## Resource-sharing development branch (2026-11-07)
+
+The current development branch adds the shared grouped client UI, independent
+display windows, camera/microphone sending and receiving, and tray lifetime while
+hosting or connected. The listener handles independent resource sessions; actual
+display creation still depends on the desktop portal. These changes supersede the
+single-client and close-to-exit limits in the historical validation below.
+See [Linux resource prerequisites and limits](LINUX-RESOURCES.md) and
+[platform parity status](PLATFORM-PARITY.md). USB and same-source camera/microphone
+fanout remain unimplemented on Linux. Native builds and packaging are checked in
+GitHub; combined resources and virtual endpoints still require device validation.
+
 ## Current implementation and validation (2026-11-03)
 
 The user authorized Linux hosting, native input and packaging work, and confirmed Linux-host to Windows-client **video and mouse/keyboard delivery**. Windows-host to Linux-client video, input, reconnect, fullscreen and repaired toolbar contrast were also confirmed.

@@ -32,10 +32,41 @@ std::vector<Event> InputQueue::take(){std::lock_guard lock(mutex_);std::vector<E
 InputSurface::InputSurface(QQuickItem* parent):QQuickItem(parent){
     setAcceptedMouseButtons(Qt::AllButtons);setAcceptHoverEvents(true);
     setAcceptTouchEvents(true);
-    connect(this,&QQuickItem::windowChanged,this,[this](QQuickWindow* window){if(window)window->installEventFilter(this);});
+    // One application filter handles this window plus proximity events. Also
+    // installing on the window would dispatch excluded tablet events twice.
     qGuiApp->installEventFilter(this);
 }
-void InputSurface::resetInput(){keys_.clear();touches_.clear();penContact_=false;buttons_=0;if(queue)queue->reset();}
+void InputSurface::resetInput(){if(!dispatchingLocalPen_)releaseLocalPenMouse();keys_.clear();touches_.clear();localPenSequence_=localPenSequence_||penContact_;penContact_=false;buttons_=0;if(queue)queue->reset();}
+void InputSurface::localPenMouse(QEvent::Type type,QPointF scene,QPointF global,Qt::MouseButton button,Qt::MouseButtons buttons){
+    if(!window())return;
+    QMouseEvent mouse(type,scene,scene,global,button,buttons,lastPenModifiers_,Qt::MouseEventSynthesizedByApplication);
+    const bool previous=dispatchingLocalPen_;dispatchingLocalPen_=true;
+    // This fallback is scoped to local UI controls. mouse() rejects synthetic
+    // events, and streamed display pen traffic still uses native pen packets.
+    QCoreApplication::sendEvent(window(),&mouse);dispatchingLocalPen_=previous;
+}
+void InputSurface::releaseLocalPenMouse(){
+    if(!localPenMouseDown_)return;localPenMouseDown_=false;
+    // Release outside the window to cancel a local grab without clicking it.
+    const QPointF global=window()?window()->mapToGlobal(QPoint(-1,-1)):QPointF{};
+    localPenMouse(QEvent::MouseMove,{-1,-1},global,Qt::NoButton,Qt::LeftButton);
+    localPenMouse(QEvent::MouseButtonRelease,{-1,-1},global,Qt::LeftButton,Qt::NoButton);
+}
+bool InputSurface::excluded(QPointF scenePosition)const{
+    for(const auto& value:exclusionRects_){const auto rect=value.toRectF();if(rect.isValid()&&rect.contains(scenePosition))return true;}
+    return false;
+}
+void InputSurface::cancelRemotePen(){
+    if(!penContact_)return;
+    if(queue){Event out;out.kind=Kind::pen;out.id=1;out.action=Action::cancel;queue->append(out);}
+    penContact_=false;localPenSequence_=true;
+}
+void InputSurface::setExclusionRects(QVariantList rectangles){
+    if(exclusionRects_==rectangles)return;exclusionRects_=std::move(rectangles);
+    // A toolbar can appear beneath a stationary remote contact.
+    if(penContact_&&excluded(lastPenScene_))cancelRemotePen();
+    emit exclusionRectsChanged();
+}
 bool InputSurface::point(QPointF p,Event& event,bool clamp) const {
     if(!queue || !(queue->capabilities()&capability(event.kind)) || width()<=0 || height()<=0 || sourceWidth<=0 || sourceHeight<=0)return false;
     const double scale=std::min(width()/sourceWidth,height()/sourceHeight);
@@ -121,11 +152,28 @@ void InputSurface::tablet(QTabletEvent* e){
 bool InputSurface::eventFilter(QObject* watched,QEvent* e){
     if(!isEnabled() || !isVisible() || !queue)return false;
     if(watched==qGuiApp && e->type()==QEvent::TabletLeaveProximity){
+        releaseLocalPenMouse();
         if(queue->capabilities()&pen_cap){Event out;out.kind=Kind::pen;out.id=1;out.action=Action::cancel;queue->append(out);penContact_=false;}
-        return false;
+        localPenSequence_=false;return false;
     }
     if(watched==window() && (e->type()==QEvent::TabletPress || e->type()==QEvent::TabletMove || e->type()==QEvent::TabletRelease)){
-        tablet(static_cast<QTabletEvent*>(e));return e->isAccepted();
+        auto* event=static_cast<QTabletEvent*>(e);lastPenScene_=event->position();lastPenGlobal_=event->globalPosition();lastPenModifiers_=event->modifiers();
+        if(excluded(lastPenScene_)||localPenSequence_){
+            const bool localPress=e->type()==QEvent::TabletPress&&!penContact_;
+            cancelRemotePen();
+            if(localPress){localPenSequence_=true;localPenMouseDown_=true;localPenMouse(QEvent::MouseButtonPress,lastPenScene_,lastPenGlobal_,Qt::LeftButton,Qt::LeftButton);e->accept();return true;}
+            if(localPenMouseDown_){
+                const bool released=e->type()==QEvent::TabletRelease;
+                if(released){localPenMouseDown_=false;localPenSequence_=false;}
+                localPenMouse(released?QEvent::MouseButtonRelease:QEvent::MouseMove,lastPenScene_,lastPenGlobal_,released?Qt::LeftButton:Qt::NoButton,released?Qt::NoButton:Qt::LeftButton);
+                e->accept();return true;
+            }
+            if(e->type()==QEvent::TabletRelease)localPenSequence_=false;
+            // Crossing a remote drag cancels it; it must not synthesize a new
+            // local press or activate whichever toolbar button it passes over.
+            e->ignore();return false;
+        }
+        tablet(event);return e->isAccepted();
     }
     return false;
 }
@@ -165,6 +213,6 @@ void InputSurface::key(QKeyEvent* e,bool down){
 }
 void InputSurface::keyPressEvent(QKeyEvent* e){key(e,true);}
 void InputSurface::keyReleaseEvent(QKeyEvent* e){key(e,false);}
-void InputSurface::focusOutEvent(QFocusEvent* e){resetInput();QQuickItem::focusOutEvent(e);}
+void InputSurface::focusOutEvent(QFocusEvent* e){if(!dispatchingLocalPen_||!keys_.empty()||!touches_.empty()||penContact_||buttons_)resetInput();QQuickItem::focusOutEvent(e);}
 void InputSurface::mouseUngrabEvent(){if(buttons_)resetInput();}
 }

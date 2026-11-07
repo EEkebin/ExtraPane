@@ -53,6 +53,17 @@ default input; applications select the virtual input themselves.
 
 ## Remaining gates
 
+Device-list refresh runs in an isolated `ExtraPane --list-resource camera` or
+`microphone` helper using QCoreApplication, without opening a window or starting
+capture. The UI limits the JSON response to 1 MiB and terminates enumeration
+after ten seconds; exit also terminates inventory helpers. A stalled third-party
+GStreamer device provider therefore does not hold the UI's shutdown thread.
+Live capture still uses its selected provider and needs device validation.
+
+Camera receiving rejects v4l2loopback frame-rate changes instead of granting an
+incorrect rate. Parsed H.264 dimensions must match negotiated geometry before
+the decoder receives the stream.
+
 Linux USB export/import is not implemented and remains unavailable with a reason.
 Kernel USB/IP support alone does not implement ExtraPane's ownership, exclusive
 mount handling, encrypted forwarding and reliable return behavior.

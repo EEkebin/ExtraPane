@@ -189,3 +189,5 @@ To repeat the host-only Android checks in this checkout (no device needed):
 ```powershell
 ./apps/android/tests/run-host-checks.ps1
 ```
+
+Android connection review: stopping camera/microphone leaves the checkbox unchecked and temporarily disabled until teardown finishes. Canceled admission requests release queue capacity and authentication errors discard the temporary code cache. After activity recreation, surviving capture sessions retain their own destination summaries; destination fields stay visible for new connections until their complete address/port/interface/network matches a known active target. Host checks cover this target-visibility rule, including unknown restored routes. Isolated APK/instrumentation compilation and lint passed again; no device tests were performed.

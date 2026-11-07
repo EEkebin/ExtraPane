@@ -107,7 +107,9 @@ void Host::serveDisplay(Tls& stream,std::span<const uint8_t> prefix){
     const auto input=request[7],caps=request[8],scale=request[9],keyboard=request[10];request[7]=request[8]=request[9]=request[10]=0;
     if(request!=wire::request || input>1 || caps>all_caps || (bool(input)!=bool(caps)) || scale>2 || keyboard>2 || (keyboard&&(!input||!(caps&touch_cap))))throw std::runtime_error("Invalid client request");
     emit state("Client connected — approve KDE's desktop-sharing prompt to create a virtual monitor");
+    if(display.exact_mode&&(display.hz>60||scale!=0))throw std::runtime_error("Linux portal hosting cannot provide this exact frame rate or scale; use up to 60 FPS at the portal monitor size");
     Portal portal(cancelled);portal.start(input!=0);
+    if(display.exact_mode&&(display.width!=portal.width||display.height!=portal.height))throw std::runtime_error("The desktop portal chose a different monitor size; use its supported resolution or Match local monitor mode");
     unsigned granted=input?((portal.devices&1?keyboard_cap:0)|(portal.devices&2?mouse_cap:0)|(portal.devices&4?touch_cap:0))&caps:0;
     if(input && !granted)throw std::runtime_error("The portal did not grant the requested input devices");
     // KDE's RemoteDesktop portal currently creates a 1920x1080 virtual output.

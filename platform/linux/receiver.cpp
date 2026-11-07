@@ -28,6 +28,7 @@ void Receiver::run(){
         wire::set_client_display(request,options_.display);stream.write(request,deadline());
         wire::OfferBytes bytes{};stream.read(bytes,deadline(45));
         auto offer=wire::decode_offer(bytes);
+        if(options_.display.exact_mode&&(offer.width!=options_.display.width||offer.height!=options_.display.height||offer.fps!=options_.display.hz))throw std::runtime_error("Server cannot provide the requested custom display mode; choose its supported resolution and frame rate");
         if(offer.codec!=wire::Codec::h264)throw std::runtime_error("The Linux client requires an H.264 server stream");
         if(offer.input_caps&~requested)throw std::runtime_error("Invalid server input grant");
         unsigned serial=0;

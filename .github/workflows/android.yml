@@ -36,6 +36,13 @@ jobs:
           "$sdkmanager" 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
           test "$GITHUB_RUN_ATTEMPT" -lt 100
           echo "EXTRAPANE_ANDROID_VERSION_CODE=$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
+      - name: Check admission lifecycle and configuration without devices
+        run: |
+          mkdir -p out/android-host-checks
+          source=apps/android/app/src/main/java/io/github/eekebin/extrapane
+          javac -d out/android-host-checks apps/android/tests/stubs/*.java "$source/AdmissionBroker.java" "$source/ConnectionValidation.java" apps/android/tests/AdmissionBrokerCheck.java apps/android/tests/ConnectionValidationCheck.java
+          java -cp out/android-host-checks io.github.eekebin.extrapane.AdmissionBrokerCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.ConnectionValidationCheck
       - name: Build and lint
         working-directory: apps/android
         run: bash gradlew assembleDebug assembleDebugAndroidTest lintDebug assembleRelease --no-daemon --console=plain

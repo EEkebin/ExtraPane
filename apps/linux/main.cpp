@@ -1,4 +1,9 @@
 #include "controller.hpp"
+#include "resource_source.hpp"
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <cstdio>
+#include <cstring>
 #include <QApplication>
 #include <QSystemTrayIcon>
 #include <QMenu>
@@ -16,6 +21,22 @@ namespace { volatile std::sig_atomic_t quitRequested=0; }
 
 int main(int argc,char** argv){
     std::signal(SIGPIPE,SIG_IGN);
+    // Device providers are third-party code and may block indefinitely. The UI
+    // runs this bounded-output helper in a killable process, without a GUI.
+    if(argc>1 && std::strcmp(argv[1],"--list-resource")==0){
+        QCoreApplication inventory(argc,argv);
+        if(argc!=3 || (std::strcmp(argv[2],"camera")&&std::strcmp(argv[2],"microphone")))return 2;
+        GError* error=nullptr;if(!gst_init_check(nullptr,nullptr,&error)){if(error)g_error_free(error);return 3;}
+        using Source=dm::linux_client::ResourceSource;
+        const auto kind=std::strcmp(argv[2],"camera")==0?Source::Kind::Camera:Source::Kind::Microphone;
+        QVariantList devices;
+        try{const auto reason=Source::unavailable(kind);if(reason.isEmpty())devices=Source::devices(kind);
+            else devices.push_back(QVariantMap{{"id",""},{"label",reason},{"available",false}});
+        }catch(...){return 4;}
+        const auto json=QJsonDocument(QJsonArray::fromVariantList(devices)).toJson(QJsonDocument::Compact);
+        if(json.size()>1024*1024)return 5;
+        return std::fwrite(json.constData(),1,static_cast<size_t>(json.size()),stdout)==static_cast<size_t>(json.size())?0:6;
+    }
     std::signal(SIGTERM,[](int){quitRequested=1;});
     std::signal(SIGINT,[](int){quitRequested=1;});
     QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents,false);

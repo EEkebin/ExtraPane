@@ -9,6 +9,9 @@
 #include <QScreen>
 #include <QStringList>
 #include <QTimer>
+#include <QProcess>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <algorithm>
 #include <cmath>
 
@@ -44,18 +47,33 @@ QVariantList LinuxConnectionRuntime::monitors()const{
 void LinuxConnectionRuntime::refreshDevices(QString kind){
     if(shuttingDown_||(kind!="camera"&&kind!="microphone")||scanning_.contains(kind))return;
     scanning_.insert(kind);
-    auto* scanner=QThread::create([this,kind]{
-        const auto type=kind=="camera"?Source::Kind::Camera:Source::Kind::Microphone;
-        QString unavailable;QVariantList list;
-        try{unavailable=Source::unavailable(type);if(unavailable.isEmpty())list=Source::devices(type);}
-        catch(const std::exception& error){unavailable=QString::fromUtf8(error.what());}
-        if(list.isEmpty())list.push_back(QVariantMap{{"id",""},{"label",unavailable.isEmpty()?"No compatible "+kind+" source found":unavailable},{"available",false}});
-        QMetaObject::invokeMethod(this,[this,kind,list=std::move(list)]{
-            scanning_.remove(kind);if(shuttingDown_)return;devices_[kind]=list;emit devicesChanged();
-        },Qt::QueuedConnection);
+    auto* scanner=new QProcess(this);scanner->setObjectName("ExtraPane source enumeration");
+    scanner->setStandardErrorFile(QProcess::nullDevice());
+    auto output=std::make_shared<QByteArray>();auto completed=std::make_shared<bool>(false);
+    auto finish=[this,kind,scanner,output,completed](QString reason){
+        if(*completed)return;*completed=true;scanning_.remove(kind);
+        QVariantList list;QJsonParseError error{};
+        if(reason.isEmpty()){
+            const auto doc=QJsonDocument::fromJson(*output,&error);
+            if(error.error!=QJsonParseError::NoError||!doc.isArray())reason="Device inventory returned invalid data";
+            else list=doc.array().toVariantList();
+        }
+        if(list.isEmpty())list.push_back(QVariantMap{{"id",""},{"label",reason.isEmpty()?"No compatible "+kind+" source found":reason},{"available",false}});
+        if(!shuttingDown_){devices_[kind]=list;emit devicesChanged();}
+        if(scanner->state()==QProcess::NotRunning)scanner->deleteLater();else scanner->kill();
+    };
+    connect(scanner,&QProcess::readyReadStandardOutput,this,[scanner,output,completed,finish]{
+        if(*completed){scanner->readAllStandardOutput();return;}
+        output->append(scanner->read(1024*1024+1-output->size()));
+        if(output->size()>1024*1024){output->clear();finish("Device inventory exceeded its output limit");}
     });
-    scanner->setObjectName("ExtraPane source enumeration");scanner->setParent(this);
-    connect(scanner,&QThread::finished,scanner,&QObject::deleteLater);scanner->start();
+    connect(scanner,&QProcess::errorOccurred,this,[finish](QProcess::ProcessError error){if(error==QProcess::FailedToStart)finish("Could not start device inventory");});
+    connect(scanner,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[scanner,output,completed,finish](int code,QProcess::ExitStatus status){
+        if(!*completed){output->append(scanner->read(1024*1024+1-output->size()));finish(code==0&&status==QProcess::NormalExit&&output->size()<=1024*1024?QString{}:"Device inventory failed");}
+        scanner->deleteLater();
+    });
+    QTimer::singleShot(10000,scanner,[completed,finish]{if(!*completed)finish("Device inventory timed out. Check your camera or microphone provider.");});
+    scanner->start(QCoreApplication::applicationFilePath(),{"--list-resource",kind},QIODevice::ReadOnly);
 }
 void LinuxConnectionRuntime::toggle(QString id,bool enabled,QString code,bool input){
     struct Wipe{QString& text;~Wipe(){text.fill(QChar(0));}} wipe{code};
@@ -123,6 +141,7 @@ void LinuxConnectionRuntime::launch(QString id,QString credential){
         Source::Options options;options.kind=type;options.device=config["sourceId"].toString();options.server=target["address"].toString();options.local=target["localAddress"].toString();options.interfaceIndex=target["interfaceIndex"].toUInt();options.port=target["port"].toUInt();options.code=credential;
         for(const auto& item:devices_.value(row.kind).toList()){const auto source=item.toMap();if(source["id"]==options.device){if(source.contains("width"))options.width=source["width"].toUInt();if(source.contains("height"))options.height=source["height"].toUInt();if(source.contains("fps"))options.fps=source["fps"].toUInt();break;}}
         row.source=new Source(options,this);auto* source=row.source.data();
+        if(row.kind=="camera")source->setMirrored(mirrors_.value(config["sourceId"].toString()).toBool());
         connect(source,&Source::state,this,[this,id,generation](const QString& text){if(rows_.contains(id)&&rows_[id]->generation==generation&&!rows_[id]->stopping)model_.setState(id,model_.connection(id)["phase"]=="active"?State::active:State::connecting,text);});
         connect(source,&Source::connected,this,[this,id,generation](unsigned,unsigned,unsigned){if(rows_.contains(id)&&rows_[id]->generation==generation&&!rows_[id]->stopping)model_.setState(id,State::active,"Connected");emit changed();});
         connect(source,&Source::failed,this,[this,id,generation](const QString& error){if(rows_.contains(id)&&rows_[id]->generation==generation)rows_[id]->error=error;});
@@ -150,6 +169,9 @@ void LinuxConnectionRuntime::setMirror(QString id,bool enabled){const auto c=mod
 void LinuxConnectionRuntime::setMuted(QString id,bool enabled){const auto f=rows_.find(id);if(f!=rows_.end()&&f->second->kind=="microphone"&&f->second->source)f->second->source->setMuted(enabled);}
 void LinuxConnectionRuntime::shutdown(){
     if(shuttingDown_)return;shuttingDown_=true;
+    const auto inventories=findChildren<QProcess*>("ExtraPane source enumeration",Qt::FindDirectChildrenOnly);
+    for(auto* process:inventories){process->disconnect(this);process->kill();}
+    for(auto* process:inventories){process->waitForFinished(1000);delete process;}scanning_.clear();
     const auto brokers=findChildren<LinuxAdmission*>();
     for(auto* broker:brokers)broker->stop();
     for(auto& [id,row]:rows_)if(row->source)row->source->requestInterruption();else if(row->display)row->display->disconnectFromServer();

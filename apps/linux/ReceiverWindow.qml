@@ -26,10 +26,14 @@ Window {
         width: Math.min(parent.width, parent.height * receiver.sourceWidth / Math.max(1, receiver.sourceHeight))
         height: width * receiver.sourceHeight / Math.max(1, receiver.sourceWidth)
         inputPaused: window.paused || settings.opened
+        exclusionRects: window.controls
+            ? [Qt.rect(controlBar.x, controlBar.y, controlBar.width, controlBar.height)]
+            : [Qt.rect(controlHandle.x, controlHandle.y, controlHandle.width, controlHandle.height)]
     }
     Label { anchors.centerIn: parent; visible: receiver.status !== "Connected"; text: receiver.status; color: "#e4ecfa"; width: parent.width - 40; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
-    Button { anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter; visible: !window.controls; text: "Controls"; onClicked: window.reveal() }
+    Button { id: controlHandle; anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter; visible: !window.controls; text: "Controls"; onClicked: window.reveal() }
     Rectangle {
+        id: controlBar
         anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter; anchors.topMargin: 8
         width: Math.min(parent.width - 16, 640); height: bar.implicitHeight + 12; radius: 12; color: "#ed20324d"
         visible: window.controls

@@ -1,2 +1,2 @@
 import QtQuick
-Item { property bool inputPaused: false }
+Item { property bool inputPaused: false; property var exclusionRects: [] }

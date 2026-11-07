@@ -66,7 +66,9 @@ public:
         require(format.fmt.pix.width==width&&format.fmt.pix.height==height&&format.fmt.pix.pixelformat==V4L2_PIX_FMT_YUYV,"Virtual camera changed the negotiated format");
         stride=format.fmt.pix.bytesperline;size=format.fmt.pix.sizeimage;
         require(stride>=width*2&&stride<=width*2+4096&&size>=static_cast<std::uint64_t>(stride)*height&&size<=32*1024*1024,"Virtual camera returned invalid buffer geometry");
-        v4l2_streamparm rate{};rate.type=V4L2_BUF_TYPE_VIDEO_OUTPUT;rate.parm.output.timeperframe.numerator=1;rate.parm.output.timeperframe.denominator=fps;ioctl(fd,VIDIOC_S_PARM,&rate);
+        v4l2_streamparm rate{};rate.type=V4L2_BUF_TYPE_VIDEO_OUTPUT;rate.parm.output.timeperframe.numerator=1;rate.parm.output.timeperframe.denominator=fps;
+        require(ioctl(fd,VIDIOC_S_PARM,&rate)==0,"Virtual camera rejected this frame rate");
+        require(rate.parm.output.timeperframe.numerator!=0&&static_cast<std::uint64_t>(rate.parm.output.timeperframe.numerator)*fps==rate.parm.output.timeperframe.denominator,"Virtual camera changed the negotiated frame rate");
     }
     void write(std::span<const std::uint8_t> pixels,const std::function<bool()>& cancelled){
         const auto until=deadline();
@@ -92,7 +94,7 @@ public:
             if(kind_==ResourceKind::camera)node_.open(offer_.width,offer_.height,offer_.fps);
             GError* error=nullptr;
             const auto graph=kind_==ResourceKind::camera
-                ? QString("appsrc name=received is-live=true format=time block=false max-bytes=4194304 ! h264parse ! openh264dec ! videoconvert ! video/x-raw,format=YUY2,width=%1,height=%2 ! appsink name=decoded sync=false max-buffers=3 drop=false").arg(offer_.width).arg(offer_.height)
+                ? QString("appsrc name=received is-live=true format=time block=false max-bytes=4194304 ! h264parse ! video/x-h264,width=%1,height=%2 ! openh264dec ! videoconvert ! video/x-raw,format=YUY2,width=%1,height=%2 ! appsink name=decoded sync=false max-buffers=3 drop=false").arg(offer_.width).arg(offer_.height)
                 : "appsrc name=received is-live=true format=time block=false max-bytes=9600 leaky-type=downstream ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=100000000 leaky=downstream ! pipewiresink name=endpoint mode=provide sync=false async=false";
             pipeline_=gst_parse_launch(graph.toUtf8().constData(),&error);
             if(error||!pipeline_){const std::string reason=error?error->message:"Cannot create resource endpoint";if(error)g_error_free(error);throw std::runtime_error(reason);}
@@ -176,7 +178,7 @@ private:
             const auto document=QJsonDocument::fromJson(output);
             if(process.exitCode()==0&&document.isArray())for(const auto& item:document.array()){
                 const auto object=item.toObject();const auto properties=object["info"].toObject()["props"].toObject();
-                if(object["type"]=="PipeWire:Interface:Node"&&properties["node.name"].toString()==nodeName_&&properties["media.class"]=="Audio/Source")return;
+                if(object["type"].toString()=="PipeWire:Interface:Node"&&properties["node.name"].toString()==nodeName_&&properties["media.class"].toString()=="Audio/Source")return;
             }
             QThread::msleep(50);
         }
