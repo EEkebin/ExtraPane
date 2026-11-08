@@ -332,3 +332,11 @@ Its bounded jitter reserve starts at 40 ms and increases after starvation, up to
 80 ms. Removing/changing the selected route ends the session instead of silently
 switching outputs. See [Speakers](SPEAKERS.md) for setup and remaining device tests.
 This is a selectable remote playback device, not automatic system-audio mirroring.
+
+### Back navigation
+
+The system Back gesture/button closes the navigation drawer first, exits fullscreen
+next, then returns through visited workspace pages. Re-selecting a page or toggling
+fullscreen does not add history. At the first page, Back exits only while idle;
+sharing or active resources keep the workspace open with a reminder to stop sharing.
+Page navigation does not stop resource sessions.

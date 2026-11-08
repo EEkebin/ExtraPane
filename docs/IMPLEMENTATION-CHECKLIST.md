@@ -856,3 +856,14 @@ before a packaging-tool download failed. No release was published or branch merg
 - [ ] Physical acceptance remains; no media/resource session was started.
   The Windows hosted job also encountered an HTTP 504 dependency download;
   local cached-toolchain packaging passed.
+
+
+### Android Back gesture follows page history
+
+- [x] Drawer/fullscreen dismissal precedes page-history navigation; repeated
+  selection and fullscreen redraw do not create duplicate entries. Navigating
+  back does not finish the activity or pause active resources. Root Back is
+  guarded while sharing/connected and retains ordinary idle exit behavior.
+- [x] Nine isolated host checks pass, including page history and branching after
+  Back. Android debug/test APK compilation and lint pass.
+- [ ] Updated APK delivery and physical gesture acceptance pending.
