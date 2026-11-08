@@ -692,3 +692,12 @@ Desktop preview launch still requires `--devices`; Android has its Devices previ
 entry. Use [the physical acceptance guide](DEVICE-WORKSPACE-TESTING.md) next.
 No device session, application installation, driver installation, network/security
 change or physical acceptance test was performed during this build checkpoint.
+
+### Authorized preview delivery
+
+The user subsequently approved Surface transfer and Android installation.
+`pre.92.1` installer was copied to the Surface Desktop over SSH with its existing
+trusted host key and a matching remote SHA256. The Pixel 8a received the matching
+APK through streamed ADB update; Android reports version `2026.11.08-pre.92.1`
+and versionCode `9201`. Windows installation remains for the user to run on both
+computers. No streaming or physical resource tests were started during delivery.
