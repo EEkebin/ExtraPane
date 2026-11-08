@@ -753,5 +753,25 @@ The child branch and draft PR remain unmerged; these are test artifacts.
   regression and actual app startup pass. Synthetic desktop screenshots reviewed.
   Android audio catalog host checks, both-ABI APK build, instrumentation compilation
   and lint pass. No physical audio route or streamed resource test was run.
-- [ ] Replacement package build/delivery and physical Android layout/audio-route
-  acceptance remain pending.
+- [x] Replacement Windows and Android test packages delivered as `pre.94.1`.
+- [ ] Physical Android layout/audio-route acceptance remains pending.
+
+Packaging checkpoint: CI run `42465820473` encountered GitHub HTTP 504 errors
+downloading Gradle, Mbed TLS and the Windows USB dependency. Android host checks
+passed before the download failure. A local release build from the same code
+(`1ff17bc`) succeeded using the cached pinned tools; the existing project signing
+key, certificate, APK metadata, ABIs and alignment were verified by the standard
+packager. Streamed update on the Pixel 8a succeeded with `2026.11.08-pre.94.1`,
+versionCode `9401`. No app launch or physical resource test was performed.
+
+The matching Windows native helpers and UI were rebuilt locally with the cached
+pinned dependencies. Standard package verification passed isolated extracted app
+startup without the SDK on PATH, complete manifest hashes, and embedded camera,
+USB receiving/source payload checks. The installer is on both the desktop PC and
+Surface Desktops, with matching SHA256. Windows installation remains for the user.
+The local build manifest marks working-tree changes because this checklist was
+being updated; application source matches `1ff17bc`.
+
+CI retries still encounter external download timeouts/HTTP 504s; do not describe
+this revision as passing all four remote package jobs. Linux compiled successfully
+before a packaging-tool download failed. No release was published or branch merged.
