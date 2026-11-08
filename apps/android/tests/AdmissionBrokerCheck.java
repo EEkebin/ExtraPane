@@ -27,6 +27,10 @@ public final class AdmissionBrokerCheck {
         AdmissionBroker.Lease route=acquire("192.0.2.1","192.0.2.10","123456",2,lost::incrementAndGet,()->false);require(made.size()==3);
         second.close();waitFor(()->made.get(0).closed);require(!made.get(1).closed&&!made.get(2).closed&&lost.get()==0);other.close();route.close();waitFor(()->made.stream().allMatch(f->f.closed));
         int count=made.size();try(AdmissionBroker.Lease automatic=acquire("192.0.2.3","","",0,lost::incrementAndGet,()->false)){require(automatic.credential.isEmpty()&&made.size()==count);}
+        String direct="EPCT1:1:"+"a".repeat(32)+":"+"b".repeat(64);int beforeDirect=made.size();
+        try(AdmissionBroker.Lease directLease=acquire("127.0.0.1","127.0.0.1",direct,1,()->{},()->false)){require(directLease.credential.equals(direct)&&made.size()==beforeDirect);}
+        try{acquire("127.0.0.1","127.0.0.1",direct,2,()->{},()->false);throw new AssertionError("Wrong-kind ticket accepted");}catch(IOException expected){}
+        try{acquire("127.0.0.1","127.0.0.1",direct+"\n",1,()->{},()->false);throw new AssertionError("Malformed ticket accepted");}catch(IOException expected){}
         Fake wrong=new Fake();wrong.failOpen=true;AdmissionBroker.testTransport(()->wrong);try{acquire("192.0.2.4","","123456",0,lost::incrementAndGet,()->false);throw new AssertionError("Accepted bad admission");}catch(IOException expected){require(expected.getMessage().contains("Wrong access code"));}waitFor(()->wrong.closed);require(lost.get()==0);
         Fake failed=new Fake();AdmissionBroker.testTransport(()->failed);AdmissionBroker.Lease active=acquire("192.0.2.5","","123456",0,lost::incrementAndGet,()->false);failed.failNext=true;
         try{acquire("192.0.2.5","","",1,lost::incrementAndGet,()->false);throw new AssertionError("Accepted failed control");}catch(IOException expected){}waitFor(()->failed.closed&&lost.get()==1);active.close();
