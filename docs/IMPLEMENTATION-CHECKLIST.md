@@ -820,3 +820,28 @@ before a packaging-tool download failed. No release was published or branch merg
 - [ ] Linux/macOS package validation pending. Run `42467692279` again encountered
   external dependency HTTP 504/download timeouts on macOS/Android. Android source
   is unchanged by this correction and the phone remains on `pre.95.1`.
+
+
+### Resource-controlled sharing and Nearby-first navigation
+
+- [x] Android and shared desktop UI start the listener from the first resource
+  power button. No separate Start sharing action; Stop sharing all is hidden
+  while idle and clears enabled offers. Last-off stops sharing. Explicit
+  gateway-only desktop sharing remains supported.
+- [x] Listener generation tracking rejects stale startup success/failure after
+  cancellation or restart. App startup offers are off; Android backgrounding
+  clears its offers instead of silently restarting capture later.
+- [x] Desktop Devices shows Nearby first and collapses Connect by address.
+  Normal Windows/Linux startup starts discovery; isolated Windows UI smoke
+  and Linux offscreen startup remain network-silent. Static LAN, localhost,
+  selected interface and manually forwarded destinations remain supported.
+- [x] Isolated desktop UI/controller lifecycle checks pass, including busy bind,
+  pending cancellation, gateway-only sharing and hidden idle actions. Android
+  eight host checks, debug/test APK compilation for both native ABIs and lint
+  pass. No physical resource session was started.
+- [x] Native macOS sharing controls and Nearby/manual layout updated and statically
+  reviewed. Windows app compiled. Core service, native-async, reconnect and
+  self-connection isolated checks pass, including outgoing byte delivery after
+  stopping local sharing.
+- [ ] Linux/macOS hosted compilation and package validation pending.
+- [ ] Updated installer/APK delivery and physical acceptance pending.

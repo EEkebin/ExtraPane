@@ -62,12 +62,14 @@ selected headset must not redirect its session to the loudspeaker.
 
 ## First connection: extend the desktop
 
-1. On the laptop that will show the extra screen, open **Share**. Select a display
-   destination, choose its connected local network address, and start sharing.
+1. On the laptop that will show the extra screen, open **Share**, choose its
+   connected local network address and enable a monitor offer with its green power
+   button. Sharing starts automatically; no separate Start sharing action is needed.
    Keep **Require pairing** enabled. Offering the destination alone must not create
    a virtual monitor or start a stream.
-2. On the desktop being extended, open **Devices**. Find the laptop nearby or enter
-   its IPv4 address and port. Enter the laptop's displayed six-digit code. Choose
+2. On the desktop being extended, open **Devices**. Nearby discovery starts by
+   default. Select the laptop, or expand **Connect by address** and enter its
+   IPv4 address and port. Enter the laptop's displayed six-digit code. Choose
    Automatic route, or the intended local interface on a multihomed computer.
 3. Connect and select the advertised display destination. Use its advertised mode
    or enter a custom resolution and refresh target. The desktop creates the virtual
@@ -87,6 +89,11 @@ currently view-only offer; it must not create a virtual monitor.
   ExtraPane status label. Advertising a camera or microphone must not activate it.
 - Stop one resource while another is active. Pending connections must be individually
   cancellable. Disconnect all must disappear after all pending/active resources end.
+- Disable the last local offer: its sharing listener and advertisement must stop.
+  Stop sharing all must turn every local offer off, including gateway sharing,
+  while preserving unrelated resources this device is using from another device.
+  Repeat a quick enable/disable/re-enable and an occupied-port failure: stale
+  confirmations must not restore sharing or leave red enabled buttons behind.
 - Select **Refresh resources** after attaching/removing hardware. Existing unchanged
   connections should survive a label or mode refresh; removed sources must stop.
 - Close the main window during active work and restore it from the tray. Use Exit

@@ -8,6 +8,9 @@ Item {
     property int page: 0
     property bool collapsed: false
     property string expectedDeviceId: ""
+    property bool manualExpanded: false
+    readonly property bool sharingBusy: peers.sharing || peers.sharingStarting
+    readonly property bool hasSharedResources: peers.offers.some(offer => offer.enabled)
     property real expansion: collapsed ? 0 : 1
     Behavior on expansion { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
     Connections { target: peers; function onToast(message) { notification.text = message; notification.open() } }
@@ -32,6 +35,27 @@ Item {
         for(const field of fields) { field.invalid=!field.acceptableInput||field.text.trim()===""; bad=bad||field.invalid }
         if(bad) { notification.text="Check the highlighted information."; notification.open() }
         return !bad
+    }
+    function sharingConfigurationValid() {
+        if(!sharingBusy) {
+            const valid=checkFields([listenPort])
+            bind.invalid=!validAddress(bind.selectedAddress)
+            if(bind.invalid) bindInvalidTimer.restart()
+            if(!valid || bind.invalid) {
+                notification.text="Check the highlighted information."
+                notification.open()
+                return false
+            }
+        }
+        return true
+    }
+    function setOfferSharing(id, enabled) {
+        if(enabled && !sharingConfigurationValid()) return
+        peers.setOfferSharing(id,enabled,bind.selectedAddress,Number(listenPort.text))
+    }
+    function setGatewaySharing(enabled) {
+        if(enabled && !sharingConfigurationValid()) return
+        peers.setGatewaySharing(enabled,bind.selectedAddress,Number(listenPort.text))
     }
     component Field: TextField {
         id: field
@@ -162,55 +186,19 @@ Item {
                 ColumnLayout {
                     visible: workspace.page===0; Layout.fillWidth: true; spacing: 14
                     RowLayout {
-                        Layout.fillWidth: true
-                        Field { id: host; objectName: "peerAddress"; onTextEdited: workspace.expectedDeviceId=""; Layout.fillWidth: true; placeholderText: "Address or localhost"; Accessible.name: "Device address" }
-                        Field { id: port; onTextEdited: workspace.expectedDeviceId=""; Layout.preferredWidth: 100; text: "43824"; placeholderText: "Port"; validator: IntValidator { bottom: 1; top: 65535 } }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; placeholderText: "Pairing code (first connection)"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly }
-                        Action { objectName: "peerConnect"; text: "Connect"; onClicked: {
-                            const numeric=workspace.checkFields([port]); host.invalid=!workspace.validAddress(host.text)
-                            let remembered=false; let matches=0
-                            for(const device of peers.remembered) {
-                                if(workspace.expectedDeviceId && device.id===workspace.expectedDeviceId) remembered=true
-                                if(device.address===(host.text.trim().toLowerCase()==="localhost" ? "127.0.0.1" : host.text.trim()) && Number(device.port)===Number(port.text)) matches++
-                            }
-                            if(!workspace.expectedDeviceId && matches>1 && !openConnection.checked) { notification.text="Choose a paired device below; this address matches more than one device."; notification.open(); return }
-                            if(!workspace.expectedDeviceId && matches===1) remembered=true
-                            code.invalid=!openConnection.checked && (!remembered || code.text.length>0) && !/^\d{6}$/.test(code.text)
-                            if(!numeric||host.invalid||code.invalid) { notification.text="Check the highlighted information."; notification.open(); return }
-                            peers.connectDevice(host.text,Number(port.text),code.text,workspace.expectedDeviceId,outgoingNic.selectedAddress,openConnection.checked); code.clear()
-                        } }
-                    }
-                    ComboBox {
-                        id: outgoingNic; objectName: "peerOutgoingNic"; Layout.fillWidth: true
-                        textRole: "label"; valueRole: "address"
-                        property string selectedAddress: ""
-                        model: {
-                            let rows=[{label:"Automatic route",address:""}].concat(peers.networkAddresses)
-                            if(selectedAddress && !rows.some(row=>row.address===selectedAddress)) rows.push({label:selectedAddress+" (unavailable)",address:selectedAddress})
-                            return rows
-                        }
-                        onActivated: selectedAddress=currentValue||""
-                        onModelChanged: Qt.callLater(function() { outgoingNic.currentIndex=outgoingNic.indexOfValue(outgoingNic.selectedAddress) })
-                        Accessible.name: "Connect through local interface"
-                    }
-                    CheckBox { id: openConnection; text: "Connect without pairing"; checked: false }
-                    Label { textFormat: Text.PlainText; visible: openConnection.checked; text: "The other device must also have pairing disabled. Its identity will not be verified."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    RowLayout {
                         Label { textFormat: Text.PlainText; text: "Nearby devices"; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                        Button { text: peers.directory.scanning ? "Refresh" : "Find devices"; onClicked: { if (peers.directory.scanning) peers.directory.refresh(); else peers.directory.start() } }
+                        Button { objectName: "peerRefreshDiscovery"; text: "Refresh"; onClicked: peers.startDiscovery() }
                     }
-                    Label { textFormat: Text.PlainText; text: peers.directory.status; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { textFormat: Text.PlainText; text: peers.directory.status; visible: text.length>0; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Repeater {
                         model: peers.directory.devices
                         delegate: ItemDelegate {
                             required property var modelData
+                            objectName: "peerNearby_"+modelData.id
                             Layout.fillWidth: true
                             text: modelData.name+" - "+modelData.address+":"+modelData.port
                             contentItem: Label { textFormat: Text.PlainText; text: parent.text; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter }
-                            onClicked: { host.text=modelData.address; port.text=String(modelData.port); workspace.expectedDeviceId=modelData.id; code.forceActiveFocus() }
+                            onClicked: { workspace.manualExpanded=true; host.text=modelData.address; port.text=String(modelData.port); workspace.expectedDeviceId=modelData.id; code.clear(); openConnection.checked=false; code.forceActiveFocus() }
                         }
                     }
                     Label { textFormat: Text.PlainText; visible: peers.remembered.length>0; text: "Paired devices"; font.weight: Font.DemiBold }
@@ -227,6 +215,60 @@ Item {
                             Action { objectName: "peerRemembered_"+modelData.id; text: "Connect"; enabled: !!modelData.address && modelData.port>0; onClicked: peers.connectDevice(modelData.address,modelData.port,"",modelData.id,outgoingNic.selectedAddress,false) }
                             Action { objectName: "peerForget_"+modelData.id; text: "Forget"; destructive: true; onClicked: peers.forgetDevice(modelData.id) }
                         }
+                    }
+                    ToolButton {
+                        objectName: "peerManualHeader"
+                        Layout.fillWidth: true; padding: 14
+                        text: "Connect by address"
+                        Accessible.name: text+(workspace.manualExpanded ? ", expanded" : ", collapsed")
+                        onClicked: workspace.manualExpanded=!workspace.manualExpanded
+                        background: Rectangle { radius: 10; color: parent.hovered ? "#20354f" : "#192b43" }
+                        contentItem: RowLayout {
+                            Label { text: "Connect by address"; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                            AppIcon { symbol: "chevron"; width: 18; height: 18; rotation: workspace.manualExpanded ? 90 : 0 }
+                        }
+                    }
+                    ColumnLayout {
+                        objectName: "peerManualFields"
+                        visible: workspace.manualExpanded; Layout.fillWidth: true; spacing: 14
+                        Label { text: "Use a local, static or forwarded address when the device is not listed nearby."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Field { id: host; objectName: "peerAddress"; onTextEdited: workspace.expectedDeviceId=""; Layout.fillWidth: true; placeholderText: "Address or localhost"; Accessible.name: "Device address" }
+                            Field { id: port; objectName: "peerPort"; onTextEdited: workspace.expectedDeviceId=""; Layout.preferredWidth: 100; text: "43824"; placeholderText: "Port"; validator: IntValidator { bottom: 1; top: 65535 } }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; placeholderText: "Pairing code (first connection)"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly }
+                            Action { objectName: "peerConnect"; text: "Connect"; onClicked: {
+                                const numeric=workspace.checkFields([port]); host.invalid=!workspace.validAddress(host.text)
+                                let remembered=false; let matches=0
+                                for(const device of peers.remembered) {
+                                    if(workspace.expectedDeviceId && device.id===workspace.expectedDeviceId) remembered=true
+                                    if(device.address===(host.text.trim().toLowerCase()==="localhost" ? "127.0.0.1" : host.text.trim()) && Number(device.port)===Number(port.text)) matches++
+                                }
+                                if(!workspace.expectedDeviceId && matches>1 && !openConnection.checked) { notification.text="Choose a paired device below; this address matches more than one device."; notification.open(); return }
+                                if(!workspace.expectedDeviceId && matches===1) remembered=true
+                                code.invalid=!openConnection.checked && (!remembered || code.text.length>0) && !/^\d{6}$/.test(code.text)
+                                if(!numeric||host.invalid||code.invalid) { notification.text="Check the highlighted information."; notification.open(); return }
+                                peers.connectDevice(host.text,Number(port.text),code.text,workspace.expectedDeviceId,outgoingNic.selectedAddress,openConnection.checked); code.clear()
+                            } }
+                        }
+                        ComboBox {
+                            id: outgoingNic; objectName: "peerOutgoingNic"; Layout.fillWidth: true
+                            textRole: "label"; valueRole: "address"
+                            property string selectedAddress: ""
+                            model: {
+                                let rows=[{label:"Automatic route",address:""}].concat(peers.networkAddresses)
+                                if(selectedAddress && !rows.some(row=>row.address===selectedAddress)) rows.push({label:selectedAddress+" (unavailable)",address:selectedAddress})
+                                return rows
+                            }
+                            onActivated: selectedAddress=currentValue||""
+                            onModelChanged: Qt.callLater(function() { outgoingNic.currentIndex=outgoingNic.indexOfValue(outgoingNic.selectedAddress) })
+                            Accessible.name: "Connect through local interface"
+                        }
+                        CheckBox { id: openConnection; text: "Connect without pairing"; checked: false }
+                        Label { textFormat: Text.PlainText; visible: openConnection.checked; text: "The other device must also have pairing disabled. Its identity will not be verified."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
                     Repeater {
                         model: peers.devices
@@ -312,12 +354,12 @@ Item {
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        ComboBox { id: bind; objectName: "peerBindNic"; property bool invalid: false; Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: bind.invalid } Timer { id: bindInvalidTimer; interval: 4500; onTriggered: bind.invalid=false } Layout.fillWidth: true; editable: true; model: peers.networkAddresses; textRole: "label"; valueRole: "address"; enabled: !peers.sharing; property string selectedAddress: ""
+                        ComboBox { id: bind; objectName: "peerBindNic"; property bool invalid: false; Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: bind.invalid } Timer { id: bindInvalidTimer; interval: 4500; onTriggered: bind.invalid=false } Layout.fillWidth: true; editable: true; model: peers.networkAddresses; textRole: "label"; valueRole: "address"; enabled: !workspace.sharingBusy; property string selectedAddress: ""
                             onActivated: selectedAddress=currentValue
                             onModelChanged: Qt.callLater(function() { if(!bind.selectedAddress&&bind.count) bind.selectedAddress=bind.valueAt(0); bind.currentIndex=bind.indexOfValue(bind.selectedAddress); bind.editText=bind.selectedAddress })
                             Connections { target: bind.contentItem; function onTextEdited() { bind.selectedAddress=bind.contentItem.text } }
                          }
-                        Field { id: listenPort; text: "43824"; Layout.preferredWidth: 100; placeholderText: "Port"; enabled: !peers.sharing; validator: IntValidator { bottom:1; top:65535 } }
+                        Field { id: listenPort; objectName: "peerListenPort"; text: "43824"; Layout.preferredWidth: 100; placeholderText: "Port"; enabled: !workspace.sharingBusy; validator: IntValidator { bottom:1; top:65535 } }
                     }
                     CheckBox { text: "Require pairing"; checked: peers.pairingRequired; onToggled: peers.pairingRequired=checked }
                     Label { textFormat: Text.PlainText; visible: peers.pairingRequired; text: "Pairing code: "+peers.pairingCode; font.pixelSize: 24; font.letterSpacing: 2 }
@@ -344,8 +386,8 @@ Item {
                                         PowerButton {
                                             objectName: "peerOffer_"+modelData.id
                                             destructive: modelData.enabled; enabled: modelData.available || modelData.enabled
-                                            description: (modelData.enabled ? "Stop offering " : "Offer ")+modelData.label
-                                            onClicked: peers.enableOffer(modelData.id,!modelData.enabled)
+                                            description: (modelData.enabled ? "Stop sharing " : "Share ")+modelData.label
+                                            onClicked: workspace.setOfferSharing(modelData.id,!modelData.enabled)
                                         }
                                     }
                                     Label { visible: !modelData.available; text: modelData.reason||"Unavailable"; color: "#f0c66e"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
@@ -353,9 +395,9 @@ Item {
                             }
                         }
                     }
-                    CheckBox { text: "Allow paired devices to use my paired devices"; checked: peers.gatewayEnabled; onToggled: peers.gatewayEnabled=checked }
+                    CheckBox { objectName: "peerGatewaySharing"; text: "Allow paired devices to use my paired devices"; checked: peers.gatewayEnabled; onToggled: { workspace.setGatewaySharing(checked); checked=Qt.binding(function() { return peers.gatewayEnabled }) } }
                     Label { textFormat: Text.PlainText; visible: peers.gatewayEnabled; text: "ExtraPane relays permitted resources through this computer. Turning this off ends relayed connections. It does not open ports on your router."; color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Action { text: peers.sharing ? "Stop sharing" : "Start sharing"; destructive: peers.sharing; onClicked: { if (peers.sharing) peers.stopSharing(); else { const valid=workspace.checkFields([listenPort]); bind.invalid=!workspace.validAddress(bind.selectedAddress); if(bind.invalid) bindInvalidTimer.restart(); if(!valid||bind.invalid) { notification.text="Check the highlighted information."; notification.open(); return } peers.startSharing(bind.selectedAddress,Number(listenPort.text)) } } }
+                    Action { objectName: "peerStopSharingAll"; text: "Stop sharing all"; destructive: true; visible: workspace.sharingBusy || workspace.hasSharedResources || peers.gatewayEnabled; onClicked: peers.stopSharing() }
                 }
                 ColumnLayout {
                     visible: workspace.page===2; Layout.fillWidth: true; spacing: 14

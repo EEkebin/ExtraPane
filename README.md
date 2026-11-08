@@ -39,10 +39,18 @@ path error for the new page. Use a newer build for this workspace. Do not assume
 a published package contains this branch's preview.
 
 Devices are peers: a computer can offer its camera while using another device's
-speakers. **Share** selects available resources and a local network address;
-**Start sharing** makes those offers available without starting capture. **Devices**
-finds nearby peers or connects to an entered IPv4 address and port. Select a
-resource to use it; **Connections** stops individual resources independently.
+speakers. On **Share**, choose a local network address and enable a resource with
+its green power button. The first enabled resource starts sharing automatically;
+capture starts only when another device requests it. **Stop sharing all** turns
+off the offers and ends incoming sessions without stopping resources you are using
+from other devices. Turning off the last offer stops sharing (unless gateway
+sharing is explicitly enabled).
+
+**Devices** looks for nearby peers by default. Expand **Connect by address** for
+an IPv4 address or localhost, port, optional interface and pairing code. This also
+works on static-IP LANs and when multicast discovery is unavailable. Across networks,
+the address/port must already be reachable; discovery does not cross the internet.
+Select a resource to use it; **Connections** stops individual resources independently.
 
 Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**,
 **Microphones** and **USB** groups. Android uses a navigation drawer for Devices,

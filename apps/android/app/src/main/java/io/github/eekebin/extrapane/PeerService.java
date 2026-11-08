@@ -16,7 +16,7 @@ final class PeerService implements AutoCloseable {
     synchronized String pairingCode()throws IOException{return nativeCode(alive());}
     /** Offer rows: id,label,kind,available,inputAllowed,width,height,refresh,reason. */
     synchronized void offers(String[][] rows)throws IOException{nativeOffers(alive(),rows);}
-    synchronized void start(String address,int port)throws IOException{nativeStart(alive(),address,port);}
+    synchronized long start(String address,int port)throws IOException{return nativeStart(alive(),address,port);}
     synchronized void stop()throws IOException{nativeStop(alive());}
     synchronized void setPairingRequired(boolean value)throws IOException{nativePairing(alive(),value);}
     /** Going into background stops all sharing; no camera/mic starts behind UI. */
@@ -30,6 +30,7 @@ final class PeerService implements AutoCloseable {
     /** Rows: type,connection,request,grant,peerHex,kind,port,detail,ownerHex,
      * resource,width,height,refresh,credential,input. Catalog rows additionally
      * contain available,unavailableReason,ownerName at columns15..17.
+     * Service events contain listener generation at column18 (zero for other events).
      * native-ready/stop are private adapter commands, not user-visible status.
      * Never log the credential column. Native-ready launches only a user-enabled
      * local source, using 127.0.0.1:port, after checking foreground permissions.
@@ -48,7 +49,7 @@ final class PeerService implements AutoCloseable {
     private static native String[][] nativeRemembered(long h)throws IOException;
     private static native String nativeCode(long h)throws IOException;
     private static native void nativeOffers(long h,String[][] rows)throws IOException;
-    private static native void nativeStart(long h,String address,int port)throws IOException;
+    private static native long nativeStart(long h,String address,int port)throws IOException;
     private static native void nativeStop(long h)throws IOException;
     private static native void nativePairing(long h,boolean required)throws IOException;
     private static native void nativeForeground(long h,boolean foreground)throws IOException;

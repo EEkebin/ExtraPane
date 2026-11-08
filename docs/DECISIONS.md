@@ -499,3 +499,20 @@ not activate its camera, microphone or other native capture.
 
 Desktop navigation uses a fixed hamburger icon, matching Android. The sidebar
 may slide, but its toggle does not rotate or swap between arrow glyphs.
+
+## Individual resources start sharing; discovery is the default entry
+
+This supersedes the earlier separate Start sharing step. Enabling the first
+resource validates the selected address/port and starts sharing automatically.
+Disabling the last offered resource stops the listener; explicitly enabled gateway
+sharing also counts as an offer. Stop sharing all clears local offers and gateway
+sharing, withdraws advertisements and ends incoming use while preserving outgoing
+resource connections. Startup failure must leave no falsely enabled resource.
+Fresh app startup does not silently restore active offers, and stale listener
+events after stop/restart cannot reactivate sharing. Pairing-code lifetime is unchanged.
+
+Desktop Devices browses Nearby devices by default, with collapsed Connect by address
+as an equally functional direct-IP fallback. Do not label it External: static-IP LAN
+and localhost connections use it too. Discovery is an untrusted local-network hint;
+paired identity is still verified by the authenticated connection. Android automatically
+advertises enabled offers; its current workspace remains a resource provider.

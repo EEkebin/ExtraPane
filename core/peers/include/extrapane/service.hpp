@@ -24,7 +24,7 @@ public:
         std::function<std::vector<Context>()> poll;
     };
     enum class EventKind {listening,connected,catalog,granted,stopped,disconnected,error,trust_changed,reconnecting};
-    struct Event {EventKind kind;Context context;std::uint16_t port=0;std::string detail;std::vector<Catalog> catalogs;bool verified=false;std::optional<rpc::Open> resource;Token replaces_grant=0;};
+    struct Event {EventKind kind;Context context;std::uint16_t port=0;std::string detail;std::vector<Catalog> catalogs;bool verified=false;std::optional<rpc::Open> resource;Token replaces_grant=0;Token sharing_generation=0;};
     Service(Options,Hooks);
     ~Service();
     Service(const Service&)=delete;
@@ -34,7 +34,8 @@ public:
     // Start/stop sharing preserves process-lifetime pairing code. stop withdraws
     // local offers/incoming use; independent outgoing resources remain active.
     // Methods enqueue bounded commands; poll drains UI events.
-    void start(std::string bind,std::uint16_t port);
+    // Returned generation identifies the matching asynchronous listening event.
+    Token start(std::string bind,std::uint16_t port);
     void stop();
     Token connect(ConnectOptions);
     Token catalog(Token connection);

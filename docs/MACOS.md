@@ -1,5 +1,21 @@
 # macOS preview
 
+## Devices workspace on the development branch
+
+The Devices workspace opens with Nearby devices and starts local discovery
+automatically. Expand **Connect by address** for IPv4/localhost, port, pairing
+code and interface selection. Direct connections remain available when multicast
+is unavailable or when connecting through a manually forwarded address.
+
+On Share, enabling the first resource starts its listener; disabling the last
+resource stops it unless gateway sharing is explicitly enabled. **Stop sharing
+all** disables all local offers and gateway sharing without stopping outgoing
+resource connections. Resources start off after an app restart. Discovery does
+not grant access or activate capture. See [workspace testing](DEVICE-WORKSPACE-TESTING.md)
+for the current flow; older server/client instructions below describe the legacy
+mode. macOS/Linux validation of this latest increment remains pending.
+
+
 The macOS app receives a Windows or Linux host's display using the same protocol 9 and automatic LAN mode. It targets macOS 12 or newer and contains both Apple Silicon (arm64) and Intel (x86_64) code in one Universal app. The development host also creates a real extended Mac monitor on macOS 13 or newer; iOS remains a separate milestone. The host/client Universal ZIP and DMG pass hosted packaging validation on Apple Silicon, with native build/checks also passing on Intel.
 
 ## Install and connect

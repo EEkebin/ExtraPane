@@ -367,12 +367,13 @@ Service::~Service(){auto& s=*state_;s.stop_listener();s.auth.stop();s.ending=tru
 DeviceId Service::identity()const{return state_->store.identity();}
 std::string Service::pairing_code()const{return state_->auth.code();}
 std::vector<RememberedDevice> Service::remembered()const{return state_->store.devices();}
-void Service::start(std::string bind,std::uint16_t port){
+Service::Token Service::start(std::string bind,std::uint16_t port){
     auto& s=*state_;std::lock_guard lifecycle(s.lifecycle_mutex);
     need(!s.listener,"Sharing listener is already running");s.reap_listeners();need(s.retired.size()<16,"Previous sharing listeners are still stopping");
     auto listener=std::make_shared<transport::Listener>(bind,port);
-    s.post([&s,port=listener->port()]{s.policy.sharing(true);s.event({EventKind::listening,{},port});});
-    s.listener=listener;s.accepting=true;auto done=std::make_shared<std::atomic<bool>>(false);s.acceptor_done=done;const auto serial=s.listener_serial.load();
+    const auto serial=s.listener_serial.load();
+    s.post([&s,port=listener->port(),serial]{if(s.listener_serial!=serial)return;try{s.policy.sharing(true);Event event{EventKind::listening,{},port};event.sharing_generation=serial;s.event(std::move(event));}catch(const std::exception& e){Event event{EventKind::error,{},0,e.what()};event.sharing_generation=serial;s.event(std::move(event));}});
+    s.listener=listener;s.accepting=true;auto done=std::make_shared<std::atomic<bool>>(false);s.acceptor_done=done;
     s.acceptor=std::thread([&s,listener,done,serial]{
         while(s.accepting&&s.listener_serial==serial){
             try{
@@ -383,6 +384,7 @@ void Service::start(std::string bind,std::uint16_t port){
         }
         *done=true;
     });
+    return serial;
 }
 void Service::stop(){auto& s=*state_;std::lock_guard lifecycle(s.lifecycle_mutex);s.stop_listener();s.post([&s]{s.revoked(s.policy.sharing(false));std::vector<Token> incoming;for(const auto& [id,link]:s.links)if(link->incoming)incoming.push_back(id);for(auto id:incoming)s.drop(id,"Sharing stopped");});}
 Service::Token Service::connect(ConnectOptions options){auto& s=*state_;const auto token=s.next();const auto generation=s.epoch.load();s.post([&s,token,generation,options=std::move(options)]()mutable{try{s.launch_dial(token,std::move(options),generation);}catch(const std::exception& e){s.event({EventKind::error,{token},0,e.what()});}});return token;}

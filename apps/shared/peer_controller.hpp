@@ -16,6 +16,7 @@ class PeerController final:public QObject {
     Q_PROPERTY(bool pairingRequired READ pairingRequired WRITE setPairingRequired NOTIFY changed)
     Q_PROPERTY(bool gatewayEnabled READ gatewayEnabled WRITE setGatewayEnabled NOTIFY changed)
     Q_PROPERTY(bool sharing READ sharing NOTIFY changed)
+    Q_PROPERTY(bool sharingStarting READ sharingStarting NOTIFY changed)
     Q_PROPERTY(bool active READ active NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QVariantList networkAddresses READ networkAddresses NOTIFY changed)
@@ -33,7 +34,8 @@ public:
     bool pairingRequired()const{return pairingRequired_;}
     bool gatewayEnabled()const{return gatewayEnabled_;}
     bool sharing()const{return sharing_;}
-    bool active()const{return sharing_||!devices_.isEmpty()||!connections_.isEmpty();}
+    bool sharingStarting()const{return sharingStarting_;}
+    bool active()const{return sharing_||sharingStarting_||!devices_.isEmpty()||!connections_.isEmpty();}
     QString status()const{return status_;}
     QVariantList networkAddresses()const;
     QVariantList offers()const;
@@ -42,7 +44,10 @@ public:
     QVariantList connections()const;
     void setLocalOffers(std::vector<extrapane::peers::Offer>);
     Q_INVOKABLE void refreshOffers();
+    Q_INVOKABLE void startDiscovery();
     Q_INVOKABLE void enableOffer(QString id,bool enabled);
+    Q_INVOKABLE void setOfferSharing(QString id,bool enabled,QString address,unsigned port);
+    Q_INVOKABLE void setGatewaySharing(bool enabled,QString address,unsigned port);
     Q_INVOKABLE void setPairingRequired(bool);
     Q_INVOKABLE void setGatewayEnabled(bool);
     Q_INVOKABLE void startSharing(QString address,unsigned port,unsigned interfaceIndex=0);
@@ -66,7 +71,10 @@ private:
     QTimer timer_;
     std::unique_ptr<Service> service_;
     QString name_,status_="Sharing stopped";
-    bool pairingRequired_=true,sharing_=false,gatewayEnabled_=false;
+    bool pairingRequired_=true,sharing_=false,sharingStarting_=false,gatewayEnabled_=false;
+    QString bindAddress_;
+    unsigned configuredPort_=0;
+    Service::Token sharingGeneration_=0;
     unsigned interfaceIndex_=0,listenPort_=0;
     bool loopbackSharing_=false;
     std::uint64_t announcementInstance_=0,announcementSequence_=0;
@@ -78,4 +86,5 @@ private:
     void poll();
     void announce(unsigned port);
     void error(const QString&);
+    void beginSharing(QString address,unsigned port,unsigned interfaceIndex=0);
 };

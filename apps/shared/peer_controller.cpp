@@ -23,7 +23,7 @@ QString token(std::uint64_t value){return QString::number(value);}
 PeerController::PeerController(Service::Hooks hooks,QString path,QObject* parent):QObject(parent),directory_(this),timer_(this){
     announcementInstance_=QRandomGenerator::global()->generate64()|1;
     name_=QSysInfo::machineHostName();if(name_.isEmpty())name_="ExtraPane device";
-    QSettings settings;pairingRequired_=settings.value("peers/pairingRequired",true).toBool();for(const auto& id:settings.value("peers/offers").toStringList())enabled_.insert(id);
+    QSettings settings;pairingRequired_=settings.value("peers/pairingRequired",true).toBool(); // Offers are opt-in on every app startup.
     // TrustStore creates and verifies the leaf with its own user-private ACL /
     // mode. Qt's default directory permissions are not suitable for that leaf.
     if(!QDir().mkpath(QFileInfo(path).absolutePath()))throw std::runtime_error("Cannot create device settings parent directory");
@@ -47,18 +47,60 @@ QVariantList PeerController::networkAddresses()const{
 }
 QVariantList PeerController::offers()const{QVariantList result;for(const auto& offer:inventory_){auto item=offerMap(offer);item["enabled"]=enabled_.contains(QString::fromStdString(offer.id));result.push_back(item);}return result;}
 QVariantList PeerController::remembered()const{QVariantList result;if(!service_)return result;for(const auto& device:service_->remembered())result.push_back(QVariantMap{{"id",hex(device.id)},{"name",device.name.empty()?hex(device.id).left(12):QString::fromStdString(device.name)},{"address",QString::fromStdString(device.address_hint)},{"port",device.port_hint}});return result;}
-void PeerController::setLocalOffers(std::vector<Offer> offers){inventory_=std::move(offers);if(service_)service_->offers(selectedOffers());if(sharing_)announce(listenPort_);emit changed();}
-void PeerController::refreshOffers(){emit refreshRequested();}
-void PeerController::enableOffer(QString id,bool enabled){
-    const auto found=std::find_if(inventory_.begin(),inventory_.end(),[&](const auto& offer){return QString::fromStdString(offer.id)==id;});if(found==inventory_.end()||(enabled&&!found->available)){error("This resource is unavailable");return;}
-    if(enabled)enabled_.insert(id);else enabled_.remove(id);QSettings().setValue("peers/offers",QStringList(enabled_.begin(),enabled_.end()));try{service_->offers(selectedOffers());if(sharing_)announce(listenPort_);emit changed();}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}
+void PeerController::setLocalOffers(std::vector<Offer> offers){
+    inventory_=std::move(offers);
+    for(auto it=enabled_.begin();it!=enabled_.end();) {
+        const bool available=std::any_of(inventory_.begin(),inventory_.end(),[&](const auto& offer){return QString::fromStdString(offer.id)==*it&&offer.available;});
+        if(!available)it=enabled_.erase(it);else ++it;
+    }
+    if(service_)service_->offers(selectedOffers());
+    if(enabled_.isEmpty()&&!gatewayEnabled_&&(sharing_||sharingStarting_)){stopSharing();return;}
+    if(sharing_)announce(listenPort_);emit changed();
 }
-void PeerController::setGatewayEnabled(bool enabled){try{service_->gateway(enabled);gatewayEnabled_=enabled;emit changed();}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
+void PeerController::refreshOffers(){emit refreshRequested();}
+void PeerController::startDiscovery(){if(!directory_.scanning())directory_.start(interfaceIndex_);}
+void PeerController::enableOffer(QString id,bool enabled){setOfferSharing(id,enabled,bindAddress_,configuredPort_);}
+void PeerController::setOfferSharing(QString id,bool enabled,QString bind,unsigned port){
+    const auto found=std::find_if(inventory_.begin(),inventory_.end(),[&](const auto& offer){return QString::fromStdString(offer.id)==id;});
+    if(found==inventory_.end()||(enabled&&!found->available)){error("This resource is unavailable");return;}
+    if(enabled_.contains(id)==enabled)return;
+    const bool starting=enabled&&!sharing_&&!sharingStarting_;
+    try{
+        if(starting)beginSharing(bind,port);
+        if(enabled)enabled_.insert(id);else enabled_.remove(id);
+        service_->offers(selectedOffers());
+        if(enabled_.isEmpty()&&!gatewayEnabled_){stopSharing();return;}
+        if(sharing_)announce(listenPort_);emit changed();
+    }catch(const std::exception& e){
+        if(enabled)enabled_.remove(id);else enabled_.insert(id);
+        if(starting)stopSharing();error(QString::fromUtf8(e.what()));
+    }
+}
+void PeerController::setGatewayEnabled(bool enabled){setGatewaySharing(enabled,bindAddress_,configuredPort_);}
+void PeerController::setGatewaySharing(bool enabled,QString bind,unsigned port){
+    if(gatewayEnabled_==enabled)return;
+    const bool starting=enabled&&!sharing_&&!sharingStarting_;
+    try{
+        if(starting)beginSharing(bind,port);
+        service_->gateway(enabled);gatewayEnabled_=enabled;
+        if(!enabled&&enabled_.isEmpty()){stopSharing();return;}
+        if(sharing_)announce(listenPort_);emit changed();
+    }catch(const std::exception& e){if(starting)stopSharing();error(QString::fromUtf8(e.what()));}
+}
 void PeerController::setPairingRequired(bool value){try{service_->pairing_required(value);pairingRequired_=value;QSettings().setValue("peers/pairingRequired",value);if(sharing_)announce(listenPort_);emit changed();}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
-void PeerController::startSharing(QString bind,unsigned port,unsigned interfaceIndex){try{if(!port||port>65535)throw std::invalid_argument("Enter a port between 1 and 65535");const auto local=address(bind);interfaceIndex_=interfaceIndex;loopbackSharing_=QHostAddress(local).isLoopback();
-    if(!loopbackSharing_){bool found=false;for(const auto& item:networkAddresses()){const auto nic=item.toMap();if(nic.value("address").toString()==local&&(!interfaceIndex||nic.value("interfaceIndex").toUInt()==interfaceIndex)){interfaceIndex_=nic.value("interfaceIndex").toUInt();found=true;break;}}if(!found)throw std::invalid_argument("Select a connected local network address");}
-    announcementInstance_=QRandomGenerator::global()->generate64()|1;announcementSequence_=0;service_->start(local.toStdString(),static_cast<std::uint16_t>(port));status_="Starting sharing...";emit changed();}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
-void PeerController::stopSharing(){directory_.withdraw();service_->stop();sharing_=false;listenPort_=0;status_="Sharing stopped";emit changed();}
+void PeerController::beginSharing(QString bind,unsigned port,unsigned interfaceIndex){
+    if(!port||port>65535)throw std::invalid_argument("Enter a port between 1 and 65535");
+    const auto local=address(bind);const bool loopback=QHostAddress(local).isLoopback();
+    if(!loopback){bool found=false;for(const auto& item:networkAddresses()){const auto nic=item.toMap();if(nic.value("address").toString()==local&&(!interfaceIndex||nic.value("interfaceIndex").toUInt()==interfaceIndex)){interfaceIndex=nic.value("interfaceIndex").toUInt();found=true;break;}}if(!found)throw std::invalid_argument("Select a connected local network address");}
+    const auto generation=service_->start(local.toStdString(),static_cast<std::uint16_t>(port));
+    sharingGeneration_=generation;sharingStarting_=true;bindAddress_=local;configuredPort_=port;interfaceIndex_=interfaceIndex;loopbackSharing_=loopback;
+    announcementInstance_=QRandomGenerator::global()->generate64()|1;announcementSequence_=0;status_="Starting sharing...";
+}
+void PeerController::startSharing(QString bind,unsigned port,unsigned interfaceIndex){try{if(enabled_.isEmpty()&&!gatewayEnabled_)throw std::invalid_argument("Choose a resource to share first");if(!sharing_&&!sharingStarting_)beginSharing(bind,port,interfaceIndex);emit changed();}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
+void PeerController::stopSharing(){
+    directory_.withdraw();sharingGeneration_=0;sharing_=false;sharingStarting_=false;listenPort_=0;enabled_.clear();gatewayEnabled_=false;
+    service_->offers({});service_->gateway(false);service_->stop();status_="Sharing stopped";emit changed();
+}
 void PeerController::connectDevice(QString host,unsigned port,QString code,QString expected,QString local,bool open){try{
     const auto destination=address(host);if(!port||port>65535)throw std::invalid_argument("Enter a port between 1 and 65535");if(!code.isEmpty()&&(code.size()!=6||std::any_of(code.begin(),code.end(),[](auto c){return c<'0'||c>'9';})))throw std::invalid_argument("Enter the six-digit pairing code");
     Service::ConnectOptions options{destination.toStdString(),static_cast<std::uint16_t>(port),local.isEmpty()?std::string{}:address(local).toStdString(),expected.isEmpty()?DeviceId{}:identity(expected),code.toStdString(),open};
@@ -87,7 +129,7 @@ void PeerController::poll(){if(!service_)return;for(auto& event:service_->poll()
 void PeerController::applyEvent(Service::Event& event){
     const auto connection=token(event.context.connection);const auto grant=token(event.context.grant);
     switch(event.kind){
-    case Service::EventKind::listening:sharing_=true;listenPort_=event.port;status_="Sharing enabled";if(!loopbackSharing_)directory_.start(interfaceIndex_);announce(event.port);break;
+    case Service::EventKind::listening:if(!sharingGeneration_||event.sharing_generation!=sharingGeneration_||(!gatewayEnabled_&&enabled_.isEmpty()))return;sharingStarting_=false;sharing_=true;listenPort_=event.port;status_="Sharing enabled";if(!loopbackSharing_)directory_.start(interfaceIndex_);announce(event.port);break;
     case Service::EventKind::connected:{devices_.removeIf([&](const QVariant& value){return value.toMap().value("connection").toString()==connection;});QVariantMap item{{"connection",connection},{"identity",hex(event.context.peer)},{"incoming",event.context.incoming},{"verified",event.verified},{"name",hex(event.context.peer).left(12)},{"resources",QVariantList{}}};devices_.push_back(item);if(!event.context.incoming)service_->catalog(event.context.connection);status_="Device connected";break;}
     case Service::EventKind::reconnecting:for(auto& value:connections_){auto row=value.toMap();if(row.value("connection").toString()==connection&&row.value("kind").toString()!=kindName(Kind::usb)){row["phase"]="reconnecting";value=row;}}status_="Connection interrupted. Reconnecting...";break;
     case Service::EventKind::catalog:for(auto& item:devices_){auto device=item.toMap();if(device.value("connection").toString()!=connection)continue;QVariantList resources;for(const auto& catalog:event.catalogs){if(catalog.device==event.context.peer)device["name"]=QString::fromStdString(catalog.name);for(const auto& offer:catalog.offers){auto row=offerMap(offer);row["owner"]=hex(catalog.device);row["ownerName"]=QString::fromStdString(catalog.name);row["delegated"]=catalog.device!=event.context.peer;resources.push_back(row);}}device["resources"]=resources;item=device;}break;
@@ -98,8 +140,8 @@ void PeerController::applyEvent(Service::Event& event){
         item["connection"]=connection;item["grant"]=grant;item["phase"]="active";item["incoming"]=event.context.incoming;connections_.push_back(item);emit toast("Resource connected");break;}
     case Service::EventKind::stopped:if(!event.context.incoming&&pending_.value(token(event.context.request)).value("connection").toString()==connection)pending_.remove(token(event.context.request));connections_.removeIf([&](const QVariant& value){auto row=value.toMap();return row.value("connection").toString()==connection&&row.value("grant").toString()==grant&&(row.value("phase")!="reconnecting"||event.detail=="Reconnect ended"||event.detail=="Reconnect cancelled");});break;
     case Service::EventKind::disconnected:for(auto it=pending_.begin();it!=pending_.end();)if(it.value().value("connection").toString()==connection)it=pending_.erase(it);else ++it;devices_.removeIf([&](const QVariant& value){return value.toMap().value("connection").toString()==connection;});connections_.removeIf([&](const QVariant& value){return value.toMap().value("connection").toString()==connection;});break;
-    case Service::EventKind::error:{if(event.context.grant)connections_.removeIf([&](const QVariant& value){const auto row=value.toMap();return row.value("connection").toString()==connection&&row.value("grant").toString()==grant&&row.value("phase")=="reconnecting";});const auto request=token(event.context.request);if(!event.context.incoming&&pending_.value(request).value("connection").toString()==connection)pending_.remove(request);error(QString::fromStdString(event.detail));break;}
+    case Service::EventKind::error:{if(event.sharing_generation){if(event.sharing_generation!=sharingGeneration_)return;stopSharing();}if(event.context.grant)connections_.removeIf([&](const QVariant& value){const auto row=value.toMap();return row.value("connection").toString()==connection&&row.value("grant").toString()==grant&&row.value("phase")=="reconnecting";});const auto request=token(event.context.request);if(!event.context.incoming&&pending_.value(request).value("connection").toString()==connection)pending_.remove(request);error(QString::fromStdString(event.detail));break;}
     case Service::EventKind::trust_changed:break;
     }emit changed();
 }
-void PeerController::shutdown(){timer_.stop();directory_.stop();service_.reset();sharing_=false;devices_.clear();connections_.clear();pending_.clear();}
+void PeerController::shutdown(){timer_.stop();directory_.stop();service_.reset();sharing_=false;sharingStarting_=false;sharingGeneration_=0;gatewayEnabled_=false;enabled_.clear();devices_.clear();connections_.clear();pending_.clear();}

@@ -114,8 +114,9 @@ int main(int argc,char** argv){
     auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
     if(!window)return 1;
     controller.setWindow(window);
+    if(peers&&(platform=="xcb"||platform.startsWith("wayland")))peers->startDiscovery();
     QSystemTrayIcon tray(QIcon(":/extrapane.png"));tray.setToolTip("ExtraPane");
-    QMenu trayMenu;auto* open=trayMenu.addAction("Open ExtraPane");auto* stop=trayMenu.addAction(peers?"Stop sharing":"Stop server");
+    QMenu trayMenu;auto* open=trayMenu.addAction("Open ExtraPane");auto* stop=trayMenu.addAction(peers?"Stop sharing all":"Stop server");
     auto* disconnect=trayMenu.addAction("Disconnect all");trayMenu.addSeparator();auto* exit=trayMenu.addAction("Exit ExtraPane");tray.setContextMenu(&trayMenu);
     auto restore=[&]{if(window->visibility()==QWindow::Minimized)window->showNormal();else window->show();window->raise();window->requestActivate();tray.hide();};
     QObject::connect(open,&QAction::triggered,&app,restore);
@@ -128,7 +129,7 @@ int main(int argc,char** argv){
             if(QSystemTrayIcon::isSystemTrayAvailable())tray.show();else restore();
         }else app.quit();
     });
-    auto updateTray=[&]{stop->setEnabled(controller.hosting()||(peers&&peers->sharing()));disconnect->setEnabled(controller.active()||(peers&&!peers->connections().isEmpty()));if(!window->isVisible()&&!controller.hosting()&&!controller.active()&&(!peers||!peers->active()))app.quit();};
+    auto updateTray=[&]{stop->setEnabled(controller.hosting()||(peers&&(peers->sharing()||peers->sharingStarting())));disconnect->setEnabled(controller.active()||(peers&&!peers->connections().isEmpty()));if(!window->isVisible()&&!controller.hosting()&&!controller.active()&&(!peers||!peers->active()))app.quit();};
     if(peers)QObject::connect(peers.get(),&PeerController::changed,&app,updateTray);
     QObject::connect(&controller,&Controller::changed,&app,updateTray);QObject::connect(&controller,&Controller::hostChanged,&app,updateTray);updateTray();
     QObject::connect(&controller,&Controller::hostChanged,&controller,[&controller]{qInfo().noquote()<<controller.hostStatus();});

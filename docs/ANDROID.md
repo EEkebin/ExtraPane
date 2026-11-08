@@ -32,8 +32,10 @@ Android currently offers resources to other computers. It advertises the selecte
 offers on the LAN while sharing is running, supports direct connections to its
 listening address, and remembers paired devices. It does not yet provide the
 desktop workspace's resource-consuming browser or system-wide virtual devices.
-Use Share to select resources and start sharing; on the other computer, use
-Devices to connect to this phone. Offering a camera or microphone does not start
+Use Share and enable a resource to start sharing and local discovery announcements
+automatically; there is no separate Start sharing button. Stop sharing all turns
+every resource off. Turning the last resource off also stops sharing. On the other
+computer, use Devices to connect to this phone. Offering a camera or microphone does not start
 capture until an authorized resource connection requests it.
 
 This workspace shares only while its activity is in the foreground; backgrounding

@@ -3,10 +3,51 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QFileInfo>
+#include <QTcpServer>
+#include <QElapsedTimer>
+#include <QThread>
 #include <iostream>
 #include <stdexcept>
 
 struct PeerControllerEventCheck {
+    static void sharing(PeerController& controller) {
+        using namespace extrapane::peers;
+        auto require=[](bool good,const char* why){if(!good)throw std::runtime_error(why);};
+        const auto code=controller.pairingCode();
+        controller.setLocalOffers({{"camera", "Camera", Kind::camera, true}, {"mic", "Microphone", Kind::microphone, true}});
+        require(controller.enabled_.empty(),"Persisted offers exposed on fresh startup");
+        controller.setOfferSharing("camera",true,"invalid",43824);
+        require(!controller.sharingStarting()&&controller.enabled_.empty(),"Invalid bind enabled sharing");
+        controller.setOfferSharing("camera",true,"localhost",0);
+        require(!controller.sharingStarting()&&controller.enabled_.empty(),"Invalid port enabled sharing");
+        QTcpServer reservation;require(reservation.listen(QHostAddress::LocalHost,0),"Cannot reserve loopback port");
+        const auto port=reservation.serverPort();
+        controller.setOfferSharing("camera",true,"localhost",port);
+        require(!controller.sharingStarting()&&controller.enabled_.empty(),"Occupied port left offer enabled");reservation.close();
+        controller.setOfferSharing("camera",true,"localhost",port);
+        require(controller.sharingStarting()&&controller.enabled_.contains("camera"),"First offer did not start sharing");
+        const auto staleGeneration=controller.sharingGeneration_;
+        controller.setOfferSharing("camera",false,{},0);
+        require(!controller.sharingStarting()&&!controller.sharing()&&controller.enabled_.empty(),"Last offer did not cancel pending start");
+        Service::Event stale{Service::EventKind::listening,{},port};stale.sharing_generation=staleGeneration;
+        controller.applyEvent(stale);require(!controller.sharing(),"Late listener revived cancelled sharing");
+        controller.setGatewaySharing(true,"localhost",port);
+        require(controller.gatewayEnabled()&&controller.sharingStarting(),"Gateway-only sharing did not start");
+        controller.applyEvent(stale);require(!controller.sharing(),"Old listener accepted by new start");
+        QElapsedTimer deadline;deadline.start();while(!controller.sharing()&&deadline.elapsed()<3000){QThread::msleep(5);controller.poll();}
+        require(controller.sharing()&&!controller.sharingStarting(),"Listener acknowledgement not applied");
+        controller.setOfferSharing("mic",true,{},0);
+        controller.setOfferSharing("mic",false,{},0);
+        require(controller.sharing()&&controller.gatewayEnabled(),"Last local offer stopped explicit gateway");
+        controller.setGatewaySharing(false,{},0);require(!controller.sharing(),"Last gateway did not stop sharing");
+        controller.setOfferSharing("mic",true,"localhost",port);controller.setGatewaySharing(true,{},0);
+        controller.connections_.push_back(QVariantMap{{"incoming",false},{"connection","555"}});
+        controller.stopSharing();
+        require(controller.enabled_.empty()&&!controller.gatewayEnabled()&&!controller.sharingStarting(),"Stop all retained selected sharing");
+        require(controller.connections_.size()==1,"Stop sharing removed independent outgoing use");controller.connections_.clear();
+        controller.poll();require(!controller.sharing(),"Queued acknowledgement revived stop all");
+        require(controller.pairingCode()==code,"Sharing toggles rotated pairing code");
+    }
     static void run(PeerController& controller) {
         using namespace extrapane::peers;
         auto require=[](bool good,const char* why){if(!good)throw std::runtime_error(why);};
@@ -37,6 +78,7 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);app.setOrganizati
     QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,temporary.path());
     const auto path=temporary.path()+"/app/peers";
     try{
+        QSettings().setValue("peers/offers",QStringList{"camera"});
         extrapane::peers::DeviceId identity{};
         {PeerController controller({},path);if(controller.active()||controller.sharing()||controller.pairingCode().size()!=6)throw std::runtime_error("Unexpected startup policy");
 #ifdef _WIN32
@@ -51,7 +93,7 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);app.setOrganizati
 #else
         extrapane::peers::TrustStore store(std::filesystem::u8path(path.toUtf8().toStdString()));
 #endif
-        if(store.identity()!=identity)throw std::runtime_error("Startup replaced local identity");PeerControllerEventCheck::run(controller);}
-        std::cout<<"Qt peer startup creates private store and preserves identity without listeners or media\n";return 0;
+        if(store.identity()!=identity)throw std::runtime_error("Startup replaced local identity");PeerControllerEventCheck::run(controller);PeerControllerEventCheck::sharing(controller);}
+        std::cout<<"Qt peer startup and resource sharing lifecycle pass with isolated loopback listeners, no media\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }
