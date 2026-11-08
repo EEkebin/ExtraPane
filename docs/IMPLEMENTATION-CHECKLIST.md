@@ -510,7 +510,7 @@ connection, installation or system configuration change was performed.
 - [ ] Existing-screen capture separate from virtual extension; view-only default.
 - [x] One-hop delegated gateway catalog and traffic relay, off by default; no UPnP (three-service forward/reverse relay and revocation checks).
 - [x] Bounded non-USB reconnect with permission/identity rechecks; explicit USB reconnect (actual transport-interruption checks with fake native endpoints).
-- [ ] Isolated protocol/lifecycle/security checks and four-platform package builds.
+- [x] Isolated protocol/lifecycle/security checks and four-platform package builds (pre.92.1; physical acceptance remains separate).
 - [ ] User-authorized physical acceptance tests and review before any main merge.
 
 These gates are not marked implemented merely because their model or UI exists.
@@ -675,3 +675,20 @@ provider routes; this does not reconnect USB sessions.
   drawing over the floating label. The offscreen regression verifies that the
   label-aware outline remains in use and normal styling returns after validation
   clears. This fixes the earlier border/label overlap in the new workspace too.
+
+### Device preview package checkpoint: 2026.11.08-pre.92.1
+
+All jobs passed in [the four-platform package run](https://github.com/EEkebin/ExtraPane/actions/runs/42461523431)
+for code commit `7a9b03f`: Windows native/shared UI checks and installer/portable
+verification, Linux AppImage build/startup, Android build/lint/signing, and macOS
+Universal packaging plus native checks on Apple Silicon and Intel. The preceding
+[shared-core run](https://github.com/EEkebin/ExtraPane/actions/runs/42459714309)
+passed lifecycle, encrypted-control and endpoint checks; the only subsequent code
+change was the isolated-tested QML validation-outline correction.
+
+Packages are staged under `out/device-preview-2026.11.08-pre.92.1`. They are test
+artifacts, not a published release. The child branch and draft PR remain unmerged.
+Desktop preview launch still requires `--devices`; Android has its Devices preview
+entry. Use [the physical acceptance guide](DEVICE-WORKSPACE-TESTING.md) next.
+No device session, application installation, driver installation, network/security
+change or physical acceptance test was performed during this build checkpoint.
