@@ -472,3 +472,13 @@ The production installer compiled with all component branches using inert payloa
 fixture. CI runs those checks. No real installation, removal or driver change was
 performed. README/driver guide updated; full maintenance UI and device acceptance
 remain pending. The delivered pre.84.1 package predates this change.
+
+## Baseline checkpoint before device discovery redesign
+
+At the user's request, preserve the complete working source state on
+`feat/shared-resources` before branching. Previously uncommitted legacy updater /
+About source, licensing notes and historical driver-removal helper/document changes
+are included as a preservation checkpoint. They were not newly integrated or
+verified by this checkpoint; no driver removal or system operation was performed.
+The new discovery/pairing design will proceed on a child branch. Neither branch is
+ready to merge into main; merging requires the user's later readiness decision.
