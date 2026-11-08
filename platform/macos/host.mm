@@ -30,6 +30,7 @@
 namespace dm::mac {
 namespace wire=video::wire;using Clock=std::chrono::steady_clock;using namespace std::chrono_literals;
 namespace {
+DisplaySlots globalDisplaySlots;
 std::string displayIdentity(CGDirectDisplayID display){
     CFUUIDRef uuid=CGDisplayCreateUUIDFromDisplayID(display);if(!uuid)throw std::runtime_error("Cannot identify the selected display");
     CFStringRef text=CFUUIDCreateString(kCFAllocatorDefault,uuid);CFRelease(uuid);if(!text)throw std::runtime_error("Cannot identify the selected display");
@@ -46,28 +47,31 @@ struct Host::State {
     std::shared_ptr<access::Gate> gate;unsigned port;std::atomic_bool stop=false,running=true;std::string address;std::function<void(std::string)> report;std::thread listener;
     struct Worker {std::thread thread;std::atomic_bool done=false;};
     std::vector<SharedScreen> screens;
-    std::vector<std::unique_ptr<Worker>> workers;AdmissionBudget admissions;DisplaySlots displays;
-    State(std::string bind,std::function<void(std::string)> callback,unsigned selectedPort,std::shared_ptr<access::Gate> selectedGate,std::vector<SharedScreen> shared):gate(std::move(selectedGate)),port(selectedPort),address(std::move(bind)),report(std::move(callback)),screens(std::move(shared)){}
+    std::vector<std::unique_ptr<Worker>> workers;AdmissionBudget admissions;HostScope scope;
+    State(std::string bind,std::function<void(std::string)> callback,unsigned selectedPort,std::shared_ptr<access::Gate> selectedGate,std::vector<SharedScreen> shared,HostScope selectedScope):gate(std::move(selectedGate)),port(selectedPort),address(std::move(bind)),report(std::move(callback)),screens(std::move(shared)),scope(selectedScope){}
     void serve(int socket,AdmissionBudget::Lease admission){@autoreleasepool{if(@available(macOS 13.0,*)){
         auto cancelled=[this]{return stop.load();};HostTls transport(socket,cancelled,gate.get());auto bytes=transport.read(8,10);
         if(std::equal(bytes.begin(),bytes.end(),access::control_prefix.begin())){
+            if(scope.restricted)throw std::runtime_error("Scoped screen endpoint does not accept control requests");
             access::ControlRequest request{};std::copy(bytes.begin(),bytes.end(),request.begin());auto tail=transport.read(8,10);std::copy(tail.begin(),tail.end(),request.begin()+8);
             auto [operation,kind]=access::parse_control(request);if(operation!=access::ControlOperation::open)throw std::runtime_error("Control must open first");
             const bool protectedMode=transport.openControl();transport.write(access::control_reply(operation,kind,protectedMode),10);
             while(!stop){auto data=transport.read(16,20);std::copy(data.begin(),data.end(),request.begin());auto parsed=access::parse_control(request);operation=parsed.first;kind=parsed.second;
                 if(operation==access::ControlOperation::open)throw std::runtime_error("Control already open");std::string credential;
-                if(operation==access::ControlOperation::add){auto tickets=transport.controlChannels(kind);if(protectedMode){credential=access::formatCredential(tickets.at(0));std::fill(tickets[0].secret.begin(),tickets[0].secret.end(),0);}}
+                if(access::control_add(operation)){auto tickets=transport.controlChannels(kind,access::control_input(operation));if(protectedMode){credential=access::formatCredential(tickets.at(0));std::fill(tickets[0].secret.begin(),tickets[0].secret.end(),0);}}
                 auto reply=access::control_reply(operation,kind,protectedMode,credential);transport.write(reply,10);std::fill(credential.begin(),credential.end(),0);std::fill(reply.begin(),reply.end(),0);
                 if(operation==access::ControlOperation::close)break;
             }return;
         }
         transport.requireResource(0);auto rest=transport.read(24,10);bytes.insert(bytes.end(),rest.begin(),rest.end());auto display=wire::take_client_display(bytes);auto screenRequest=wire::take_screen_request(bytes);const bool existing=screenRequest.mode==wire::DisplayMode::existing_screen;const SharedScreen* shared=nullptr;if(existing){for(const auto& candidate:screens)if(candidate.id==screenRequest.screen_id){if(shared)throw std::runtime_error("Duplicate screen offer");shared=&candidate;}if(!shared)throw std::runtime_error("Screen is not offered for sharing");if(display.exact_mode)throw std::runtime_error("Existing screens use their current display mode");}unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7],keyboard=bytes[10];bytes[7]=bytes[8]=bytes[9]=bytes[10]=0;
         if(!std::equal(bytes.begin(),bytes.end(),wire::request.begin()) || inputRequested>1 || wanted>15 || bool(inputRequested)!=bool(wanted) || scale>2 || keyboard>2 || (keyboard&&(!inputRequested||!(wanted&4))))throw std::runtime_error("Invalid client request");
+        if(scope.existingOnly&&!existing)throw std::runtime_error("This grant permits only its existing screen");
+        const bool permittedInput=scope.input&&transport.authorizedDisplayInput().value_or(true)&&(!existing||shared->allowInput);if(wanted&&!permittedInput)throw std::runtime_error("This grant does not permit remote input");
         if(!CGPreflightScreenCaptureAccess())throw std::runtime_error("Screen Recording permission is required");
-        auto displayLease=displays.acquire();const unsigned slot=displayLease.index();admission.release();
+        auto displayLease=globalDisplaySlots.acquire();const unsigned slot=displayLease.index();admission.release();
         unsigned w=display.width?display.width:1920,h=display.height?display.height:1080,hz=std::clamp(display.hz?display.hz:60,1u,60u);
         double reduction=std::min({1.0,4096.0/w,4096.0/h,std::sqrt(8847360.0/(double(w)*h))});w=std::max(640u,unsigned(w*reduction)&~1u);h=std::max(480u,unsigned(h*reduction)&~1u);
-        std::unique_ptr<VirtualDisplay> monitor;CGDirectDisplayID captureDisplay=0;if(existing){captureDisplay=resolveScreen(*shared);auto mode=CGDisplayCopyDisplayMode(captureDisplay);if(mode){const auto refresh=CGDisplayModeGetRefreshRate(mode);if(refresh>=1)hz=std::clamp(unsigned(refresh),1u,60u);CGDisplayModeRelease(mode);}}else{monitor=std::make_unique<VirtualDisplay>(w,h,hz,slot);captureDisplay=monitor->displayID();}HostInput broker(slot,captureDisplay);unsigned granted=wanted&((!existing||shared->allowInput)&&AXIsProcessTrusted()?3u:0u);std::unique_ptr<HostMedia> media;uint64_t epoch=0;unsigned outW=0,outH=0;
+        std::unique_ptr<VirtualDisplay> monitor;CGDirectDisplayID captureDisplay=0;if(existing){captureDisplay=resolveScreen(*shared);auto mode=CGDisplayCopyDisplayMode(captureDisplay);if(mode){const auto refresh=CGDisplayModeGetRefreshRate(mode);if(refresh>=1)hz=std::clamp(unsigned(refresh),1u,60u);CGDisplayModeRelease(mode);}}else{monitor=std::make_unique<VirtualDisplay>(w,h,hz,slot);captureDisplay=monitor->displayID();}HostInput broker(slot,captureDisplay);unsigned granted=wanted&(permittedInput&&AXIsProcessTrusted()?3u:0u);std::unique_ptr<HostMedia> media;uint64_t epoch=0;unsigned outW=0,outH=0;
         auto prepare=[&]{broker.reset();media.reset();auto rect=CGDisplayBounds(captureDisplay);w=existing?unsigned(CGDisplayPixelsWide(captureDisplay)):unsigned(rect.size.width);h=existing?unsigned(CGDisplayPixelsHigh(captureDisplay)):unsigned(rect.size.height);auto dimensions=video::stream_size(w,h,scale==1?75:scale==2?50:100);outW=dimensions.first;outH=dimensions.second;
             if(outW>4096 || outH>4096 || uint64_t(outW)*outH>8847360)throw std::runtime_error("Display mode exceeds streaming limits");
             media=std::make_unique<HostMedia>(captureDisplay,outW,outH,hz);if(granted){uint64_t next=0;do{arc4random_buf(&next,sizeof(next));}while(!next || next==epoch);epoch=next;}
@@ -120,7 +124,7 @@ struct Host::State {
     }}
 
 };
-Host::Host(std::string address,std::function<void(std::string)> report,unsigned port,std::shared_ptr<access::Gate> gate,std::vector<SharedScreen> screens):state_(std::make_shared<State>(std::move(address),std::move(report),port,std::move(gate),std::move(screens))){auto state=state_;state_->listener=std::thread([state]{state->run();});}
+Host::Host(std::string address,std::function<void(std::string)> report,unsigned port,std::shared_ptr<access::Gate> gate,std::vector<SharedScreen> screens,HostScope scope):state_(std::make_shared<State>(std::move(address),std::move(report),port,std::move(gate),std::move(screens),scope)){if(scope.restricted&&(state_->address!="127.0.0.1"||!state_->gate))throw std::runtime_error("Scoped host requires authenticated loopback");auto state=state_;state_->listener=std::thread([state]{state->run();});}
 Host::~Host(){stop();if(state_->listener.joinable())state_->listener.join();}
 void Host::stop(){state_->stop=true;}
 bool Host::running()const{return state_->running;}

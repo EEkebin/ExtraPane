@@ -168,9 +168,10 @@ Stream::~Stream()=default;
 Stream::Stream(Stream&&) noexcept=default;
 Stream& Stream::operator=(Stream&&) noexcept=default;
 Stream Stream::connect(const std::string& peer,std::uint16_t port,const std::string& local,Deadline d){
-    runtime();if(!port)fail("Destination port is required");const auto dst=address(peer,port),src=address(local,0);
+    runtime();if(!port)fail("Destination port is required");const auto dst=address(peer,port);
+    sockaddr_in src{};if(!local.empty())src=address(local,0);
     auto s=std::make_unique<State>();s->socket=::socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);if(s->socket==invalid)fail("Cannot create socket");configure(s->socket);
-    if(::bind(s->socket,reinterpret_cast<const sockaddr*>(&src),sizeof(src)))fail("Cannot bind selected local address");
+    if(!local.empty()&&::bind(s->socket,reinterpret_cast<const sockaddr*>(&src),sizeof(src)))fail("Cannot bind selected local address");
     if(::connect(s->socket,reinterpret_cast<const sockaddr*>(&dst),sizeof(dst))){
         if(!pending(socket_error()))fail("Cannot connect to peer");s->wait(true,d);int error=0;SockLen size=sizeof(error);
         if(getsockopt(s->socket,SOL_SOCKET,SO_ERROR,reinterpret_cast<char*>(&error),&size) || error)fail("Cannot connect to peer");

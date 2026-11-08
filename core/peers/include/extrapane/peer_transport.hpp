@@ -28,6 +28,7 @@ public:
     Stream& operator=(Stream&&) noexcept;
     Stream(const Stream&) = delete;
     Stream& operator=(const Stream&) = delete;
+    // Empty local address uses the OS route; an explicit address binds that NIC.
     static Stream connect(const std::string& peer, std::uint16_t port,
                           const std::string& local, Deadline deadline);
     // Exact transfers, at most 1 MiB per call. An error makes this stream unusable.

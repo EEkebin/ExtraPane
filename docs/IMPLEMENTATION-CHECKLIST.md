@@ -570,3 +570,13 @@ arm64-v8a and x86_64 and the six host-side Java suites pass. Android backgroundi
 stops offers and capture. Android virtual-device consumption, USB and existing-screen
 capture are unavailable; Linux USB/speaker integration remains unavailable as in
 the previous platform baseline. Neither platform was connected to physical hardware.
+
+macOS workspace source now uses the same peer service with an AppKit Devices /
+Share / Connections interface, custom multicast discovery, explicit permission
+buttons and scoped native adapters. Existing-screen offers are view-only; camera /
+microphone capture requires permission before an offer is available. Virtual camera /
+microphone receiving, speaker endpoints and USB remain unavailable on macOS. Full
+Universal compilation is pending CI; there has been no Mac installation or hardware
+session. Reverse existing-screen relay now passes a synthetic three-service test,
+including response bytes and revocation. The gateway can reopen remembered direct
+provider routes; this does not reconnect USB sessions.
