@@ -27,6 +27,9 @@ checklist](docs/IMPLEMENTATION-CHECKLIST.md#active-implementation-devices-sharin
 
 ## Devices workspace (development preview)
 
+Use the [device acceptance guide](docs/DEVICE-WORKSPACE-TESTING.md) when testing
+this preview. Build checks do not replace physical media and driver verification.
+
 Launch the desktop app with `--devices` to try the new workspace. The existing
 Server/Client interface remains the default until cross-platform build and device
 acceptance checks pass. Android exposes the preview through **Devices ? offer this
