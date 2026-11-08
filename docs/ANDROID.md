@@ -24,19 +24,18 @@ separates Devices, Share, Connections and About. Share lists resources in
 collapsible Monitors, Cameras, Speakers and Microphones groups. USB is shown as
 unavailable on Android. Connections groups active resources independently;
 changing pages or collapsing a group must not disconnect them.
-Resource rows use green power buttons to enable their offer and red power buttons
-to withdraw it. Connections uses red power buttons to disconnect individual
-sessions. Pairing and input permission options remain separate settings controls.
+Resources are available by default, subject to Android permissions and support.
+Local resource power buttons turn red only during actual use; they disconnect
+that resource's sessions. Available resources do not show a red power button.
+Connections identifies the resources and peers involved.
 
-Android currently offers resources to other computers. It advertises the selected
-offers on the LAN while sharing is running, supports direct connections to its
-listening address, and remembers paired devices. It does not yet provide the
-desktop workspace's resource-consuming browser or system-wide virtual devices.
-Use Share and enable a resource to start sharing and local discovery announcements
-automatically; there is no separate Start sharing button. Stop sharing all turns
-every resource off. Turning the last resource off also stops sharing. On the other
-computer, use Devices to connect to this phone. Offering a camera or microphone does not start
-capture until an authorized resource connection requests it.
+Android advertises while its foreground workspace is open and remembers paired
+devices. On another computer, discover the phone and pair, then request a camera,
+microphone, speaker or display resource. Pairing and listing alone do not start
+capture. Permission-required resources provide a local permission action; denied
+permissions are never bypassed. Disconnecting active uses leaves resources
+available for later requests. Android does not yet provide the desktop workspace's
+resource-consuming browser or system-wide virtual devices.
 
 This workspace shares only while its activity is in the foreground; backgrounding
 stops its sessions. **Legacy connections** under About opens the previous workflow.
@@ -338,7 +337,7 @@ This is a selectable remote playback device, not automatic system-audio mirrorin
 The system Back gesture/button closes the navigation drawer first, exits fullscreen
 next, then returns through visited workspace pages. Re-selecting a page or toggling
 fullscreen does not add history. At the first page, Back exits only while idle;
-sharing or active resources keep the workspace open with a reminder to stop sharing.
+active resources keep the workspace open with a reminder to stop sharing.
 Page navigation does not stop resource sessions.
 
 Swipe right across empty page space to open the navigation drawer. Swipes starting

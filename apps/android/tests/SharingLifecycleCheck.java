@@ -10,12 +10,12 @@ public final class SharingLifecycleCheck {
         state.begin(1);
         require(state.active() && !state.listening(), "Pending bind is cancellable but not ready for media");
         state.stop();
-        require(!state.confirm(1) && !state.active(), "Late confirmation after Stop all must not revive sharing");
+        require(!state.confirm(1) && !state.active(), "Late confirmation after pause must not revive sharing");
         state.begin(2);
         require(!state.confirm(1) && !state.matches(1), "Canceled bind success/error cannot affect a new start");
         require(state.confirm(2) && state.listening(), "Only current bind confirmation enables media");
         require(!state.confirm(0), "Unscoped event must not activate sharing");
-        state.stop(); // Last resource off, listener error, pause and Stop all share this path.
+        state.stop(); // Listener error, network reconfiguration and pause share this path.
         require(!state.active() && !state.listening() && !state.matches(2), "Stop clears pending and listening intent");
         state.begin(3);
         boolean duplicateRejected=false;

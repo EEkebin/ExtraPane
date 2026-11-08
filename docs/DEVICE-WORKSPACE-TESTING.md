@@ -50,7 +50,7 @@ On Android, use the top-left menu for Devices, Share, Connections and About.
 Check portrait and landscape layouts: the toolbar and bottom controls must stay
 clear of system bars, and resource labels must wrap without hiding actions.
 Switch pages while multiple resources are active; navigation must not stop them.
-The phone's Devices page manages paired peers; select offers on Share and request
+The phone's Devices page manages paired peers; review available resources on Share and request
 them from the other computer. Android resource consumption remains limited to the
 older workflow available through About's Legacy connections action.
 
@@ -62,9 +62,9 @@ selected headset must not redirect its session to the loudspeaker.
 
 ## First connection: extend the desktop
 
-1. On the laptop that will show the extra screen, open **Share**, choose its
-   connected local network address and enable a monitor offer with its green power
-   button. Sharing starts automatically; no separate Start sharing action is needed.
+1. On the laptop that will show the extra screen, open **Share**, check its
+   connected local network address. Supported resources are available automatically;
+   no per-resource enable or separate Start sharing action is needed.
    Keep **Require pairing** enabled. Offering the destination alone must not create
    a virtual monitor or start a stream.
 2. On the desktop being extended, open **Devices**. Nearby discovery starts by
@@ -89,11 +89,14 @@ currently view-only offer; it must not create a virtual monitor.
   ExtraPane status label. Advertising a camera or microphone must not activate it.
 - Stop one resource while another is active. Pending connections must be individually
   cancellable. Disconnect all must disappear after all pending/active resources end.
-- Disable the last local offer: its sharing listener and advertisement must stop.
-  Stop sharing all must turn every local offer off, including gateway sharing,
-  while preserving unrelated resources this device is using from another device.
-  Repeat a quick enable/disable/re-enable and an occupied-port failure: stale
-  confirmations must not restore sharing or leave red enabled buttons behind.
+- Disconnect the last active local resource: its power returns to Available while
+  the listener and advertisement remain available. Disconnect all shared resources
+  stops incoming uses only, preserving unrelated outgoing uses. Pair without
+  starting a resource: no camera LED, microphone capture, virtual monitor or USB
+  ownership change should occur.
+- Use one of two cameras and confirm only the exact camera turns red on both peers.
+  Its provider must identify the consumer. Add another consumer to the same source
+  where supported, then stop one session and verify the remaining use stays red.
 - Select **Refresh resources** after attaching/removing hardware. Existing unchanged
   connections should survive a label or mode refresh; removed sources must stop.
 - Close the main window during active work and restore it from the tray. Use Exit

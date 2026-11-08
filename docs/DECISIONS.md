@@ -516,3 +516,22 @@ as an equally functional direct-IP fallback. Do not label it External: static-IP
 and localhost connections use it too. Discovery is an untrusted local-network hint;
 paired identity is still verified by the authenticated connection. Android automatically
 advertises enabled offers; its current workspace remains a resource provider.
+
+
+## Available resources by default; power represents actual use
+
+This supersedes opt-in resource offers and the first-offer/last-offer listener
+lifecycle above. Normal app startup makes supported local resources discoverable
+and available through an authenticated catalog. Pairing remains enabled by default;
+discovery alone does not grant access. Camera/microphone capture, virtual monitor
+creation and USB ownership begin only after an authorized resource request. OS
+permissions and endpoint capability requirements still apply.
+
+A provider's idle resource is Available, not red. Red power identifies actual
+incoming use of that exact resource and disconnects that resource's users. The
+consumer's corresponding resource is red while connected. Show who uses each
+resource, and preserve unrelated connections when stopping one. Disconnecting all
+active resources leaves the listener/catalog available for subsequent requests.
+Gateway sharing remains a separate, disabled-by-default setting. Android retains
+its foreground-only lifecycle and never resumes old capture sessions simply by
+returning to the app.

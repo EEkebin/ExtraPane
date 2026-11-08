@@ -39,12 +39,15 @@ path error for the new page. Use a newer build for this workspace. Do not assume
 a published package contains this branch's preview.
 
 Devices are peers: a computer can offer its camera while using another device's
-speakers. On **Share**, choose a local network address and enable a resource with
-its green power button. The first enabled resource starts sharing automatically;
-capture starts only when another device requests it. **Stop sharing all** turns
-off the offers and ends incoming sessions without stopping resources you are using
-from other devices. Turning off the last offer stops sharing (unless gateway
-sharing is explicitly enabled).
+speakers. Supported resources are available by default while ExtraPane is open.
+Discover a device, pair using its displayed code, then select a resource to use.
+Pairing alone does not activate a camera, microphone, monitor or USB device.
+OS permissions and receiving-device support still apply.
+
+On **Share**, resources show Available until another device requests them. Red
+power indicates actual use of that exact resource and shows who is using it.
+Disconnecting one resource preserves the others; disconnecting all active shares
+leaves the device discoverable and ready for a new request.
 
 **Devices** looks for nearby peers by default. Expand **Connect by address** for
 an IPv4 address or localhost, port, optional interface and pairing code. This also
@@ -57,9 +60,9 @@ Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**
 Share, Connections and About. Its audio choices identify physical routes such as
 Loudspeaker, Earpiece and connected headsets instead of internal Android port
 numbers. Actual route availability depends on Android's audio policy.
-Resource rows use green power buttons to enable/connect and red power buttons to
-disable/disconnect. Enabling an offer makes it available; capture starts only when
-another device requests it. Desktop and Android navigation use hamburger menus.
+Remote resource rows use green power buttons to connect and red power buttons to
+disconnect. Local resource power buttons turn red only while another device is
+using that resource; capture starts only on an authorized request. Desktop and Android navigation use hamburger menus.
 
 A **display destination** is the device that shows an extended desktop. The
 computer using that destination creates the virtual monitor and needs its native

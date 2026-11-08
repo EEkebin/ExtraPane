@@ -15,6 +15,7 @@
 #include <stdexcept>
 using namespace extrapane::peers;
 namespace {
+struct PendingResource {Kind kind;rpc::Open resource;};
 NSString* text(const std::string& s){return [[NSString alloc] initWithBytes:s.data() length:s.size() encoding:NSUTF8StringEncoding]?:@"";}
 std::string str(NSString* s){return s.UTF8String?:"";}
 std::string hex(const DeviceId& id){constexpr char digits[]="0123456789abcdef";std::string s;for(auto b:id){s+=digits[b>>4];s+=digits[b&15];}return s;}
@@ -40,15 +41,17 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
     std::vector<Offer> inventory;
     std::set<std::string> enabled;
     std::map<Service::Token,Service::Event> links;
+    std::set<Service::Token> connectingLinks;
     std::map<std::pair<Service::Token,Service::Token>,Service::Event> resources;
     std::map<Service::Token,std::vector<Catalog>> catalogs;
     std::set<std::pair<Service::Token,Service::Token>> retrying;
-    std::map<std::pair<Service::Token,Service::Token>,Kind> pending;
+    std::map<std::pair<Service::Token,Service::Token>,PendingResource> pending;
     std::uint64_t instance,sequence;
     DeviceId expected;
     bool sharing,sharingStarting,gatewayEnabled,loopbackSharing,scanning,refreshing,terminating;
     Service::Token sharingGeneration=0;
     unsigned listeningPort;
+    std::string listeningAddress;
 }
 @property(nonatomic,strong) NSWindow* window;
 @property(nonatomic,strong) NSTextField* address;
@@ -63,6 +66,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
 @property(nonatomic,strong) NSButton* openConnection;
 @property(nonatomic,strong) NSButton* gateway;
 @property(nonatomic,strong) NSButton* stopSharingButton;
+@property(nonatomic,strong) NSButton* applyNetworkButton;
 @property(nonatomic,strong) NSButton* manualButton;
 @property(nonatomic,strong) NSStackView* manualFields;
 @property(nonatomic,strong) NSButton* disconnectButton;
@@ -76,7 +80,11 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
 @property(nonatomic,strong) NSStatusItem* tray;
 -(void)poll;
 -(void)beginSharing;
+-(std::string)validatedBindAddress;
+-(BOOL)hasIncomingUses;
+-(void)applyNetworkSettings;
 -(void)stopSharing;
+-(void)stopListener;
 -(void)updateSharingControls;
 -(void)toggleOffer:(std::string)identifier;
 -(void)toggleGateway;
@@ -129,9 +137,10 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         auto* auth=stack(YES);self.code=[NSSecureTextField textFieldWithString:@""];self.code.placeholderString=@"Pairing code";[auth addArrangedSubview:self.code];[auth addArrangedSubview:button(@"Connect",^{ExtraPanePeerApp* strong=weak;if(!strong)return;[weak connectAddress:str(weak.address.stringValue) port:portValue(weak.port.stringValue) expected:strong->expected code:str(weak.code.stringValue) open:weak.openConnection.state==NSControlStateValueOn];})];[self.manualFields addArrangedSubview:auth];
         self.openConnection=button(@"Connect without pairing",^{});[self.openConnection setButtonType:NSButtonTypeSwitch];[self.manualFields addArrangedSubview:self.openConnection];
         self.remoteResources=stack();[devices addArrangedSubview:self.remoteResources];
-        auto* share=[self page:@"Share"];[share addArrangedSubview:label(@"Only enabled resources are offered. Capture begins when an authorized device requests one.")];
+        auto* share=[self page:@"Share"];[share addArrangedSubview:label(@"Available resources are discoverable automatically. Capture begins only when an authorized device connects.")];
         auto* local=stack(YES);self.bindAddress=[NSTextField textFieldWithString:@""];self.bindAddress.placeholderString=@"Local IPv4 address";[self.bindAddress.widthAnchor constraintGreaterThanOrEqualToConstant:240].active=YES;auto addresses=dm::mac::localAddresses();if(!addresses.empty())self.bindAddress.stringValue=text(addresses.front().address);self.listenPort=[NSTextField textFieldWithString:@"43824"];[self.listenPort.widthAnchor constraintEqualToConstant:85].active=YES;[local addArrangedSubview:self.bindAddress];[local addArrangedSubview:self.listenPort];[share addArrangedSubview:local];
-        for(const auto& entry:addresses){const auto address=entry.address;[share addArrangedSubview:button(text(entry.interface+" ? "+address),^{ExtraPanePeerApp* strong=weak;if(!strong)return;if(!strong->sharing&&!strong->sharingStarting)weak.bindAddress.stringValue=text(address);})];}
+        for(const auto& entry:addresses){const auto address=entry.address;[share addArrangedSubview:button(text(entry.interface+" ? "+address),^{ExtraPanePeerApp* strong=weak;if(!strong)return;if(![strong hasIncomingUses]&&!strong->sharingStarting)weak.bindAddress.stringValue=text(address);})];}
+        self.applyNetworkButton=button(@"Apply network settings",^{[weak applyNetworkSettings];});[share addArrangedSubview:self.applyNetworkButton];
         self.requirePairing=button(@"Require pairing",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{const bool value=weak.requirePairing.state==NSControlStateValueOn;strong->service->pairing_required(value);[[NSUserDefaults standardUserDefaults] setBool:value forKey:@"peerPairingRequired"];weak.generatedCode.stringValue=value?text(strong->service->pairing_code()):@"Pairing disabled";[weak publish];}catch(const std::exception& e){[weak error:text(e.what())];}});[self.requirePairing setButtonType:NSButtonTypeSwitch];self.requirePairing.state=required?NSControlStateValueOn:NSControlStateValueOff;[share addArrangedSubview:self.requirePairing];self.generatedCode=label(required?text(service->pairing_code()):@"Pairing disabled",26);[share addArrangedSubview:self.generatedCode];[share addArrangedSubview:label(@"Pairing codes change only when ExtraPane restarts. Remembered devices use their saved identity.")];
         self.gateway=button(@"Allow paired devices to use my paired devices",^{[weak toggleGateway];});[self.gateway setButtonType:NSButtonTypeSwitch];[share addArrangedSubview:self.gateway];
         self.offered=stack();[share addArrangedSubview:self.offered];[share addArrangedSubview:button(@"Refresh resources",^{[weak refreshInventory];})];
@@ -143,37 +152,43 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         for(NSArray* item in @[@[@"Read the documentation",@"https://github.com/EEkebin/ExtraPane#readme"],@[@"Releases and changelog",@"https://github.com/EEkebin/ExtraPane/releases"],@[@"GitHub repository",@"https://github.com/EEkebin/ExtraPane"]]){[about addArrangedSubview:button(item[0],^{[[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:item[1]]];})];}
         auto* menu=[NSMenu new];auto* appItem=[NSMenuItem new];[menu addItem:appItem];auto* appMenu=[NSMenu new];[appMenu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@"q"];appItem.submenu=appMenu;NSApp.mainMenu=menu;
         self.tray=[[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];self.tray.button.image=[NSImage imageWithSystemSymbolName:@"rectangle.on.rectangle" accessibilityDescription:@"ExtraPane"];self.tray.button.target=self;self.tray.button.action=@selector(showWindow:);
-        self.timer=[NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer* timer){(void)timer;[weak poll];}];[self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];[self refreshInventory];[self renderDevices];[self startDiscovery];
+        self.timer=[NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer* timer){(void)timer;[weak poll];}];[self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];[self refreshInventory];[self renderDevices];[self startDiscovery];try{[self beginSharing];}catch(const std::exception& e){[self error:text(e.what())];}
     }catch(const std::exception& e){NSAlert* alert=[NSAlert new];alert.messageText=@"ExtraPane could not start";alert.informativeText=text(e.what());[alert runModal];[NSApp terminate:nil];}
 }
 -(void)showManual{self.manualFields.hidden=NO;self.manualButton.image=[NSImage imageWithSystemSymbolName:@"chevron.down" accessibilityDescription:nil];}
 -(void)startDiscovery{
-    try{scanning=false;discovery.start(sharing&&!loopbackSharing?str(self.bindAddress.stringValue):std::string{});scanning=true;if(sharing)[self publish];}catch(const std::exception& e){[self error:text(e.what())];}
+    try{scanning=false;discovery.start(sharing&&!loopbackSharing?listeningAddress:std::string{});scanning=true;if(sharing)[self publish];}catch(const std::exception& e){[self error:text(e.what())];}
 }
+-(BOOL)hasIncomingUses{return std::any_of(resources.begin(),resources.end(),[](const auto& entry){return entry.second.context.incoming;});}
 -(void)updateSharingControls{
-    const bool busy=sharing||sharingStarting;self.bindAddress.enabled=!busy;self.listenPort.enabled=!busy;self.stopSharingButton.hidden=!busy&&enabled.empty()&&!gatewayEnabled;self.gateway.state=gatewayEnabled?NSControlStateValueOn:NSControlStateValueOff;
+    const bool incoming=[self hasIncomingUses];const bool locked=incoming||sharingStarting;self.bindAddress.enabled=!locked;self.listenPort.enabled=!locked;self.applyNetworkButton.enabled=!locked;self.stopSharingButton.hidden=!incoming;self.gateway.state=gatewayEnabled?NSControlStateValueOn:NSControlStateValueOff;
 }
--(void)beginSharing{
-    if(sharing||sharingStarting)return;
+-(std::string)validatedBindAddress{
     const auto port=portValue(self.listenPort.stringValue);auto local=str(self.bindAddress.stringValue);std::string lower=local;std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char c){return char(std::tolower(c));});if(lower=="localhost")local="127.0.0.1";
     bool badAddress=!dm::mac::ipv4(local.c_str());const bool loopback=local.starts_with("127.");if(!badAddress&&!loopback){const auto addresses=dm::mac::localAddresses();badAddress=std::none_of(addresses.begin(),addresses.end(),[&](const auto& entry){return entry.address==local;});}
-    if(badAddress)invalidField(self.bindAddress);if(!port)invalidField(self.listenPort);if(badAddress||!port)throw std::invalid_argument("Check the highlighted sharing details.");
-    sharingGeneration=service->start(local,static_cast<std::uint16_t>(port));sharingStarting=true;loopbackSharing=loopback;self.bindAddress.stringValue=text(local);self.status.stringValue=@"Starting sharing...";[self updateSharingControls];
+    if(badAddress)invalidField(self.bindAddress);if(!port)invalidField(self.listenPort);if(badAddress||!port)throw std::invalid_argument("Check the highlighted sharing details.");return local;
+}
+-(void)beginSharing{
+    if(sharing||sharingStarting)return;const auto local=[self validatedBindAddress];const auto port=portValue(self.listenPort.stringValue);
+    sharingGeneration=service->start(local,static_cast<std::uint16_t>(port));sharingStarting=true;loopbackSharing=local.starts_with("127.");listeningAddress=local;self.bindAddress.stringValue=text(local);self.status.stringValue=@"Starting sharing...";[self updateSharingControls];
+}
+-(void)applyNetworkSettings{
+    if(sharingStarting||[self hasIncomingUses]){[self error:@"Stop incoming resource connections before changing network settings."];return;}
+    try{[self validatedBindAddress];if(sharing)[self stopListener];[self beginSharing];}catch(const std::exception& e){[self error:text(e.what())];}[self updateSharingControls];
+}
+-(void)stopListener{
+    discovery.withdraw();sharingGeneration=0;sharing=sharingStarting=false;listeningPort=0;service->stop();[self updateSharingControls];
 }
 -(void)stopSharing{
-    try{discovery.withdraw();sharingGeneration=0;sharing=sharingStarting=false;listeningPort=0;enabled.clear();gatewayEnabled=false;service->offers({});service->gateway(false);service->stop();self.status.stringValue=@"Sharing stopped";self.status.textColor=NSColor.labelColor;}catch(const std::exception& e){[self error:text(e.what())];}
-    [self renderOffers];
+    try{for(const auto& [key,event]:resources){(void)key;if(event.context.incoming)service->close(event.context.connection,event.context.grant);}self.status.stringValue=@"Stopping incoming resource connections...";self.status.textColor=NSColor.labelColor;}catch(const std::exception& e){[self error:text(e.what())];}
 }
 -(void)toggleOffer:(std::string)identifier{
-    const bool active=enabled.contains(identifier);const auto found=std::find_if(inventory.begin(),inventory.end(),[&](const auto& offer){return offer.id==identifier;});if(found==inventory.end()||(!active&&!found->available)){[self error:@"This resource is unavailable"];return;}
-    const bool starting=!active&&!sharing&&!sharingStarting;
-    try{if(starting)[self beginSharing];if(active)enabled.erase(identifier);else enabled.insert(identifier);std::vector<Offer> offers;for(const auto& offer:inventory)if(enabled.contains(offer.id))offers.push_back(offer);service->offers(offers);if(enabled.empty()&&!gatewayEnabled){[self stopSharing];return;}[self publish];}
-    catch(const std::exception& e){if(active)enabled.insert(identifier);else enabled.erase(identifier);if(starting)[self stopSharing];[self error:text(e.what())];}
-    [self renderOffers];
+    // A provider's control stops current uses, never changes resource availability.
+    try{for(const auto& [key,event]:resources){(void)key;if(event.context.incoming&&event.resource&&event.resource->owner==service->identity()&&event.resource->resource==identifier)service->close(event.context.connection,event.context.grant);}}catch(const std::exception& e){[self error:text(e.what())];}
 }
 -(void)toggleGateway{
-    const bool requested=self.gateway.state==NSControlStateValueOn;if(requested==gatewayEnabled)return;const bool starting=requested&&!sharing&&!sharingStarting;
-    try{if(starting)[self beginSharing];service->gateway(requested);gatewayEnabled=requested;if(!gatewayEnabled&&enabled.empty()){[self stopSharing];return;}[self publish];}catch(const std::exception& e){if(starting)[self stopSharing];[self error:text(e.what())];}[self updateSharingControls];
+    const bool requested=self.gateway.state==NSControlStateValueOn;if(requested==gatewayEnabled)return;
+    try{if(!sharing&&!sharingStarting)[self beginSharing];service->gateway(requested);gatewayEnabled=requested;[self publish];}catch(const std::exception& e){[self error:text(e.what())];}[self updateSharingControls];
 }
 -(void)refreshRoutes{
     NSString* selected=self.outboundRoute.selectedItem.representedObject?:@"";
@@ -196,14 +211,22 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         const bool badCode=!open&&!remembered&&(code.size()!=6||!std::all_of(code.begin(),code.end(),[](char c){return c>='0'&&c<='9';}));
         if(badAddress)invalidField(self.address);if(badPort)invalidField(self.port);if(badCode)invalidField(self.code);
         if(badAddress||badPort||badCode){const unsigned count=unsigned(badAddress)+unsigned(badPort)+unsigned(badCode);[self error:count>1?@"Check the highlighted connection details.":badAddress?@"Enter an IPv4 address or localhost.":badPort?@"Enter a port between 1 and 65535.":@"Enter the six-digit pairing code."];return;}
-        const auto local=str(self.outboundRoute.selectedItem.representedObject?:@"");if(!local.empty()){const auto connected=dm::mac::localAddresses();if(std::none_of(connected.begin(),connected.end(),[&](const auto& item){return item.address==local;})){invalidField(self.outboundRoute);[self error:@"The selected network address is disconnected. Choose another route."];return;}}service->connect({address,static_cast<std::uint16_t>(port),local,identity,code,bool(open)});self.code.stringValue=@"";self.status.stringValue=@"Connecting...";self.status.textColor=NSColor.labelColor;
+        const auto local=str(self.outboundRoute.selectedItem.representedObject?:@"");if(!local.empty()){const auto connected=dm::mac::localAddresses();if(std::none_of(connected.begin(),connected.end(),[&](const auto& item){return item.address==local;})){invalidField(self.outboundRoute);[self error:@"The selected network address is disconnected. Choose another route."];return;}}connectingLinks.insert(service->connect({address,static_cast<std::uint16_t>(port),local,identity,code,bool(open)}));self.code.stringValue=@"";self.status.stringValue=@"Connecting...";self.status.textColor=NSColor.labelColor;
     }catch(const std::exception& e){[self error:text(e.what())];}
 }
--(void)refreshInventory{if(refreshing||terminating)return;refreshing=true;auto shared=runtime;__weak ExtraPanePeerApp* weak=self;dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{try{auto offers=shared->refresh();dispatch_async(dispatch_get_main_queue(),^{ExtraPanePeerApp* strong=weak;if(!strong||strong->terminating)return;strong->inventory=offers;strong->refreshing=false;std::erase_if(strong->enabled,[&](const auto& identifier){return std::none_of(offers.begin(),offers.end(),[&](const auto& offer){return offer.id==identifier&&offer.available;});});if(strong->enabled.empty()&&!strong->gatewayEnabled&&(strong->sharing||strong->sharingStarting)){[strong stopSharing];return;}[strong publish];[strong renderOffers];});}catch(const std::exception& e){auto message=text(e.what());dispatch_async(dispatch_get_main_queue(),^{ExtraPanePeerApp* strong=weak;if(!strong)return;if(weak){strong->refreshing=false;[weak error:message];}});}});}
+-(void)refreshInventory{if(refreshing||terminating)return;refreshing=true;auto shared=runtime;__weak ExtraPanePeerApp* weak=self;dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{try{auto offers=shared->refresh();dispatch_async(dispatch_get_main_queue(),^{ExtraPanePeerApp* strong=weak;if(!strong||strong->terminating)return;strong->inventory=offers;strong->refreshing=false;strong->enabled.clear();for(const auto& offer:offers)if(offer.available)strong->enabled.insert(offer.id);[strong publish];[strong renderOffers];if(!strong->sharing&&!strong->sharingStarting)try{[strong beginSharing];}catch(const std::exception& e){[strong error:text(e.what())];}});}catch(const std::exception& e){auto message=text(e.what());dispatch_async(dispatch_get_main_queue(),^{ExtraPanePeerApp* strong=weak;if(!strong)return;if(weak){strong->refreshing=false;[weak error:message];}});}});}
 -(void)publish{if(!service)return;try{std::vector<Offer> offers;for(const auto& offer:inventory)if(enabled.contains(offer.id))offers.push_back(offer);service->offers(offers);if(sharing&&!loopbackSharing){Announcement a;a.device=service->identity();a.instance=instance;a.sequence=++sequence;a.name=str(NSProcessInfo.processInfo.hostName);a.port=listeningPort;a.pairing_required=self.requirePairing.state==NSControlStateValueOn;for(const auto& offer:offers)if(offer.available)a.offered_kinds|=1u<<static_cast<unsigned>(offer.kind);discovery.advertise(a);}}catch(const std::exception& e){[self error:text(e.what())];}}
 -(void)renderOffers{
-    clear(self.offered);__weak ExtraPanePeerApp* weak=self;
-    for(const auto& offer:inventory){auto identifier=offer.id;const bool active=enabled.contains(identifier);auto* row=stack(YES);[row addArrangedSubview:label(text(offer.label))];auto* toggle=button(@"",^{[weak toggleOffer:identifier];},active);toggle.image=[NSImage imageWithSystemSymbolName:@"power" accessibilityDescription:active?@"Stop sharing":@"Share"];toggle.contentTintColor=active?NSColor.systemRedColor:NSColor.systemGreenColor;toggle.toolTip=[(active?@"Stop sharing ":@"Share ") stringByAppendingString:text(offer.label)];toggle.enabled=offer.available||active;[row addArrangedSubview:toggle];[self.offered addArrangedSubview:row];if(!offer.available)[self.offered addArrangedSubview:label(text(offer.unavailable_reason))];}
+    clear(self.offered);__weak ExtraPanePeerApp* weak=self;const auto remembered=service->remembered();
+    for(const auto& offer:inventory){
+        auto identifier=offer.id;NSMutableArray<NSString*>* consumers=[NSMutableArray array];
+        for(const auto& [key,event]:resources){(void)key;if(!event.context.incoming||!event.resource||event.resource->owner!=service->identity()||event.resource->resource!=identifier)continue;
+            NSString* consumer=nil;const auto saved=std::find_if(remembered.begin(),remembered.end(),[&](const auto& device){return device.id==event.context.peer;});if(saved!=remembered.end()&&!saved->name.empty())consumer=text(saved->name);
+            if(!consumer)consumer=text("Device "+hex(event.context.peer).substr(0,12));if(![consumers containsObject:consumer])[consumers addObject:consumer];
+        }
+        const bool active=consumers.count>0;auto* row=stack(YES);auto* details=stack();[details addArrangedSubview:label(text(offer.label))];[details addArrangedSubview:label(active?[@"In use by " stringByAppendingString:[consumers componentsJoinedByString:@", "]]:offer.available?@"Available":text(offer.unavailable_reason))];[row addArrangedSubview:details];
+        auto* toggle=button(@"",^{[weak toggleOffer:identifier];},active);toggle.image=[NSImage imageWithSystemSymbolName:@"power" accessibilityDescription:active?@"Stop sharing":offer.available?@"Available":@"Unavailable"];toggle.contentTintColor=active?NSColor.systemRedColor:NSColor.secondaryLabelColor;toggle.toolTip=active?[@"Stop sharing " stringByAppendingString:text(offer.label)]:@"Connect to this resource from another device";toggle.enabled=active;[row addArrangedSubview:toggle];[self.offered addArrangedSubview:row];
+    }
     [self updateSharingControls];
 }
 -(void)renderDevices{
@@ -212,28 +235,40 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
     for(const auto& [connection,event]:links){if(event.context.incoming)continue;[self.remoteResources addArrangedSubview:label(event.verified?@"Paired device":@"Unverified device",18)];auto connectionId=connection;[self.remoteResources addArrangedSubview:button(@"Disconnect device",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{strong->service->disconnect(connectionId);}catch(const std::exception& e){[weak error:text(e.what())];}},YES)];for(const auto& catalog:catalogs[connection]){[self.remoteResources addArrangedSubview:label(text(catalog.name),16)];for(const auto& offer:catalog.offers){auto owner=catalog.device;auto item=offer;auto* card=stack();[card addArrangedSubview:label(text(offer.label))];const auto unavailable=dm::mac::peer::MacPeerRuntime::receiveUnavailable(item.kind);auto* control=button(@"Allow input",^{});[control setButtonType:NSButtonTypeSwitch];control.hidden=!item.input_allowed;control.state=item.kind==Kind::display_destination&&item.input_allowed?NSControlStateValueOn:NSControlStateValueOff;[card addArrangedSubview:control];
         NSTextField* width=[NSTextField textFieldWithString:[NSString stringWithFormat:@"%u",item.width?item.width:1920]];NSTextField* height=[NSTextField textFieldWithString:[NSString stringWithFormat:@"%u",item.height?item.height:1080]];NSTextField* fps=[NSTextField textFieldWithString:[NSString stringWithFormat:@"%u",std::min(item.refresh?item.refresh:60u,360u)]];
         if(item.kind==Kind::display_destination){auto* dimensions=stack(YES);[dimensions addArrangedSubview:label(@"Width")];[dimensions addArrangedSubview:width];[dimensions addArrangedSubview:label(@"Height")];[dimensions addArrangedSubview:height];[dimensions addArrangedSubview:label(@"Hz / FPS")];[dimensions addArrangedSubview:fps];[card addArrangedSubview:dimensions];}
-        auto* use=button(kind(item.kind),^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{rpc::Open request{owner,item.id,bool(item.input_allowed&&control.state==NSControlStateValueOn)};if(item.kind==Kind::display_destination){request.width=portValue(width.stringValue);request.height=portValue(height.stringValue);request.refresh=portValue(fps.stringValue);const bool badWidth=request.width<640||request.width>4096||request.width%2,badHeight=request.height<480||request.height>4096||request.height%2,badRate=!request.refresh||request.refresh>360,badArea=std::uint64_t(request.width)*request.height>8847360;if(badWidth||badArea)invalidField(width);if(badHeight||badArea)invalidField(height);if(badRate)invalidField(fps);if(badWidth||badHeight||badRate||badArea){[weak error:@"Check the highlighted display mode."];return;}}rpc::encode(request);const auto token=strong->service->open(connectionId,request);strong->pending[{connectionId,token}]=item.kind;[weak renderConnections];}catch(const std::exception& e){[weak error:text(e.what())];}});use.enabled=item.available&&unavailable.empty();[card addArrangedSubview:use];if(!use.enabled)[card addArrangedSubview:label(text(unavailable.empty()?item.unavailable_reason:unavailable))];[self.remoteResources addArrangedSubview:card];}}}
+        const bool active=std::any_of(resources.begin(),resources.end(),[&](const auto& entry){const auto& event=entry.second;return !event.context.incoming&&event.context.connection==connectionId&&event.resource&&event.resource->owner==owner&&event.resource->resource==item.id;})||std::any_of(pending.begin(),pending.end(),[&](const auto& entry){return entry.first.first==connectionId&&entry.second.resource.owner==owner&&entry.second.resource.resource==item.id;});
+        auto* use=button(@"",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{
+            std::vector<std::pair<Service::Token,Service::Token>> grants,requests;
+            for(const auto& [key,event]:strong->resources)if(!event.context.incoming&&event.context.connection==connectionId&&event.resource&&event.resource->owner==owner&&event.resource->resource==item.id)grants.push_back(key);
+            for(const auto& [key,entry]:strong->pending)if(key.first==connectionId&&entry.resource.owner==owner&&entry.resource.resource==item.id)requests.push_back(key);
+            if(!grants.empty()||!requests.empty()){
+                for(const auto& key:grants){strong->service->close(key.first,key.second);if(strong->retrying.erase(key))strong->resources.erase(key);}
+                for(const auto& key:requests){strong->service->cancel(key.first,key.second);strong->pending.erase(key);}
+                [weak renderConnections];[weak renderDevices];return;
+            }
+            rpc::Open request{owner,item.id,bool(item.input_allowed&&control.state==NSControlStateValueOn)};if(item.kind==Kind::display_destination){request.width=portValue(width.stringValue);request.height=portValue(height.stringValue);request.refresh=portValue(fps.stringValue);const bool badWidth=request.width<640||request.width>4096||request.width%2,badHeight=request.height<480||request.height>4096||request.height%2,badRate=!request.refresh||request.refresh>360,badArea=std::uint64_t(request.width)*request.height>8847360;if(badWidth||badArea)invalidField(width);if(badHeight||badArea)invalidField(height);if(badRate)invalidField(fps);if(badWidth||badHeight||badRate||badArea){[weak error:@"Check the highlighted display mode."];return;}}rpc::encode(request);const auto token=strong->service->open(connectionId,request);strong->pending[{connectionId,token}]={item.kind,request};[weak renderConnections];[weak renderDevices];
+        }catch(const std::exception& e){[weak error:text(e.what())];}},active);
+        use.image=[NSImage imageWithSystemSymbolName:@"power" accessibilityDescription:active?@"Disconnect":@"Connect"];use.contentTintColor=active?NSColor.systemRedColor:NSColor.systemGreenColor;use.toolTip=[(active?@"Disconnect ":@"Connect ") stringByAppendingString:text(item.label)];use.enabled=active||(item.available&&unavailable.empty());[card addArrangedSubview:use];if(!use.enabled)[card addArrangedSubview:label(text(unavailable.empty()?item.unavailable_reason:unavailable))];[self.remoteResources addArrangedSubview:card];}}}
 }
--(void)renderConnections{clear(self.connectedResources);self.disconnectButton.hidden=resources.empty();__weak ExtraPanePeerApp* weak=self;for(const auto& [id,event]:resources){(void)id;auto c=event.context;auto* row=stack(YES);[row addArrangedSubview:label(retrying.contains(id)?[kind(c.kind) stringByAppendingString:@" - Reconnecting..."]:kind(c.kind))];[row addArrangedSubview:button(retrying.contains(id)?@"Cancel retry":@"Disconnect",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{strong->service->close(c.connection,c.grant);if(strong->retrying.erase({c.connection,c.grant})){strong->resources.erase({c.connection,c.grant});[weak renderConnections];}}catch(const std::exception& e){[weak error:text(e.what())];}},YES)];[self.connectedResources addArrangedSubview:row];}for(const auto& [key,type]:pending){const auto connection=key.first,request=key.second;auto* row=stack(YES);[row addArrangedSubview:label([kind(type) stringByAppendingString:@" - Connecting..."])];[row addArrangedSubview:button(@"Cancel",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{strong->service->cancel(connection,request);strong->pending.erase({connection,request});[weak renderConnections];}catch(const std::exception& e){[weak error:text(e.what())];}},YES)];[self.connectedResources addArrangedSubview:row];}if(resources.empty()&&pending.empty())[self.connectedResources addArrangedSubview:label(@"No resources connected")];}
+-(void)renderConnections{clear(self.connectedResources);self.disconnectButton.hidden=resources.empty();__weak ExtraPanePeerApp* weak=self;for(const auto& [id,event]:resources){(void)id;auto c=event.context;auto* row=stack(YES);[row addArrangedSubview:label(retrying.contains(id)?[kind(c.kind) stringByAppendingString:@" - Reconnecting..."]:kind(c.kind))];[row addArrangedSubview:button(retrying.contains(id)?@"Cancel retry":@"Disconnect",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{strong->service->close(c.connection,c.grant);if(strong->retrying.erase({c.connection,c.grant})){strong->resources.erase({c.connection,c.grant});[weak renderConnections];[weak renderDevices];}}catch(const std::exception& e){[weak error:text(e.what())];}},YES)];[self.connectedResources addArrangedSubview:row];}for(const auto& [key,type]:pending){const auto connection=key.first,request=key.second;auto* row=stack(YES);[row addArrangedSubview:label([kind(type.kind) stringByAppendingString:@" - Connecting..."])];[row addArrangedSubview:button(@"Cancel",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{strong->service->cancel(connection,request);strong->pending.erase({connection,request});[weak renderConnections];[weak renderDevices];}catch(const std::exception& e){[weak error:text(e.what())];}},YES)];[self.connectedResources addArrangedSubview:row];}if(resources.empty()&&pending.empty())[self.connectedResources addArrangedSubview:label(@"No resources connected")];}
 -(void)poll{
     if(!service||terminating)return;bool devicesChanged=false,connectionsChanged=false;
     for(auto& event:service->poll()){auto id=event.context.connection;switch(event.kind){
-        case Service::EventKind::listening:if(!sharingGeneration||event.sharing_generation!=sharingGeneration||(enabled.empty()&&!gatewayEnabled))break;instance=std::chrono::steady_clock::now().time_since_epoch().count()|1;sequence=0;sharingStarting=false;sharing=true;listeningPort=event.port;self.status.stringValue=@"Sharing enabled";self.status.textColor=NSColor.labelColor;[self updateSharingControls];[self startDiscovery];break;
-        case Service::EventKind::connected:links[id]=event;if(!event.context.incoming)service->catalog(id);devicesChanged=true;break;
+        case Service::EventKind::listening:if(!sharingGeneration||event.sharing_generation!=sharingGeneration)break;instance=std::chrono::steady_clock::now().time_since_epoch().count()|1;sequence=0;sharingStarting=false;sharing=true;listeningPort=event.port;self.status.stringValue=@"Sharing enabled";self.status.textColor=NSColor.labelColor;[self updateSharingControls];[self startDiscovery];break;
+        case Service::EventKind::connected:connectingLinks.erase(id);links[id]=event;if(!event.context.incoming)service->catalog(id);devicesChanged=true;break;
         case Service::EventKind::catalog:catalogs[id]=event.catalogs;devicesChanged=true;break;
         case Service::EventKind::granted:pending.erase({id,event.context.request});if(event.replaces_grant){const auto old=std::make_pair(id,event.replaces_grant);retrying.erase(old);resources.erase(old);}resources[{event.context.connection,event.context.grant}]=event;connectionsChanged=true;self.status.stringValue=@"Resource connected";break;
         case Service::EventKind::reconnecting:std::erase_if(pending,[&](const auto& entry){return entry.first.first==id;});for(const auto& [key,item]:resources)if(key.first==id&&!item.context.incoming&&item.context.kind!=Kind::usb)retrying.insert(key);catalogs.erase(id);self.status.stringValue=text(event.detail);devicesChanged=connectionsChanged=true;break;
         case Service::EventKind::stopped:{const auto key=std::make_pair(id,event.context.grant);if(!retrying.contains(key)||!event.detail.empty()){retrying.erase(key);resources.erase(key);}connectionsChanged=true;break;}
-        case Service::EventKind::disconnected:std::erase_if(pending,[&](const auto& entry){return entry.first.first==id;});std::erase_if(retrying,[&](const auto& key){return key.first==id;});links.erase(id);catalogs.erase(id);for(auto i=resources.begin();i!=resources.end();)if(i->second.context.connection==id)i=resources.erase(i);else ++i;devicesChanged=connectionsChanged=true;break;
-        case Service::EventKind::error:if(event.sharing_generation){if(event.sharing_generation!=sharingGeneration)break;[self stopSharing];}if(pending.erase({id,event.context.request}))connectionsChanged=true;[self error:text(event.detail)];break;
+        case Service::EventKind::disconnected:connectingLinks.erase(id);std::erase_if(pending,[&](const auto& entry){return entry.first.first==id;});std::erase_if(retrying,[&](const auto& key){return key.first==id;});links.erase(id);catalogs.erase(id);for(auto i=resources.begin();i!=resources.end();)if(i->second.context.connection==id)i=resources.erase(i);else ++i;devicesChanged=connectionsChanged=true;break;
+        case Service::EventKind::error:connectingLinks.erase(id);if(event.sharing_generation){if(event.sharing_generation!=sharingGeneration)break;[self stopListener];}if(pending.erase({id,event.context.request}))connectionsChanged=true;[self error:text(event.detail)];break;
         case Service::EventKind::trust_changed:devicesChanged=true;break;
     }}
-    if(devicesChanged)[self renderDevices];if(connectionsChanged)[self renderConnections];
+    if(devicesChanged||connectionsChanged)[self renderDevices];if(connectionsChanged)[self renderConnections];if(devicesChanged||connectionsChanged)[self renderOffers];
     if(scanning){auto routes=discovery.poll();static std::vector<std::string> previous;std::vector<std::string> next;for(const auto& route:routes)next.push_back(hex(route.announcement.device)+route.observed_ipv4+std::to_string(route.announcement.port));if(next!=previous){previous=next;clear(self.nearby);__weak ExtraPanePeerApp* weak=self;for(const auto& route:routes){auto selected=route;[self.nearby addArrangedSubview:button(text(route.announcement.name+" ? "+route.observed_ipv4+":"+std::to_string(route.announcement.port)),^{ExtraPanePeerApp* strong=weak;if(!strong)return;weak.address.stringValue=text(selected.observed_ipv4);weak.port.stringValue=[NSString stringWithFormat:@"%u",selected.announcement.port];strong->expected=selected.announcement.device;weak.code.stringValue=@"";weak.openConnection.state=NSControlStateValueOff;[weak showManual];[weak.window makeFirstResponder:weak.code];})];}}}
 }
 -(void)showWindow:(id)sender{(void)sender;[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];}
 -(void)quit:(id)sender{(void)sender;[NSApp terminate:nil];}
--(BOOL)windowShouldClose:(NSWindow*)window{if(sharing||sharingStarting||!links.empty()){[window orderOut:nil];return NO;}[NSApp terminate:nil];return NO;}
+-(BOOL)windowShouldClose:(NSWindow*)window{if(sharingStarting||!connectingLinks.empty()||!resources.empty()||!pending.empty()){[window orderOut:nil];return NO;}[NSApp terminate:nil];return NO;}
 -(void)applicationWillTerminate:(NSNotification*)notification{(void)notification;terminating=true;[self.timer invalidate];discovery.stop();service.reset();if(runtime)runtime->shutdown();if(self.tray)[[NSStatusBar systemStatusBar] removeStatusItem:self.tray];}
 @end
 int runPeerWorkspace(){[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];ExtraPanePeerApp* app=[ExtraPanePeerApp new];NSApp.delegate=app;[NSApp run];return 0;}

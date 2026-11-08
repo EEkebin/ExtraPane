@@ -116,14 +116,14 @@ int main(int argc,char** argv){
         if(!peers)for(int i=1;i<4;++i)controller.resources()->select(i,true);
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
-    if(peers)peers->startDiscovery();
+    if(peers){peers->startDiscovery();peers->startAvailableSharing();}
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane");
-    QMenu menu;auto* show=menu.addAction("Open ExtraPane");auto* stop=menu.addAction(peers?"Stop sharing all":"Stop server");menu.addSeparator();auto* quit=menu.addAction("Exit ExtraPane");
+    QMenu menu;auto* show=menu.addAction("Open ExtraPane");auto* stop=menu.addAction(peers?"Disconnect shared resources":"Stop server");menu.addSeparator();auto* quit=menu.addAction("Exit ExtraPane");
     tray.setContextMenu(&menu);
     auto restoreWindow=[&]{if(window->visibility()==QWindow::Minimized)window->showNormal();else window->show();window->raise();window->requestActivate();tray.hide();};
     QObject::connect(show,&QAction::triggered,window,restoreWindow);
     QObject::connect(&tray,&QSystemTrayIcon::activated,window,[&](QSystemTrayIcon::ActivationReason reason){if(reason==QSystemTrayIcon::DoubleClick)restoreWindow();});
-    QObject::connect(stop,&QAction::triggered,&controller,[&]{if(peers)peers->stopSharing();else controller.stopHost();});
+    QObject::connect(stop,&QAction::triggered,&controller,[&]{if(peers)peers->disconnectIncomingAll();else controller.stopHost();});
     auto hasWork=[&]{return controller.hosting()||controller.active()||controller.cameraSetupRunning()||(peers&&peers->active());};
     bool exitRequested=false;
     QObject::connect(quit,&QAction::triggered,&app,[&]{
@@ -135,7 +135,7 @@ int main(int argc,char** argv){
         if(!hasWork())app.quit();
     });
     QObject::connect(&app,&QGuiApplication::lastWindowClosed,&app,[&]{if(hasWork()&&QSystemTrayIcon::isSystemTrayAvailable())tray.show();else app.quit();});
-    auto stateChanged=[&]{stop->setEnabled(controller.hosting()||(peers&&(peers->sharing()||peers->sharingStarting())));if(!hasWork()&&(exitRequested||!window->isVisible()))app.quit();};
+    auto stateChanged=[&]{stop->setEnabled(controller.hosting()||(peers&&[&]{for(const auto& row:peers->connections())if(row.toMap().value("incoming").toBool())return true;return false;}()));if(!hasWork()&&(exitRequested||!window->isVisible()))app.quit();};
     if(peers)QObject::connect(peers.get(),&PeerController::changed,&app,stateChanged);
     QObject::connect(&controller,&WindowsController::hostChanged,&app,stateChanged);
     QObject::connect(&controller,&WindowsController::changed,&app,stateChanged);

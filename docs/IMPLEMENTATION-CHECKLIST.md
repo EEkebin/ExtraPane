@@ -893,3 +893,27 @@ before a packaging-tool download failed. No release was published or branch merg
   packaged from clean `e9f92f0`. Exact version, extracted startup and payload
   checks passed; installer copied to both Desktops with Surface SHA256 verified.
   Windows behavior is unchanged; no Windows installation performed.
+
+
+### Default availability and actual-use power controls
+
+This replaces the earlier opt-in offer power behavior.
+
+- [x] Normal Windows/Linux/Android startup publishes supported resources and
+  listens automatically. Pairing defaults stay enabled; advertising/pairing do not
+  start capture, create monitors or claim USB storage. OS permission gates remain.
+- [x] Provider red power is derived from exact incoming resource sessions, with
+  consumer names. Idle resources remain available. Disconnecting a resource or
+  all incoming uses preserves the catalog/listener and unrelated outgoing uses.
+- [x] Idle automatic listeners do not prevent normal app exit. Network settings
+  can be applied/retried while idle; active uses block disruptive reconfiguration.
+- [x] Android keeps foreground-only hosting, explicit permission actions and
+  independent per-resource session tracking. Returning restores availability,
+  never old capture sessions. Failed configurations do not retry continuously.
+- [x] Windows application compiles; isolated Qt controller/UI tests cover automatic
+  inventory, exact-resource/fanout activity, idle lifetime and network validation.
+  Eleven Android host suites and APK/test APK compilation/lint pass.
+- [x] Native macOS default availability, provider-use names and exact-resource
+  consumer power/cancellation implemented and statically reviewed.
+- [ ] Linux/macOS hosted build/package validation pending.
+- [ ] Matching package delivery and physical pairing/camera acceptance pending.

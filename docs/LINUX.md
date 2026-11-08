@@ -7,11 +7,11 @@ automatically. Expand **Connect by address** for IPv4/localhost, port, pairing
 code and interface selection. Direct connections remain available when multicast
 is unavailable or when connecting through a manually forwarded address.
 
-On Share, enabling the first resource starts its listener; disabling the last
-resource stops it unless gateway sharing is explicitly enabled. **Stop sharing
-all** disables all local offers and gateway sharing without stopping outgoing
-resource connections. Resources start off after an app restart. Discovery does
-not grant access or activate capture. See [workspace testing](DEVICE-WORKSPACE-TESTING.md)
+On Share, supported resources are available by default. Pairing alone does not
+start capture. Red power marks actual use of the exact resource and identifies
+its consumers; stopping one resource preserves the others. Disconnecting all
+active shares leaves the listener/catalog available. Gateway sharing remains
+opt-in. See [workspace testing](DEVICE-WORKSPACE-TESTING.md)
 for the current flow; older server/client instructions below describe the legacy
 mode. macOS/Linux validation of this latest increment remains pending.
 

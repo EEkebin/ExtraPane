@@ -48,6 +48,28 @@ struct PeerControllerEventCheck {
         controller.poll();require(!controller.sharing(),"Queued acknowledgement revived stop all");
         require(controller.pairingCode()==code,"Sharing toggles rotated pairing code");
     }
+    static void availability(PeerController& controller){
+        using namespace extrapane::peers;auto require=[](bool good,const char* why){if(!good)throw std::runtime_error(why);};
+        controller.setLocalOffers({{"front", "Front camera", Kind::camera, true},{"rear", "Rear camera", Kind::camera, true},{"missing", "Unavailable camera", Kind::camera, false}});
+        QTcpServer reservation;require(reservation.listen(QHostAddress::LocalHost,0),"Cannot reserve auto-sharing port");const auto port=reservation.serverPort();reservation.close();
+        controller.startAvailableSharing("localhost",port);require(controller.sharingStarting()&&controller.enabled_.size()==2,"Automatic availability did not publish supported resources");
+        QElapsedTimer deadline;deadline.start();while(!controller.sharing()&&deadline.elapsed()<3000){QThread::msleep(5);controller.poll();}require(controller.sharing(),"Automatic listener did not acknowledge");
+        require(!controller.active(),"Idle availability unnecessarily retains app in tray");
+        const auto originalGeneration=controller.sharingGeneration_;controller.startAvailableSharing("not-an-address",port);require(controller.sharing()&&controller.sharingGeneration_==originalGeneration,"Invalid rebind stopped available listener");
+        controller.startAvailableSharing("192.0.2.222",port);require(controller.sharing()&&controller.sharingGeneration_==originalGeneration,"Nonlocal rebind stopped available listener");
+        controller.devices_.push_back(QVariantMap{{"connection","77"},{"incoming",true}});require(!controller.active(),"Idle authenticated catalog link retains app in tray");controller.devices_.clear();
+        auto offer=[&](const char* id){for(const auto& row:controller.offers())if(row.toMap().value("id")==id)return row.toMap();return QVariantMap{};};
+        require(!offer("front").value("inUse").toBool(),"Idle offer incorrectly red");
+        Service::Event event{};event.kind=Service::EventKind::granted;event.context.incoming=true;event.context.connection=21;event.context.grant=1;event.context.kind=Kind::camera;event.resource=rpc::Open{controller.service_->identity(),"front"};controller.applyEvent(event);
+        event.context.connection=22;event.context.grant=2;controller.applyEvent(event);
+        require(offer("front").value("sessionCount")==2&&!offer("rear").value("inUse").toBool(),"Fanout or same-kind exact resource activity incorrect");
+        event.context.incoming=false;event.context.connection=23;event.context.grant=3;controller.applyEvent(event);require(offer("front").value("sessionCount")==2,"Outgoing use incorrectly counted as incoming");
+        const auto generation=controller.sharingGeneration_;controller.disconnectIncomingAll();require(controller.sharingGeneration_==generation&&controller.sharing(),"Disconnect incoming all withdrew availability");
+        controller.connections_.clear();controller.devices_.clear();controller.pending_.clear();
+        controller.setLocalOffers({{"new", "New camera", Kind::camera, true}});require(controller.enabled_.size()==1&&controller.enabled_.contains("new")&&controller.sharing(),"Updated inventory not automatically available");
+        controller.setLocalOffers({});require(controller.sharing(),"Empty inventory stopped discoverable device");controller.setGatewaySharing(true,{},0);controller.setGatewaySharing(false,{},0);require(controller.sharing(),"Disabling gateway withdrew empty automatic availability");
+        controller.stopSharing();
+    }
     static void run(PeerController& controller) {
         using namespace extrapane::peers;
         auto require=[](bool good,const char* why){if(!good)throw std::runtime_error(why);};
@@ -93,7 +115,7 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);app.setOrganizati
 #else
         extrapane::peers::TrustStore store(std::filesystem::u8path(path.toUtf8().toStdString()));
 #endif
-        if(store.identity()!=identity)throw std::runtime_error("Startup replaced local identity");PeerControllerEventCheck::run(controller);PeerControllerEventCheck::sharing(controller);}
+        if(store.identity()!=identity)throw std::runtime_error("Startup replaced local identity");PeerControllerEventCheck::run(controller);PeerControllerEventCheck::sharing(controller);PeerControllerEventCheck::availability(controller);}
         std::cout<<"Qt peer startup and resource sharing lifecycle pass with isolated loopback listeners, no media\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

@@ -35,7 +35,7 @@ public:
     bool gatewayEnabled()const{return gatewayEnabled_;}
     bool sharing()const{return sharing_;}
     bool sharingStarting()const{return sharingStarting_;}
-    bool active()const{return sharing_||sharingStarting_||!devices_.isEmpty()||!connections_.isEmpty();}
+    bool active()const{return (!automaticAvailability_&&(sharing_||sharingStarting_||!devices_.isEmpty()))||!connections_.isEmpty()||!pending_.isEmpty();}
     QString status()const{return status_;}
     QVariantList networkAddresses()const;
     QVariantList offers()const;
@@ -45,6 +45,9 @@ public:
     void setLocalOffers(std::vector<extrapane::peers::Offer>);
     Q_INVOKABLE void refreshOffers();
     Q_INVOKABLE void startDiscovery();
+    Q_INVOKABLE void startAvailableSharing(QString address={},unsigned port=43824);
+    Q_INVOKABLE void stopIncomingResource(QString id);
+    Q_INVOKABLE void disconnectIncomingAll();
     Q_INVOKABLE void enableOffer(QString id,bool enabled);
     Q_INVOKABLE void setOfferSharing(QString id,bool enabled,QString address,unsigned port);
     Q_INVOKABLE void setGatewaySharing(bool enabled,QString address,unsigned port);
@@ -71,6 +74,7 @@ private:
     QTimer timer_;
     std::unique_ptr<Service> service_;
     QString name_,status_="Sharing stopped";
+    bool automaticAvailability_=false;
     bool pairingRequired_=true,sharing_=false,sharingStarting_=false,gatewayEnabled_=false;
     QString bindAddress_;
     unsigned configuredPort_=0;
