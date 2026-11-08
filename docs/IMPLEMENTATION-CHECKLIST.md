@@ -5,7 +5,50 @@ features. Update it after every completed increment, in the same change as the
 implementation. A checked implementation item does not imply physical-device or
 release verification. Keep this file consistent with RESOURCE-SHARING.md.
 
-## Current target
+## Current status ? 2026-11-08
+
+This snapshot supersedes the historical checklist and dated development entries
+below. Implemented means code exists and its stated checks passed; it does not
+mean every device combination has been validated.
+
+### Implemented and checked
+
+- [x] Windows/Linux shared Qt interface; native Android and macOS frontends.
+- [x] Windows server accepts concurrent display, camera, microphone and USB resources on one listener.
+- [x] Repeatable resource rows and single-server/per-resource destinations on the shared desktop interface.
+- [x] Green/red power actions; idle Disconnect all hidden; last-resource admission cleanup.
+- [x] Collapsible resource groups and animated desktop sidebar with rotating arrow.
+- [x] ExtraPane display-window/monitor branding; stable legacy upgrade identities preserved.
+- [x] Windows camera and microphone source/virtual receiving components.
+- [x] Android camera/microphone sources; Linux sources, fanout and receiving integrations; macOS sources.
+- [x] Windows microphone jitter reserve, bounded refill/overflow and diagnostics; 14 isolated Rust checks passed.
+- [x] Windows USB forwarding and bounded ownership return implementation.
+- [x] Surface orphaned-driver uninstall helper repaired; removal precheck passes.
+- [x] Unified Windows installer and portable package; Linux AppImage, Android APK, macOS Universal ZIP/DMG builds.
+- [x] Matching pre.81.1 Windows installers delivered to both desktops; Android APK installed and version verified.
+
+### Current validation and remaining work
+
+- [ ] Complete newest package CI and deliver the build containing jitter, idle-disconnect, branding and sidebar fixes. pre.81.1 does not contain these fixes.
+- [ ] Retest phone microphone while three Surface display streams are active; confirm application recording quality.
+- [ ] Verify successful Surface uninstall with the repaired helper (precheck alone is not a completed uninstall).
+- [ ] Make the microSD USB reader enumerate and transfer reliably on the receiving PC; verify eject, return, reconnect and uninstall.
+- [ ] Validate camera/microphone delivery and concurrent multi-client behavior in target applications across platforms.
+- [ ] Implement clock-paced Linux microphone jitter buffering with safe mute invalidation.
+- [ ] Complete Linux/Android USB support and remaining native/shared UI parity.
+- [ ] Complete macOS virtual camera/microphone receiving, USB, same-source fanout and multiple client display windows.
+- [ ] Physical Linux touch/pen, long-session clock drift, sustained load and broader hardware coverage.
+- [ ] Production signing/distribution and full upgrade/uninstall acceptance across platforms.
+
+Deferred: iOS, a future product rename, system-audio/speaker forwarding and
+Miracast/Windows+K. See the platform guides for their exact supported features.
+
+## Historical baseline and implementation journal
+
+The older milestone checkboxes below record their original checkpoint. Use the
+current snapshot above and dated evidence for today's status.
+
+### Original target
 
 2026-11-07 Linux fanout lifecycle review: extracted the native capture registry into a portable helper with weak entry pruning and per-device teardown locks. Fake capture checks passed for create-once, rejected mode preserving existing capture, final subscriber stop, concurrent final release/new acquire and unrelated-device progress during blocked teardown. Camera mirror writes now occur only when the subscriber's desired state changes. No live capture validation performed.
 
@@ -360,3 +403,5 @@ Driver branding audit also updated the EDID monitor-name descriptor to ExtraPane
 2026-11-08 Surface pre81 uninstall orphan-driver repair: read-only diagnostics found no active export/recovery journal/capture devnode, but a stopped, disabled VBoxUSB service still referenced a missing system driver image. Its recorded oem66.inf and DriverStore INF/CAT/SYS matched the exact owned payload and no independent usbipd/VirtualBox installation was present. Cleanup now recognizes only an exact-owned, expected-path, absent-image, stopped, disabled, unreferenced orphan; all 64 policy combinations and isolated helper/package builds passed. Rebuilt an isolated repair helper with the Surface's exact pre81 payload (local source-build usbipd hash differs from CI), verified all payload hashes, preserved the original helper outside the app, and replaced only the installed setup helper while no app/setup process was running. Installed helper SHA256 f181a3e23c59d0ef67a5e7294edb60f1c3bc961bf0867aa9e1a225c8dcfb9f93; --check-removal now succeeds. No uninstall, service/driver removal, storage access or device session was performed; actual user uninstall remains to verify.
 
 2026-11-08 shared desktop navigation animation: Windows/Linux sidebar now eases between its 72 px icon rail and 224 px expanded width over 220 ms, with synchronized label fade/position and a chevron rotating between right (expand) and left (collapse). Animation reverses from its current progress when clicked again. Accessible action names and keyboard focus remain on the same button; active resource sessions are unchanged. Rebuilt shared Qt offscreen shell checks passed; no live app/device windows opened.
+
+2026-11-08 documentation reconciliation: added current implementation/validation snapshot above the historical milestone journal; updated README for shared Qt packages, resource power actions, last-resource disconnect, tray lifetime, animated sidebar, custom display targets, current packaging, microphone jitter limits and guarded USB uninstall. Corrected portable-server guidance to use the matching managed installer. Local Markdown links and diff whitespace checked; no capability marked device-verified based only on isolated tests.

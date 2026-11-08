@@ -10,6 +10,11 @@ ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Window
 
 The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers allocate connections dynamically, subject to available hardware and OS resources; the last device-validated Linux release supports one display client. The resource-sharing development branch adds independent sessions and camera/microphone endpoints; see [Linux development status](docs/LINUX.md). Android is currently a client only. The macOS development preview adds hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
 
+> This branch contains the device-sharing development build. Published releases
+> may have an older interface or fewer features. See the [current implementation
+> checklist](docs/IMPLEMENTATION-CHECKLIST.md#current-status--2026-11-08) for what
+> is implemented, tested and still pending.
+
 ## Requirements
 
 The following requirements apply to Windows. See [Linux setup](docs/LINUX.md), [Android setup](docs/ANDROID.md) and [macOS setup](docs/MACOS.md) for those platforms.
@@ -20,7 +25,7 @@ The following requirements apply to Windows. See [Linux setup](docs/LINUX.md), [
 - The ExtraPane virtual-display driver on each PC that will act as a server. Driver setup and starting the server require administrator permission.
 - A touchscreen or compatible pen on the client to use those input features.
 
-The downloads include the app's WinUI runtime. Users do not need Python, SSH, Visual Studio or a Vulkan SDK.
+Current Windows development packages include the Qt runtime and native helpers. Users do not need Python, SSH, Visual Studio or a Vulkan SDK.
 
 ## Install
 
@@ -45,7 +50,7 @@ The app is registered in Windows **Settings > Apps > Installed apps**. Setup off
 
 Extract the entire ZIP and run `ExtraPane.exe`. Keep the accompanying files together.
 
-A portable **server** must first run the included `ExtraPane.DriverSetup.exe` and complete the driver setup. A portable **client** does not need it. The driver is installed on Windows; it does not become portable just because the app runs from a ZIP.
+For a Windows server, use the matching installer with **Server + Client** to prepare the managed display, camera, microphone and USB components before running a portable copy. Extracting a ZIP does not install drivers. The older standalone `ExtraPane.DriverSetup.exe` belongs to previous display-only packages.
 
 ### Driver signing and Windows policy
 
@@ -63,13 +68,24 @@ For a connection across networks, the server address and port must already be re
 
 ## Connect
 
-1. On the PC whose desktop you want to extend, open **Server** and select **Start Driver**. Approve the helper's administrator prompt.
-2. On the second PC, open **Client**, enter one of the server's listed IPv4 addresses, and select **Connect**.
-3. Move a window to the new display. Use Windows **Settings > System > Display** to arrange monitors or change resolution and orientation.
+1. On the receiving/hosting PC, open **Server** and select **Start server**. Approve the helper's administrator prompt when required.
+2. On the other device, open **Client** and enter the server's IPv4 address and port (default `43824`). Supply its access code if required.
+3. Add the resources you want to share, select their source/settings, and use each row's green power button to connect. Display extends the server desktop onto the client; camera and microphone send the client's capture to the server.
+4. Use a row's red power button to stop it, or **Disconnect all** to stop every resource. Stopping the last resource also closes its remaining admission connection; idle Disconnect all controls are hidden.
 
-Start Driver begins listening. It creates an extended monitor only after a valid client connects. The client supplies its preferred resolution and refresh rate; the current driver offers 720p, 1080p and 3000x2000 modes, with streaming capped at a 60 FPS target. Actual delivered frame rate depends on hardware and network conditions.
+**Single server** supplies one destination to all rows. With it disabled, rows
+can target different servers. Resource groups expand/collapse without ending
+connections. The Windows/Linux sidebar slides between labels and an icon rail;
+its arrow points toward the available expand/collapse action.
 
-Windows layout changes are retained. Disconnecting a client removes only that client's monitor; the server continues listening and other clients stay connected. Stop Driver or the server tray's Exit command ends its sessions and removes their monitors.
+A virtual monitor is created only when a display resource connects. Display rows
+default to a custom 1920x1080 monitor at 60 FPS; matching a local monitor is
+optional. Custom target rates up to 360 FPS must pass driver, encoder and receiver
+validation. This is a requested rate, not a throughput guarantee.
+
+Use Windows **Settings > System > Display** to arrange monitors or change
+orientation. Disconnecting one display removes only its monitor; the server and
+other clients stay running. **Stop server** or tray **Exit** ends owned sessions.
 
 The address lists show connected physical network adapters, excluding loopback addresses. The server does not need the client's address. There is no automatic discovery or pairing step.
 
@@ -84,11 +100,11 @@ Connections use TLS encryption, but the automatic LAN mode does not authenticate
 | Show the toolbar | F10, hover briefly at the top center, or swipe down from the small top-center strip |
 | Pause or resume remote input | F8 |
 | Show connection statistics | Toolbar > Settings > Show statistics |
-| Stop hosting | Server > Stop Driver, or tray > Exit |
+| Stop hosting | Server > Stop server, or tray > Exit |
 
 The preview is resizable and supports maximize, minimize and fullscreen. Top-right taps go to the remote application. Pen events do not open the toolbar.
 
-Closing the main app window keeps the app in the tray only while its server is running. Client-only and idle windows exit normally. Normal sessions have no test pattern or timeout; Debug is off by default and enables bounded diagnostic sessions.
+On the shared Windows/Linux desktop interface, closing the main window keeps the app in the tray while a server or client resource is active. With no active work it exits normally. Double-click the tray icon to restore the window. Normal sessions have no test pattern or timeout; Debug is off by default and enables bounded diagnostic sessions.
 
 ## Settings
 
@@ -126,22 +142,25 @@ foreign registration or ambiguous ownership still stops removal with a useful
 message, while keeping the cleanup helpers available. See [USB lifecycle and
 setup](docs/USB.md) and [driver installation](docs/DRIVER-INSTALLATION.md).
 
+The latest development cleanup also handles verified owned removal-pending USB
+stubs and stopped, disabled orphan services whose driver image is missing.
+Unrelated/shared drivers remain protected. Component-success popups are suppressed;
+actionable failures and a required final restart can still be reported. A passing
+removal precheck is not proof that the complete uninstall has finished.
+
 ## Build and verification
 
 The Android client's first Pixel 8a test received a Windows extended desktop using hardware H.264 decoding; picture and physical touch were user-verified. Native stylus and physical-keyboard forwarding are implemented, with hardware-specific validation still needed. Android hosting, system-audio playback and on-screen keyboard forwarding remain unimplemented. See [Android build and validation](docs/ANDROID.md).
 
 Linux x64 builds can receive a Windows desktop and host a Linux virtual monitor through KDE's Wayland desktop portal. Both directions, including mouse and keyboard input, have been verified in an Arch VM. The last device-validated Linux host supports one display client and uses software H.264 encoding; the portal controls monitor dimensions. Native Linux client touch/pen capture has synthetic checks, but physical devices remain unverified. AppImage packaging and extracted-app startup checks pass in GitHub builds. See [Linux setup, capabilities and validation](docs/LINUX.md).
 
-The implementation uses C++20, native Windows graphics/input APIs, and C++/WinRT with WinUI 3. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.
+The current desktop development interface uses Qt/QML over C++20 native engines; Android and macOS use native frontends. The earlier WinUI interface remains in the repository. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.
 
-```powershell
-./scripts/build-apps.ps1
-./scripts/build-driver.ps1
-./scripts/package-driver.ps1
-./scripts/build-driver-installer.ps1
-python scripts/package_apps.py
-./scripts/package-installers.ps1
-```
+The current package pipeline is [Build and release](.github/workflows/prerelease.yml),
+with a [Windows shared-UI job](.github/workflows/windows-shared.yml) and separate
+Linux, Android and macOS jobs. Follow the pinned prerequisites and commands in
+[resource-sharing development](docs/RESOURCE-SHARING.md); the older
+`build-apps.ps1` pipeline builds the historical WinUI application.
 
 Outputs go to `out/dist`. Driver packaging creates a new development signing identity and refuses to overwrite an existing frozen package. Build scripts do not install the driver or trust its certificate.
 
@@ -179,6 +198,13 @@ microphone and USB connections. These changes are not yet a published release.
 - macOS adds native camera/microphone sending and repeated resource rows. Universal
   builds cover Intel and Apple Silicon. Virtual camera/microphone receiving, USB,
   same-source fanout and multiple client display windows remain unfinished.
+
+Windows microphone reception now uses a 40 ms startup reserve, adapting up to
+80 ms after starvation, with bounded storage and short transition fades. This
+benefits every source platform sending to Windows. Isolated timing tests pass;
+the reported phone-microphone/three-display workload still needs a device retest.
+Linux's equivalent clock-paced jitter buffer remains pending. See the
+[microphone endpoint notes](apps/microphone-endpoint/README.md).
 
 Windows and Linux use the shared Qt interface in this development work. Android
 and macOS still use their native frontends; shared-UI parity is not complete.

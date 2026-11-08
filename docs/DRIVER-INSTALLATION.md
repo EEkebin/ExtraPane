@@ -11,7 +11,7 @@ The virtual-display driver is required on a PC that hosts an extended desktop. A
 
 If you choose **Client only**, setup does not install a driver or trust a certificate. Both app pages remain available. To host later, rerun setup as Server + Client to install the required components.
 
-For a portable server, extract the ZIP, run its `ExtraPane.DriverSetup.exe` once, then run `ExtraPane.exe`. A portable client only needs the latter. The driver's installation is machine-wide and requires Windows administrator permission.
+For the current shared-UI portable server, use the matching installer with **Server + Client** to prepare the managed components, then extract the ZIP and run `ExtraPane.exe`. The older `ExtraPane.DriverSetup.exe` is part of historical display-only packages. Display-driver installation is machine-wide and requires Windows administrator permission.
 
 Canceling elevation or certificate consent prevents server setup. Driver installation runs after the main app and its uninstaller are available. If it fails, setup reports a nonzero result, suppresses application launch, and keeps ExtraPane installed for repair or removal. Resolve the reported error and rerun the installer; the PC is not ready to host until driver setup succeeds.
 
