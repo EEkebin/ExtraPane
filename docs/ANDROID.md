@@ -20,8 +20,9 @@ That background behavior describes display sessions. Camera sessions use a separ
 ## Controls
 
 Enter the server IPv4 address and port, choose an optional network route/access
-code, then check Display, Camera or Microphone in its collapsible group. Each
-checkbox starts/stops only its resource; Disconnect all stops all three. Selectors
+code, then use the green power button for Display, Camera or Microphone in its
+collapsible group. The button turns red to disconnect only that resource;
+Disconnect all stops all resources. Selectors
 refresh when opened and retain a still-present device selection. Missing/invalid
 configuration receives temporary red borders and one toast. On successful
 connection, a toast names the resource and destination; connected configuration

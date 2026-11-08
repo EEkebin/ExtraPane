@@ -76,7 +76,6 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
 @property(nonatomic,strong) NSStackView* configuration;
 @property(nonatomic,strong) NSStackView* destination;
 @property(nonatomic,strong) NSButton* enabled;
-@property(nonatomic,strong) NSButton* disconnect;
 @property(nonatomic,strong) NSButton* remove;
 @property(nonatomic,strong) NSButton* mute;
 @property(nonatomic,strong) NSPopUpButton* source;
@@ -93,10 +92,10 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
 - (instancetype)initWithOwner:(EPResourcePanel*)owner camera:(BOOL)camera {
     if((self=[super init])){
         self.owner=owner;self.camera=camera;self.view=[NSStackView stackViewWithViews:@[]];self.view.orientation=NSUserInterfaceLayoutOrientationVertical;self.view.alignment=NSLayoutAttributeLeading;self.view.spacing=6;
-        self.enabled=[NSButton checkboxWithTitle:camera?@"Camera":@"Microphone" target:self action:@selector(toggle:)];
-        self.disconnect=action(@"Disconnect",self,@selector(stop:),true);self.remove=action(@"Remove",self,@selector(removeRow:));
+        self.enabled=action(camera?@"Connect camera":@"Connect microphone",self,@selector(toggle:));self.enabled.image=[NSImage imageWithSystemSymbolName:@"power" accessibilityDescription:nil];self.enabled.imagePosition=NSImageLeft;
+        self.remove=action(@"Remove",self,@selector(removeRow:));
         self.mute=[NSButton checkboxWithTitle:@"Mute" target:self action:@selector(muteChanged:)];self.mute.hidden=camera;
-        [self.view addArrangedSubview:[NSStackView stackViewWithViews:@[self.enabled,self.mute,self.disconnect,self.remove]]];
+        [self.view addArrangedSubview:[NSStackView stackViewWithViews:@[self.enabled,self.mute,self.remove]]];
         self.source=[[NSPopUpButton alloc]initWithFrame:NSZeroRect pullsDown:NO];self.source.menu.delegate=self;self.source.menu.autoenablesItems=NO;[self.source addItemWithTitle:@"Select a source…"];
         self.address=field(@"Server IPv4 address",@"");self.port=field(@"TCP port",@"43824");self.code=[NSSecureTextField new];self.code.placeholderString=@"Access code (optional)";
         [self.address.widthAnchor constraintGreaterThanOrEqualToConstant:150].active=YES;[self.port.widthAnchor constraintEqualToConstant:75].active=YES;[self.code.widthAnchor constraintGreaterThanOrEqualToConstant:130].active=YES;
@@ -111,14 +110,14 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
     catch(const std::exception& e){self.status.stringValue=text(e.what());}
 }
 - (void)render {
-    const BOOL active=session!=nullptr||self.pending;self.enabled.state=active&&!self.stopping?NSControlStateValueOn:NSControlStateValueOff;self.enabled.enabled=!self.stopping;
-    self.configuration.hidden=active;self.destination.hidden=self.owner.single.state==NSControlStateValueOn;self.summary.hidden=!active;self.disconnect.hidden=!active;self.disconnect.enabled=!self.stopping;self.remove.enabled=!active;self.mute.enabled=session!=nullptr&&!self.stopping;
+    const BOOL active=session!=nullptr||self.pending;self.enabled.title=[NSString stringWithFormat:@"%@ %@",self.stopping?@"Stopping":active?@"Disconnect":@"Connect",self.camera?@"camera":@"microphone"];self.enabled.toolTip=self.enabled.title;self.enabled.accessibilityLabel=self.enabled.title;self.enabled.bezelColor=active?NSColor.systemRedColor:NSColor.systemGreenColor;self.enabled.contentTintColor=NSColor.whiteColor;self.enabled.enabled=!self.stopping;
+    self.configuration.hidden=active;self.destination.hidden=self.owner.single.state==NSControlStateValueOn;self.summary.hidden=!active;self.remove.enabled=!active;self.mute.enabled=session!=nullptr&&!self.stopping;
 }
 - (void)removeRow:(id)sender{(void)sender;if(session||self.pending)return;[self.view removeFromSuperview];[self.owner.rows removeObject:self];[self.owner update];}
 - (void)muteChanged:(id)sender{(void)sender;if(session)session->setMuted(self.mute.state==NSControlStateValueOn);}
 - (void)stop:(id)sender{(void)sender;if(self.pending){self.pending=NO;++self.generation;}if(session){self.stopping=YES;self.status.stringValue=@"Stopping…";session->cancel();}[self render];[self.owner update];}
 - (void)toggle:(id)sender{
-    (void)sender;if(self.enabled.state!=NSControlStateValueOn){[self stop:nil];return;}if(session||self.pending)return;
+    (void)sender;if(self.stopping)return;if(session||self.pending){[self stop:nil];return;}
     try{
         auto options=self.owner->targetProvider();options.kind=self.camera?extrapane::ResourceKind::camera:extrapane::ResourceKind::microphone;
         const bool common=self.owner.single.state==NSControlStateValueOn;

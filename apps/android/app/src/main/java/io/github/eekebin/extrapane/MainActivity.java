@@ -27,7 +27,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private SurfaceView video;
     private LinearLayout setup,toolbar,destinationFields;
     private ResourceCard displayCard;private Button disconnectAllButton;
-    private TextView destinationSummary;private boolean changingChecks,displayConnected;
+    private TextView destinationSummary;private boolean displayConnected,displayStopping;
     private String displayTargetKey="";
     private String displayDestination="",cachedCode="",cachedDestination="";
     private final ArrayList<View> marked=new ArrayList<>();
@@ -69,17 +69,15 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         return body;
     }
     private final class ResourceCard {
-        final LinearLayout body,configuration;final CheckBox enable;final TextView summary,status;final Button disconnect;
+        final LinearLayout body,configuration;final PowerButton enable;final TextView summary,status;
         ResourceCard(String title,String label,Runnable action){
-            body=group(title);enable=new CheckBox(MainActivity.this);enable.setText(label);enable.setTextColor(white);body.addView(enable);
-            enable.setOnCheckedChangeListener((b,checked)->{if(!changingChecks)action.run();});
+            body=group(title);enable=new PowerButton(MainActivity.this,label,action);body.addView(enable);
             configuration=new LinearLayout(MainActivity.this);configuration.setOrientation(LinearLayout.VERTICAL);body.addView(configuration);
-            summary=text("",14,accent);body.addView(summary);status=text("",13,muted);body.addView(status);disconnect=redButton("Disconnect",()->{});body.addView(disconnect);
+            summary=text("",14,accent);body.addView(summary);status=text("",13,muted);body.addView(status);
         }
         void state(boolean running,boolean requested,boolean connected,String target,String detail,boolean stopping){
-            enable.setEnabled(!stopping);enable.setChecked(!stopping&&(running||requested));configuration.setVisibility(running?View.GONE:View.VISIBLE);
+            enable.state(running||requested,stopping);configuration.setVisibility(running?View.GONE:View.VISIBLE);
             summary.setVisibility(running?View.VISIBLE:View.GONE);summary.setText((stopping?"Stopping sharing with ":connected?"Connected to ":"Connecting to ")+target+(detail.isEmpty()?"":"\n"+detail));
-            disconnect.setVisibility(running?View.VISIBLE:View.GONE);disconnect.setEnabled(!stopping);
         }
     }
     private void clearMarks(){for(View v:marked){v.setBackground(oldBackgrounds.get(v));if(v instanceof EditText)((EditText)v).setError(null);}marked.clear();oldBackgrounds.clear();}
@@ -133,9 +131,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
     private void refreshState(){
         if(displayCard==null||cameraRows==null||microphoneRows==null)return;
-        changingChecks=true;
-        displayCard.state(session!=null,false,displayConnected,displayDestination,streamWidth+" x "+streamHeight+" @ "+(displayCard.summary.getTag()==null?"":displayCard.summary.getTag()),false);
-        changingChecks=false;cameraRows.refreshLayout();microphoneRows.refreshLayout();
+        displayCard.state(session!=null,false,displayConnected,displayDestination,streamWidth+" x "+streamHeight+" @ "+(displayCard.summary.getTag()==null?"":displayCard.summary.getTag()),displayStopping);
+        cameraRows.refreshLayout();microphoneRows.refreshLayout();
         boolean capture=cameraRows.active()||microphoneRows.active();
         disconnectAllButton.setVisibility(session!=null||capture?View.VISIBLE:View.GONE);
         boolean matching=(!displayConnected||targetKey().equals(displayTargetKey))&&cameraRows.matches(captureTarget())&&microphoneRows.matches(captureTarget());
@@ -167,13 +164,13 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         destinationFields.addView(text("Connect through",14,muted));routes=new RefreshSpinner(this,this::refreshRoutes);destinationFields.addView(routes);refreshRoutes();
         destinationSummary=text("",15,accent);setup.addView(destinationSummary);
         disconnectAllButton=redButton("Disconnect all",this::disconnectAll);disconnectAllButton.setVisibility(View.GONE);setup.addView(disconnectAllButton);status=text("Ready",14,accent);setup.addView(status);
-        displayCard=new ResourceCard("Displays","Display",()->{if(displayCard.enable.isChecked())connect();else disconnect();});
+        displayCard=new ResourceCard("Displays","Display",()->{if(session==null)connect();else disconnect();});
         displayMode=new Spinner(this);displayMode.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Native phone display","Custom resolution and frame rate"}));displayCard.configuration.addView(displayMode);
         customDisplay=new LinearLayout(this);customDisplay.setOrientation(LinearLayout.VERTICAL);displayCard.configuration.addView(customDisplay);
         displayWidth=field("Width","1920");displayHeight=field("Height","1080");displayFps=field("Target FPS","60");
         for(EditText field:new EditText[]{displayWidth,displayHeight,displayFps}){field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);customDisplay.addView(field);}
         displayMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int position,long id){customDisplay.setVisibility(position==1?View.VISIBLE:View.GONE);}public void onNothingSelected(AdapterView<?> p){}});
-        displayCard.body.addView(button("Show display",this::showDisplay));displayCard.disconnect.setOnClickListener(v->disconnect());
+        displayCard.body.addView(button("Show display",this::showDisplay));
         cameraRows=new CaptureRows(this,true,group("Cameras"),this::captureTarget,()->singleServer.isChecked(),this::requestCapturePermission,this::refreshState,()->validate("capture"),(common,reason)->{cachedCode="";cachedDestination="";if(common)admissionError(reason);});
         microphoneRows=new CaptureRows(this,false,group("Microphones"),this::captureTarget,()->singleServer.isChecked(),this::requestCapturePermission,this::refreshState,()->validate("capture"),(common,reason)->{cachedCode="";cachedDestination="";if(common)admissionError(reason);});
         LinearLayout unsupported=group("USBs");CheckBox usb=new CheckBox(this);usb.setText("USB device sharing");usb.setTextColor(muted);usb.setEnabled(false);unsupported.addView(usb);unsupported.addView(text("Unavailable: Android USB/IP export and exclusive device return are not implemented. USB keyboards and mice still work as Android input devices.",14,muted));
@@ -207,14 +204,14 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(server.getWindowToken(),0);
         Point size=new Point();getDisplay().getRealSize(size);int hz=Math.max(1,Math.min(60,Math.round(getDisplay().getRefreshRate())));
         if(displayMode.getSelectedItemPosition()==1){size.x=Integer.parseInt(displayWidth.getText().toString());size.y=Integer.parseInt(displayHeight.getText().toString());hz=Integer.parseInt(displayFps.getText().toString());}
-        displayTargetKey=targetKey();displayDestination=address+":"+selectedPort;displayConnected=false;streamWidth=size.x;streamHeight=size.y;displayCard.summary.setTag(hz+" target FPS");
+        displayTargetKey=targetKey();displayDestination=address+":"+selectedPort;displayConnected=false;displayStopping=false;streamWidth=size.x;streamHeight=size.y;displayCard.summary.setTag(hz+" target FPS");
         Route route=choices.get(routes.getSelectedItemPosition());paused=false;
         ClientSession next=new ClientSession(address,route.address,route.network,video.getHolder().getSurface(),size.x,size.y,hz,15,0,queue,new ClientSession.Listener(){
             public void connected(){runOnUiThread(()->{if(session!=null&&!displayConnected){displayConnected=true;toast("Display connected to "+displayDestination);refreshState();}});}
             public void status(String message){runOnUiThread(()->{status.setText(message);displayCard.status.setText(message);});}
             public void format(int w,int h,int caps,String decoder){runOnUiThread(()->{streamWidth=w;streamHeight=h;fit();capabilities.setText("Server input: "+((caps&4)!=0?"touch ":"")+((caps&1)!=0?"mouse ":"")+((caps&2)!=0?"keyboard ":"")+((caps&8)!=0?"pen":"\nPen forwarding unavailable: this host did not grant pen input.")+"\nDecoder: "+decoder);input.enable(!paused && toolbar.getVisibility()!=View.VISIBLE);});}
             public void statistics(String text){runOnUiThread(()->stats.setText(text));}
-            public void ended(String reason){runOnUiThread(()->{session=null;displayConnected=false;input.enable(false);handler.removeCallbacks(hideToolbar);((View)setup.getTag()).setVisibility(View.VISIBLE);toolbar.setVisibility(View.GONE);stats.setVisibility(View.GONE);status.setText(reason);displayCard.status.setText(reason);admissionError(reason);getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);getWindow().getInsetsController().show(WindowInsets.Type.systemBars());refreshState();});}
+            public void ended(String reason){runOnUiThread(()->{session=null;displayConnected=false;displayStopping=false;input.enable(false);handler.removeCallbacks(hideToolbar);((View)setup.getTag()).setVisibility(View.VISIBLE);toolbar.setVisibility(View.GONE);stats.setVisibility(View.GONE);status.setText(reason);displayCard.status.setText(reason);admissionError(reason);getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);getWindow().getInsetsController().show(WindowInsets.Type.systemBars());refreshState();});}
         },selectedPort,code,displayMode.getSelectedItemPosition()==1);accessCode.setText("");
         session=next;refreshState();((View)setup.getTag()).setVisibility(View.GONE);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().getInsetsController().setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);getWindow().getInsetsController().hide(WindowInsets.Type.systemBars());
@@ -230,7 +227,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private void settings(){paused=true;input.enable(false);handler.removeCallbacks(hideToolbar);new AlertDialog.Builder(this).setTitle("Client settings").setMessage(capabilities.getText()+"\n\nStylus: contact, hover, pressure, tilt, primary barrel button and eraser require support from the device and host. Barrel rotation and secondary stylus buttons are not forwarded. A passive capacitive stylus is touch input.\n\nUSB/Bluetooth keyboards use the host keyboard layout. IME composition and system-reserved keys are not forwarded.\n\nStatistics show received data and submitted decoder output, not end-to-end latency.")
         .setPositiveButton(showStats?"Hide statistics":"Show statistics",(d,w)->{showStats=!showStats;stats.setVisibility(showStats?View.VISIBLE:View.GONE);paused=false;reveal();})
         .setNegativeButton("Resume",(d,w)->{paused=false;reveal();}).setOnCancelListener(d->{paused=false;reveal();}).show();}
-    private void disconnect(){input.enable(false);ClientSession s=session;if(s!=null){status.setText("Disconnecting…");s.cancel();}}
+    private void disconnect(){input.enable(false);ClientSession s=session;if(s!=null){displayStopping=true;status.setText("Disconnecting…");s.cancel();refreshState();}}
     private void back(){if(session!=null){showResources();}else finish();}
     @SuppressWarnings("deprecation")
     @android.annotation.SuppressLint("GestureBackNavigation") // API 30-32 fallback; 33+ uses OnBackInvokedDispatcher above.

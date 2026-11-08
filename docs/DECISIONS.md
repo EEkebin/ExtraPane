@@ -2,9 +2,9 @@
 
 ## Multiple client connections and tray lifetime (2026-11-07)
 
-Latest client interaction: resource checkboxes establish their connections; there
-is no separate Connect to server button. Disconnect all stops and unchecks all
-rows. A display defaults to a custom virtual monitor (1920x1080 at 60 FPS), with
+Latest client interaction: each resource has a green power button to connect and
+a red power button to disconnect; there is no separate Connect to server button.
+Disconnect all stops all rows. A display defaults to a custom virtual monitor (1920x1080 at 60 FPS), with
 no local monitor selection required. Matching a selected local monitor's native
 mode/fullscreen destination is an alternative, not a prerequisite.
 

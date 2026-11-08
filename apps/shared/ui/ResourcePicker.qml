@@ -45,14 +45,18 @@ ColumnLayout {
                 spacing: 8
                 RowLayout {
                     Layout.fillWidth: true
-                    CheckBox {
+                    IconButton {
                         objectName: "resourceCheck_" + card.resourceKey
-                        text: card.resourceName
+                        symbol: "disconnect"
+                        checkable: true
                         checked: card.resourceSelected
+                        positive: !checked; destructive: checked
+                        description: (checked ? "Disconnect " : "Connect ") + card.resourceName
                         enabled: !picker.resourceModel.locked && (card.resourceAvailable || card.resourceSelected)
-                        Layout.preferredWidth: Math.min(140, picker.width * 0.4)
+                        implicitWidth: 44; implicitHeight: 44
                         onClicked: picker.resourceModel.select(card.index,checked)
                     }
+                    Label { text: card.resourceName }
                     Label { text: card.resourceDescription; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
                 Label {

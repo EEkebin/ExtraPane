@@ -105,7 +105,7 @@ ScrollView {
         width: panel.availableWidth
         spacing: 12
         CheckBox { text: "Single server"; checked: panel.runtime.connections.singleServer; onClicked: panel.runtime.connections.singleServer = checked }
-        Label { text: "Add resources, then check them to connect."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#9eacc2" }
+        Label { text: "Add resources, then use the green power button to connect."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#9eacc2" }
         DestinationFields {
             id: shared
             objectName: "sharedDestinationFields"
@@ -305,19 +305,22 @@ ScrollView {
                                     RowLayout {
                                         visible: !row.busy
                                         Layout.fillWidth: true; Layout.minimumWidth: 0
-                                        CheckBox {
+                                        Label {
                                             text: row.resourceKind === "usb" ? "USB storage" : row.resourceKind.charAt(0).toUpperCase() + row.resourceKind.slice(1)
+                                        }
+                                        Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                        IconButton {
                                             objectName: "connectionEnable_" + row.connectionId
-                                            checked: row.connectionEnabled
+                                            symbol: "disconnect"; positive: true; description: "Connect " + row.resourceKind
+                                            implicitWidth: 44; implicitHeight: 44
                                             onClicked: {
-                                                if (checked && !row.validateConnection()) { checked = Qt.binding(() => row.connectionEnabled); return }
+                                                if (!row.validateConnection()) return
                                                 const code = panel.runtime.connections.singleServer ? shared.accessCode : perRow.accessCode
-                                                panel.runtime.toggle(row.connectionId, checked, code, panel.inputAllowed)
+                                                panel.runtime.toggle(row.connectionId, true, code, panel.inputAllowed)
                                                 panel.editShared = false
                                                 if (panel.runtime.connections.singleServer) shared.accessCode = ""; else perRow.accessCode = ""
                                             }
                                         }
-                                        Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                         Button { text: "Remove"; enabled: !row.busy; onClicked: panel.runtime.connections.removeConnection(row.connectionId) }
                                     }
                                     DestinationFields { id: perRow; visible: row.destinationVisible && !row.busy; enabled: !row.busy; Layout.fillWidth: true; Layout.minimumWidth: 0; destination: row.target; addresses: panel.addresses; commit: value => panel.runtime.connections.setTarget(row.connectionId, value) }
@@ -331,6 +334,7 @@ ScrollView {
                                         IconButton {
                                             objectName: "connectionDisconnect_" + row.connectionId
                                             symbol: "disconnect"; destructive: true; description: "Disconnect " + row.resourceKind
+                                            implicitWidth: 44; implicitHeight: 44
                                             enabled: row.phase !== "returning" && row.phase !== "recovery"
                                             onClicked: panel.runtime.toggle(row.connectionId, false)
                                         }

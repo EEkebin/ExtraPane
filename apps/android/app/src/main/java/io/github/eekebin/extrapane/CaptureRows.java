@@ -39,12 +39,12 @@ final class CaptureRows {
     private void mark(View field){if(!markBackgrounds.containsKey(field))markBackgrounds.put(field,field.getBackground());Runnable previous=markTimers.remove(field);if(previous!=null)main.removeCallbacks(previous);GradientDrawable color=background(Color.rgb(18,28,42));color.setStroke(dp(2),Color.rgb(255,101,119));field.setBackground(color);Runnable restore=()->{field.setBackground(markBackgrounds.remove(field));markTimers.remove(field);};markTimers.put(field,restore);main.postDelayed(restore,5000);}
     private Row add(String id){Row row=new Row(id);rows.put(id,row);return row;}
     private final class Row {
-        final CaptureAttempt attempts=new CaptureAttempt();final String id;final LinearLayout root,configuration,destination;final CheckBox enable,mute;final Spinner source;final EditText address,port,code;final TextView summary,status;final Button disconnect,remove;
+        final CaptureAttempt attempts=new CaptureAttempt();final String id;final LinearLayout root,configuration,destination;final PowerButton enable;final CheckBox mute;final Spinner source;final EditText address,port,code;final TextView summary,status;final Button remove;
         final ArrayList<CameraCapture.Choice> cameras=new ArrayList<>();final ArrayList<MicrophoneCapture.Choice> microphones=new ArrayList<>();
         boolean active,connected,stopping,pending,updating;Target target;String detail="",selectedSource="",lastError="";
         Row(String id){
             this.id=id;root=new LinearLayout(activity);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(10),dp(12),dp(10),dp(12));group.addView(root);
-            enable=new CheckBox(activity);enable.setText(kind());enable.setTextColor(Color.WHITE);root.addView(enable);
+            enable=new PowerButton(activity,kind(),()->{if(active||pending)stop();else start();});root.addView(enable);
             configuration=new LinearLayout(activity);configuration.setOrientation(LinearLayout.VERTICAL);root.addView(configuration);
             source=new Spinner(activity,Spinner.MODE_DROPDOWN){@Override public boolean performClick(){refresh();return super.performClick();}};configuration.addView(source);
             destination=new LinearLayout(activity);destination.setOrientation(LinearLayout.VERTICAL);configuration.addView(destination);
@@ -52,8 +52,8 @@ final class CaptureRows {
             destination.addView(address);destination.addView(port);destination.addView(code);destination.addView(label("Uses the selected network above."));
             summary=label("");root.addView(summary);status=label("");root.addView(status);
             mute=new CheckBox(activity);mute.setText("Mute microphone");mute.setTextColor(Color.WHITE);if(!camera)root.addView(mute);mute.setOnCheckedChangeListener((b,value)->{if(!updating&&active)action(id,value?CaptureShareService.MUTE:CaptureShareService.UNMUTE);});
-            LinearLayout actions=new LinearLayout(activity);disconnect=button("Disconnect",this::stop,true);remove=button("Remove",()->{if(!active&&!pending){rows.remove(id);group.removeView(root);}},false);actions.addView(disconnect);actions.addView(remove);root.addView(actions);
-            enable.setOnCheckedChangeListener((b,value)->{if(!updating){if(value)start();else stop();}});refresh();render();
+            LinearLayout actions=new LinearLayout(activity);remove=button("Remove",()->{if(!active&&!pending){rows.remove(id);group.removeView(root);}},false);actions.addView(remove);root.addView(actions);
+            refresh();render();
         }
         void refresh(){
             int index=source.getSelectedItemPosition();if(camera&&index>=0&&index<cameras.size())selectedSource=cameras.get(index).id();if(!camera&&index>=0&&index<microphones.size())selectedSource=Integer.toString(microphones.get(index).id());
@@ -61,7 +61,7 @@ final class CaptureRows {
             try{if(camera){cameras.addAll(CameraCapture.choices(activity));for(int i=0;i<cameras.size();i++){CameraCapture.Choice c=cameras.get(i);labels.add(c.toString());if(c.id().equals(selectedSource))selected=i;}}else{microphones.addAll(MicrophoneCapture.choices(activity));for(int i=0;i<microphones.size();i++){MicrophoneCapture.Choice m=microphones.get(i);labels.add(m.label());if(Integer.toString(m.id()).equals(selectedSource))selected=i;}}}catch(Exception error){status.setText("Device inventory unavailable: "+error.getMessage());}
             if(labels.isEmpty())labels.add("No compatible "+kind().toLowerCase(Locale.ROOT)+" available");source.setAdapter(new ArrayAdapter<>(activity,android.R.layout.simple_spinner_dropdown_item,labels));source.setSelection(selected);
         }
-        void render(){updating=true;enable.setChecked(!stopping&&(active||pending));enable.setEnabled(!stopping&&!pending);configuration.setVisibility(active||pending?View.GONE:View.VISIBLE);destination.setVisibility(shared.getAsBoolean()?View.GONE:View.VISIBLE);summary.setVisibility(active||pending?View.VISIBLE:View.GONE);summary.setText((stopping?"Stopping ":connected?"Connected to ":"Connecting to ")+(target==null?"":target.label())+(detail.isEmpty()?"":"\n"+detail));disconnect.setVisibility(active||pending?View.VISIBLE:View.GONE);disconnect.setEnabled(!stopping);remove.setEnabled(!active&&!pending);mute.setEnabled(active&&!stopping);updating=false;}
+        void render(){updating=true;enable.state(active||pending,stopping);configuration.setVisibility(active||pending?View.GONE:View.VISIBLE);destination.setVisibility(shared.getAsBoolean()?View.GONE:View.VISIBLE);summary.setVisibility(active||pending?View.VISIBLE:View.GONE);summary.setText((stopping?"Stopping ":connected?"Connected to ":"Connecting to ")+(target==null?"":target.label())+(detail.isEmpty()?"":"\n"+detail));remove.setEnabled(!active&&!pending);mute.setEnabled(active&&!stopping);updating=false;}
         void stop(){if(pending)attempts.cancelPending();pending=false;if(active){stopping=true;action(id,CaptureShareService.STOP);}render();changed.run();}
         void start(){
             if(active||pending||!visible){render();return;}

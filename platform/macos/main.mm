@@ -74,6 +74,7 @@ struct Session {std::atomic_bool stopped=false;std::mutex mutex;std::shared_ptr<
 - (void)updateActive;
 - (void)disconnect:(id)sender;
 - (void)disconnectAll:(id)sender;
+- (void)displayPower:(id)sender;
 - (void)key:(NSEvent*)event down:(BOOL)down;
 - (void)mouse:(NSEvent*)event action:(input::Action)action;
 @end
@@ -113,7 +114,7 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
     self.port=[[NSTextField alloc]initWithFrame:NSZeroRect];self.port.stringValue=@"43824";self.port.placeholderString=@"TCP port";[self.port.widthAnchor constraintEqualToConstant:75].active=YES;
     self.accessCode=[[NSSecureTextField alloc]initWithFrame:NSZeroRect];self.accessCode.placeholderString=@"Access code (optional)";[self.accessCode.widthAnchor constraintGreaterThanOrEqualToConstant:150].active=YES;
     self.routes=[[NSPopUpButton alloc]initWithFrame:NSZeroRect pullsDown:NO];[self refresh:nil];
-    self.connectButton=button(@"Connect",self,@selector(connect:));
+    self.connectButton=button(@"Connect display",self,@selector(displayPower:));self.connectButton.image=[NSImage imageWithSystemSymbolName:@"power" accessibilityDescription:nil];self.connectButton.imagePosition=NSImageLeft;self.connectButton.bezelColor=NSColor.systemGreenColor;self.connectButton.contentTintColor=NSColor.whiteColor;self.connectButton.accessibilityLabel=@"Connect display";self.connectButton.toolTip=@"Connect display";
     NSStackView* destinationRow=[NSStackView stackViewWithViews:@[self.address,self.port,self.accessCode,self.routes,button(@"Refresh",self,@selector(refresh:))]];destinationRow.spacing=8;
     self.disconnectAllButton=button(@"Disconnect all",self,@selector(disconnectAll:));self.disconnectAllButton.contentTintColor=NSColor.systemRedColor;self.disconnectAllButton.hidden=YES;
     NSStackView* actionRow=[NSStackView stackViewWithViews:@[self.connectButton,self.disconnectAllButton,button(@"Settings",self,@selector(settings:)),button(@"About",self,@selector(about:))]];actionRow.spacing=8;
@@ -147,6 +148,7 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 - (void)resetInput{heldKeys.clear();heldButtons.clear();if(session)session->input.reset();}
 - (void)finishQuit{[NSApp replyToApplicationShouldTerminate:YES];}
 - (void)updateActive {
+    self.connectButton.title=session?(session->stopped?@"Stopping display":@"Disconnect display"):@"Connect display";self.connectButton.toolTip=self.connectButton.title;self.connectButton.accessibilityLabel=self.connectButton.title;self.connectButton.bezelColor=session?NSColor.systemRedColor:NSColor.systemGreenColor;self.connectButton.enabled=!session||!session->stopped;
     self.disconnectAllButton.hidden=!(session!=nullptr||self.resources.active);
     const BOOL active=session!=nullptr||self.resources.active||(host&&host->running());
     if(active&&!self.tray){
@@ -180,12 +182,13 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 - (void)fullscreen:(id)sender{(void)sender;[self resetInput];[self.window toggleFullScreen:nil];}
 - (void)showControls{BOOL wasHidden=self.controls.hidden;self.controls.hidden=NO;if(wasHidden)[self resetInput];self.video.remoteEnabled=session && !self.paused;[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideControls) object:nil];if(session && !self.paused)[self performSelector:@selector(hideControls) withObject:nil afterDelay:5];}
 - (void)hideControls {if(session && !self.paused){NSPoint p=[self.controls convertPoint:self.window.mouseLocationOutsideOfEventStream fromView:nil];if(!self.controls.hidden && NSPointInRect(p,self.controls.bounds)){[self performSelector:@selector(hideControls) withObject:nil afterDelay:1];return;}self.controls.hidden=YES;self.video.remoteEnabled=YES;[self.window makeFirstResponder:self.video];}}
-- (void)disconnect:(id)sender{(void)sender;[NSObject cancelPreviousPerformRequestsWithTarget:self];[self resetInput];self.video.remoteEnabled=NO;if(session){session->cancel();self.status.stringValue=@"Disconnecting…";}}
+- (void)displayPower:(id)sender{if(session)[self disconnect:sender];else [self connect:sender];}
+- (void)disconnect:(id)sender{(void)sender;[NSObject cancelPreviousPerformRequestsWithTarget:self];[self resetInput];self.video.remoteEnabled=NO;if(session){session->cancel();self.status.stringValue=@"Disconnecting…";[self updateActive];}}
 - (void)connect:(id)sender{(void)sender;if(session)return;try{
     dm::mac::ResourceTarget target{self.address.stringValue.UTF8String,[(NSString*)self.routes.selectedItem.representedObject UTF8String]?:"",[self selectedPort]};
     if(!dm::mac::ipv4(target.address.c_str()))throw std::runtime_error("Enter a reachable server IPv4 address");
     std::string code=self.accessCode.stringValue.UTF8String;auto current=std::make_shared<Session>();self.accessCode.stringValue=@"";session=current;[self updateActive];
-    [[NSUserDefaults standardUserDefaults]setObject:self.address.stringValue forKey:@"server"];self.connectButton.enabled=NO;self.address.enabled=NO;self.routes.enabled=NO;self.status.stringValue=@"Connecting…";self.paused=NO;
+    [[NSUserDefaults standardUserDefaults]setObject:self.address.stringValue forKey:@"server"];self.address.enabled=NO;self.routes.enabled=NO;self.status.stringValue=@"Connecting…";self.paused=NO;
     auto screen=self.window.screen;auto size=screen.frame.size;double scale=screen.backingScaleFactor;wire::ClientDisplay preferred{uint32_t(size.width*scale),uint32_t(size.height*scale),60};
     std::thread([current,self,preferred,target,code=std::move(code)]() mutable {@autoreleasepool{struct Wipe{std::string& code;~Wipe(){std::fill(code.begin(),code.end(),0);}}wipe{code};NSString* ending=@"Disconnected";try{
         auto admission=dm::mac::acquireAdmission(target,code,0,[current]{return current->stopped.load();});std::fill(code.begin(),code.end(),0);code.clear();

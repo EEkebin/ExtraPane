@@ -200,7 +200,7 @@ int main(int argc,char** argv){
         auto* enableDisplay=named(repeatedRoot,("connectionEnable_"+instanceDisplay).toUtf8().constData());
         auto* connectionPanel=named(repeatedRoot,"clientConnectionsPanel");
         monitorMode["mode"]="native";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();
-        enableDisplay->setProperty("checked",true);require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
+        require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
         require(runtime.requests.empty()&&!instances.connection(instanceDisplay)["connectionEnabled"].toBool());
         require(connectionPanel->property("invalidControls").value<QJSValue>().toVariant().toList().size()>=2);
         require(named(repeatedRoot,"connectionValidationToast")->property("visible").toBool());
@@ -213,9 +213,9 @@ int main(int argc,char** argv){
         require(instances.setSharedTarget(QVariantMap{{"address","192.0.2.1"},{"port",43824},{"localAddress","0.0.0.0"},{"interfaceIndex",0}}));
         app.processEvents();
         auto* codeField=named(named(repeatedRoot,"sharedDestinationFields"),"connectionCode");
-        codeField->setProperty("text","12");enableDisplay->setProperty("checked",true);require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
+        codeField->setProperty("text","12");require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
         require(runtime.requests.empty()&&connectionPanel->property("invalidControls").value<QJSValue>().toVariant().toList().size()==1);
-        codeField->setProperty("text","");enableDisplay->setProperty("checked",true);require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
+        codeField->setProperty("text","");require(QMetaObject::invokeMethod(enableDisplay,"clicked"));app.processEvents();
         require(runtime.requests.size()==1&&runtime.requests.back()==instanceDisplay&&instances.connection(instanceDisplay)["connectionEnabled"].toBool());
         waitFor([&]{return !named(repeatedRoot,"connectionValidationToast")->property("visible").toBool();});
         runtime.requests.clear();instances.setEnabled(instanceDisplay,false);
