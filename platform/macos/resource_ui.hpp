@@ -3,6 +3,9 @@
 #include "resource_session.hpp"
 #include <functional>
 
+// Isolated AppKit menu regression check; never enumerates or opens devices.
+bool resourceSourceMenuCheck();
+
 // AppKit adapter for the common resource protocol. Native media remains off UI.
 @interface EPResourcePanel : NSObject
 @property(nonatomic,readonly) NSView* view;

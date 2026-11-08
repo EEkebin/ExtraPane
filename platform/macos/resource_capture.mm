@@ -36,7 +36,7 @@ CameraMode modeFor(AVCaptureDevice* device,const Choice* requested=nullptr){
 struct Shared {
     std::mutex mutex;std::condition_variable changed;std::deque<Packet> packets;
     std::size_t bytes=0;std::string error;std::atomic_bool stopping=false;std::atomic_uint pending=0;
-    std::function<bool()> muted;
+    std::function<bool(std::int64_t)> muted;
     void fail(std::string reason){std::lock_guard lock(mutex);if(error.empty())error=std::move(reason);changed.notify_all();}
     void push(Packet packet){
         std::lock_guard lock(mutex);if(stopping||!error.empty())return;
@@ -66,6 +66,7 @@ void encoded(void* context,void*,OSStatus status,VTEncodeInfoFlags flags,CMSampl
 
 @interface ExtraPaneResourceSink:NSObject<AVCaptureVideoDataOutputSampleBufferDelegate,AVCaptureAudioDataOutputSampleBufferDelegate> {
 @public std::shared_ptr<Shared> shared;VTCompressionSessionRef encoder;BOOL camera;CMTime previousAudioEnd;unsigned width,height;
+    __weak AVCaptureSession* captureSession;
 }
 @end
 @implementation ExtraPaneResourceSink
@@ -86,7 +87,11 @@ void encoded(void* context,void*,OSStatus status,VTEncodeInfoFlags flags,CMSampl
             auto block=CMSampleBufferGetDataBuffer(sample);require(block,"Missing microphone samples");auto size=CMBlockBufferGetDataLength(block);require(size>0&&size<=192000&&size%2==0,"Invalid microphone sample size");
             Packet packet;packet.timestamp100ns=timestamp(CMSampleBufferGetPresentationTimeStamp(sample));packet.bytes.resize(size);
             require(CMBlockBufferCopyDataBytes(block,0,size,packet.bytes.data())==noErr,"Cannot read microphone samples");
-            packet.muted=shared->muted&&shared->muted();
+            // Delegate delivery can lag behind capture, including across a full
+            // mute/unmute cycle. Compare capture time, not callback arrival time.
+            auto clock=captureSession.masterClock;require(clock,"Microphone capture clock is unavailable");
+            const auto hostStart=CMSyncConvertTime(CMSampleBufferGetPresentationTimeStamp(sample),clock,CMClockGetHostTimeClock());
+            packet.muted=shared->muted&&shared->muted(timestamp(hostStart));
             if(packet.muted)std::fill(packet.bytes.begin(),packet.bytes.end(),0);
             const auto start=CMSampleBufferGetPresentationTimeStamp(sample);
             packet.discontinuity=!CMTIME_IS_NUMERIC(previousAudioEnd)||std::abs(CMTimeGetSeconds(CMTimeSubtract(start,previousAudioEnd)))>0.002;
@@ -134,7 +139,7 @@ struct Capture::State {
         sink=nil;session=nil;
     }
 };
-Capture::Capture(Choice choice,std::function<bool()> muted):state_(std::make_unique<State>()){
+Capture::Capture(Choice choice,std::function<bool(std::int64_t)> muted):state_(std::make_unique<State>()){
     @autoreleasepool { @try {
         require(!NSThread.isMainThread,"Capture must start on a worker thread");auto& s=*state_;s.choice=std::move(choice);s.shared->muted=std::move(muted);
         require([AVCaptureDevice authorizationStatusForMediaType:mediaType(s.choice.kind)]==AVAuthorizationStatusAuthorized,"Camera or microphone permission is required");
@@ -142,6 +147,7 @@ Capture::Capture(Choice choice,std::function<bool()> muted):state_(std::make_uni
         require(s.device&&s.device.connected&&!s.device.suspended,"Selected capture device is no longer available");
         NSError* error=nil;s.input=[AVCaptureDeviceInput deviceInputWithDevice:s.device error:&error];if(!s.input)throw std::runtime_error(text(error.localizedDescription));
         s.session=[AVCaptureSession new];s.sink=[ExtraPaneResourceSink new];s.sink->shared=s.shared;s.sink->camera=s.choice.kind==Kind::Camera;s.sink->previousAudioEnd=kCMTimeInvalid;
+        s.sink->captureSession=s.session;
         [s.session beginConfiguration];s.configuring=true;require([s.session canAddInput:s.input],"Cannot add selected capture input");[s.session addInput:s.input];
         if(s.choice.kind==Kind::Camera){
             const bool requested=s.choice.width||s.choice.height||s.choice.fps;const auto mode=modeFor(s.device,requested?&s.choice:nullptr);require(mode.format,"Selected camera mode is unavailable");

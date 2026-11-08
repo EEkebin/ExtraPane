@@ -10,6 +10,34 @@ namespace capture=dm::mac::resource;
 static NSString* text(const std::string& value){return [NSString stringWithUTF8String:value.c_str()]?:@"";}
 static NSButton* action(NSString* title,id target,SEL selector,bool red=false){auto* b=[NSButton buttonWithTitle:title target:target action:selector];if(red)b.contentTintColor=NSColor.systemRedColor;return b;}
 static NSTextField* field(NSString* hint,NSString* value){auto* f=[NSTextField textFieldWithString:value];f.placeholderString=hint;return f;}
+static void populateSources(NSPopUpButton* menu,const std::vector<capture::Choice>& devices,NSString* selected){
+    [menu removeAllItems];[menu addItemWithTitle:@"Select a source..."];
+    for(const auto& device:devices){
+        // NSPopUpButton's addItemWithTitle removes earlier identical titles.
+        // Add menu items directly so identical model names retain their identity.
+        auto* item=[[NSMenuItem alloc]initWithTitle:text(device.label+(device.available?"":" - "+device.reason)) action:nil keyEquivalent:@""];
+        item.representedObject=text(device.id);item.enabled=device.available;[menu.menu addItem:item];
+        if([item.representedObject isEqual:selected])[menu selectItem:item];
+    }
+}
+static const capture::Choice* selectedSource(NSPopUpButton* menu,const std::vector<capture::Choice>& devices){
+    NSString* identity=menu.selectedItem.representedObject;
+    if(![identity isKindOfClass:NSString.class]||!identity.length)return nullptr;
+    const capture::Choice* result=nullptr;
+    for(const auto& device:devices)if(device.id==identity.UTF8String){if(result)return nullptr;result=&device;}
+    return result&&result->available?result:nullptr;
+}
+bool resourceSourceMenuCheck(){
+    auto* menu=[[NSPopUpButton alloc]initWithFrame:NSZeroRect pullsDown:NO];menu.menu.autoenablesItems=NO;
+    std::vector<capture::Choice> devices{{capture::Kind::Camera,"first","USB camera","",640,480,30,true},{capture::Kind::Camera,"second","USB camera","",1920,1080,30,true},{capture::Kind::Camera,"third","Built-in camera","",1280,720,30,true}};
+    populateSources(menu,devices,@"second");
+    if(menu.numberOfItems!=4||!selectedSource(menu,devices)||selectedSource(menu,devices)->id!="second")return false;
+    [menu selectItemAtIndex:3];if(!selectedSource(menu,devices)||selectedSource(menu,devices)->id!="third")return false;
+    std::reverse(devices.begin(),devices.end());populateSources(menu,devices,@"second");
+    if(!selectedSource(menu,devices)||selectedSource(menu,devices)->id!="second")return false;
+    devices.erase(devices.begin()+1);populateSources(menu,devices,@"second");if(selectedSource(menu,devices))return false;
+    devices[0].available=false;populateSources(menu,devices,@"third");return !selectedSource(menu,devices);
+}
 static unsigned portValue(NSString* value){if(!value.length||[value rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet].location!=NSNotFound||value.integerValue<1||value.integerValue>65535)return 0;return unsigned(value.integerValue);}
 static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;view.layer.borderColor=NSColor.systemRedColor.CGColor;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{view.layer.borderWidth=0;});}
 @interface EPResourceStack : NSStackView
@@ -75,8 +103,8 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
     }return self;
 }
 - (void)menuWillOpen:(NSMenu*)menu {
-    (void)menu;NSString* selected=self.source.selectedItem.representedObject;[self.source removeAllItems];devices.clear();[self.source addItemWithTitle:@"Select a source…"];
-    try{devices=capture::enumerate(self.camera?capture::Kind::Camera:capture::Kind::Microphone);for(const auto& device:devices){[self.source addItemWithTitle:text(device.label+(device.available?"":" — "+device.reason))];self.source.lastItem.representedObject=text(device.id);self.source.lastItem.enabled=device.available;if([self.source.lastItem.representedObject isEqual:selected])[self.source selectItem:self.source.lastItem];}}
+    (void)menu;NSString* selected=self.source.selectedItem.representedObject;devices.clear();populateSources(self.source,devices,nil);
+    try{devices=capture::enumerate(self.camera?capture::Kind::Camera:capture::Kind::Microphone);populateSources(self.source,devices,selected);}
     catch(const std::exception& e){self.status.stringValue=text(e.what());}
 }
 - (void)render {
@@ -93,9 +121,9 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
         const bool common=self.owner.single.state==NSControlStateValueOn;
         if(!common){options.target.address=self.address.stringValue.UTF8String;options.target.port=portValue(self.port.stringValue);options.code=self.code.stringValue.UTF8String;}
         bool valid=true;if(!dm::mac::ipv4(options.target.address.c_str())){if(!common)invalid(self.address);valid=false;}if(!options.target.port||options.target.port>65535){if(!common)invalid(self.port);valid=false;}if(!options.code.empty()&&!dm::access::validCode(options.code)){if(!common)invalid(self.code);valid=false;}
-        const auto index=self.source.indexOfSelectedItem-1;if(index<0||size_t(index)>=devices.size()||!devices[size_t(index)].available){invalid(self.source);valid=false;}
+        const auto* source=selectedSource(self.source,devices);if(!source){invalid(self.source);valid=false;}
         if(!valid){if(common&&self.owner.highlightInvalidTarget)self.owner.highlightInvalidTarget();[self.owner notify:common?@"Complete the server address, port, access code and selected source.":@"Check the highlighted connection fields."];[self render];return;}
-        const auto selected=devices[size_t(index)];options.sourceId=selected.id;options.width=selected.width;options.height=selected.height;options.fps=selected.fps;
+        const auto selected=*source;options.sourceId=selected.id;options.width=selected.width;options.height=selected.height;options.fps=selected.fps;
         self.pending=YES;self.stopping=NO;const NSUInteger generation=++self.generation;
         self.summary.stringValue=[NSString stringWithFormat:@"Connecting to %s:%u — %s",options.target.address.c_str(),options.target.port,selected.label.c_str()];self.status.stringValue=@"Waiting for capture permission…";[self render];[self.owner update];
         __weak EPResourceRow* weak=self;

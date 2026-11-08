@@ -106,7 +106,7 @@ Mouse, keyboard, multi-touch and exposed pen pressure, tilt, buttons, inversion 
 
 Windows has one shared cursor and keyboard focus. Multiple clients extend the same desktop; they are not independent user sessions. Input cleanup releases session-owned keys, buttons and contacts on disconnect.
 
-Not implemented: system audio, microphone forwarding, Windows+K/Miracast, IPv6 transport, automatic client reconnection, ARM64/macOS builds, and DLSS/upscaling/frame generation. Custom LAN connections do not appear in Windows Cast.
+Not implemented: system audio, Windows+K/Miracast, IPv6 transport, automatic client reconnection, Windows ARM64 builds, and DLSS/upscaling/frame generation. Microphone sharing is available in the device-sharing development branch described below. macOS packages contain Intel and Apple Silicon binaries. Custom LAN connections do not appear in Windows Cast.
 
 ## Uninstall
 
@@ -128,9 +128,9 @@ setup](docs/USB.md) and [driver installation](docs/DRIVER-INSTALLATION.md).
 
 ## Build and verification
 
-An Android client is in development. Its first Pixel 8a test received a Windows extended desktop using hardware H.264 decoding; picture and physical touch were user-verified. Android hosting, pen, audio and on-screen keyboard forwarding are not implemented in this slice. See [Android build and validation](docs/ANDROID.md).
+The Android client's first Pixel 8a test received a Windows extended desktop using hardware H.264 decoding; picture and physical touch were user-verified. Native stylus and physical-keyboard forwarding are implemented, with hardware-specific validation still needed. Android hosting, system-audio playback and on-screen keyboard forwarding remain unimplemented. See [Android build and validation](docs/ANDROID.md).
 
-Linux x64 development builds can receive a Windows desktop and host a Linux virtual monitor through KDE's Wayland desktop portal. Both directions, including mouse and keyboard input, have been verified in an Arch VM. Linux hosting currently supports one client and uses software H.264 encoding; the portal controls monitor dimensions. Native Linux client touch/pen capture has synthetic checks, but physical devices remain unverified. Published downloads remain Windows-only while AppImage deployment is being validated. See [Linux setup, capabilities and validation](docs/LINUX.md).
+Linux x64 builds can receive a Windows desktop and host a Linux virtual monitor through KDE's Wayland desktop portal. Both directions, including mouse and keyboard input, have been verified in an Arch VM. The last device-validated Linux host supports one display client and uses software H.264 encoding; the portal controls monitor dimensions. Native Linux client touch/pen capture has synthetic checks, but physical devices remain unverified. AppImage packaging and extracted-app startup checks pass in GitHub builds. See [Linux setup, capabilities and validation](docs/LINUX.md).
 
 The implementation uses C++20, native Windows graphics/input APIs, and C++/WinRT with WinUI 3. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.
 
@@ -167,10 +167,22 @@ A project-wide open-source license has not been selected. Third-party components
 
 ## Device-sharing development
 
-The `feat/shared-resources` branch is building a shared interface with camera,
-microphone and removable USB storage sharing. It is not part of the published
-release described above. Windows-to-Windows implementations are being assembled
-with Android camera/microphone sources; physical delivery and component setup
-still need verification. See the [implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md),
-[resource design](docs/RESOURCE-SHARING.md) and [future Windows verification guide](docs/WINDOWS-RESOURCE-TEST.md)
-for completed work, limitations and the test gates.
+The `feat/shared-resources` branch adds grouped, independent display, camera,
+microphone and USB connections. These changes are not yet a published release.
+
+- Windows includes camera/microphone receiving components and exclusive removable
+  USB storage sharing. Installation, recovery and combined-device tests remain
+  part of the acceptance checks.
+- Linux and Android can share compatible camera/microphone capture with several
+  destinations. Linux virtual receiving endpoints require the documented system
+  prerequisites; USB integration remains unfinished on both platforms.
+- macOS adds native camera/microphone sending and repeated resource rows. Universal
+  builds cover Intel and Apple Silicon. Virtual camera/microphone receiving, USB,
+  same-source fanout and multiple client display windows remain unfinished.
+
+Windows and Linux use the shared Qt interface in this development work. Android
+and macOS still use their native frontends; shared-UI parity is not complete.
+Isolated checks and package builds do not establish physical capture or delivery
+to receiving applications. See the [implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md),
+[resource design and development build commands](docs/RESOURCE-SHARING.md) and
+[Windows verification guide](docs/WINDOWS-RESOURCE-TEST.md) for evidence and test gates.

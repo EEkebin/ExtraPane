@@ -1,11 +1,11 @@
 #include "resource_session.hpp"
 #include "resource_capture.hpp"
 #include "transport.hpp"
-// This packetizer is platform-independent; it accepts native PCM byte chunks.
-#include "../linux/resource_pcm.hpp"
+#include "resource_microphone.hpp"
 #include <extrapane/camera_protocol.hpp>
 #include <extrapane/negotiation.hpp>
 #include <Security/Security.h>
+#include <CoreMedia/CoreMedia.h>
 #include <algorithm>
 #include <stdexcept>
 namespace dm::mac {
@@ -15,6 +15,7 @@ ResourceSession::ResourceSession(ResourceOptions options,ResourceCallbacks callb
 ResourceSession::~ResourceSession(){cancel();if(worker_.joinable())worker_.join();std::fill(options_.code.begin(),options_.code.end(),0);}
 void ResourceSession::start(){if(worker_.joinable())throw std::runtime_error("Resource session already started");worker_=std::thread([this]{run();});}
 void ResourceSession::cancel(){cancelled_=true;std::shared_ptr<Transport> stream;{std::lock_guard lock(mutex_);stream=stream_;}if(stream)stream->cancel();}
+void ResourceSession::setMuted(bool value){mute_.set(value,CMTimeConvertScale(CMClockGetTime(CMClockGetHostTimeClock()),10000000,kCMTimeRoundingMethod_Default).value);}
 void ResourceSession::run(){@autoreleasepool{
     std::string ending;
     try{
@@ -42,13 +43,13 @@ void ResourceSession::run(){@autoreleasepool{
         control.send({{wire::Operation::request,options_.kind,binding.resource,static_cast<uint32_t>(payload.size())},std::move(payload)});
         reply=control.receive();require(reply.header.operation==wire::Operation::grant&&reply.header.kind==options_.kind&&reply.header.resource_id==binding.resource&&reply.payload.empty(),"Server rejected this resource; check its receiving component");
         require(!cancelled(),"Connection cancelled");
-        resource::Capture capture(choice,[this]{return muted_.load();});media::Channel camera(binding,read,write);microphone_wire::Channel microphone(binding,read,write);
+        resource::Capture capture(choice,[this](std::int64_t capturedAt){return mute_.sampleMuted(capturedAt);});media::Channel camera(binding,read,write);microphone_wire::Channel microphone(binding,read,write);
         bool announced=false;auto announce=[&]{if(!announced){announced=true;if(callbacks_.connected)callbacks_.connected(choice.width,choice.height,choice.fps);}};
-        dm::linux_client::PcmPacketizer pcm(binding,[&](const auto& frame){microphone.send(frame);announce();});uint64_t sequence=0;
+        MicrophoneDelivery pcm(binding,[this]{return mute_.current();},[&](const auto& frame){microphone.send(frame);announce();});uint64_t sequence=0;
         while(!cancelled()){
             auto packet=capture.nextPacket(cancelled);if(packet.bytes.empty())continue;
             if(kind==resource::Kind::Camera){camera.send({binding,sequence++,packet.timestamp100ns,packet.bytes});announce();}
-            else pcm.push(packet.bytes,packet.muted||muted_.load(),packet.discontinuity);
+            else pcm.push(packet.bytes,packet.muted,packet.discontinuity);
         }
         if(!cancelled_)ending="Server admission ended";
     }catch(const std::exception& error){if(!cancelled_)ending=error.what();}

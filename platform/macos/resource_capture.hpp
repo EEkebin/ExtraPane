@@ -24,7 +24,8 @@ void requestPermission(Kind,std::function<void(bool,std::string)>);
 class Capture {
     struct State;std::unique_ptr<State> state_;
 public:
-    explicit Capture(Choice,std::function<bool()> muted={}); // Call off the main thread.
+    // Mute predicate receives the sample start on the host clock, in 100ns units.
+    explicit Capture(Choice,std::function<bool(std::int64_t)> muted={}); // Call off the main thread.
     ~Capture();
     Capture(const Capture&)=delete;Capture& operator=(const Capture&)=delete;
     const Choice& choice()const;

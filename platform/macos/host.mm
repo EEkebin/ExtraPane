@@ -1,5 +1,6 @@
 #include "host.hpp"
 #include "display_slots.hpp"
+#include "admission_budget.hpp"
 #include "host_tls.hpp"
 #include "host_media.hpp"
 #include "host_input.hpp"
@@ -30,15 +31,14 @@ namespace wire=video::wire;using Clock=std::chrono::steady_clock;using namespace
 struct Host::State {
     std::shared_ptr<access::Gate> gate;unsigned port;std::atomic_bool stop=false,running=true;std::string address;std::function<void(std::string)> report;std::thread listener;
     struct Worker {std::thread thread;std::atomic_bool done=false;};
-    std::vector<std::unique_ptr<Worker>> workers;std::atomic_uint pending=0;DisplaySlots displays;
-    struct Admission {std::atomic_uint& count;bool pending=true;~Admission(){ready();}void ready(){if(pending){pending=false;--count;}}};
+    std::vector<std::unique_ptr<Worker>> workers;AdmissionBudget admissions;DisplaySlots displays;
     State(std::string bind,std::function<void(std::string)> callback,unsigned selectedPort,std::shared_ptr<access::Gate> selectedGate):gate(std::move(selectedGate)),port(selectedPort),address(std::move(bind)),report(std::move(callback)){}
-    void serve(int socket){Admission admission{pending};@autoreleasepool{if(@available(macOS 13.0,*)){
+    void serve(int socket,AdmissionBudget::Lease admission){@autoreleasepool{if(@available(macOS 13.0,*)){
         auto cancelled=[this]{return stop.load();};HostTls transport(socket,cancelled,gate.get());auto bytes=transport.read(8,10);
         if(std::equal(bytes.begin(),bytes.end(),access::control_prefix.begin())){
             access::ControlRequest request{};std::copy(bytes.begin(),bytes.end(),request.begin());auto tail=transport.read(8,10);std::copy(tail.begin(),tail.end(),request.begin()+8);
             auto [operation,kind]=access::parse_control(request);if(operation!=access::ControlOperation::open)throw std::runtime_error("Control must open first");
-            const bool protectedMode=transport.openControl();admission.ready();transport.write(access::control_reply(operation,kind,protectedMode),10);
+            const bool protectedMode=transport.openControl();transport.write(access::control_reply(operation,kind,protectedMode),10);
             while(!stop){auto data=transport.read(16,20);std::copy(data.begin(),data.end(),request.begin());auto parsed=access::parse_control(request);operation=parsed.first;kind=parsed.second;
                 if(operation==access::ControlOperation::open)throw std::runtime_error("Control already open");std::string credential;
                 if(operation==access::ControlOperation::add){auto tickets=transport.controlChannels(kind);if(protectedMode){credential=access::formatCredential(tickets.at(0));std::fill(tickets[0].secret.begin(),tickets[0].secret.end(),0);}}
@@ -49,7 +49,7 @@ struct Host::State {
         transport.requireResource(0);auto rest=transport.read(24,10);bytes.insert(bytes.end(),rest.begin(),rest.end());auto display=wire::take_client_display(bytes);unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7],keyboard=bytes[10];bytes[7]=bytes[8]=bytes[9]=bytes[10]=0;
         if(!std::equal(bytes.begin(),bytes.end(),wire::request.begin()) || inputRequested>1 || wanted>15 || bool(inputRequested)!=bool(wanted) || scale>2 || keyboard>2 || (keyboard&&(!inputRequested||!(wanted&4))))throw std::runtime_error("Invalid client request");
         if(!CGPreflightScreenCaptureAccess())throw std::runtime_error("Screen Recording permission is required");
-        auto displayLease=displays.acquire();const unsigned slot=displayLease.index();admission.ready();
+        auto displayLease=displays.acquire();const unsigned slot=displayLease.index();admission.release();
         unsigned w=display.width?display.width:1920,h=display.height?display.height:1080,hz=std::clamp(display.hz?display.hz:60,1u,60u);
         double reduction=std::min({1.0,4096.0/w,4096.0/h,std::sqrt(8847360.0/(double(w)*h))});w=std::max(640u,unsigned(w*reduction)&~1u);h=std::max(480u,unsigned(h*reduction)&~1u);
         VirtualDisplay monitor(w,h,hz,slot);HostInput broker(slot,monitor.displayID());unsigned granted=wanted&(AXIsProcessTrusted()?3u:0u);std::unique_ptr<HostMedia> media;uint64_t epoch=0;unsigned outW=0,outH=0;
@@ -88,13 +88,13 @@ struct Host::State {
             for(const auto& listener:listeners){if(stop)break;if(!(listener.revents&POLLIN))continue;
                 int peer=accept(listener.fd,nullptr,nullptr);if(peer<0)continue;fcntl(peer,F_SETFD,FD_CLOEXEC);
                 for(auto it=workers.begin();it!=workers.end();){if((*it)->done){(*it)->thread.join();it=workers.erase(it);}else ++it;}
-                if(pending>=32){close(peer);report("Too many pending admissions; retry shortly");continue;}
-                ++pending;
+                auto admission=admissions.tryAcquire();
+                if(!admission){close(peer);report("Too many admission/control connections; retry shortly");continue;}
                 try{
                     workers.push_back(std::make_unique<Worker>());auto* worker=workers.back().get();
-                    try{worker->thread=std::thread([this,peer,worker]{@autoreleasepool{try{serve(peer);}catch(const std::exception& e){report(std::string("Connection ended: ")+e.what());}catch(...){report("Connection ended unexpectedly");}if(!stop)report("Listening on "+address+" ? connection ended; other sessions remain active");worker->done=true;}});}
+                    try{worker->thread=std::thread([this,peer,worker,admission=std::move(*admission)]() mutable {@autoreleasepool{try{serve(peer,std::move(admission));}catch(const std::exception& e){report(std::string("Connection ended: ")+e.what());}catch(...){report("Connection ended unexpectedly");}if(!stop)report("Listening on "+address+" ? connection ended; other sessions remain active");worker->done=true;}});}
                     catch(...){workers.pop_back();throw;}
-                }catch(...){--pending;close(peer);report("Cannot create another connection worker; existing sessions continue");}
+                }catch(...){close(peer);report("Cannot create another connection worker; existing sessions continue");}
             }
         }
     }catch(const std::exception& e){report(std::string("Server error: ")+e.what());}
