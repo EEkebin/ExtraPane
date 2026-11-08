@@ -38,6 +38,13 @@ Resources are grouped into Monitors, Cameras, Speakers, Microphones and USB.
 Click or tap a group header to expand or collapse it. Collapsing a group must
 retain its selections and active sessions. Within Monitors, extending a desktop
 and viewing an existing screen remain separate actions.
+On Share these appear under **Use as an extra monitor** and **Share an existing
+screen (view only)**. The first offers this device as a receiving screen: choose
+**Custom resolution** or a named monitor whose mode supplies the initial settings.
+The second sends an already-existing screen's picture. A monitor may appear once
+in each section because these are different uses of the same hardware. Resource
+names use readable monitor labels rather than raw Windows display paths; the
+resource identities and saved sharing choices are unchanged.
 
 On Android, use the top-left menu for Devices, Share, Connections and About.
 Check portrait and landscape layouts: the toolbar and bottom controls must stay

@@ -63,7 +63,21 @@ Item {
         {key:"usb", title:"USB", icon:"usb", kinds:[3]}
     ]
     function groupedRows(rows, group) {
-        return (rows || []).filter(row => group.kinds.indexOf(row.kindId) >= 0)
+        let grouped=[]
+        for(const kind of group.kinds) grouped=grouped.concat((rows||[]).filter(row => row.kindId===kind))
+        return grouped
+    }
+    function startsMonitorSection(rows,index) {
+        if(!rows || !rows[index]) return false
+        const kind=rows[index].kindId
+        return (kind===0 || kind===5) && (index===0 || rows[index-1].kindId!==kind)
+    }
+    component MonitorSection: Label {
+        property int kind: 0
+        property bool receiving: false
+        text: receiving ? (kind===0 ? "Extend this desktop" : "View an existing screen (view only)") : (kind===0 ? "Use as an extra monitor" : "Share an existing screen (view only)")
+        textFormat: Text.PlainText; font.weight: Font.DemiBold; color: "#aabbd3"
+        Layout.fillWidth: true; wrapMode: Text.WordWrap; topPadding: 8; bottomPadding: 4
     }
     component ResourceGroup: ColumnLayout {
         id: group
@@ -236,17 +250,22 @@ Item {
                                     visible: count>0
                                     Repeater {
                                         model: catalogGroup.items
-                                        delegate: Rectangle {
-                                            id: resourceCard
+                                        delegate: ColumnLayout {
+                                            id: catalogRow
                                             required property var modelData
+                                            required property int index
+                                            Layout.fillWidth: true; spacing: 8
+                                            MonitorSection { objectName: catalogGroup.groupKey+"Section_"+catalogRow.index; kind: catalogRow.modelData.kindId; receiving: true; visible: workspace.startsMonitorSection(catalogGroup.items,catalogRow.index) }
+                                            Rectangle {
+                                            id: resourceCard
+                                            property var modelData: catalogRow.modelData
                                             objectName: "peerResource_"+modelData.id
                                             property string connectionId: peerDevice.modelData.connection
-                                        property var sessions: peers.connections.filter(row => row.connection===connectionId && row.owner===modelData.owner && row.resource===modelData.id)
+                                            property var sessions: peers.connections.filter(row => row.connection===connectionId && row.owner===modelData.owner && row.resource===modelData.id)
                                             Layout.fillWidth: true; implicitHeight: resourceContent.implicitHeight+28; radius: 12; color: "#162339"
                                             ColumnLayout {
                                                 id: resourceContent; anchors.fill: parent; anchors.margins: 14; spacing: 10
                                                 Label { textFormat: Text.PlainText; text: resourceCard.modelData.label; font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                                                Label { text: resourceCard.modelData.kindId===0 ? "Virtual monitor destination" : "Existing screen (view only)"; visible: resourceCard.modelData.kindId===0 || resourceCard.modelData.kindId===5; color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                                 Label { textFormat: Text.PlainText; visible: resourceCard.modelData.delegated===true; text: "Via gateway ? "+(resourceCard.modelData.ownerName||""); color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                                 Label { textFormat: Text.PlainText; visible: !resourceCard.modelData.available; text: resourceCard.modelData.reason; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                                 CheckBox { id: input; visible: resourceCard.modelData.inputAllowed; checked: resourceCard.modelData.inputAllowed&&resourceCard.modelData.kindId===0; text: "Allow input" }
@@ -258,7 +277,7 @@ Item {
                                                 }
                                                 RowLayout {
                                                     Layout.fillWidth: true
-                                                    Label { text: resourceCard.modelData.kind; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                                    Item { Layout.fillWidth: true }
                                                     PowerButton {
                                                         objectName: "peerUse_"+resourceCard.modelData.id
                                                         destructive: resourceCard.sessions.length>0
@@ -275,6 +294,7 @@ Item {
                                                         }
                                                     }
                                                 }
+                                            }
                                             }
                                         }
                                     }
@@ -313,8 +333,11 @@ Item {
                             Repeater {
                                 model: offerGroup.items
                                 delegate: ColumnLayout {
+                                    id: offerRow
                                     required property var modelData
+                                    required property int index
                                     Layout.fillWidth: true; spacing: 2
+                                    MonitorSection { objectName: offerGroup.groupKey+"Section_"+offerRow.index; kind: offerRow.modelData.kindId; visible: workspace.startsMonitorSection(offerGroup.items,offerRow.index) }
                                     RowLayout {
                                         Layout.fillWidth: true; spacing: 12
                                         Label { text: modelData.label; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; opacity: modelData.available ? 1 : 0.6 }
@@ -325,7 +348,6 @@ Item {
                                             onClicked: peers.enableOffer(modelData.id,!modelData.enabled)
                                         }
                                     }
-                                    Label { visible: modelData.kindId===0 || modelData.kindId===5; text: modelData.kindId===0 ? "Virtual monitor destination" : "Existing screen (view only)"; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                     Label { visible: !modelData.available; text: modelData.reason||"Unavailable"; color: "#f0c66e"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                 }
                             }

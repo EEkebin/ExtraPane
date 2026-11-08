@@ -799,3 +799,18 @@ before a packaging-tool download failed. No release was published or branch merg
 - [ ] Physical acceptance remains. No Windows installation or resource session
   was started during delivery. Android CI run `42466926486` failed downloading
   Gradle with GitHub HTTP 504; local cached-toolchain checks passed instead.
+
+### Simplify monitor choices
+
+- [x] Share separates monitor rows under one **Use as an extra monitor** heading
+  and one **Share an existing screen (view only)** heading. Devices uses
+  **Extend this desktop** / **View an existing screen (view only)**. Repeated
+  per-row descriptions and duplicate action labels removed.
+- [x] Custom mode is named **Custom resolution**. Windows uses friendly monitor
+  names with numbered fallbacks instead of raw display paths. Linux uses model
+  names where available; macOS uses numbered monitor labels. Resource identities,
+  offers and negotiated modes are unchanged.
+- [x] Offscreen subgroup ordering/single-heading tests and existing power/routing
+  checks pass. Actual Windows app rebuild and startup check pass, including native
+  friendly-name mapping compilation. No physical display session was started.
+- [ ] Updated installer delivery pending; Linux/macOS package validation pending.

@@ -59,6 +59,12 @@ virtual-display support. Choose the destination's advertised monitor mode or a
 custom resolution/refresh rate. **Existing screen** instead captures an existing
 monitor; it does not create an extended desktop.
 
+On Share, these uses are separated under **Use as an extra monitor** and
+**Share an existing screen (view only)**. Choose **Custom resolution** or a named
+monitor for the extra-monitor mode. Named monitors supply the starting resolution
+and refresh rate; their current desktop picture is sent only by the existing-screen
+option.
+
 Pairing is enabled by default. Enter the other device's six-digit code on the
 first connection; remembered devices subsequently prove their saved secret.
 Codes stay fixed for the app/service process lifetime, including sharing restarts.
