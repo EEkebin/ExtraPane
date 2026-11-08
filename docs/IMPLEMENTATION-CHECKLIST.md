@@ -976,7 +976,8 @@ This replaces the earlier opt-in offer power behavior.
   its response, resulting in a misleading TLS error.
 - [x] Removed only the stale Surface record and diagnostic pairing, preserving
   encrypted backups inside its private trust directory. No media resources used.
-- [ ] User verification of normal GUI pairing after repair pending.
+- [x] User screenshot confirms the repaired Surface GUI pairing: verified peer
+  with seven advertised resources.
 - [ ] Improve explicit stale-pairing diagnostics/recovery without automatic
   authentication downgrade or silent trust replacement.
 - Installer review: ordinary Update does not delete the current peer trust store;
@@ -1008,6 +1009,16 @@ This replaces the earlier opt-in offer power behavior.
   and endpoint lifecycle checks, and Windows compilation passed. All 12 Android host
   suites and final compilation/lint passed. Native macOS source reviewed; native
   compilation remains pending.
-- [ ] Matching Windows/Android packaging and delivery pending.
+- [x] Matching `2026.11.08-pre.104.1` packages delivered from clean `3951685`:
+  Windows installer copied to local and Surface Desktops (both SHA256 verified);
+  Android streamed install succeeded, versionCode `10401`/versionName confirmed.
+  Windows exact version, extracted portable UI smoke, native component payloads
+  and checksums passed. Android signature, ABIs, alignment and metadata passed.
+  Windows installer SHA256:
+  `f9f549a387b37d53bad9a173a5a111e6dde219007b761c486775bc36c13ef36e`.
+  Android SHA256:
+  `0aa82198307c61496a27174d4e0ec12c309290a410583cf6809f1be35c4f1a9f`.
+  No Windows install or media session performed. Hosted run `42474922709` is
+  still running; Linux/macOS results remain pending.
 - [ ] Linux/macOS hosted compile and physical acceptance pending; no new media
   connection, driver installation or device test performed.
