@@ -12,13 +12,14 @@
 #include <QImage>
 #include <QFont>
 #include <iostream>
+#include <algorithm>
 #include <stdexcept>
 class MockPeers final:public QQmlPropertyMap {
  Q_OBJECT
 public:
  QQmlPropertyMap directory;
  QString connection,owner,resource,expectedIdentity,suppliedCode,forgotten,localAddress,stoppedGrant,cancelledRequest,offerId;bool input=true,offerEnabled=false;unsigned width=0,height=0,hz=0;unsigned calls=0,refreshCalls=0,shareCalls=0,sharePort=0,discoveryCalls=0;QString shareAddress;
- QStringList stoppedSessions,cancelledSessions;
+ QStringList stoppedSessions,cancelledSessions;QStringList disconnectedDevices;
  MockPeers():QQmlPropertyMap(this,nullptr){directory.insert("scanning",false);directory.insert("status",QString{});directory.insert("devices",QVariantList{QVariantMap{{"id","nearby-device"},{"name","Nearby computer"},{"address","192.0.2.12"},{"port",43825}}});insert("directory",QVariant::fromValue(&directory));insert("status","Ready");insert("sharing",true);insert("sharingStarting",false);insert("gatewayEnabled",false);insert("pairingRequired",true);insert("pairingCode","123456");insert("deviceName","Test machine");insert("offers",QVariantList{});insert("networkAddresses",QVariantList{QVariantMap{{"label","Ethernet ? 192.0.2.1"},{"address","192.0.2.1"},{"interfaceIndex",1}}});insert("remembered",QVariantList{QVariantMap{{"id","known-device"},{"name","Saved device"},{"address","192.0.2.10"},{"port",43824}}});insert("connections",QVariantList{});
  QVariantMap display{{"id","display-one"},{"label","First display"},{"owner","owner-a"},{"kind","Extend desktop"},{"kindId",0},{"available",true},{"inputAllowed",false},{"reason",""},{"width",1920},{"height",1080},{"refresh",60}};
  QVariantMap screen=display;screen["id"]="screen-two";screen["kindId"]=5;screen["kind"]="Existing screen";screen["label"]="Second screen";screen["owner"]="owner-b";screen["inputAllowed"]=true;
@@ -30,10 +31,10 @@ public:
  QVariantMap catalogScreen=screen;catalogScreen["id"]="screen-first-peer";
  insert("offers",QVariantList{camera,screen,display,microphone,anotherScreen,anotherDisplay});
  insert("connections",QVariantList{QVariantMap{{"label","Front camera"},{"kindId",1},{"phase","active"},{"connection","101"},{"grant","77"}},QVariantMap{{"label","Built-in microphone"},{"kindId",2},{"phase","connecting"},{"connection","101"},{"grant","0"},{"request","88"}}});
- insert("devices",QVariantList{QVariantMap{{"name","First peer"},{"connection","101"},{"incoming",false},{"resources",QVariantList{catalogScreen,display,anotherDisplay}}},QVariantMap{{"name","Second peer"},{"connection","202"},{"incoming",false},{"resources",QVariantList{screen}}}});
+ insert("devices",QVariantList{QVariantMap{{"name","First peer"},{"identity","identity-first"},{"connection","101"},{"incoming",false},{"resources",QVariantList{catalogScreen,display,anotherDisplay}}},QVariantMap{{"name","Second peer"},{"identity","identity-second"},{"connection","202"},{"incoming",false},{"resources",QVariantList{screen}}}});
  }
  Q_INVOKABLE void useResource(QString c,QString o,QString r,bool i,unsigned w,unsigned h,unsigned f){connection=c;owner=o;resource=r;input=i;width=w;height=h;hz=f;++calls;}
- Q_INVOKABLE void disconnectDevice(QString){}
+ Q_INVOKABLE void disconnectDevice(QString id){disconnectedDevices<<id;}
  Q_INVOKABLE void forgetDevice(QString id){forgotten=id;}
  Q_INVOKABLE void disconnectAll(){}
  Q_INVOKABLE void stopResource(QString connection,QString grant){stoppedGrant=grant;stoppedSessions<<connection+":"+grant;}
@@ -62,6 +63,15 @@ QQuickStyle::setStyle("Material");try{MockPeers peers;QQmlEngine engine;QStringL
  require(!root->property("manualExpanded").toBool()&&!named(root,"peerManualFields")->property("visible").toBool(),"Manual address entry must default collapsed");
  require(QMetaObject::invokeMethod(named(root,"peerNearby_nearby-device"),"clicked"),"Cannot select nearby peer");app.processEvents();require(root->property("manualExpanded").toBool()&&named(root,"peerManualFields")->property("visible").toBool()&&named(root,"peerAddress")->property("text")=="192.0.2.12"&&root->property("expectedDeviceId")=="nearby-device","Selecting nearby peer did not reveal prefilled pairing fields");
  require(QMetaObject::invokeMethod(named(root,"peerManualHeader"),"clicked"),"Cannot collapse manual entry");app.processEvents();require(!named(root,"peerManualFields")->property("visible").toBool(),"Manual section failed to collapse");root->setProperty("expectedDeviceId","");named(root,"peerPort")->setProperty("text","43824");
+ const auto sessionsBeforeCollapse=peers.value("connections");const auto initialDevices=peers.value("devices").toList();
+ require(named(root,"peerDeviceBody_101")->property("visible").toBool()&&named(root,"peerDeviceBody_202")->property("visible").toBool(),"Devices should start expanded");
+ require(QMetaObject::invokeMethod(named(root,"peerDeviceHeader_101"),"clicked"),"Cannot collapse device header");app.processEvents();
+ require(!named(root,"peerDeviceBody_101")->property("visible").toBool()&&named(root,"peerDeviceBody_202")->property("visible").toBool(),"Collapsing one device affected another");
+ auto reordered=initialDevices;std::reverse(reordered.begin(),reordered.end());auto refreshed=reordered.last().toMap();refreshed["name"]="Renamed first peer";reordered.last()=refreshed;peers.insert("devices",reordered);app.processEvents();
+ require(!named(root,"peerDeviceBody_101")->property("visible").toBool()&&named(root,"peerDeviceBody_202")->property("visible").toBool(),"Device refresh/reorder lost identity-keyed collapse state");
+ require(peers.value("connections")==sessionsBeforeCollapse&&peers.calls==0&&peers.disconnectedDevices.empty()&&peers.stoppedSessions.empty()&&peers.cancelledSessions.empty(),"Collapsing a device changed resource sessions");
+ require(QMetaObject::invokeMethod(named(root,"peerDeviceDisconnect_101"),"clicked"),"Cannot disconnect collapsed device");app.processEvents();require(peers.disconnectedDevices==QStringList{"101"}&&!named(root,"peerDeviceBody_101")->property("visible").toBool(),"Device disconnect toggled expansion or targeted wrong peer");peers.disconnectedDevices.clear();
+ require(QMetaObject::invokeMethod(named(root,"peerDeviceHeader_101"),"clicked"),"Cannot expand device header");app.processEvents();require(named(root,"peerDeviceBody_101")->property("visible").toBool(),"Device did not expand again");peers.insert("devices",initialDevices);app.processEvents();
  auto* monitorHeader=named(root,"peerCatalog_101_monitorsHeader");auto* monitorBody=named(root,"peerCatalog_101_monitorsBody");
  require(monitorBody->property("visible").toBool(),"Catalog group should initially be expanded");
  require(named(root,"peerCatalog_101_monitorsSection_0")->property("text")=="Extend this desktop"&&named(root,"peerCatalog_101_monitorsSection_0")->property("visible").toBool()&&!named(root,"peerCatalog_101_monitorsSection_1")->property("visible").toBool()&&named(root,"peerCatalog_101_monitorsSection_2")->property("text")=="View an existing screen (view only)"&&named(root,"peerCatalog_101_monitorsSection_2")->property("visible").toBool(),"Catalog monitor sections repeated or ordered incorrectly");

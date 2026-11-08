@@ -9,6 +9,8 @@ Item {
     property bool collapsed: false
     property string expectedDeviceId: ""
     property bool manualExpanded: false
+    property var collapsedDevices: ({})
+    function toggleDevice(key) { const next=Object.assign({},collapsedDevices); if(next[key]) delete next[key]; else next[key]=true; collapsedDevices=next }
     readonly property bool sharingBusy: peers.sharing || peers.sharingStarting
     readonly property bool hasSharedResources: peers.connections.some(row => row.incoming===true)
     property real expansion: collapsed ? 0 : 1
@@ -276,11 +278,33 @@ Item {
                             id: peerDevice
                             required property var modelData
                             visible: !modelData.incoming; Layout.fillWidth: true; spacing: 10
+                            readonly property string deviceKey: JSON.stringify([modelData.identity||"",String(modelData.connection)])
+                            readonly property bool expanded: !workspace.collapsedDevices[deviceKey]
+                            readonly property int activeCount: peers.connections.filter(row => row.incoming!==true && row.connection===modelData.connection).length
                             RowLayout {
-                                Layout.fillWidth: true
-                                Label { textFormat: Text.PlainText; text: modelData.name+(modelData.verified ? " (verified)" : " (unverified)"); font.pixelSize: 18; Layout.fillWidth: true; elide: Text.ElideRight }
-                                Action { text: "Disconnect"; destructive: true; onClicked: peers.disconnectDevice(modelData.connection) }
+                                Layout.fillWidth: true; spacing: 8
+                                ToolButton {
+                                    objectName: "peerDeviceHeader_"+peerDevice.modelData.connection
+                                    Layout.fillWidth: true; implicitHeight: 64; padding: 12
+                                    Accessible.name: (peerDevice.expanded ? "Collapse " : "Expand ")+peerDevice.modelData.name
+                                    Accessible.description: peerDevice.expanded ? "Resources expanded" : "Resources collapsed"
+                                    onClicked: workspace.toggleDevice(peerDevice.deviceKey)
+                                    background: Rectangle { radius: 12; color: parent.hovered ? "#243a57" : "#192d46" }
+                                    contentItem: RowLayout {
+                                        spacing: 12
+                                        AppIcon { symbol: "chevron"; Layout.preferredWidth: 18; Layout.preferredHeight: 18; rotation: peerDevice.expanded ? 90 : 0 }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true; spacing: 3
+                                            Label { textFormat: Text.PlainText; text: peerDevice.modelData.name+(peerDevice.modelData.verified ? " (verified)" : " (unverified)"); font.pixelSize: 18; Layout.fillWidth: true; elide: Text.ElideRight }
+                                            Label { text: peerDevice.modelData.resources.length+" resources"+(peerDevice.activeCount ? " - "+peerDevice.activeCount+" active" : ""); color: "#9eacc2"; Layout.fillWidth: true; elide: Text.ElideRight }
+                                        }
+                                    }
+                                }
+                                Action { objectName: "peerDeviceDisconnect_"+peerDevice.modelData.connection; text: "Disconnect"; destructive: true; onClicked: peers.disconnectDevice(peerDevice.modelData.connection) }
                             }
+                            ColumnLayout {
+                                objectName: "peerDeviceBody_"+peerDevice.modelData.connection
+                                Layout.fillWidth: true; spacing: 10; visible: peerDevice.expanded
                             Repeater {
                                 model: workspace.resourceGroups
                                 delegate: ResourceGroup {
@@ -343,6 +367,7 @@ Item {
                                 }
                             }
                         }
+                    }
                     }
                 }
                 ColumnLayout {

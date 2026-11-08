@@ -82,6 +82,15 @@ Refresh targets up to 360 FPS are requests, not guaranteed throughput. Native OS
 driver, encoder and display limits still apply. **Existing screen** is a separate,
 currently view-only offer; it must not create a virtual monitor.
 
+## Device cards
+
+Click a connected device header to collapse or expand its resource groups. Collapse
+one device while another stays expanded; refresh its catalog and confirm the
+collapsed state stays with the same device. Active video/audio/camera/USB sessions
+must continue unchanged. The header's Disconnect action remains distinct. Android
+paired-device cards also collapse their details without forgetting or disconnecting
+the peer.
+
 ## Independent resources and lifecycle
 
 - Add camera, microphone or speakers where both devices support the required native

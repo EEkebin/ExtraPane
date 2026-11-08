@@ -945,3 +945,18 @@ This replaces the earlier opt-in offer power behavior.
   Android is already on `pre.101.1`; no Windows installer was run.
 - [x] Persisted requirement in AGENTS.md: every Android revision delivery includes
   the matching Windows build, including minor/Android-only changes.
+
+
+### Collapsible device cards
+
+- [x] Connected device cards in the shared Devices UI hide/show their resources
+  from a full-width header. Disconnect remains a separate action. Header retains
+  name, verification and resource/active counts; state is keyed by peer identity
+  and connection and survives catalog refresh/reorder.
+- [x] Android paired-device cards collapse details/actions with persistent
+  per-device state. Navigation drawer and session lifecycle are unchanged.
+- [x] Offscreen checks verify independent peers, refresh retention and no session
+  changes on collapse. Windows compiled; Android build/test APK and lint passed.
+- [x] Native macOS device headers/body collapse implemented and statically reviewed.
+- [ ] Matching package delivery and Linux/macOS hosted verification pending.
+- [ ] Physical acceptance remains; no resource session started.

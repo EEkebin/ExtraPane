@@ -55,6 +55,9 @@ works on static-IP LANs and when multicast discovery is unavailable. Across netw
 the address/port must already be reachable; discovery does not cross the internet.
 Select a resource to use it; **Connections** stops individual resources independently.
 
+Each connected device has a collapsible header in Devices. Collapsing it hides
+its resource controls without disconnecting or changing any active resource.
+
 Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**,
 **Microphones** and **USB** groups. Android uses a navigation drawer for Devices,
 Share, Connections and About. Its audio choices identify physical routes such as

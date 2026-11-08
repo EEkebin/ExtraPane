@@ -346,3 +346,7 @@ on its position and fling direction; a short drag can return it to its starting 
 on controls, selectable text or the remote display remain with those views.
 Vertical scrolling, multiple fingers and the system edge-Back gesture are not
 repurposed. The hamburger button remains available.
+
+Paired device cards expand or collapse from their header. The device name stays
+visible; address details and Forget are inside the collapsible area. This does not
+change pairing or sessions, and each device retains its state through refresh.
