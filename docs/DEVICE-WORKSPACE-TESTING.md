@@ -136,3 +136,13 @@ return fails, preserve the exact error and logs rather than repeatedly reattachi
 Record the package version, OS, offered resource, destination address/interface,
 exact error and whether other resources continued. Track results in
 [IMPLEMENTATION-CHECKLIST.md](IMPLEMENTATION-CHECKLIST.md).
+
+
+## One-sided saved pairing
+
+If one device forgets a pairing while the other still remembers it, a new-code
+pairing can currently fail with a generic TLS closure. Confirm the two identities
+and remove the stale pairing on the device that still remembers it, then pair
+again using the current code. Do not disable pairing, clear every device's trust,
+or infer that TLS/network encryption itself failed from this message. An ordinary
+installer update is intended to preserve pairing data.

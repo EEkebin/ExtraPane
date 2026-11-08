@@ -964,3 +964,21 @@ This replaces the earlier opt-in offer power behavior.
   streamed install succeeded; installed versionCode `10201` confirmed.
 - [ ] Linux/macOS hosted verification pending (run `42472790511`).
 - [ ] Physical acceptance remains; no resource session started.
+
+
+### Pairing rejection investigation on installed pre.102.1
+
+- [x] Both installed PCs run `pre.102.1`; Surface listener reachable. TLS 1.3
+  handshake and fresh diagnostic pairing/catalog (seven resources) succeed.
+  A private copy of the desktop identity reproduces the generic TLS failure.
+- [x] Confirmed asymmetric trust: Surface remembers desktop; desktop has no
+  corresponding remembered peer. Server rejects duplicate pair mode before
+  its response, resulting in a misleading TLS error.
+- [x] Removed only the stale Surface record and diagnostic pairing, preserving
+  encrypted backups inside its private trust directory. No media resources used.
+- [ ] User verification of normal GUI pairing after repair pending.
+- [ ] Improve explicit stale-pairing diagnostics/recovery without automatic
+  authentication downgrade or silent trust replacement.
+- Installer review: ordinary Update does not delete the current peer trust store;
+  the cause of lost local pairing is unproven. Separately, current uninstall
+  cleanup misses the new peer trust directory; track for a scoped cleanup fix.
