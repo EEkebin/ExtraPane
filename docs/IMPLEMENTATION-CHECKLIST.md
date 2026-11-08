@@ -714,5 +714,21 @@ the loader. The alias is now declared before the app resource collection.
 
 Rebuilt Windows executable passes default and legacy offscreen startup checks;
 Android both-ABI debug build, test APK compilation and lint pass. New four-platform
-package verification and replacement delivery remain pending. No physical media
+package verification and replacement delivery completed below. No physical media
 session or driver installation was performed for this correction.
+
+### Default-workspace replacement delivered
+
+All four platform package jobs passed for `2026.11.08-pre.93.1` at code commit
+`73e31ed` in [run 42463605533](https://github.com/EEkebin/ExtraPane/actions/runs/42463605533).
+This includes Windows packaging/startup checks, Linux AppImage startup, Android
+build/lint/signing and macOS Universal packaging with Intel/Apple Silicon checks.
+The Windows installer and portable archive passed SHA256 verification. The installer
+is on both the desktop PC and Surface Desktops; the remote copy hash matches.
+Android streamed update succeeded, reports versionCode `9301`, and resolves the
+normal launcher to `PeerActivity`. Open the updated app normally for Devices / Share /
+Connections; desktop `--legacy` explicitly selects the older interface.
+
+Windows installation and physical resource acceptance remain user steps. No
+Windows driver installation or media session was started during this delivery.
+The child branch and draft PR remain unmerged; these are test artifacts.
