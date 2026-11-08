@@ -36,9 +36,13 @@ Item {
     component Field: TextField {
         id: field
         property bool invalid: false
+        readonly property bool nativeOutline: background !== null && typeof background.outlineColor !== "undefined"
         onInvalidChanged: if(invalid) invalidTimer.restart()
         onTextEdited: invalid=false
-        Rectangle { anchors.fill: parent; anchors.margins: -2; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: field.invalid }
+        // Recolor the native outline so its floating-label notch stays intact.
+        Binding { target: field.nativeOutline ? field.background : null; property: "outlineColor"; value: "#ff6978"; when: field.nativeOutline && field.invalid; restoreMode: Binding.RestoreBindingOrValue }
+        Binding { target: field.nativeOutline ? field.background : null; property: "focusedOutlineColor"; value: "#ff6978"; when: field.nativeOutline && field.invalid; restoreMode: Binding.RestoreBindingOrValue }
+        Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: field.invalid && !field.nativeOutline }
         Timer { id: invalidTimer; interval: 4500; onTriggered: field.invalid=false }
     }
     component Action: Button {

@@ -670,3 +670,8 @@ provider routes; this does not reconnect USB sessions.
   compilation, private-startup/offscreen UI checks and the fake-process metadata
   refresh regression passed. Linux wiring uses its existing guarded inventory
   worker; full Linux compilation remains a CI check.
+
+- Preview validation fields now recolor the native Material outline rather than
+  drawing over the floating label. The offscreen regression verifies that the
+  label-aware outline remains in use and normal styling returns after validation
+  clears. This fixes the earlier border/label overlap in the new workspace too.
