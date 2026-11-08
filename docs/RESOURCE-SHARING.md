@@ -213,6 +213,20 @@ the driver, launch the app or publish a release. The staged executable's
 `--check-ui` option loads its actual controller and QML offscreen without starting
 the server or receiver. It checks startup, not actual device delivery.
 
+The release workflow now uses `windows-shared.yml` to build this Qt app and its
+native components on a fresh Windows runner. It restores the pinned toolchains,
+builds the microphone endpoint, USB backend and display driver, and produces the
+portable ZIP and single installer. Package checks run the extracted UI offscreen
+and validate embedded components without installing them. A manual run on a
+feature branch builds all four platforms without publishing a release.
+
+`out/` is ignored by Git and normally holds reproducible build output, downloaded
+toolchains and logs. Before deleting it, check for Git worktrees, uncommitted
+changes, signing keys and manually saved files. Signing material must be backed
+up outside build output; regenerating an Android release key would break normal
+updates to already-installed signed APKs. Fresh GitHub builds do not use the local
+`out/` directory.
+
 ## Current Windows resource build (2026-11-07)
 
 The Windows server starts once and accepts display, camera, microphone and USB
