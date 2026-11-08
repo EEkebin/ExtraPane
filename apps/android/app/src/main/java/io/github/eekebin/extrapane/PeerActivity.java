@@ -45,6 +45,8 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private SurfaceView surface;
     private Button fullscreenButton;
     private boolean fullscreen,drawerOpen;
+    private final DrawerSwipe drawerSwipe=new DrawerSwipe();
+    private boolean drawerSwipeConsumed;
     private String selectedPage="Devices";
     private final PageHistory pageHistory=new PageHistory();
     private int streamWidth=16,streamHeight=9;
@@ -146,6 +148,24 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         buildDevices();buildShare();buildConnections();buildAbout();buildDrawer();selectPage("Devices");
         safely(()->{peers=new PeerService(new File(getNoBackupFilesDir(),"peer-trust"),android.os.Build.MODEL);code.setText(peers.pairingCode());refreshInterfaces();refreshOffers();refreshTrusted();});
         pairing.setOnCheckedChangeListener((v,checked)->{if(peers!=null)safely(()->peers.setPairingRequired(checked));code.setVisibility(checked?View.VISIBLE:View.GONE);});inputAllowed.setOnCheckedChangeListener((v,checked)->publish());
+    }
+    private boolean containsPoint(View view,float x,float y){android.graphics.Rect bounds=new android.graphics.Rect();return view.getGlobalVisibleRect(bounds)&&bounds.contains((int)x,(int)y);}
+    private boolean interactiveAt(View view,float x,float y){
+        if(!containsPoint(view,x,y))return false;
+        if(view instanceof SurfaceView||view instanceof EditText||view instanceof Spinner||view.isClickable()||view.isLongClickable()||(view instanceof TextView text&&text.isTextSelectable()))return true;
+        if(view instanceof ViewGroup group)for(int i=group.getChildCount()-1;i>=0;--i)if(interactiveAt(group.getChildAt(i),x,y))return true;
+        return false;
+    }
+    @Override public boolean dispatchTouchEvent(MotionEvent event){
+        int action=event.getActionMasked();
+        if(action==MotionEvent.ACTION_DOWN){drawerSwipeConsumed=false;drawerSwipe.begin(event.getRawX(),event.getRawY(),!drawerOpen&&!fullscreen&&scroll!=null&&containsPoint(scroll,event.getRawX(),event.getRawY())&&!interactiveAt(page,event.getRawX(),event.getRawY()));}
+        if(drawerSwipeConsumed){if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)drawerSwipeConsumed=false;return true;}
+        if(action==MotionEvent.ACTION_POINTER_DOWN||action==MotionEvent.ACTION_CANCEL)drawerSwipe.cancel();
+        if(action==MotionEvent.ACTION_MOVE&&drawerSwipe.move(event.getRawX(),event.getRawY(),event.getPointerCount(),ViewConfiguration.get(this).getScaledTouchSlop(),dp(64))){
+            MotionEvent cancel=MotionEvent.obtain(event);cancel.setAction(MotionEvent.ACTION_CANCEL);super.dispatchTouchEvent(cancel);cancel.recycle();drawerSwipeConsumed=true;showDrawer(true);return true;
+        }
+        if(action==MotionEvent.ACTION_UP)drawerSwipe.cancel();
+        return super.dispatchTouchEvent(event);
     }
     private void buildDevices(){LinearLayout content=pages.get("Devices");content.addView(label("Your devices, together",25));content.addView(note("Offer this phone's resources from Share, then select this phone in ExtraPane on your computer. Keep ExtraPane open while sharing."));content.addView(button("Choose resources to share",()->selectPage("Share")));content.addView(label("Paired devices",19));trustedRows=column();content.addView(trustedRows,full());}
     private void buildShare(){LinearLayout content=pages.get("Share");content.addView(label("Share from this phone",25));content.addView(note("Select what other devices may use. A camera or microphone starts only when a connected device requests it."));

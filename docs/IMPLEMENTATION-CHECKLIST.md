@@ -876,3 +876,13 @@ before a packaging-tool download failed. No release was published or branch merg
   Desktops; Surface SHA256 verified. Windows behavior is unchanged from
   `pre.97.1`; the `.98` feature fix is Android Back navigation. No Windows
   installation was performed.
+
+
+### Android empty-space drawer swipe
+
+- [x] Rightward single-finger swipes from non-interactive page space open the
+  drawer. Controls, selectable text and remote-display input are excluded.
+  Vertical gestures and multiple fingers cancel recognition; recognized swipes
+  cancel the underlying scroll gesture and consume the remaining events.
+- [x] Isolated swipe direction/threshold/cancellation checks and Android build
+  and lint pass. Physical gesture acceptance remains pending.

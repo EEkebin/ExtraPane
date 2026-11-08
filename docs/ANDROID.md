@@ -340,3 +340,8 @@ next, then returns through visited workspace pages. Re-selecting a page or toggl
 fullscreen does not add history. At the first page, Back exits only while idle;
 sharing or active resources keep the workspace open with a reminder to stop sharing.
 Page navigation does not stop resource sessions.
+
+Swipe right across empty page space to open the navigation drawer. Swipes starting
+on controls, selectable text or the remote display remain with those views.
+Vertical scrolling, multiple fingers and the system edge-Back gesture are not
+repurposed. The hamburger button remains available.
