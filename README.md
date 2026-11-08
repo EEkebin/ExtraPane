@@ -8,7 +8,7 @@ ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Window
 
 [Project website](https://eekebin.github.io/ExtraPane/) | [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
-The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers allocate connections dynamically, subject to available hardware and OS resources; the last device-validated Linux release supports one display client. The resource-sharing development branch adds independent sessions and camera/microphone endpoints; see [Linux development status](docs/LINUX.md). Android is currently a client only. The macOS development preview adds hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
+The development app opens Devices, Share and Connections. A computer can offer its resources and use another device's resources at the same time. The older Server/Client interface remains available with `--legacy`; published releases may still use that interface. Windows servers allocate connections dynamically, subject to hardware and OS resources. See [Linux development status](docs/LINUX.md) for its native endpoint limits. Android offers resources but cannot create system-wide virtual camera/microphone endpoints. The macOS development preview supports hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
 
 > This branch contains the device-sharing development build. Published releases
 > may have an older interface or fewer features. See the [current implementation
@@ -30,10 +30,13 @@ checklist](docs/IMPLEMENTATION-CHECKLIST.md#active-implementation-devices-sharin
 Use the [device acceptance guide](docs/DEVICE-WORKSPACE-TESTING.md) when testing
 this preview. Build checks do not replace physical media and driver verification.
 
-Launch the desktop app with `--devices` to try the new workspace. The existing
-Server/Client interface remains the default until cross-platform build and device
-acceptance checks pass. Android exposes the preview through **Devices ? offer this
-phone**. Do not assume a published package contains this branch's preview.
+Open ExtraPane normally to use the new workspace. On desktop, `--legacy` opens
+the older Server/Client interface; `--devices` remains a compatibility alias for
+the default. Android opens its device-sharing page and offers **Legacy connections**
+for the older workflow. These defaults apply to builds after `pre.92.1`;
+`pre.92.1` still opens the older interface, and its Windows package has a resource
+path error for the new page. Use a newer build for this workspace. Do not assume
+a published package contains this branch's preview.
 
 Devices are peers: a computer can offer its camera while using another device's
 speakers. **Share** selects available resources and a local network address;

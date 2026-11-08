@@ -12,21 +12,24 @@ The computer whose desktop will be extended needs the virtual-display driver.
 **Share only** can offer its physical devices and serve as a display destination.
 Do not run the legacy interface and the preview against the same resources together.
 
-Launch the desktop executable with `--devices`. For example, from the Windows
-installation directory:
+In builds after `pre.92.1`, open ExtraPane normally. From the Windows installation
+directory:
 
 ```powershell
-.\ExtraPane.exe --devices
+.\ExtraPane.exe
 ```
 
-Linux accepts the same argument on its AppImage. On macOS:
+Open the Linux AppImage normally. On macOS:
 
 ```sh
-open -a ExtraPane --args --devices
+open -a ExtraPane
 ```
 
-Android exposes **Devices — offer this phone** from its existing interface. This
-preview shares only while its activity is in the foreground; backgrounding stops
+Desktop `--legacy` opens the older interface; `--devices` remains supported.
+Use a build newer than `pre.92.1`: that build defaults to the old interface and
+its Windows package cannot load the new page because of a resource-path error.
+Android opens device sharing normally, with **Legacy connections** for the older
+workflow. This preview shares only while its activity is in the foreground; backgrounding stops
 sharing and capture. Android cannot consume virtual camera/microphone endpoints.
 
 ## First connection: extend the desktop

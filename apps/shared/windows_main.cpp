@@ -2,6 +2,7 @@
 #include "peer_controller.hpp"
 #include "windows_peer_runtime.hpp"
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QMessageBox>
 #include <future>
 #include <QApplication>
@@ -76,11 +77,19 @@ int main(int argc,char** argv){
     app.setQuitOnLastWindowClosed(false);
     const QIcon icon(":/extrapane.png");app.setWindowIcon(icon);
     WindowsController controller;
+    std::unique_ptr<QTemporaryDir> checkDirectory;
     std::unique_ptr<PeerController> peers;
     std::shared_ptr<extrapane::windows_peer::WindowsPeerRuntime> peerRuntime;
     std::future<std::vector<extrapane::peers::Offer>> inventory;
     QTimer inventoryTimer;
-    if(!checkUi&&app.arguments().contains("--devices")){
+    if(checkUi&&!app.arguments().contains("--legacy")){
+        checkDirectory=std::make_unique<QTemporaryDir>();
+        if(!checkDirectory->isValid())return 1;
+        // Exercise the default workspace in packaging without enumerating
+        // hardware, opening listeners or touching installed components.
+        peers=std::make_unique<PeerController>(extrapane::peers::Service::Hooks{},checkDirectory->path()+"/peers");
+    }
+    if(!checkUi&&!app.arguments().contains("--legacy")){
         try{
             peerRuntime=std::make_shared<extrapane::windows_peer::WindowsPeerRuntime>(extrapane::windows_peer::native_process_factory());
             peers=std::make_unique<PeerController>(peerRuntime->hooks(),QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/peers");
@@ -103,7 +112,8 @@ int main(int argc,char** argv){
     auto* window=qobject_cast<QWindow*>(engine.rootObjects().first());
     if(!window)return 1;
     if(checkUi){
-        for(int i=1;i<4;++i)controller.resources()->select(i,true);
+        if(window->property("peerMode").toBool()==app.arguments().contains("--legacy"))return 2;
+        if(!peers)for(int i=1;i<4;++i)controller.resources()->select(i,true);
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane");

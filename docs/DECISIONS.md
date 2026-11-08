@@ -478,3 +478,13 @@ identity to authenticate. The address is only a lookup hint: the peer must prove
 the saved secret. An explicit selected identity takes precedence. Ambiguous saved
 addresses require choosing a saved device; a failed identity proof never falls
 back to pairing or unverified access automatically.
+
+## Device workspace is the normal launch path
+
+The user clarified that the delivered app should open Devices / Share /
+Connections without a flag. This supersedes the temporary opt-in migration plan.
+Desktop normal startup uses the new workspace; `--devices` remains an alias and
+`--legacy` explicitly opens the older interface. Native helper and diagnostic
+commands retain their dispatch behavior. Android's launcher opens device sharing,
+with explicit Legacy connections navigation. This does not imply physical-device
+acceptance or authorize merging the branch.

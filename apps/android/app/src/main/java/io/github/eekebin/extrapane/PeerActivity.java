@@ -57,7 +57,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         page.addView(label("Paired devices",20));trustedRows=new LinearLayout(this);trustedRows.setOrientation(LinearLayout.VERTICAL);page.addView(trustedRows);
         videoArea=new LinearLayout(this);videoArea.setOrientation(LinearLayout.VERTICAL);videoArea.setGravity(Gravity.CENTER_HORIZONTAL);page.addView(videoArea);fullscreenButton=button("Fullscreen",()->setFullscreen(!fullscreen));videoArea.addView(fullscreenButton);surface=new SurfaceView(this);surface.getHolder().addCallback(this);surface.setFocusableInTouchMode(true);surface.setOnTouchListener((view,event)->input.motion(view,event));surface.setOnGenericMotionListener((view,event)->input.motion(view,event));videoArea.addView(surface,new LinearLayout.LayoutParams(-1,dp(300)));videoArea.setVisibility(View.GONE);
         page.addView(label("Android can offer its display, cameras, microphones and speakers. Creating system-wide virtual cameras/microphones, USB export, and sharing the phone's existing screen are not available here yet.",14));
-        page.addView(button("Back to direct connections",this::finish));
+        page.addView(button("Legacy connections",()->{startActivity(new android.content.Intent(this,MainActivity.class));finish();}));
         safely(()->{peers=new PeerService(new File(getNoBackupFilesDir(),"peer-trust"),android.os.Build.MODEL);code.setText("Pairing code: "+peers.pairingCode());refreshInterfaces();refreshOffers();refreshTrusted();});
         pairing.setOnCheckedChangeListener((v,checked)->{if(peers!=null)safely(()->peers.setPairingRequired(checked));code.setVisibility(checked?View.VISIBLE:View.GONE);});
         inputAllowed.setOnCheckedChangeListener((v,checked)->publish());

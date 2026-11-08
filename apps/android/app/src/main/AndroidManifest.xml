@@ -17,7 +17,10 @@
         <service android:name=".CameraShareService" android:exported="false" android:foregroundServiceType="camera" />
         <service android:name=".MicrophoneShareService" android:exported="false" android:foregroundServiceType="microphone" />
         <service android:name=".SpeakerService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
-        <activity android:name=".MainActivity" android:exported="true"
+        <activity android:name=".MainActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|keyboard|uiMode"
+            android:resizeableActivity="true" />
+        <activity android:name=".PeerActivity" android:exported="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|keyboard|uiMode"
             android:resizeableActivity="true">
             <intent-filter>
@@ -25,8 +28,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".PeerActivity" android:exported="false"
-            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|keyboard|uiMode"
-            android:resizeableActivity="true" />
     </application>
 </manifest>

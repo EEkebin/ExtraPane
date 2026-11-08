@@ -100,7 +100,7 @@ int main(int argc,char** argv){
     controller.setEngine(&engine);
     std::unique_ptr<LinuxPeerRuntime> peerRuntime;
     std::unique_ptr<PeerController> peers;
-    if(app.arguments().contains("--devices")){
+    if(!app.arguments().contains("--legacy")){
         try{peerRuntime=std::make_unique<LinuxPeerRuntime>(&engine,unavailable);peers=std::make_unique<PeerController>(peerRuntime->hooks(),QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/peers");
             QObject::connect(peerRuntime.get(),&LinuxPeerRuntime::inventoryChanged,&app,[&]{try{peers->setLocalOffers(peerRuntime->offers());}catch(const std::exception& e){qWarning()<<e.what();}});
             QObject::connect(peerRuntime.get(),&LinuxPeerRuntime::inventoryFailed,&app,[](const QString& reason){qWarning().noquote()<<reason;});

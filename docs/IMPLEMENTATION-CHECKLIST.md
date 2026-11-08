@@ -701,3 +701,18 @@ trusted host key and a matching remote SHA256. The Pixel 8a received the matchin
 APK through streamed ADB update; Android reports version `2026.11.08-pre.92.1`
 and versionCode `9201`. Windows installation remains for the user to run on both
 computers. No streaming or physical resource tests were started during delivery.
+
+### Correct default workspace after user feedback
+
+Normal desktop startup now selects Devices / Share / Connections; `--legacy`
+retains the previous interface and `--devices` is an alias. Android's launcher
+opens device sharing, with explicit legacy navigation. The Windows packaging
+smoke check now instantiates the real default workspace using an isolated private
+store and no native inventory/listeners. This exposed an incorrectly ordered QML
+resource alias in pre.92.1: the app embedded the page under a different path from
+the loader. The alias is now declared before the app resource collection.
+
+Rebuilt Windows executable passes default and legacy offscreen startup checks;
+Android both-ABI debug build, test APK compilation and lint pass. New four-platform
+package verification and replacement delivery remain pending. No physical media
+session or driver installation was performed for this correction.
