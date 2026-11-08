@@ -441,3 +441,12 @@ Driver branding audit also updated the EDID monitor-name descriptor to ExtraPane
 
 No new device session, driver installation or audio playback was performed for
 these isolated checks. Queue bounds are per-stage, not an end-to-end latency claim.
+
+2026-11-08 Speakers package delivery: build run 42443749668 produced the matching
+2026.11.08-pre.84.1 Android APK. Its SHA256 sidecar matched, streamed ADB upgrade
+on the Pixel 8a succeeded, and installed versionName/versionCode were verified as
+2026.11.08-pre.84.1 / 8401. No speaker session or playback test was started. Windows
+installer package also completed: the matching setup EXE was copied to the local
+desktop and Surface desktop, with both copies verified against SHA256
+8c4be1d1894d49bb1d61a39981670ba86cb773a6c16fdb1d8539486a652d5b6b.
+Windows installation is left to the user; no setup or media session was launched.
