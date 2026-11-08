@@ -14,6 +14,10 @@ constexpr bool removable_pending_stub(bool stub_id,bool exact_owned_inf,bool usb
 constexpr bool independent_service(std::wstring_view name,bool exact_owned_usb_driver) {
     return name != L"VBoxUSB" || !exact_owned_usb_driver;
 }
+constexpr bool removable_missing_driver(bool exact_owned_package,bool expected_path,bool file_absent,
+                                        bool stopped,bool disabled,bool no_device_references) {
+    return exact_owned_package&&expected_path&&file_absent&&stopped&&disabled&&no_device_references;
+}
 enum class MonitorAction { preserve, remove, refuse };
 constexpr MonitorAction monitor_action(bool exists, bool created, bool managed_path,
                                       bool exact_hash, bool external_consumer) {

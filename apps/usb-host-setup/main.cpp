@@ -274,8 +274,33 @@ fs::path removable_inf(HKEY ownership){
     wchar_t stored[32768]{};DWORD needed=0;
     check(SetupGetInfDriverStoreLocationW(path.c_str(),nullptr,nullptr,stored,32768,&needed),"Cannot verify installed USB driver package");
     const fs::path store(stored);no_reparse(store);
-    check(sha256(read_file(store))==setup::files[4].digest&&sha256(read_file(store.parent_path()/L"VBoxUSB.cat"))==setup::files[5].digest,"Installed USB package identity differs; preserved");
+    check(sha256(read_file(store))==setup::files[4].digest&&sha256(read_file(store.parent_path()/L"VBoxUSB.cat"))==setup::files[5].digest&&
+          sha256(read_file(store.parent_path()/L"VBoxUSB.sys"))==setup::files[6].digest,"Installed USB package identity differs; preserved");
     signed_file(store.parent_path()/L"VBoxUSB.cat");return path;
+}
+bool usb_service_unreferenced(){
+    const auto devices=SetupDiGetClassDevsW(nullptr,nullptr,nullptr,DIGCF_ALLCLASSES);
+    check(devices!=INVALID_HANDLE_VALUE,"Cannot inspect missing USB driver device references");
+    struct Cleanup{HDEVINFO value;~Cleanup(){SetupDiDestroyDeviceInfoList(value);}}cleanup{devices};
+    for(DWORD i=0;;++i){
+        SP_DEVINFO_DATA device{sizeof(device)};
+        if(!SetupDiEnumDeviceInfo(devices,i,&device)){check(GetLastError()==ERROR_NO_MORE_ITEMS,"Cannot enumerate missing USB driver references");return true;}
+        wchar_t service[1024]{};DWORD type=0,size=0;
+        if(!SetupDiGetDeviceRegistryPropertyW(devices,&device,SPDRP_SERVICE,&type,reinterpret_cast<PBYTE>(service),sizeof(service),&size)){
+            check(GetLastError()==ERROR_INVALID_DATA,"Cannot inspect a device's USB driver reference");continue;
+        }
+        check(type==REG_SZ&&size>=sizeof(wchar_t)&&size<=sizeof(service)&&service[size/sizeof(wchar_t)-1]==0,"Invalid device service reference");
+        if(_wcsicmp(service,L"VBoxUSB")==0)return false;
+    }
+}
+bool missing_usb_driver_removable(SC_HANDLE service,const fs::path& expected,bool exact_package){
+    DWORD bytes=0;QueryServiceConfigW(service,nullptr,0,&bytes);check(bytes>=sizeof(QUERY_SERVICE_CONFIGW)&&bytes<=65536,"Cannot inspect missing USB driver configuration");
+    std::vector<unsigned char> data(bytes);auto config=reinterpret_cast<QUERY_SERVICE_CONFIGW*>(data.data());
+    check(QueryServiceConfigW(service,config,bytes,&bytes),"Cannot read missing USB driver configuration");
+    SERVICE_STATUS status{};check(QueryServiceStatus(service,&status),"Cannot inspect missing USB driver state");
+    const auto path=monitor_path(service);no_reparse(path);
+    return extrapane::usb_uninstall::removable_missing_driver(exact_package,_wcsicmp(path.c_str(),expected.c_str())==0,
+        !fs::exists(path),status.dwCurrentState==SERVICE_STOPPED,config->dwStartType==SERVICE_DISABLED,usb_service_unreferenced());
 }
 void remove_owned_phantom_stubs(const fs::path& inf,SC_HANDLE monitor,SC_HANDLE usb){
     const auto devices=SetupDiGetClassDevsW(nullptr,L"USB",nullptr,DIGCF_ALLCLASSES);
@@ -328,16 +353,27 @@ void remove_owned_driver(const fs::path& root,HKEY ownership,bool inspect=false)
     bool exact=false;if(managed){verify_security(path);exact=sha256(read_file(path))==setup::files[7].digest;signed_file(path);}
     // VBoxUSB is also installed by our own INF. Its existence alone does not
     // establish an independent consumer of our monitor.
-    bool owned_usb_driver=false;
+    bool owned_usb_driver=false,missing_usb_driver=false;fs::path expected_usb_path;
     Service usb(OpenServiceW(manager.value,L"VBoxUSB",SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS));
     if(usb.value&&!string_value(ownership,L"CreatedInf").empty()){
         const auto owned_inf=removable_inf(ownership);
         wchar_t system[MAX_PATH]{};check(GetSystemDirectoryW(system,MAX_PATH)!=0,"System directory unavailable");
         const auto usb_path=monitor_path(usb.value);
-        const bool expected_path=_wcsicmp(usb_path.c_str(),(fs::path(system)/L"drivers"/L"VBoxUSB.sys").c_str())==0;
+        expected_usb_path=fs::path(system)/L"drivers"/L"VBoxUSB.sys";
+        const bool expected_path=_wcsicmp(usb_path.c_str(),expected_usb_path.c_str())==0;
         if(!owned_inf.empty()&&expected_path){
-            verify_security(usb_path,true);signed_file(usb_path);
-            owned_usb_driver=sha256(read_file(usb_path))==setup::files[6].digest;
+            no_reparse(usb_path);
+            if(fs::exists(usb_path)){
+                verify_security(usb_path,true);signed_file(usb_path);
+                owned_usb_driver=sha256(read_file(usb_path))==setup::files[6].digest;
+            }else{
+                // Windows can leave a disabled service after removing its last
+                // capture device/image. The exact owned DriverStore package
+                // remains the identity proof; absence alone is never ownership.
+                missing_usb_driver=missing_usb_driver_removable(usb.value,expected_usb_path,true);
+                check(missing_usb_driver,"Missing USB driver image still has active, enabled or unrecognized references; preserved");
+                owned_usb_driver=true;
+            }
         }
     }else if(!usb.value)check(GetLastError()==ERROR_SERVICE_DOES_NOT_EXIST,"Cannot inspect USB device driver ownership");
     const bool external=external_usb_consumer(manager.value,owned_usb_driver);
@@ -363,6 +399,12 @@ void remove_owned_driver(const fs::path& root,HKEY ownership,bool inspect=false)
     }
     if(!inf.empty()){
         remove_owned_phantom_stubs(inf,service.value,usb.value);
+        if(missing_usb_driver){
+            Service writable(OpenServiceW(manager.value,L"VBoxUSB",SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS|DELETE));
+            check(writable.value,"Cannot open the owned missing USB driver service for removal");
+            check(!external_usb_consumer(manager.value,true)&&missing_usb_driver_removable(writable.value,expected_usb_path,!removable_inf(ownership).empty()),"Missing USB driver ownership changed before removal; preserved");
+            check(DeleteService(writable.value),"Cannot remove the owned missing USB driver service");
+        }
         check(SetupUninstallOEMInfW(inf.filename().c_str(),0,nullptr),"USB driver package still has active or unrecognized device references; preserved");
     }
 }
