@@ -46,7 +46,7 @@ struct Session {std::atomic_bool stopped=false;std::mutex mutex;std::shared_ptr<
 @interface App:NSObject<NSApplicationDelegate,NSWindowDelegate> {
 @public std::shared_ptr<Session> session;
     wire::ScreenRequest selectedScreen;
-    bool existingScreenInput=false;
+    bool existingScreenInput;
     std::unique_ptr<dm::mac::Host> host;
     std::shared_ptr<dm::access::Gate> accessGate;
     std::set<unsigned> heldKeys,heldButtons;

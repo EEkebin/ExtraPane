@@ -110,7 +110,7 @@ PeerDisplayWindow::PeerDisplayWindow(DisplayOptions options):state_(std::make_sh
  const unsigned wanted=options.input?3:0;auto request=wire::request;request[7]=wanted?1:0;request[8]=wanted;
  wire::set_screen_request(request,{options.existing?wire::DisplayMode::existing_screen:wire::DisplayMode::extend_desktop,options.existing?1u:0u});
  wire::set_client_display(request,options.existing?wire::ClientDisplay{}:wire::ClientDisplay{options.width,options.height,options.refresh,options.exact});transport->write(request);
- auto offer=wire::decode_offer(transport->read(32,45));Media media;
+ auto offer=wire::decode_offer(transport->read(32,45));if(options.exact&&!options.existing&&(offer.width!=options.width||offer.height!=options.height||offer.fps!=options.refresh))throw std::runtime_error("Server did not accept the requested custom display mode");Media media;
  auto prepare=[&]{if(offer.codec!=wire::Codec::h264||(offer.input_caps&~wanted))throw std::runtime_error("Unsupported media grant");current->input.grant(offer.input_caps);media.reset();auto width=offer.width,height=offer.height;dispatch_async(dispatch_get_main_queue(),^{if(state->ui&&!current->stopped){[state->ui resetInput];[state->ui.video.display flushAndRemoveImage];state->ui.video.sourceSize=NSMakeSize(width,height);state->ui.video.remoteEnabled=state->ui.window.isKeyWindow;}});transport->write(wire::ready);};prepare();
  uint32_t sequence=0;uint64_t previous=0;
  while(!current->stopped&&(!offer.frames||sequence<offer.frames)){
