@@ -72,3 +72,28 @@ CI staging tests do not establish that an indirect display can load on every Win
 ## Name-change compatibility
 
 ExtraPane was previously called SideScreen. The current manager imports verified ownership records from the older directory before taking responsibility for those packages. After successful installation, the main installer retires the exact recognized driver uninstall entry. It does not run the old uninstaller during migration. The old directory and redundant uninstaller files may remain as rollback remnants; their cleanup is still incomplete. Do not run a stale driver uninstaller after migration. Existing settings remain until ExtraPane is uninstalled.
+
+## Maintenance from the application installer
+
+An existing machine-wide ExtraPane installation enables a maintenance page.
+**Update** requires a strictly newer release label; prerelease run and attempt
+numbers are compared numerically, and a stable release outranks a prerelease of
+the same date/revision. Updates retain the previous Client only / Server + Client
+selection by default.
+
+**Restore** is a clean reset: it runs the registered ExtraPane uninstaller to remove
+owned components and current-user settings before reinstalling the chosen role.
+**Uninstall** performs that removal and finishes without installing or launching
+ExtraPane. Missing/untrusted uninstaller paths and incomplete cleanup stop the
+operation; shared backend ownership safeguards remain in effect.
+
+Silent maintenance defaults to Update and refuses a same-version or older installer.
+An intentional clean reset requires `/MAINTENANCE=restore`; removal alone uses
+`/MAINTENANCE=uninstall`. Server installation still requires the existing driver
+certificate consent. These new maintenance paths require device acceptance testing.
+
+New uninstallers report completion and restart requirements to maintenance setup.
+For an older uninstaller without that result, Restore pauses after successful
+removal and asks you to restart Windows, then rerun setup. This avoids assuming
+that old USB/audio driver removal completed without a restart. Uninstall alone
+still finishes without reinstalling.

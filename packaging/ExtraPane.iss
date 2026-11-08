@@ -39,13 +39,13 @@ SolidCompression=yes
 WizardStyle=modern
 DisableProgramGroupPage=yes
 AppMutex=Local\SideScreen.App
-Uninstallable=yes
+Uninstallable=not IsUninstallMaintenance
 CreateUninstallRegKey=yes
 CloseApplications=no
 RestartApplications=no
 InfoBeforeFile={#SourceDir}\README.txt
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "ExtraPane.DriverSetup.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "ExtraPane.DriverSetup.exe"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: InstallApplication
 #if HasCamera
 Source: "{#SourceDir}\ExtraPane.CameraSetup.exe"; Flags: dontcopy
 #endif
@@ -57,16 +57,16 @@ Source: "{#SourceDir}\ExtraPane.UsbHostSetup.exe"; Flags: dontcopy
 #endif
 ; Remove only known legacy app files after graceful shutdown; preserve data.
 [InstallDelete]
-Type: files; Name: "{app}\SideScreen.exe"
-Type: files; Name: "{app}\SideScreen.Service.exe"
-Type: files; Name: "{app}\SideScreen.Update.exe"
-Type: files; Name: "{app}\SideScreen.DriverSetup.exe"
-Type: files; Name: "{app}\SideScreen.ico"
-Type: files; Name: "{app}\SideScreen.png"
-Type: files; Name: "{app}\SideScreen.pri"
-Type: files; Name: "{app}\SideScreen.winmd"
-Type: files; Name: "{autodesktop}\SideScreen.lnk"
-Type: files; Name: "{userprograms}\SideScreen\SideScreen.lnk"
+Type: files; Name: "{app}\SideScreen.exe"; Check: InstallApplication
+Type: files; Name: "{app}\SideScreen.Service.exe"; Check: InstallApplication
+Type: files; Name: "{app}\SideScreen.Update.exe"; Check: InstallApplication
+Type: files; Name: "{app}\SideScreen.DriverSetup.exe"; Check: InstallApplication
+Type: files; Name: "{app}\SideScreen.ico"; Check: InstallApplication
+Type: files; Name: "{app}\SideScreen.png"; Check: InstallApplication
+Type: files; Name: "{app}\SideScreen.pri"; Check: InstallApplication
+Type: files; Name: "{app}\SideScreen.winmd"; Check: InstallApplication
+Type: files; Name: "{autodesktop}\SideScreen.lnk"; Check: InstallApplication
+Type: files; Name: "{userprograms}\SideScreen\SideScreen.lnk"; Check: InstallApplication
 [UninstallDelete]
 ; These managed journal/log rules previously belonged to the child display
 ; uninstaller. They run only after the main removal callback succeeds.
@@ -80,15 +80,23 @@ Type: dirifempty; Name: "{app}"
 [Tasks]
 Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 [Icons]
-Name: "{group}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Check: InstallApplication
+Name: "{autodesktop}\ExtraPane"; Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Tasks: desktopicon; Check: InstallApplication
 
 [Run]
 Filename: "{app}\{#Role}.exe"; WorkingDir: "{app}"; Description: "Launch ExtraPane"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: CanLaunchApplication
 
 [Code]
+#include "maintenance-version.iss"
 var
   RemoveUserData: Boolean;
+  MaintenanceChoice: TInputOptionWizardPage;
+  ExistingInstall, UpdateAvailable, MaintenanceRemoved: Boolean;
+  InstalledVersion, InstalledLocation, InstalledUninstaller: String;
+  MaintenanceMode: String;
+  MaintenanceStatusFile, UninstallStatusFile: String;
+  MaintenancePendingBefore, MaintenancePendingAfter: String;
+  MaintenanceNeedsRestart: Boolean;
   RoleChoice: TInputOptionWizardPage;
   DriverConsent: TOutputMsgWizardPage;
   DriverConsentAccepted: Boolean;
@@ -102,8 +110,60 @@ var
 
 #include "shutdown.iss"
 
-function InitializeSetup: Boolean;
+const AppUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen_is1';
+
+function IsUninstallMaintenance: Boolean;
+begin Result := ExistingInstall and (MaintenanceMode = 'uninstall'); end;
+
+function InstallApplication: Boolean;
+begin Result := not IsUninstallMaintenance; end;
+
+function DetectInstalled: Boolean;
+var Name, Command: String;
 begin
+  Result := RegKeyExists(HKLM64, AppUninstallKey);
+  if not Result then Exit;
+  RegQueryStringValue(HKLM64, AppUninstallKey, 'DisplayVersion', InstalledVersion);
+  if not RegQueryStringValue(HKLM64, AppUninstallKey, 'InstallLocation', InstalledLocation) then Exit;
+  InstalledLocation := RemoveBackslashUnlessRoot(InstalledLocation);
+  { Never execute a registry-selected arbitrary/per-user program elevated. }
+  if (CompareText(InstalledLocation, ExpandConstant('{autopf}\ExtraPane')) <> 0) and
+     (CompareText(InstalledLocation, ExpandConstant('{autopf}\SideScreen')) <> 0) then Exit;
+  if not RegQueryStringValue(HKLM64, AppUninstallKey, 'DisplayName', Name) then Exit;
+  if (Pos('ExtraPane', Name) <> 1) and (Pos('SideScreen', Name) <> 1) then Exit;
+  if not RegQueryStringValue(HKLM64, AppUninstallKey, 'UninstallString', Command) then Exit;
+  if CompareText(Command, '"' + InstalledLocation + '\unins000.exe"') <> 0 then Exit;
+  if FileExists(InstalledLocation + '\unins000.exe') then InstalledUninstaller := InstalledLocation + '\unins000.exe';
+end;
+
+procedure MaintenanceChanged(Sender: TObject);
+begin
+  case MaintenanceChoice.SelectedValueIndex of
+    0: MaintenanceMode := 'update';
+    1: MaintenanceMode := 'restore';
+    2: MaintenanceMode := 'uninstall';
+  end;
+end;
+
+function InitializeSetup: Boolean;
+var Requested: String;
+begin
+  ExistingInstall := DetectInstalled;
+  UpdateAvailable := ExistingInstall and NewerRelease('{#ReleaseVersion}', InstalledVersion);
+  Requested := LowerCase(ExpandConstant('{param:MAINTENANCE|}'));
+  MaintenanceMode := Requested;
+  if MaintenanceMode = '' then begin
+    if UpdateAvailable or WizardSilent then MaintenanceMode := 'update'
+    else MaintenanceMode := 'restore';
+  end;
+  Result := (MaintenanceMode = 'update') or (MaintenanceMode = 'restore') or (MaintenanceMode = 'uninstall');
+  if not Result then begin SuppressibleMsgBox('Unknown maintenance action. Use update, restore or uninstall.', mbError, MB_OK, IDOK); Exit; end;
+  if not ExistingInstall and (Requested <> '') and (Requested <> 'update') then begin
+    Result := False; SuppressibleMsgBox('No installed ExtraPane was found for this maintenance action.', mbError, MB_OK, IDOK); Exit;
+  end;
+  if ExistingInstall and WizardSilent and (MaintenanceMode = 'update') and not UpdateAvailable then begin
+    Result := False; SuppressibleMsgBox('Update requires an installer newer than the installed ExtraPane. Use /MAINTENANCE=restore only for an explicit clean reinstall.', mbError, MB_OK, IDOK); Exit;
+  end;
   Result := StopRunningExtraPane;
   if not Result then
     SuppressibleMsgBox('ExtraPane could not finish shutting down. Close ExtraPane and stop its driver, then run Setup again.', mbError, MB_OK, IDOK);
@@ -111,14 +171,27 @@ end;
 
 procedure InitializeWizard;
 begin
-  RoleChoice := CreateInputOptionPage(wpWelcome, 'How will you use this PC?',
+  MaintenanceChoice := CreateInputOptionPage(wpWelcome, 'ExtraPane is already installed',
+    'Installed: ' + InstalledVersion + '    Installer: {#ReleaseVersion}',
+    'Update keeps your settings. Restore removes ExtraPane, its managed components and settings, then reinstalls this version. Uninstall removes them without reinstalling. Independently installed shared drivers are preserved.', True, False);
+  MaintenanceChoice.Add('Update to {#ReleaseVersion}');
+  MaintenanceChoice.Add('Restore (clean reinstall)');
+  MaintenanceChoice.Add('Uninstall ExtraPane');
+  MaintenanceChoice.CheckListBox.ItemEnabled[0] := UpdateAvailable;
+  MaintenanceChoice.CheckListBox.ItemEnabled[1] := InstalledUninstaller <> '';
+  MaintenanceChoice.CheckListBox.ItemEnabled[2] := InstalledUninstaller <> '';
+  MaintenanceChoice.SelectedValueIndex := 0;
+  if MaintenanceMode = 'restore' then MaintenanceChoice.SelectedValueIndex := 1;
+  if MaintenanceMode = 'uninstall' then MaintenanceChoice.SelectedValueIndex := 2;
+  MaintenanceChoice.CheckListBox.OnClickCheck := @MaintenanceChanged;
+  RoleChoice := CreateInputOptionPage(MaintenanceChoice.ID, 'How will you use this PC?',
     'All choices install the same ExtraPane app.',
     'Client only needs no virtual-display driver. Server + Client can also host displays and requires that driver.', True, False);
   RoleChoice.Add('Client only');
   RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
   RoleChoice.SelectedValueIndex := 0;
   if ExpandConstant('{param:SERVER|}') = '1' then RoleChoice.SelectedValueIndex := 1
-  else if (ExpandConstant('{param:SERVER|}') = '') and not WizardSilent and
+  else if (ExpandConstant('{param:SERVER|}') = '') and
     (GetPreviousData('ServerInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 1;
   DriverConsent := CreateOutputMsgPage(RoleChoice.ID, 'Required server driver',
     'Server setup includes a machine-wide virtual-display driver.',
@@ -131,6 +204,7 @@ end;
 
 procedure RegisterPreviousData(PreviousDataKey: Integer);
 begin
+  if IsUninstallMaintenance then Exit;
   if RoleChoice.SelectedValueIndex = 1 then SetPreviousData(PreviousDataKey, 'ServerInstall', '1')
   else SetPreviousData(PreviousDataKey, 'ServerInstall', '0');
   if CameraInstalled then SetPreviousData(PreviousDataKey, 'CameraInstall', '1')
@@ -139,7 +213,9 @@ end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
+  if IsUninstallMaintenance then begin Result := 'Remove ExtraPane, its managed components and current-user settings.'; Exit; end;
   Result := MemoDirInfo + NewLine + NewLine;
+  if ExistingInstall and (MaintenanceMode = 'restore') then Result := 'Restore: completely remove the existing installation and settings, then reinstall.' + NewLine + NewLine + Result;
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + 'Use: Server + Client (virtual-display driver required)'
   else Result := Result + 'Use: Client only (no virtual-display driver)';
 #if HasCamera
@@ -154,12 +230,19 @@ end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := (PageID = DriverConsent.ID) and (RoleChoice.SelectedValueIndex <> 1);
+  Result := ((PageID = MaintenanceChoice.ID) and not ExistingInstall) or
+    ((PageID = DriverConsent.ID) and (RoleChoice.SelectedValueIndex <> 1)) or
+    (IsUninstallMaintenance and ((PageID = RoleChoice.ID) or (PageID = DriverConsent.ID) or (PageID = wpInfoBefore) or (PageID = wpSelectTasks)));
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
+  if (CurPageID = MaintenanceChoice.ID) and ExistingInstall then begin
+    MaintenanceChanged(nil);
+    if (MaintenanceMode = 'update') and not UpdateAvailable then begin Result := False; Exit; end;
+    if (MaintenanceMode <> 'update') and (InstalledUninstaller = '') then begin Result := False; SuppressibleMsgBox('The registered uninstaller is missing or has an unexpected location. Update with a newer installer to repair it first.', mbError, MB_OK, IDOK); Exit; end;
+  end;
   if (CurPageID = DriverConsent.ID) and not WizardSilent then
     DriverConsentAccepted := True;
 end;
@@ -179,6 +262,49 @@ begin
 end;
 
 
+function RemoveExistingInstallation(var NeedsRestart: Boolean): String;
+var Code: Integer; Status: AnsiString;
+begin
+  Result := '';
+  if not MaintenanceRemoved then begin
+    if (InstalledUninstaller = '') or not FileExists(InstalledUninstaller) then begin
+      Result := 'The installed uninstaller is missing or has an unexpected location. Update with a newer installer to repair cleanup first.'; Exit;
+    end;
+    { The previous uninstaller owns its file manifest and all guarded component
+      cleanup. Do not bypass its checks or replace its ownership records. }
+    MaintenancePendingBefore := '';
+    RegQueryMultiStringValue(HKLM64, 'SYSTEM\CurrentControlSet\Control\Session Manager', 'PendingFileRenameOperations', MaintenancePendingBefore);
+    MaintenanceStatusFile := ExpandConstant('{tmp}\maintenance-status.txt');
+    if not SaveStringToFile(MaintenanceStatusFile, '', False) then begin Result := 'Cannot prepare the uninstall completion record.'; Exit; end;
+    if not Exec(InstalledUninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG /MAINTENANCESTATUS="' + MaintenanceStatusFile + '"',
+      InstalledLocation, SW_HIDE, ewWaitUntilTerminated, Code) then begin
+      Result := 'ExtraPane removal could not start. Nothing will be reinstalled.'; Exit;
+    end;
+    if (Code <> 0) or RegKeyExists(HKLM64, AppUninstallKey) then begin
+      Result := 'ExtraPane removal did not complete (exit ' + IntToStr(Code) + '). Existing cleanup safeguards were preserved. Check the uninstall log in your Temp folder; no reinstall was started.'; Exit;
+    end;
+    MaintenanceRemoved := True;
+  end;
+  MaintenancePendingAfter := '';
+  RegQueryMultiStringValue(HKLM64, 'SYSTEM\CurrentControlSet\Control\Session Manager',
+    'PendingFileRenameOperations', MaintenancePendingAfter);
+  Status := '';
+  LoadStringFromFile(MaintenanceStatusFile, Status);
+  { Older uninstallers do not report a helper's restart requirement. Their
+    successful removal is real, but only a restart makes restoration safe. }
+  MaintenanceNeedsRestart := (Status <> 'complete;restart=0') or
+    (MaintenancePendingBefore <> MaintenancePendingAfter) or
+    (Pos(LowerCase(InstalledLocation + '\'), LowerCase(MaintenancePendingAfter)) > 0);
+  if MaintenanceNeedsRestart then begin
+    ComponentRestart := True; NeedsRestart := True;
+    if MaintenanceMode = 'restore' then begin
+      if (Status <> 'complete;restart=0') and (Status <> 'complete;restart=1') then
+        Result := 'ExtraPane was removed. Its older uninstaller cannot report whether a component needs a restart. Restart Windows, then run this installer to complete the clean installation.'
+      else Result := 'ExtraPane was removed, but Windows must restart to release its components. Restart Windows, then run this installer to complete the clean installation.';
+    end;
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer;
 begin
@@ -191,6 +317,8 @@ begin
     Result := 'ExtraPane is still running. Close it and stop its driver before continuing.';
     Exit;
   end;
+  if ExistingInstall and (MaintenanceMode = 'update') and not UpdateAvailable then begin Result := 'This installer is not newer than the installed version. Select Restore for a clean reinstall.'; Exit; end;
+  if IsUninstallMaintenance then begin Result := RemoveExistingInstallation(NeedsRestart); Exit; end;
   if (RoleChoice.SelectedValueIndex = 1) and not DriverInstalled then begin
     if not DriverConsentAccepted then begin
       Result := 'Server setup requires development certificate consent. Silent installs need /SERVER=1 /ACCEPTDEVELOPMENTCERT=1.';
@@ -199,6 +327,11 @@ begin
 #if !HasDriver
     Result := 'This setup does not contain the required display-driver package. Server setup cannot continue.';
 #endif
+  end;
+  if Result <> '' then Exit;
+  if ExistingInstall and (MaintenanceMode = 'restore') then begin
+    Result := RemoveExistingInstallation(NeedsRestart);
+    if Result <> '' then Exit;
   end;
 #if HasCamera
   if (Result = '') and (RoleChoice.SelectedValueIndex = 1) and not CameraInstalled then begin
@@ -248,7 +381,7 @@ end;
 
 function CanLaunchApplication: Boolean;
 begin
-  Result := not DriverInstallFailed;
+  Result := InstallApplication and not DriverInstallFailed;
 end;
 
 function GetCustomSetupExitCode: Integer;
@@ -262,7 +395,9 @@ begin
   WizardForm.BackButton.Left := StandardBackLeft;
   WizardForm.NextButton.Width := StandardNextWidth;
   WizardForm.NextButton.Left := StandardNextLeft;
-  if CurPageID = DriverConsent.ID then begin
+  if (CurPageID = wpReady) and IsUninstallMaintenance then begin
+    WizardForm.NextButton.Caption := 'Uninstall';
+  end else if CurPageID = DriverConsent.ID then begin
     WizardForm.NextButton.Width := ScaleX(140);
     WizardForm.NextButton.Left := StandardNextLeft + StandardNextWidth - WizardForm.NextButton.Width;
     WizardForm.BackButton.Left := StandardBackLeft - (WizardForm.NextButton.Width - StandardNextWidth);
@@ -273,6 +408,15 @@ begin
     WizardForm.NextButton.Caption := SetupMessage(msgButtonFinish)
   else
     WizardForm.NextButton.Caption := SetupMessage(msgButtonNext);
+  if (CurPageID = wpInstalling) and IsUninstallMaintenance then begin
+    WizardForm.PageNameLabel.Caption := 'Uninstalling ExtraPane';
+    WizardForm.PageDescriptionLabel.Caption := 'Removing ExtraPane and its managed components.';
+  end;
+  if (CurPageID = wpFinished) and IsUninstallMaintenance then begin
+    WizardForm.FinishedHeadingLabel.Caption := 'ExtraPane removed';
+    WizardForm.FinishedLabel.Caption := 'ExtraPane, its managed components and current-user settings have been removed. Independently installed shared components were preserved.';
+    if ComponentRestart then WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 + 'Restart Windows to finish removing loaded files.';
+  end;
   if (CurPageID = wpFinished) and DriverInstallFailed then begin
     WizardForm.FinishedHeadingLabel.Caption := 'Server driver installation failed';
     WizardForm.FinishedLabel.Caption := 'ExtraPane remains installed for repair or removal, but the server driver is not ready. Check Program Files\ExtraPane\Components\Display\driver-setup.log and run this installer again to repair it. No boot-security settings were changed.';
@@ -304,6 +448,12 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var LegacyLocation, LegacyName, LegacyKey, ExpectedLocation: String;
     Code: Integer;
 begin
+  if IsUninstallMaintenance then begin
+    { Inno may create the default directory even with no selected files. Only
+      remove it when empty; never recurse through user or foreign files. }
+    if CurStep = ssDone then RemoveDir(ExpandConstant('{app}'));
+    Exit;
+  end;
   if (CurStep = ssPostInstall) and (RoleChoice.SelectedValueIndex = 1) then begin
     { Files and the main uninstall record exist before any driver changes. A
       failed driver install leaves this app available for repair/uninstall. }
@@ -340,6 +490,7 @@ begin
     Inno Setup supplies the normal confirmation dialog; no per-component toggles. }
   RemoveUserData := True;
   RemoveCamera := True;
+  UninstallStatusFile := ExpandConstant('{param:MAINTENANCESTATUS|}');
   Result := StopRunningExtraPane;
   if not Result then
     SuppressibleMsgBox('ExtraPane could not finish shutting down. Close it and stop its server before uninstalling.', mbError, MB_OK, IDOK);
@@ -371,6 +522,10 @@ var
   Component: Integer;
   Helper, ComponentFolder: String;
 begin
+  if (CurUninstallStep = usDone) and (UninstallStatusFile <> '') then begin
+    if ComponentRestart then SaveStringToFile(UninstallStatusFile, 'complete;restart=1', False)
+    else SaveStringToFile(UninstallStatusFile, 'complete;restart=0', False);
+  end;
   if CurUninstallStep = usUninstall then begin
     { Reconcile safe local records and retire verified inactive absent-device
       ownership. The helper archives interrupted records; it does not pretend a

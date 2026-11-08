@@ -42,6 +42,11 @@ jobs:
       - name: Build native components and shared UI
         shell: pwsh
         run: ./scripts/build-shared-windows-ci.ps1
+      - name: Check installer version ordering without installation
+        shell: pwsh
+        run: |
+          python scripts/test_installer_maintenance.py --compiler "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
+          if($LASTEXITCODE){throw 'Installer maintenance version checks failed'}
       - name: Stage and verify portable app and installer
         shell: pwsh
         run: |

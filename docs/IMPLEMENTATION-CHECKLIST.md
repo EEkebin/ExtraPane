@@ -459,3 +459,16 @@ chevron button through 180 degrees while the sidebar slides. Removed the changin
 horizontal toggle position that made it bounce. Shared UI build and offscreen
 checks passed; expanded/collapsed invalid-address screenshots were visually reviewed.
 Changes are source/build verified; the delivered pre.84.1 package predates them.
+
+2026-11-08 installer maintenance increment: existing machine-wide installs now
+show Update, Restore and Uninstall. Update is disabled unless the complete release
+label is newer, preserving previous role/settings. Restore runs guarded full
+removal/reset before reinstalling; Uninstall skips install actions and ends at a
+removal-specific Finish page. Silent mode refuses same/older Update and requires
+an explicit maintenance action for clean removal. New uninstallers report component
+restart state; Restore pauses for legacy unknown state or pending removal/restart.
+The production installer compiled with all component branches using inert payloads;
+19 production Pascal version-comparison cases passed in an abort-before-install
+fixture. CI runs those checks. No real installation, removal or driver change was
+performed. README/driver guide updated; full maintenance UI and device acceptance
+remain pending. The delivered pre.84.1 package predates this change.
