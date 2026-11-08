@@ -935,4 +935,6 @@ This replaces the earlier opt-in offer power behavior.
 - [x] Buttons, vertical scrolling, selectable text and remote-display touch input
   retain their touch streams unless a drawer drag is claimed. Rotation/pause
   cancel tracking. Isolated drag progress/reversal/release checks pass.
-- [ ] Final APK build/delivery and physical drag acceptance pending.
+- [x] Android release/test APK compilation and lint passed; signed `pre.101.1`
+  verified and streamed to Pixel 8a, installed versionCode `10101` confirmed.
+- [ ] Physical drag acceptance pending; no resource session launched.
