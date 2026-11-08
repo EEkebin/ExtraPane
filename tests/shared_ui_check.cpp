@@ -263,6 +263,12 @@ int main(int argc,char** argv){
             repeatedRoot->setProperty("sidebarCollapsed",true);capture("client-720-collapsed");
             while(instances.rowCount()){const auto id=instances.data(instances.index(0),ConnectionModel::Id).toString();instances.setState(id,ConnectionModel::State::idle);require(instances.removeConnection(id));}
             runtime.insert("active",false);repeatedWindow->resize(1120,760);repeatedRoot->setProperty("sidebarCollapsed",false);capture("client-empty-1120");
+            auto* destination=named(repeatedRoot,"sharedDestinationFields");
+            auto* address=named(destination,"connectionAddress");address->setProperty("text","localhost");
+            require(QMetaObject::invokeMethod(destination,"save"));require(QMetaObject::invokeMethod(destination,"validate"));
+            capture("client-invalid-address");
+            repeatedRoot->setProperty("sidebarCollapsed",true);capture("client-invalid-collapsed");
+            address->setProperty("text","192.0.2.1");require(QMetaObject::invokeMethod(destination,"save"));
         }
         for(int index=0;index<instances.rowCount();++index){const auto id=instances.data(instances.index(index),ConnectionModel::Id).toString();instances.setState(id,ConnectionModel::State::idle);}
         repeatedRoot->setProperty("page",1);app.processEvents();require(named(repeatedRoot,"sharedDestinationFields")->property("visible").toBool()&&!named(repeatedRoot,"sharedDestinationSummary")->property("visible").toBool());

@@ -104,10 +104,18 @@ ApplicationWindow {
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 12; spacing: 8
                 Item {
-                    Layout.fillWidth: true; Layout.preferredHeight: 64
-                    Image { id: brandIcon; opacity: Math.max(0, root.sidebarExpansion * 3 - 2); visible: opacity > 0; source: "qrc:/extrapane.png"; width: 30; height: 30; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; fillMode: Image.PreserveAspectFit }
-                    Label { opacity: Math.max(0, root.sidebarExpansion * 3 - 2); visible: opacity > 0; text: "ExtraPane"; font.pixelSize: 20; font.weight: Font.DemiBold; anchors.left: brandIcon.right; anchors.leftMargin: 6; anchors.verticalCenter: parent.verticalCenter }
-                    IconButton { objectName: "sidebarToggle"; symbol: "chevron"; iconRotation: 180 * root.sidebarExpansion; description: root.sidebarCollapsed ? "Expand navigation" : "Collapse navigation"; x: (parent.width - width) * (0.5 + 0.5 * root.sidebarExpansion); anchors.verticalCenter: parent.verticalCenter; onClicked: root.sidebarCollapsed = !root.sidebarCollapsed }
+                    Layout.fillWidth: true; Layout.preferredHeight: 104
+                    Image { id: brandIcon; objectName: "sidebarBrandIcon"; source: "qrc:/extrapane.png"; width: 30; height: 30; x: 9; y: 12; fillMode: Image.PreserveAspectFit }
+                    Label { opacity: root.sidebarExpansion; visible: opacity > 0; text: "ExtraPane"; font.pixelSize: 20; font.weight: Font.DemiBold; anchors.left: brandIcon.right; anchors.leftMargin: 8; anchors.verticalCenter: brandIcon.verticalCenter }
+                    IconButton {
+                        objectName: "sidebarToggle"; symbol: "chevron"
+                        // One fixed chevron and hit target: rotate the square, never swap glyphs.
+                        rotation: 180 * root.sidebarExpansion
+                        transformOrigin: Item.Center
+                        description: root.sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
+                        x: 6; y: 56
+                        onClicked: root.sidebarCollapsed = !root.sidebarCollapsed
+                    }
                 }
                 Repeater {
                     model: [{name: "Server", icon: "server"}, {name: "Client", icon: "client"}, {name: "Settings", icon: "settings"}]

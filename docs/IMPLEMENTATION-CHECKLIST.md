@@ -450,3 +450,12 @@ installer package also completed: the matching setup EXE was copied to the local
 desktop and Surface desktop, with both copies verified against SHA256
 8c4be1d1894d49bb1d61a39981670ba86cb773a6c16fdb1d8539486a652d5b6b.
 Windows installation is left to the user; no setup or media session was launched.
+
+2026-11-08 shared UI validation/navigation correction: invalid fields now recolor
+Material's existing outline, preserving its floating-label notch; destination
+fields have a 12 px vertical gap below validation text. The sidebar retains its
+logo when collapsed, fades the ExtraPane wordmark, and rotates one fixed-position
+chevron button through 180 degrees while the sidebar slides. Removed the changing
+horizontal toggle position that made it bounce. Shared UI build and offscreen
+checks passed; expanded/collapsed invalid-address screenshots were visually reviewed.
+Changes are source/build verified; the delivered pre.84.1 package predates them.

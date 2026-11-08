@@ -41,11 +41,19 @@ ScrollView {
         if (parts.some(v => v > 255)) return false
         return local && value === "0.0.0.0" || (parts[0] !== 127 && parts[0] < 224 && value !== "0.0.0.0")
     }
-    component ErrorBorder: Rectangle {
+    component ErrorBorder: Item {
+        id: errorOutline
         required property var control
-        anchors.fill: parent; z: 20; color: "transparent"; radius: 5
-        border.width: 2; border.color: "#ff6577"
-        visible: panel.invalid(control)
+        anchors.fill: parent
+        readonly property bool nativeOutline: control.background !== null && typeof control.background.outlineColor !== "undefined"
+        // Preserve Material's floating-label notch instead of drawing over it.
+        Binding { target: errorOutline.nativeOutline ? errorOutline.control.background : null; property: "outlineColor"; value: "#ff6577"; when: errorOutline.nativeOutline && panel.invalid(errorOutline.control); restoreMode: Binding.RestoreBindingOrValue }
+        Binding { target: errorOutline.nativeOutline ? errorOutline.control.background : null; property: "focusedOutlineColor"; value: "#ff6577"; when: errorOutline.nativeOutline && panel.invalid(errorOutline.control); restoreMode: Binding.RestoreBindingOrValue }
+        Rectangle {
+            anchors.fill: parent; z: 20; color: "transparent"; radius: 5
+            border.width: 2; border.color: "#ff6577"
+            visible: !parent.nativeOutline && panel.invalid(parent.control)
+        }
     }
     Timer { id: validationTimer; interval: 5000; onTriggered: { panel.invalidControls = []; validationToast.close() } }
     Popup {
@@ -69,6 +77,7 @@ ScrollView {
     }
     component DestinationFields: ColumnLayout {
         id: fields
+        spacing: 12
         required property var destination
         required property var addresses
         property alias accessCode: code.text
