@@ -843,5 +843,16 @@ before a packaging-tool download failed. No release was published or branch merg
   reviewed. Windows app compiled. Core service, native-async, reconnect and
   self-connection isolated checks pass, including outgoing byte delivery after
   stopping local sharing.
-- [ ] Linux/macOS hosted compilation and package validation pending.
-- [ ] Updated installer/APK delivery and physical acceptance pending.
+- [x] Android `pre.97.1` signed release built from `af52e2f`; signature,
+  metadata, both ABIs and alignment verified. Streamed update to Pixel 8a
+  succeeded; installed versionCode `9701` confirmed without launching capture.
+- [ ] Linux/macOS hosted compilation and package validation pending. Run
+  `42468944679` encountered Mbed TLS / Gradle GitHub download HTTP 504s
+  on macOS and Android; Android cached-toolchain build passed locally.
+- [x] Windows `pre.97.1` final package built from clean `af52e2f`; exact
+  executable version, extracted offscreen startup, file manifest and native
+  component package checks passed. Installer copied to this PC and Surface
+  Desktops; Surface SHA256 verified. No Windows installer was executed.
+- [ ] Physical acceptance remains; no media/resource session was started.
+  The Windows hosted job also encountered an HTTP 504 dependency download;
+  local cached-toolchain packaging passed.
