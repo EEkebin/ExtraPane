@@ -52,6 +52,11 @@ int main() {
         client[1].source = {true,{}}; host[1].destination = {true,{}};
         require(can_connect(ResourceKind::camera,client,host).available);
         require(!can_connect(ResourceKind::camera,host,client).available);
+        client[4].destination={true,{}};host[4].source={true,{}};
+        require(can_connect(ResourceKind::speaker,client,host).available);
+        require(!can_connect(ResourceKind::speaker,host,client).available);
+        Header speakerHeader{Operation::request,ResourceKind::speaker,99,0};
+        require(decode(encode(speakerHeader)).kind==ResourceKind::speaker);
         Counts camera, mic, broken, throwing, duplicate, late;
         Session session;
         require(session.add({1,ResourceKind::camera,"camera"},std::make_unique<Fake>(camera)).available);

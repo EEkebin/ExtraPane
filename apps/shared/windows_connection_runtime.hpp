@@ -8,6 +8,7 @@ class WindowsConnectionRuntime final:public QObject {
     Q_OBJECT
     Q_PROPERTY(ConnectionModel* connections READ connections CONSTANT)
     Q_PROPERTY(bool active READ active NOTIFY changed)
+    Q_PROPERTY(bool speakersSupported READ speakersSupported CONSTANT)
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QVariantMap devices READ devices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantMap mirrorStates READ mirrorStates NOTIFY changed)
@@ -17,6 +18,7 @@ public:
     ~WindowsConnectionRuntime() override;
     ConnectionModel* connections(){return &model_;}
     bool active()const;
+    bool speakersSupported()const{return true;}
     QString status()const{return status_;}
     QVariantMap devices()const{return devices_;}
     QVariantList monitors()const;
@@ -28,6 +30,7 @@ public:
     Q_INVOKABLE void refreshDevices(QString kind);
     Q_INVOKABLE void setMirror(QString id,bool enabled);
     Q_INVOKABLE void setMuted(QString id,bool enabled);
+    Q_INVOKABLE void setVolume(QString id,int percent);
     void shutdown();
 signals:
     void changed();

@@ -61,7 +61,7 @@ final class AdmissionBroker {
         void release(){synchronized(brokers){if(released)return;released=true;broker.requests.remove(this);broker.clients.remove(this);if(broker.clients.isEmpty()){brokers.remove(broker.key,broker);broker.stopConnection();}}}
     }
     static Lease acquire(String address,int port,String local,Network network,String code,int kind,Runnable onLost,BooleanSupplier cancelled)throws Exception {
-        if(kind<0||kind>3)throw new IOException("Invalid resource kind");
+        if(kind<0||kind>4)throw new IOException("Invalid resource kind");
         final String key=address+":"+port+"@"+local+"#"+(network==null?0:network.getNetworkHandle());
         Pending pending;
         synchronized(brokers){

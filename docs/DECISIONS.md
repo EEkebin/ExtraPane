@@ -400,3 +400,13 @@ and per-recipient queues, plus exact USB ownership and per-device exclusivity.
 Do not advertise unlimited hardware capacity: endpoint/driver allocation may
 fail. The current USB source backend retains its one-exporter-process constraint
 until a coordinated backend/broker redesign preserves its attachment evidence.
+
+## Remote speakers (2026-11-08)
+
+The user confirmed that a client's chosen speaker/headset must appear as a normal
+playback device on the server. This is independent of reverse microphone forwarding
+and does not automatically copy system audio or change global defaults. Add Speakers
+above Microphones, with repeatable connections, per-session mute and volume. Initial
+implementation is a Windows virtual playback endpoint and Windows/Android output;
+unsupported Linux/macOS paths remain explicit. Reuse the managed USB/IP audio backend
+and existing installer ownership rather than introducing a new kernel driver.

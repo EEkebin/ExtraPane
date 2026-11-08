@@ -41,6 +41,7 @@ if ($IncludeCamera) {
 }
 if ($IncludeMicrophone) {
     $nativeOutputs['ExtraPane.Microphone'] = 'ExtraPane.Microphone.exe'
+    $nativeOutputs['ExtraPane.Speakers'] = 'ExtraPane.Speakers.exe'
     $nativeOutputs['extrapane_usb_setup'] = 'ExtraPane.UsbSetup.exe'
     $endpoint = Join-Path $projectRoot $MicrophoneEndpoint
     if (-not (Test-Path -LiteralPath $endpoint)) { throw 'Build the pinned microphone endpoint helper before packaging.' }

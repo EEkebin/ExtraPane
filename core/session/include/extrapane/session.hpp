@@ -6,7 +6,8 @@
 #include <vector>
 
 namespace extrapane {
-enum class ResourceKind : std::uint8_t { display=0, camera=1, microphone=2, usb=3 };
+enum class ResourceKind : std::uint8_t { display=0, camera=1, microphone=2, usb=3, speaker=4 };
+inline constexpr std::size_t resource_kind_count = 5;
 inline constexpr std::size_t max_session_resources = 16;
 enum class ResourceState { preparing, active, muted, interrupted, stopping, failed };
 struct Availability { bool available = false; std::string reason; };

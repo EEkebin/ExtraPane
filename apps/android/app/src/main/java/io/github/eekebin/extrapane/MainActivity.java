@@ -38,7 +38,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private EditText server,port,accessCode;
     private Spinner routes;
     private boolean visible;
-    private CaptureRows cameraRows,microphoneRows;private CheckBox singleServer;
+    private CaptureRows cameraRows,microphoneRows;private SpeakerRows speakerRows;private CheckBox singleServer;
     private Runnable permissionGranted,permissionDenied;
     private boolean surfaceReady,showStats,paused;
     private int streamWidth=16,streamHeight=9;
@@ -129,18 +129,22 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         }
         granted.run();accessCode.setText("");
     }
+    private void requestPlaybackNotification(Runnable granted,Runnable denied){
+        if(!visible||permissionGranted!=null){toast("Finish the current permission request first.");denied.run();return;}
+        requestCaptureNotification(granted,denied);
+    }
     private void refreshState(){
-        if(displayCard==null||cameraRows==null||microphoneRows==null)return;
+        if(displayCard==null||cameraRows==null||microphoneRows==null||speakerRows==null)return;
         displayCard.state(session!=null,false,displayConnected,displayDestination,streamWidth+" x "+streamHeight+" @ "+(displayCard.summary.getTag()==null?"":displayCard.summary.getTag()),displayStopping);
-        cameraRows.refreshLayout();microphoneRows.refreshLayout();
-        boolean capture=cameraRows.active()||microphoneRows.active();
+        cameraRows.refreshLayout();speakerRows.refreshLayout();microphoneRows.refreshLayout();
+        boolean capture=cameraRows.active()||speakerRows.active()||microphoneRows.active();
         disconnectAllButton.setVisibility(session!=null||capture?View.VISIBLE:View.GONE);
-        boolean matching=(!displayConnected||targetKey().equals(displayTargetKey))&&cameraRows.matches(captureTarget())&&microphoneRows.matches(captureTarget());
+        boolean matching=(!displayConnected||targetKey().equals(displayTargetKey))&&cameraRows.matches(captureTarget())&&speakerRows.matches(captureTarget())&&microphoneRows.matches(captureTarget());
         destinationFields.setVisibility((displayConnected||capture)&&singleServer.isChecked()&&matching&&marked.isEmpty()?View.GONE:View.VISIBLE);
         destinationSummary.setVisibility(displayConnected?View.VISIBLE:View.GONE);destinationSummary.setText("Display server: "+displayDestination);
         if(session==null&&!capture){cachedCode="";cachedDestination="";}
     }
-    private void disconnectAll(){disconnect();cameraRows.stopAll();microphoneRows.stopAll();}
+    private void disconnectAll(){disconnect();cameraRows.stopAll();speakerRows.stopAll();microphoneRows.stopAll();}
     private void showResources(){input.enable(false);paused=true;handler.removeCallbacks(hideToolbar);toolbar.setVisibility(View.GONE);stats.setVisibility(View.GONE);((View)setup.getTag()).setVisibility(View.VISIBLE);getWindow().getInsetsController().show(WindowInsets.Type.systemBars());}
     private void showDisplay(){if(session==null)return;((View)setup.getTag()).setVisibility(View.GONE);paused=false;video.requestFocus();getWindow().getInsetsController().hide(WindowInsets.Type.systemBars());reveal();}
     private void build(){
@@ -172,9 +176,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         displayMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int position,long id){customDisplay.setVisibility(position==1?View.VISIBLE:View.GONE);}public void onNothingSelected(AdapterView<?> p){}});
         displayCard.body.addView(button("Show display",this::showDisplay));
         cameraRows=new CaptureRows(this,true,group("Cameras"),this::captureTarget,()->singleServer.isChecked(),this::requestCapturePermission,this::refreshState,()->validate("capture"),(common,reason)->{cachedCode="";cachedDestination="";if(common)admissionError(reason);});
+        speakerRows=new SpeakerRows(this,group("Speakers"),this::captureTarget,()->singleServer.isChecked(),this::requestPlaybackNotification,this::refreshState,()->validate("capture"),(common,reason)->{cachedCode="";cachedDestination="";if(common)admissionError(reason);});
         microphoneRows=new CaptureRows(this,false,group("Microphones"),this::captureTarget,()->singleServer.isChecked(),this::requestCapturePermission,this::refreshState,()->validate("capture"),(common,reason)->{cachedCode="";cachedDestination="";if(common)admissionError(reason);});
         LinearLayout unsupported=group("USBs");CheckBox usb=new CheckBox(this);usb.setText("USB device sharing");usb.setTextColor(muted);usb.setEnabled(false);unsupported.addView(usb);unsupported.addView(text("Unavailable: Android USB/IP export and exclusive device return are not implemented. USB keyboards and mice still work as Android input devices.",14,muted));
-        setup.addView(text("Server hosting is not available on Android. Display, camera and microphone can connect together to a compatible server; each capture depends on Android permissions and hardware.",14,muted));
+        setup.addView(text("Server hosting is not available on Android. Display, camera, speakers and microphone can connect together to a compatible server; each capture depends on Android permissions and hardware.",14,muted));
         setup.addView(button("About",()->new AlertDialog.Builder(this).setTitle("ExtraPane").setMessage("Running version: "+BuildConfig.VERSION_NAME+"\n\nA project-wide license has not been selected.").setPositiveButton("GitHub",(d,w)->startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse("https://github.com/EEkebin/ExtraPane")))).setNegativeButton("Close",null).show()));
         toolbar=new LinearLayout(this);toolbar.setGravity(Gravity.CENTER);toolbar.setPadding(dp(8),dp(4),dp(8),dp(4));toolbar.setBackground(box(panel));
         toolbar.addView(button("Settings",this::settings));toolbar.addView(button("Hide",()->{paused=false;hideToolbar.run();}));toolbar.addView(button("Resources",this::showResources));toolbar.addView(redButton("Disconnect",this::disconnect));
@@ -221,7 +226,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         super.onRequestPermissionsResult(request,permissions,grants);
         if(request==51||request==52||request==53){Runnable accepted=permissionGranted,rejected=permissionDenied;permissionGranted=null;permissionDenied=null;if((request==53||(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED))&&visible){if(accepted!=null)accepted.run();}else if(rejected!=null)rejected.run();}
     }
-    @Override protected void onStart(){super.onStart();visible=true;cameraRows.resume();microphoneRows.resume();}
+    @Override protected void onStart(){super.onStart();visible=true;cameraRows.resume();speakerRows.resume();microphoneRows.resume();}
     private void fit(){int w=videoArea.getWidth(),h=videoArea.getHeight();if(w==0 || h==0)return;double scale=Math.min(w/(double)streamWidth,h/(double)streamHeight);FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)video.getLayoutParams();int nw=(int)(streamWidth*scale),nh=(int)(streamHeight*scale);if(p.width!=nw || p.height!=nh){p.width=nw;p.height=nh;p.gravity=Gravity.CENTER;video.setLayoutParams(p);}}
     private void reveal(){if(session==null)return;input.enable(false);toolbar.setVisibility(View.VISIBLE);handler.removeCallbacks(hideToolbar);if(!paused)handler.postDelayed(hideToolbar,5000);}
     private void settings(){paused=true;input.enable(false);handler.removeCallbacks(hideToolbar);new AlertDialog.Builder(this).setTitle("Client settings").setMessage(capabilities.getText()+"\n\nStylus: contact, hover, pressure, tilt, primary barrel button and eraser require support from the device and host. Barrel rotation and secondary stylus buttons are not forwarded. A passive capacitive stylus is touch input.\n\nUSB/Bluetooth keyboards use the host keyboard layout. IME composition and system-reserved keys are not forwarded.\n\nStatistics show received data and submitted decoder output, not end-to-end latency.")
@@ -236,7 +241,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         if(session!=null){int code=event.getKeyCode();if(code==KeyEvent.KEYCODE_F10 || code==KeyEvent.KEYCODE_F8 || (code==KeyEvent.KEYCODE_Q && event.isCtrlPressed() && event.isShiftPressed())){if(event.getAction()==KeyEvent.ACTION_DOWN){input.reset();if(code==KeyEvent.KEYCODE_Q)disconnectAll();else{paused=true;reveal();}}return true;}if(input.key(event))return true;}return super.dispatchKeyEvent(event);
     }
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(!focus)input.enable(false);else if(session!=null)input.enable(!paused && toolbar.getVisibility()!=View.VISIBLE);}
-    @Override protected void onStop(){visible=false;disconnect();cameraRows.pause();microphoneRows.pause();super.onStop();}
+    @Override protected void onStop(){visible=false;disconnect();cameraRows.pause();speakerRows.pause();microphoneRows.pause();super.onStop();}
     @Override protected void onDestroy(){disconnect();getSystemService(android.hardware.input.InputManager.class).unregisterInputDeviceListener(this);handler.removeCallbacksAndMessages(null);super.onDestroy();}
     public void surfaceCreated(SurfaceHolder holder){surfaceReady=true;}
     public void surfaceChanged(SurfaceHolder holder,int format,int width,int height){}

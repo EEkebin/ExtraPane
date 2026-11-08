@@ -15,6 +15,10 @@ The desktop app contains Server, Client, Settings and About pages. A PC can perf
 > checklist](docs/IMPLEMENTATION-CHECKLIST.md#current-status--2026-11-08) for what
 > is implemented, tested and still pending.
 
+The development build also adds [Speakers](docs/SPEAKERS.md): a Windows server
+playback device that sends audio to a selected Windows or Android client output.
+This new path has isolated checks; physical playback verification is pending.
+
 ## Requirements
 
 The following requirements apply to Windows. See [Linux setup](docs/LINUX.md), [Android setup](docs/ANDROID.md) and [macOS setup](docs/MACOS.md) for those platforms.

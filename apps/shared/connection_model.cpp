@@ -46,7 +46,7 @@ bool ConnectionModel::validTarget(const QVariantMap& target,bool complete){
 }
 bool ConnectionModel::setSharedTarget(QVariantMap target){if(!validTarget(target,false))return false;sharedTarget_=std::move(target);if(rowCount())emit dataChanged(index(0),index(rowCount()-1),{EffectiveTarget});emit sharedTargetChanged();return true;}
 QString ConnectionModel::addConnection(QString kind){
-    if(rows_.size()>=static_cast<std::size_t>(std::numeric_limits<int>::max())||(kind!="display"&&kind!="camera"&&kind!="microphone"&&kind!="usb"))return {};
+    if(rows_.size()>=static_cast<std::size_t>(std::numeric_limits<int>::max())||(kind!="display"&&kind!="camera"&&kind!="microphone"&&kind!="usb"&&kind!="speaker"))return {};
     Row row;row.id=QUuid::createUuid().toString(QUuid::WithoutBraces);row.kind=std::move(kind);row.target=sharedTarget_;
     row.display={{"mode","custom"},{"monitorId",""},{"width",1920},{"height",1080},{"fps",60}};
     const auto id=row.id;beginInsertRows({},rowCount(),rowCount());rows_.push_back(std::move(row));endInsertRows();return id;
@@ -67,7 +67,7 @@ bool ConnectionModel::beginConnection(QString id){
     const auto i=find(id);if(i<0||busy(rows_[i].state))return false;auto& row=rows_[i];QString error;
     if(!row.enabled)error="Enable this connection first.";
     else if(!validTarget(effective(row),true))error="Enter a reachable IPv4 server address and valid port/interface.";
-    else if(row.kind!="display"&&row.source.isEmpty())error="Choose a source device.";
+    else if(row.kind!="display"&&row.source.isEmpty())error=row.kind=="speaker"?"Choose a speaker or headset output.":"Choose a source device.";
     else if(row.kind=="display"&&row.display.value("mode")=="native"&&row.display.value("monitorId").toString().isEmpty())error="Choose a local monitor for native display mode.";
     if(error.isEmpty()&&row.kind=="usb")for(const auto& other:rows_)if(other.id!=id&&other.kind=="usb"&&other.source==row.source&&busy(other.state)){error="This USB device is already reserved by another connection.";break;}
     if(!error.isEmpty()){row.status=error;changed(i);return false;}

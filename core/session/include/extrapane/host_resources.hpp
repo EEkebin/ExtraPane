@@ -1,4 +1,5 @@
 #pragma once
+#include "session.hpp"
 #include <array>
 #include <atomic>
 #include <limits>
@@ -10,7 +11,7 @@ namespace extrapane {
 // IDs are scoped to a resource kind and reused only after its worker exits.
 class HostResources {
     std::mutex mutex_;
-    std::array<std::map<unsigned,std::shared_ptr<std::atomic_bool>>,4> active_;
+    std::array<std::map<unsigned,std::shared_ptr<std::atomic_bool>>,resource_kind_count> active_;
 public:
     unsigned acquire(unsigned kind,const std::atomic_bool& quit,const std::atomic_bool& stop) {
         std::lock_guard lock(mutex_);

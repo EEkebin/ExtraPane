@@ -131,6 +131,7 @@ ScrollView {
             model: [
                 {kind: "display", title: "Displays", singular: "display"},
                 {kind: "camera", title: "Cameras", singular: "camera"},
+                {kind: "speaker", title: "Speakers", singular: "speaker"},
                 {kind: "microphone", title: "Microphones", singular: "microphone"},
                 {kind: "usb", title: "USBs", singular: "USB"}
             ]
@@ -202,6 +203,7 @@ ScrollView {
                         IconButton {
                             objectName: "connectionGroupAdd_" + resourceGroup.modelData.kind
                             symbol: "add"; description: "Add " + resourceGroup.modelData.singular
+                            enabled: resourceGroup.modelData.kind !== "speaker" || panel.runtime.speakersSupported === true
                             onClicked: { resourceGroup.expanded = true; panel.runtime.connections.addConnection(resourceGroup.modelData.kind) }
                         }
                         IconButton {
@@ -215,7 +217,7 @@ ScrollView {
                 }
                 Label {
                     visible: resourceGroup.expanded && resourceGroup.rowCount() === 0
-                    text: "No " + (resourceGroup.modelData.kind === "usb" ? "USBs" : resourceGroup.modelData.title.toLowerCase()) + " added."
+                    text: resourceGroup.modelData.kind === "speaker" && panel.runtime.speakersSupported !== true ? "Speaker playback is not available on this platform yet." : "No " + (resourceGroup.modelData.kind === "usb" ? "USBs" : resourceGroup.modelData.title.toLowerCase()) + " added."
                     color: "#7f93b0"; font.pixelSize: 12
                     Layout.leftMargin: 16; Layout.bottomMargin: 2
                 }
@@ -298,7 +300,7 @@ ScrollView {
                                     }
                                 }
                                 onPhaseChanged: { if (phase === "active") panel.notifyConnected(resourceKind, effectiveTarget) }
-                                onBusyChanged: { freezeDescription(); if (!busy) microphoneMuted = false }
+                                onBusyChanged: { freezeDescription(); if (!busy) { microphoneMuted = false; speakerVolume.value = 100 } }
                                 Component.onCompleted: freezeDescription()
                                 width: instance.width
                                 ColumnLayout {
@@ -346,7 +348,7 @@ ScrollView {
                                         model: panel.runtime.devices[row.resourceKind] || []
                                         textRole: "label"; valueRole: "id"
                                         currentIndex: model.findIndex(item => item.id === row.sourceId)
-                                        displayText: currentIndex < 0 ? "Choose " + row.resourceKind + " source" : currentText
+                                        displayText: currentIndex < 0 ? (row.resourceKind === "speaker" ? "Choose speaker or headset output" : "Choose " + row.resourceKind + " source") : currentText
                                         delegate: ItemDelegate { required property int index; width: source.width; text: source.model[index].label; enabled: source.model[index].available !== false; highlighted: source.highlightedIndex === index }
                                         onActivated: panel.runtime.connections.setSource(row.connectionId, currentValue)
                                         Connections { target: source.popup; function onOpened() { panel.runtime.refreshDevices(row.resourceKind) } }
@@ -380,7 +382,14 @@ ScrollView {
                                         Label { text: "Each display opens its own window. Limits: 4096 pixels per dimension, 8,847,360 pixels total, and 360 target FPS. Hardware and network limits apply."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#9eacc2" }
                                     }
                                     CheckBox { visible: row.resourceKind === "camera" && row.busy; text: "Mirror camera (all connections using this source)"; checked: panel.runtime.mirrorStates[row.sourceId] === true; onClicked: panel.runtime.setMirror(row.connectionId, checked) }
-                                    CheckBox { visible: row.resourceKind === "microphone" && row.busy; text: "Mute microphone for this connection"; checked: row.microphoneMuted; onClicked: { row.microphoneMuted = checked; panel.runtime.setMuted(row.connectionId, checked) } }
+                                    Slider {
+                                        id: speakerVolume
+                                        visible: row.resourceKind === "speaker" && row.busy
+                                        from: 0; to: 100; value: 100; stepSize: 1
+                                        Accessible.name: "Speaker volume"
+                                        onMoved: panel.runtime.setVolume(row.connectionId, Math.round(value))
+                                    }
+                                    CheckBox { visible: (row.resourceKind === "microphone" || row.resourceKind === "speaker") && row.busy; text: row.resourceKind === "speaker" ? "Mute this output" : "Mute microphone for this connection"; checked: row.microphoneMuted; onClicked: { row.microphoneMuted = checked; panel.runtime.setMuted(row.connectionId, checked) } }
                                     Button { visible: row.resourceKind === "usb" && row.phase === "recovery"; text: "Recheck USB availability"; onClicked: panel.runtime.refreshDevices("usb") }
                                     Label { visible: row.resourceKind === "usb"; text: "USB storage is exclusive. Uncheck to return it safely; an interrupted transfer can require recovery."; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#f0c66e" }
                                     Label { visible: text.length > 0 && text !== "Disconnected"; text: row.status; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }

@@ -22,6 +22,15 @@ int main(){try{
     auto trailing=encoded;trailing.push_back(0);check(rejects([&]{decode_capabilities(trailing);}));
     auto duplicate=caps;duplicate[1].kind=ResourceKind::display;check(rejects([&]{encode_capabilities(duplicate);}));
     auto oversized=caps;oversized[0].source.reason=std::string(1025,'a');check(rejects([&]{encode_capabilities(oversized);}));
+    caps[4].destination={true,{}};
+    check(!decode_capabilities(encode_capabilities(caps))[4].destination.available);
+    const auto extended=encode_capabilities(caps,CapabilityFormat::with_speakers);
+    check(decode_capabilities(extended)[4].destination.available);
+    // Every truncated extended payload except the exact complete legacy boundary fails.
+    for(std::size_t length=encoded.size()+1;length<extended.size();++length)
+        check(rejects([&]{decode_capabilities(std::span(extended).first(length));}));
+    auto extra=extended;extra.insert(extra.end(),extended.begin()+encoded.size(),extended.end());
+    check(rejects([&]{decode_capabilities(extra);}));
     const auto request=request_message(7,ResourceKind::camera);
     check(decode_request(request.header,request.payload).device_id=="opaque-peer-device");
     Bytes buffer;std::size_t cursor=0;
@@ -53,5 +62,16 @@ int main(){try{
     Negotiation beforeCaps(server,2,local,factory);
     check(rejects([&]{beforeCaps.handle(request);}));check(!server.has_session(2));
     check(rejects([&]{Negotiation invalid(server,9,local,factory);}));
+    // Extended speaker negotiation is opt-in; a legacy session cannot allocate it.
+    check(server.admit(3).available);check(server.admit(4).available);
+    local[4].source={true,{}};auto client=unavailable_capabilities();client[4].destination={true,{}};
+    auto speakerCaps=[&]{auto body=encode_capabilities(client,CapabilityFormat::with_speakers);return Message{{Operation::capabilities,ResourceKind::display,0,static_cast<std::uint32_t>(body.size())},std::move(body)};};
+    Negotiation legacySpeaker(server,3,local,factory);
+    auto legacyReply=legacySpeaker.handle(speakerCaps());check(!decode_capabilities(legacyReply.payload)[4].source.available);
+    check(legacySpeaker.handle(request_message(8,ResourceKind::speaker)).header.operation==Operation::reject);
+    Negotiation speaker(server,4,local,factory,CapabilityFormat::with_speakers);
+    auto speakerReply=speaker.handle(speakerCaps());check(decode_capabilities(speakerReply.payload)[4].source.available);
+    check(speaker.handle(request_message(9,ResourceKind::speaker)).header.operation==Operation::grant);
+    check(speaker.handle({{Operation::stop,ResourceKind::speaker,9,0},{}}).header.operation==Operation::status);
     std::cout<<"Resource channel and negotiation checks passed\n";
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

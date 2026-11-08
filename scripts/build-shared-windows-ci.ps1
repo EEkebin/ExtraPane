@@ -14,11 +14,11 @@ $env:PATH=(Join-Path $qt 'bin')+';'+$env:PATH
 if($LASTEXITCODE){throw 'Microphone endpoint checks failed'}
 & cargo +1.88.0 build --locked --release --manifest-path apps/microphone-endpoint/Cargo.toml --jobs 2
 if($LASTEXITCODE){throw 'Microphone endpoint build failed'}
-& cmake -S . -B out/shared-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_MICROPHONE_TESTS=ON -DEXTRAPANE_USB_SETUP=ON -DEXTRAPANE_USB_HOST_SETUP=ON
+& cmake -S . -B out/shared-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DEXTRAPANE_SESSION_TESTS=ON -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_MICROPHONE_TESTS=ON -DEXTRAPANE_USB_SETUP=ON -DEXTRAPANE_USB_HOST_SETUP=ON
 if($LASTEXITCODE){throw 'Native engine configure failed'}
 & cmake --build out/shared-engine --parallel 2
 if($LASTEXITCODE){throw 'Native engine build failed'}
-& ctest --test-dir out/shared-engine --output-on-failure -R 'camera-|resource-.*-config|microphone-|usb-inventory|usb-storage|usb-host-backend|usb-recovery|usb-source-config|usb-receiver-config|usb-config-reject|grouped-admission|resource-security|access-code-security|usb-monitor-policy|usb-setup-policy|usb-setup-payload|usb-host-setup-payload'
+& ctest --test-dir out/shared-engine --output-on-failure -R 'camera-|resource-.*-config|microphone-|speaker-|usb-inventory|usb-storage|usb-host-backend|usb-recovery|usb-source-config|usb-receiver-config|usb-config-reject|grouped-admission|resource-security|access-code-security|usb-monitor-policy|usb-setup-policy|usb-setup-payload|usb-host-setup-payload'
 if($LASTEXITCODE){throw 'Isolated native component checks failed'}
 & cmake -S apps/shared -B out/shared-ui -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$qt"
 if($LASTEXITCODE){throw 'Shared UI configure failed'}

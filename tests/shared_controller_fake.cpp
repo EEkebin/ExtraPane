@@ -16,15 +16,27 @@ int main(int argc,char** argv){
         std::cout<<"SESSION_READY"<<std::endl;
         while(std::getline(std::cin,line)){
             if(line=="Q")break;
-            if(line.size()!=5||line.substr(0,4)!="ADD "||line[4]<'0'||line[4]>'3')return 2;
+            if(line.size()!=5||line.substr(0,4)!="ADD "||line[4]<'0'||line[4]>'4')return 2;
             if(std::getenv("EXTRAPANE_TEST_BAD_TICKET")){std::cout<<"SESSION_TICKET_V1\tcamera\tinvalid"<<std::endl;Sleep(INFINITE);return 0;}
-            constexpr const char* names[]={"display","camera","microphone","usb"};
+            constexpr const char* names[]={"display","camera","microphone","usb","speaker"};
             std::cout<<"SESSION_TICKET_V1\t"<<names[line[4]-'0']<<"\t-"<<std::endl;
             if(std::getenv("EXTRAPANE_TEST_SESSION_EXIT")){Sleep(300);std::cerr<<"error: simulated session loss"<<std::endl;return 1;}
         }
         return 0;
     }
     if(args.find("list-storage")!=args.npos){std::cout<<"USB_DEVICE_V1\t757362\tFake returned disk\tavailable\nUSB_LIST_DONE"<<std::endl;return 0;}
+    if(args.find("list-speakers")!=args.npos){std::cout<<"SPEAKER_DEVICE_V1\t0\tFake output\t737065616b6572\nSPEAKER_LIST_DONE"<<std::endl;return 0;}
+    if(args.find("receive-speakers")!=args.npos){
+        std::string line;std::getline(std::cin,line);
+        if(line!="speaker")return 3;
+        if(std::getenv("EXTRAPANE_TEST_SPEAKER_PENDING_CONTROLS")){
+            std::getline(std::cin,line);if(line!="M")return 4;
+            std::getline(std::cin,line);if(line!="V 25")return 5;
+        }
+        std::cout<<"SPEAKER_STARTED"<<std::endl;
+        while(std::getline(std::cin,line)){if(line=="Q")return 0;if(line!="M"&&line!="U"&&line!="V 25")return 3;}
+        return 0;
+    }
     if(args.find("receive")!=args.npos){
         auto option=[&](const std::string& name){for(int i=1;i+1<argc;++i)if(argv[i]==name)return std::string(argv[i+1]);return std::string{};};
         if(const auto expected=std::getenv("EXTRAPANE_TEST_DISPLAY_MODE")){

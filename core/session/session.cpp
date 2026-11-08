@@ -13,7 +13,7 @@ Availability Session::add(ResourceRequest request, std::unique_ptr<Resource> res
     if (resources_.contains(request.id)) return {false, "Resource ID already used"};
     if (resources_.size() >= max_session_resources) return {false, "Session resource limit reached"};
     switch(request.kind) {
-    case ResourceKind::display:case ResourceKind::camera:case ResourceKind::microphone:case ResourceKind::usb:break;
+    case ResourceKind::display:case ResourceKind::camera:case ResourceKind::microphone:case ResourceKind::usb:case ResourceKind::speaker:break;
     default:return {false,"Unknown resource kind"};
     }
     for (const auto& [id, entry] : resources_) {

@@ -31,7 +31,7 @@ struct Exchange {
 }
 bool validCode(const std::string& code){return code.size()==6 && std::all_of(code.begin(),code.end(),[](char c){return c>='0' && c<='9';});}
 std::optional<ChannelCredential> channelCredential(const std::string& text){
-    if(text.size()!=105||text.substr(0,6)!="EPCT1:"||text[6]<'0'||text[6]>'3'||text[7]!=':'||text[40]!=':')return {};
+    if(text.size()!=105||text.substr(0,6)!="EPCT1:"||text[6]<'0'||text[6]>'4'||text[7]!=':'||text[40]!=':')return {};
     auto hex=[](std::string_view part){return std::all_of(part.begin(),part.end(),[](char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');});};
     if(!hex(std::string_view(text).substr(8,32))||!hex(std::string_view(text).substr(41,64)))return {};
     return ChannelCredential{static_cast<unsigned>(text[6]-'0'),text.substr(8,32),text.substr(41,64)};
@@ -40,14 +40,15 @@ bool validCredential(const std::string& text){return validCode(text)||channelCre
 std::string formatCredential(const ChannelCredential& value){auto text="EPCT1:"+std::to_string(value.kind)+":"+value.id+":"+value.secret;need(channelCredential(text).has_value());return text;}
 void Gate::clear_channels(){for(auto& [id,value]:channels_)wipe(value.secret);channels_.clear();}
 std::vector<ChannelCredential> Gate::issue_channels(unsigned mask,uint64_t admitted_generation){
-    std::lock_guard lock(mutex_);need(mask&&mask<=15&&used_&&admitted_generation&&generation_==admitted_generation&&now_()<expires_);
+    std::lock_guard lock(mutex_);need(mask&&mask<=31&&used_&&admitted_generation&&generation_==admitted_generation&&now_()<expires_);
     return issue_locked(mask,0);
 }
 std::vector<ChannelCredential> Gate::issue_locked(unsigned mask,uint64_t control){
     for(auto it=channels_.begin();it!=channels_.end();)if(now_()>=it->second.expires){wipe(it->second.secret);it=channels_.erase(it);}else ++it;
-    need(channels_.size()+4<=128);std::vector<ChannelCredential> result;
+    unsigned requested=0;for(unsigned kind=0;kind<5;++kind)if(mask&(1u<<kind))++requested;
+    need(channels_.size()+requested<=128);std::vector<ChannelCredential> result;
     auto random_hex=[](unsigned n){std::vector<uint8_t> bytes(n);need(RAND_bytes(bytes.data(),bytes.size())==1);std::string text;for(auto b:bytes){text+="0123456789abcdef"[b>>4];text+="0123456789abcdef"[b&15];}OPENSSL_cleanse(bytes.data(),bytes.size());return text;};
-    for(unsigned kind=0;kind<4;++kind)if(mask&(1u<<kind)){
+    for(unsigned kind=0;kind<5;++kind)if(mask&(1u<<kind)){
         ChannelCredential item{kind,random_hex(16),random_hex(32)};need(!channels_.contains(item.id));
         channels_.emplace(item.id,Channel{item.secret,kind,0,now_()+std::chrono::seconds(60),generation_,control});result.push_back(std::move(item));
     }
@@ -60,7 +61,7 @@ uint64_t Gate::open_control(uint64_t admitted_generation){
     const auto id=++next_control_;controls_.emplace(id,true);return id;
 }
 std::vector<ChannelCredential> Gate::control_channels(unsigned mask,uint64_t control){
-    std::lock_guard lock(mutex_);need(mask&&mask<=15&&control&&controls_.contains(control));
+    std::lock_guard lock(mutex_);need(mask&&mask<=31&&control&&controls_.contains(control));
     // At most one unused ticket per kind belongs to a control connection.
     for(auto it=channels_.begin();it!=channels_.end();)if(it->second.control==control&&(mask&(1u<<it->second.kind))){wipe(it->second.secret);it=channels_.erase(it);}else ++it;
     return issue_locked(mask,control);
@@ -115,7 +116,7 @@ std::array<uint8_t,32> ticket_hello(const ChannelCredential& ticket){
     for(unsigned i=0;i<16;++i)header[8+i]=static_cast<uint8_t>((nibble(ticket.id[i*2])<<4)|nibble(ticket.id[i*2+1]));return header;
 }
 std::optional<ChannelCredential> parse_ticket_hello(const std::array<uint8_t,32>& header){
-    if(header[0]!='E'||header[1]!='P'||header[2]!='A'||header[3]!='T'||header[4]!=1||header[5]>3||header[6]||header[7]||!std::all_of(header.begin()+24,header.end(),[](uint8_t c){return c==0;}))return {};
+    if(header[0]!='E'||header[1]!='P'||header[2]!='A'||header[3]!='T'||header[4]!=1||header[5]>4||header[6]||header[7]||!std::all_of(header.begin()+24,header.end(),[](uint8_t c){return c==0;}))return {};
     ChannelCredential ticket;ticket.kind=header[5];for(unsigned i=8;i<24;++i){ticket.id+="0123456789abcdef"[header[i]>>4];ticket.id+="0123456789abcdef"[header[i]&15];}return ticket;
 }
 }

@@ -154,7 +154,7 @@ QVariantList WindowsController::hostComponents()const{
     return result;
 }
 QString WindowsController::hostDescription()const{
-    return "Clients choose which resources to use. Display, camera, microphone and USB connections share this server address and port. Start server checks and prepares the required receiving components. Windows may ask for administrator permission.";
+    return "Clients choose which resources to use. Display, camera, speaker, microphone and USB connections share this server address and port. Start server checks and prepares the required receiving components. Windows may ask for administrator permission.";
 }
 bool WindowsController::cameraSetupRunning()const{return impl_->setup!=nullptr||impl_->preparing;}
 void WindowsController::setMicrophoneMuted(bool muted){

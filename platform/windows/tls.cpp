@@ -131,7 +131,7 @@ bool TlsStream::open_control(){
     control_gate_=accessGate;control_=protected_->open_control(*control_gate_);return true;
 }
 std::vector<access::ChannelCredential> TlsStream::control_channels(unsigned kind){
-    if(!server_||kind>3)throw std::runtime_error("Invalid control resource");
+    if(!server_||kind>4)throw std::runtime_error("Invalid control resource");
     if(!protected_)return {};
     if(!control_gate_||!control_)throw std::runtime_error("Control not admitted");
     return control_gate_->control_channels(1u<<kind,control_);

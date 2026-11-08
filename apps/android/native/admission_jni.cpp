@@ -8,7 +8,7 @@ void fail(JNIEnv* env,const std::exception& error){if(!env->ExceptionCheck())env
 }
 extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_eekebin_extrapane_AdmissionBroker_request(JNIEnv* env,jclass,jint operation,jint kind){
     try{
-        if(operation<1||operation>4||kind<0||kind>3)throw std::invalid_argument("Invalid admission request");
+        if(operation<1||operation>4||kind<0||kind>4)throw std::invalid_argument("Invalid admission request");
         auto bytes=dm::access::control_request(static_cast<dm::access::ControlOperation>(operation),static_cast<unsigned>(kind));
         auto result=env->NewByteArray(static_cast<jsize>(bytes.size()));
         if(result)env->SetByteArrayRegion(result,0,static_cast<jsize>(bytes.size()),reinterpret_cast<const jbyte*>(bytes.data()));
@@ -18,7 +18,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_eekebin_extrapane_Admissi
 extern "C" JNIEXPORT jstring JNICALL Java_io_github_eekebin_extrapane_AdmissionBroker_credential(JNIEnv* env,jclass,jbyteArray input,jint operation,jint kind,jboolean protectedMode){
     try{
         dm::access::ControlReply bytes{};
-        if(!input||env->GetArrayLength(input)!=static_cast<jsize>(bytes.size())||operation<1||operation>4||kind<0||kind>3)throw std::invalid_argument("Invalid admission response");
+        if(!input||env->GetArrayLength(input)!=static_cast<jsize>(bytes.size())||operation<1||operation>4||kind<0||kind>4)throw std::invalid_argument("Invalid admission response");
         env->GetByteArrayRegion(input,0,static_cast<jsize>(bytes.size()),reinterpret_cast<jbyte*>(bytes.data()));
         if(env->ExceptionCheck())return nullptr;
         auto ticket=dm::access::control_credential(bytes,static_cast<dm::access::ControlOperation>(operation),static_cast<unsigned>(kind),protectedMode);

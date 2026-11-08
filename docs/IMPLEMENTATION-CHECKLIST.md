@@ -40,7 +40,10 @@ mean every device combination has been validated.
 - [ ] Physical Linux touch/pen, long-session clock drift, sustained load and broader hardware coverage.
 - [ ] Production signing/distribution and full upgrade/uninstall acceptance across platforms.
 
-Deferred: iOS, a future product rename, system-audio/speaker forwarding and
+Speakers now have a Windows server endpoint and Windows/Android client implementation;
+see [Speakers development](SPEAKERS.md). Physical playback verification is pending.
+
+Deferred: iOS, a future product rename, automatic system-audio mirroring and
 Miracast/Windows+K. See the platform guides for their exact supported features.
 
 ## Historical baseline and implementation journal
@@ -405,3 +408,36 @@ Driver branding audit also updated the EDID monitor-name descriptor to ExtraPane
 2026-11-08 shared desktop navigation animation: Windows/Linux sidebar now eases between its 72 px icon rail and 224 px expanded width over 220 ms, with synchronized label fade/position and a chevron rotating between right (expand) and left (collapse). Animation reverses from its current progress when clicked again. Accessible action names and keyboard focus remain on the same button; active resource sessions are unchanged. Rebuilt shared Qt offscreen shell checks passed; no live app/device windows opened.
 
 2026-11-08 documentation reconciliation: added current implementation/validation snapshot above the historical milestone journal; updated README for shared Qt packages, resource power actions, last-resource disconnect, tray lifetime, animated sidebar, custom display targets, current packaging, microphone jitter limits and guarded USB uninstall. Corrected portable-server guidance to use the matching managed installer. Local Markdown links and diff whitespace checked; no capability marked device-verified based only on isolated tests.
+
+2026-11-08 Speakers authorized: client-selected output appears as a normal playback device on the server; independent group above Microphones, mute/volume, native stereo delivery and client jitter buffering. First target is Windows server/client with managed audio-driver reuse; other platforms require explicit output/virtual-endpoint capability gates. Implementation in progress, no device verification claimed.
+
+## 2026-11-08 Speakers implementation
+
+- [x] Confirmed normal server playback-device behavior; no default-device changes
+  or automatic system-audio mirroring.
+- [x] Windows stereo 48 kHz PCM16 virtual playback endpoint using the existing
+  managed audio backend; unique per-session ownership and endpoint removal.
+- [x] Windows selected shared-mode WASAPI output; Android selected AudioTrack output
+  and independent media-playback foreground service.
+- [x] Speakers above Microphones, repeatable rows, power actions, mute and volume;
+  last-resource admission teardown remains independent of other resources.
+- [x] Distinct speaker offer/framing, dynamic admission kind 4 and opt-in five-resource
+  capabilities; existing four-resource framing stays unchanged.
+- [x] Server 20 ms packetizer reserve; client 40 ms jitter reserve growing to 80 ms after
+  starvation, bounded queues, mute invalidation and no stale catch-up bursts.
+- [x] Native Windows speaker/helper/server linking; 10 isolated core lifecycle,
+  protocol and jitter checks; 5 targeted admission/security/configuration/slot checks.
+- [x] 24 Rust endpoint tests including burst delivery, partial refill and USB bus-ID
+  bounds; 6 Android host suites including malformed speaker framing and jitter timing.
+- [x] Offscreen Qt checks and fake-child controller lifecycle checks, including
+  speaker mute/volume selected before admission completes; bounded speaker startup deadline.
+- [x] Windows package includes the native Speakers helper; CI includes speaker checks.
+- [x] README, platform guide, decisions and Speakers setup/limitations updated.
+- [ ] Final package CI and new installer/APK delivery.
+- [ ] Physical normal-device enumeration and playback in an application; quick mute,
+  disconnect/reconnect, selected-output removal and concurrent microphone/display load.
+- [ ] Linux/macOS output adapters and virtual playback endpoints. Shared UI keeps
+  unsupported speaker connections disabled with a reason.
+
+No new device session, driver installation or audio playback was performed for
+these isolated checks. Queue bounds are per-stage, not an end-to-end latency claim.

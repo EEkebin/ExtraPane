@@ -18,7 +18,7 @@ version = current()
 required = (
     'ExtraPane.exe', 'ExtraPane.Session.exe', 'ExtraPane.Service.exe', 'dm-view.exe',
     'ExtraPane.Resources.exe', 'ExtraPane.CameraSetup.exe', 'ExtraPane.Microphone.exe',
-    'ExtraPane.MicrophoneEndpoint.exe', 'ExtraPane.Usb.exe', 'ExtraPane.UsbSetup.exe',
+    'ExtraPane.MicrophoneEndpoint.exe', 'ExtraPane.Speakers.exe', 'ExtraPane.Usb.exe', 'ExtraPane.UsbSetup.exe',
     'ExtraPane.UsbHostSetup.exe', 'ExtraPane.UsbRecovery.exe',
     'Components/Display/manage-driver.ps1', 'Components/Display/package/manifest.json',
     'platforms/qwindows.dll', 'platforms/qoffscreen.dll', 'Qt6Core.dll', 'Qt6Quick.dll',

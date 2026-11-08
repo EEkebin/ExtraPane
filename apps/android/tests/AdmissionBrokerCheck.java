@@ -33,7 +33,8 @@ public final class AdmissionBrokerCheck {
         Fake pending=new Fake();pending.blockOpen=true;AdmissionBroker.testTransport(()->pending);AtomicBoolean cancel=new AtomicBoolean();ExecutorService executor=Executors.newSingleThreadExecutor();
         Future<?> attempt=executor.submit(()->{try{acquire("192.0.2.6","","123456",0,lost::incrementAndGet,cancel::get);throw new AssertionError("Cancelled acquire returned");}catch(InterruptedException expected){}catch(Exception error){throw new RuntimeException(error);}});
         require(pending.opened.await(2,TimeUnit.SECONDS));cancel.set(true);attempt.get(2,TimeUnit.SECONDS);waitFor(()->pending.closed);require(pending.cancelled&&lost.get()==1);executor.shutdownNow();
-        try{acquire("192.0.2.7","","",4,()->{},()->false);throw new AssertionError("Invalid kind");}catch(IOException expected){}
+        try{acquire("192.0.2.7","","",5,()->{},()->false);throw new AssertionError("Invalid kind");}catch(IOException expected){}
+        try(AdmissionBroker.Lease speaker=acquire("192.0.2.7","","",4,()->{},()->false)){require(speaker.credential.isEmpty());}
         System.out.println("Android admission broker lifecycle checks passed");
     }
 }

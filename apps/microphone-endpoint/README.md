@@ -1,4 +1,4 @@
-# Windows microphone endpoint helper
+# Windows audio endpoint helper
 
 This internal helper adapts bounded PCM from the C++ resource session to a local
 USB Audio Class 2 capture device. The application remains C++/Qt. Rust is limited
@@ -8,6 +8,50 @@ and UAC2 device protocol used by the signed usbip-win2 backend.
 `usbip-audio` is MIT licensed, pinned to commit
 `58032ab0664ffec1d0c178f40a3a69359c21f597`; its license is included here.
 Do not run upstream hardware tests as part of ordinary builds.
+
+## Speaker mode
+
+`ExtraPane.MicrophoneEndpoint.exe --run-speakers --slot N` creates a separate
+render-only `ExtraPane Speakers N` endpoint at 48 kHz stereo. Server applications
+select that ordinary output device; this helper does not capture the default
+system output or change Windows defaults. It reuses the same managed USB/IP
+backend and Windows USB Audio Class driver as microphone mode, with a distinct
+slot mutex and descriptor serial. It does not require another kernel driver.
+
+Speaker-mode stdout is binary **only**. Readiness (`SPEAKER_READY slot=N`), cleanup
+(`SPEAKER_STOPPED`) and errors go to stderr, which the owner must pipe separately.
+Each stdout packet has a 24-byte header: `EPSP`, version byte 1, flags byte
+(bit 0 indicates discontinuity; all other bits zero), two reserved zero bytes,
+big-endian u64 sequence at offset 8, and big-endian u64 frame position at offset
+16. Exactly 1,920 bytes of PCM16 little-endian interleaved stereo follow, covering
+480 frames/10 ms at 48 kHz. Sequence starts at zero and increments by one;
+position starts at zero and normally advances by 480. A stalled writer skips
+elapsed positions and marks discontinuity instead of sending a catch-up burst.
+
+The USB playback callback converts samples into a preallocated, bounded 120 ms
+queue without waiting for its mutex or doing pipe/network I/O. Overflow drops
+oldest audio and marks discontinuity. A separate paced writer sends one packet
+per 10 ms, including silence when no server app is playing. It first collects a
+20 ms source reserve and emits only complete 10 ms blocks. If the source runs
+short, it emits silence and one discontinuity, retaining partial samples until
+20 ms is available again. PCM byte conversion happens after releasing the queue
+lock. This absorbs USB callback/packet-timer phase differences; it adds up to
+20 ms of startup reserve before the separate client jitter buffer. The receiving client
+must provide its own jitter buffer and selected physical output integration.
+
+Speaker-mode stdin accepts only the existing EPMI mute and stop commands below.
+Mute/unmute clears queued audio. Stop or EOF ends this endpoint's owned attachment
+without touching microphone endpoints; a broken stdout pipe also ends the helper.
+An idle stdin is valid while the playback endpoint remains connected. On Windows,
+stop cancels a blocked writer's synchronous pipe I/O and waits at most one second
+for that worker; the C++ owner must retain process-job supervision and its bounded
+cleanup timeout. No binary data may be routed through the UI or text status parser.
+
+`--check` also verifies speaker descriptors and silent packet framing without
+opening devices. Rust unit checks cover stereo conversion, bounded overflow,
+mute/reset isolation, nonblocking callback contention, idle packets, writer stop
+and broken-pipe propagation. Real application playback and receiver audio delivery
+remain separate device-validation gates.
 
 ## Interface
 

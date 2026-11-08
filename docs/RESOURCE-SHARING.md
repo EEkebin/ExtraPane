@@ -6,7 +6,7 @@ Track completed increments and remaining work in
 Approved direction: retain ExtraPane and C++20 native engines; migrate the four
 interfaces to Qt Quick/QML. This supersedes the Windows-only UI selection in
 STACK.md. Existing platform apps remain the production path until migration
-passes display regression checks. iOS, renaming and speaker forwarding are deferred.
+passes display regression checks. iOS and renaming remain deferred. Speaker forwarding is now authorized; see [Speakers development](SPEAKERS.md).
 
 ## Connection and lifecycle
 

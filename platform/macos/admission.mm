@@ -58,7 +58,7 @@ AdmissionLease::~AdmissionLease(){wipe(credential);}
 bool AdmissionLease::alive()const{return !broker_||broker_->alive();}
 std::shared_ptr<AdmissionLease> acquireAdmission(ResourceTarget target,std::string code,unsigned kind,std::function<bool()> cancelled){
     struct Wipe{std::string& s;~Wipe(){wipe(s);}} guard{code};
-    if(kind>3||(!code.empty()&&!access::validCode(code)))throw std::runtime_error("Invalid access code or resource kind");
+    if(kind>4||(!code.empty()&&!access::validCode(code)))throw std::runtime_error("Invalid access code or resource kind");
     static std::mutex mutex;static std::map<std::string,std::weak_ptr<AdmissionBroker>> pool;
     const auto key=target.address+":"+std::to_string(target.port)+"@"+target.local;
     auto lease=std::make_shared<AdmissionLease>();

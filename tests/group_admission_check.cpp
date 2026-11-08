@@ -46,5 +46,15 @@ int main(){try{
  for(auto op:{ControlOperation::open,ControlOperation::ping,ControlOperation::add,ControlOperation::close}){auto request=control_request(op);check(parse_control(request).first==op);request[15]=1;rejects([&]{parse_control(request);});}
  auto lan=control_reply(ControlOperation::add,2,false);check(control_credential(lan,ControlOperation::add,2,false).empty());rejects([&]{control_credential(lan,ControlOperation::add,2,true);});lan[127]=1;rejects([&]{control_credential(lan,ControlOperation::add,2,false);});
  auto coded=control_reply(ControlOperation::add,0,true,formatCredential(revokedLive[0]));check(control_credential(coded,ControlOperation::add,0,true)==formatCredential(revokedLive[0]));rejects([&]{control_credential(coded,ControlOperation::add,1,true);});
+ // Speaker tickets use the extensible control path; legacy grouped framing stays four kinds.
+ static_assert(sizeof(GroupReply)==520);
+ Pair speakerRoot;check(speakerRoot.authenticate(gate,gate.generate()));const auto speakerControl=speakerRoot.server.open_control(gate);
+ auto speakerTickets=gate.control_channels(16,speakerControl);check(speakerTickets.size()==1&&speakerTickets[0].kind==4);
+ const auto speakerCredential=formatCredential(speakerTickets[0]);check(channelCredential(speakerCredential)->kind==4);
+ Pair speakerPair;check(speakerPair.authenticate(gate,speakerCredential));check(speakerPair.server.authorized_kind()==4);
+ Pair speakerReplay;check(!speakerReplay.authenticate(gate,speakerCredential));
+ auto badSpeaker=speakerTickets[0];badSpeaker.kind=5;rejects([&]{formatCredential(badSpeaker);});
+ const auto speakerRequest=control_request(ControlOperation::add,4);check(parse_control(speakerRequest).second==4);
+ rejects([&]{control_request(ControlOperation::add,5);});
  std::cout<<"Grouped code admission, per-kind tickets, replay/expiry/revocation, concurrency and independent protected streams passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

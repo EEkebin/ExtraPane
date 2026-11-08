@@ -5,6 +5,7 @@
 #include <dm/display.hpp>
 #include <dm/resource_session.hpp>
 #include <dm/microphone_session.hpp>
+#include <dm/speaker_session.hpp>
 #include <dm/usb_session.hpp>
 #include <extrapane/session_route.hpp>
 #include <extrapane/host_resources.hpp>
@@ -26,7 +27,7 @@ struct Cancel {
     std::jthread thread;
     Cancel(security::TlsStream& tls,std::atomic_bool& stop):thread([&](std::stop_token token){while(!token.stop_requested()&&!stop.load())Sleep(25);if(stop.load())tls.cancel();}){}
 };
-const char* name(ResourceKind kind){switch(kind){case ResourceKind::display:return "display";case ResourceKind::camera:return "camera";case ResourceKind::microphone:return "microphone";case ResourceKind::usb:return "usb";}return "unknown";}
+const char* name(ResourceKind kind){switch(kind){case ResourceKind::display:return "display";case ResourceKind::camera:return "camera";case ResourceKind::microphone:return "microphone";case ResourceKind::usb:return "usb";case ResourceKind::speaker:return "speaker";}return "unknown";}
 // Preserve the ownership boundary with old diagnostic listeners. A missing/busy
 // component reports only for its resource; it does not prevent server startup.
 struct Lease {
@@ -46,7 +47,7 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
     struct Worker{std::thread thread;std::atomic_bool done=false;};std::vector<std::unique_ptr<Worker>> workers;
     // Bound unauthenticated/unfinished admission work, not established sessions.
     std::atomic_uint pending=0;
-    report("SERVER_STARTED resources=display,camera,microphone,usb");report("LISTENING "+listener.endpoints());
+    report("SERVER_STARTED resources=display,camera,microphone,usb,speaker");report("LISTENING "+listener.endpoints());
     auto events=[&](const std::string& text){
         if(control.quit.load()&&(text.starts_with("USB_EJECT_BUSY")||text.starts_with("USB_RETURN_FAILED")))report("SERVER_STOPPING USB could not eject cleanly; ending the session so the source can reclaim its device. Writes may be incomplete.");
         report(text);
@@ -110,6 +111,7 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     }
                     case ResourceKind::camera: if(!camera_lease)throw std::runtime_error(camera_busy);resources::receive_camera_admitted(tls,slot,control.stop,events);break;
                     case ResourceKind::microphone:{microphone::receive_admitted(tls,control.stop,events,slot);break;}
+                    case ResourceKind::speaker:{speaker::send_admitted(tls,control.stop,events,slot);break;}
                     case ResourceKind::usb: {auto eject=slots.eject_signal(slot);usb::receive_storage_admitted(tls,control.stop,*eject,events);break;}
                     }
                     }

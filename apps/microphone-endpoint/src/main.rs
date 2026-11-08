@@ -1,5 +1,6 @@
 mod pcm;
 mod backend;
+mod speakers;
 use std::sync::{Arc,mpsc};
 use std::time::{Duration,Instant};
 use usbip_audio::{Server,MonotonicClock};
@@ -12,10 +13,13 @@ fn lease_name(slot:u32)->Result<String,String>{validate_slot(slot)?;Ok(format!("
     use std::ffi::c_void;
     #[link(name="kernel32")]extern "system" {pub fn CreateMutexW(attributes:*mut c_void,owner:i32,name:*const u16)->*mut c_void;pub fn GetLastError()->u32;pub fn CloseHandle(handle:*mut c_void)->i32;}
 }
-#[cfg(windows)]impl Lease{fn acquire(slot:u32)->Result<Self,String>{let name:Vec<u16>=lease_name(slot)?.encode_utf16().chain(Some(0)).collect();let h=unsafe{lease_api::CreateMutexW(std::ptr::null_mut(),0,name.as_ptr())};if h.is_null(){return Err("Cannot acquire microphone slot".into());}if unsafe{lease_api::GetLastError()}==183{unsafe{lease_api::CloseHandle(h);}return Err("Microphone slot is already in use".into());}Ok(Self(h))}}
+#[cfg(windows)]impl Lease{
+    fn acquire(slot:u32)->Result<Self,String>{Self::acquire_named(lease_name(slot)?)}
+    fn acquire_named(name:String)->Result<Self,String>{let name:Vec<u16>=name.encode_utf16().chain(Some(0)).collect();let h=unsafe{lease_api::CreateMutexW(std::ptr::null_mut(),0,name.as_ptr())};if h.is_null(){return Err("Cannot acquire audio endpoint slot".into());}if unsafe{lease_api::GetLastError()}==183{unsafe{lease_api::CloseHandle(h);}return Err("Audio endpoint slot is already in use".into());}Ok(Self(h))}
+}
 #[cfg(windows)]impl Drop for Lease{fn drop(&mut self){unsafe{lease_api::CloseHandle(self.0);}}}
 #[cfg(not(windows))]struct Lease;
-#[cfg(not(windows))]impl Lease{fn acquire(_:u32)->Result<Self,String>{Err("Windows is required".into())}}
+#[cfg(not(windows))]impl Lease{fn acquire(_:u32)->Result<Self,String>{Err("Windows is required".into())}fn acquire_named(_:String)->Result<Self,String>{Err("Windows is required".into())}}
 
 fn configuration(slot:u32)->Result<Uac2Config,String>{
     validate_slot(slot)?;
@@ -58,11 +62,12 @@ fn run(slot:u32)->Result<(),String>{
 fn main(){
     let args:Vec<String>=std::env::args().skip(1).collect();
     let result=match args.as_slice(){
-        [arg] if arg=="--check"=>pcm::check().and_then(|_|{for slot in [1,4,5,255,65536,u32::MAX]{configuration(slot)?.validate()?;}Ok(())}).map(|_|println!("MICROPHONE_CHECK_OK")),
+        [arg] if arg=="--check"=>pcm::check().and_then(|_|speakers::check()).and_then(|_|{for slot in [1,4,5,255,65536,u32::MAX]{configuration(slot)?.validate()?;}Ok(())}).map(|_|println!("MICROPHONE_CHECK_OK")),
         [arg] if arg=="--check-backend"=>backend::installed().map(|_|println!("MICROPHONE_BACKEND_OK")),
-        [arg] if arg=="--help"=>{println!("ExtraPane.MicrophoneEndpoint.exe --run --slot <positive-id>\n--check performs isolated framing/format checks only.\nInput: EPMI v1 PCM16LE mono48k packets, mute, stop. Requires the managed signed USB/IP backend.");Ok(())},
+        [arg] if arg=="--help"=>{println!("ExtraPane.MicrophoneEndpoint.exe --run --slot <positive-id>\n--run-speakers --slot <positive-id> exports a stereo playback endpoint; stdout is binary EPSP, stderr is status.\n--check performs isolated framing/format checks only.\nInput: EPMI v1 PCM16LE mono48k packets, mute, stop (speaker mode accepts only mute/stop). Requires the managed signed USB/IP backend.");Ok(())},
         [run_arg,slot_arg,slot] if run_arg=="--run"&&slot_arg=="--slot"=>match slot.parse::<u32>(){Ok(slot) if validate_slot(slot).is_ok()=>run(slot),_=>Err("Microphone endpoint identity must be positive".into())},
-        _=>Err("Use --run --slot <positive-id>, --check or --help".into()),
+        [run_arg,slot_arg,slot] if run_arg=="--run-speakers"&&slot_arg=="--slot"=>match slot.parse::<u32>(){Ok(slot) if validate_slot(slot).is_ok()=>speakers::run(slot),_=>Err("Speaker endpoint identity must be positive".into())},
+        _=>Err("Use --run or --run-speakers with --slot <positive-id>, --check or --help".into()),
     };
     if let Err(error)=result{eprintln!("error: {error}");std::process::exit(1);}
 }

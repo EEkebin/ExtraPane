@@ -1,6 +1,7 @@
 #include <extrapane/session_route.hpp>
 #include <extrapane/camera_protocol.hpp>
 #include <extrapane/microphone_protocol.hpp>
+#include <extrapane/speaker_protocol.hpp>
 #include <dm/video_protocol.hpp>
 #include <dm/prefix_buffer.hpp>
 #include <iostream>
@@ -32,9 +33,10 @@ int main(){try{
     display[7]=1;route(display,ResourceKind::display);
     const auto camera=extrapane::camera_wire::encode({1280,720,30,{1,17}});route(camera,ResourceKind::camera);
     const auto microphone=extrapane::microphone_wire::encode_offer({2,91});route(microphone,ResourceKind::microphone);
+    const auto speaker=extrapane::speaker_wire::encode_offer({3,92});route(speaker,ResourceKind::speaker);
     const std::array<std::uint8_t,8> usb{'E','P','U','S',3,0,0,0};route(usb,ResourceKind::usb);
     {auto legacy=usb;legacy[4]=1;rejects([&]{extrapane::classify_session_prefix(legacy);});}
-    for(const auto* original:std::array<const std::uint8_t*,4>{display.data(),camera.data(),microphone.data(),usb.data()}){
+    for(const auto* original:std::array<const std::uint8_t*,5>{display.data(),camera.data(),microphone.data(),usb.data(),speaker.data()}){
         std::array<std::uint8_t,8> bytes{};std::copy_n(original,8,bytes.begin());++bytes[4];rejects([&]{extrapane::classify_session_prefix(bytes);});
         rejects([&]{extrapane::classify_session_prefix(std::span(bytes).first(7));});
     }

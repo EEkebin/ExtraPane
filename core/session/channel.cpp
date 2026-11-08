@@ -22,6 +22,7 @@ public:
         if(result.find('\0')!=std::string::npos)throw std::invalid_argument("Invalid resource text");
         return result;
     }
+    bool empty()const{return data_.empty();}
     void finish(){if(!data_.empty())throw std::invalid_argument("Trailing resource payload");}
 private:std::span<const std::uint8_t> data_;
 };
@@ -47,21 +48,28 @@ void ControlChannel::send(const Message& message){
     try{write_(header);if(!message.payload.empty())write_(message.payload);}
     catch(...){failed_=true;throw;}
 }
-Bytes encode_capabilities(const Capabilities& capabilities){
+Bytes encode_capabilities(const Capabilities& capabilities,CapabilityFormat format){
+    if(format!=CapabilityFormat::legacy_four&&format!=CapabilityFormat::with_speakers)throw std::invalid_argument("Unknown capability format");
     Bytes result;unsigned seen=0;
     for(const auto& c:capabilities){
         const auto kind=static_cast<unsigned>(c.kind);
-        if(kind>3 || (seen&(1u<<kind)))throw std::invalid_argument("Invalid capability kinds");
-        seen|=1u<<kind;result.push_back(static_cast<std::uint8_t>(kind));
+        if(kind>=resource_kind_count || (seen&(1u<<kind)))throw std::invalid_argument("Invalid capability kinds");
+        seen|=1u<<kind;
+        if(kind==static_cast<unsigned>(ResourceKind::speaker)&&format==CapabilityFormat::legacy_four)continue;
+        result.push_back(static_cast<std::uint8_t>(kind));
         put_availability(result,c.source);put_availability(result,c.destination);
-    }return result;
+    }
+    if(seen!=(1u<<resource_kind_count)-1)throw std::invalid_argument("Incomplete capability set");
+    return result;
 }
 Capabilities decode_capabilities(std::span<const std::uint8_t> bytes){
     Reader in(bytes);auto result=unavailable_capabilities();unsigned seen=0;
-    for(unsigned i=0;i<4;++i){
-        const auto kind=in.byte();if(kind>3 || (seen&(1u<<kind)))throw std::invalid_argument("Invalid capability kinds");
+    while(!in.empty()){
+        const auto kind=in.byte();if(kind>=resource_kind_count || (seen&(1u<<kind)))throw std::invalid_argument("Invalid capability kinds");
         seen|=1u<<kind;result[kind]={static_cast<ResourceKind>(kind),take_availability(in),take_availability(in)};
-    }in.finish();return result;
+    }
+    if(seen!=15&&seen!=(1u<<resource_kind_count)-1)throw std::invalid_argument("Incomplete capability set");
+    return result;
 }
 Bytes encode_request(const ResourceRequest& request){
     // Validate kind/id through the common envelope validator.

@@ -9,7 +9,7 @@ using ControlRequest=std::array<uint8_t,16>;
 using ControlReply=std::array<uint8_t,128>;
 enum class ControlOperation:uint8_t {open=1,ping=2,add=3,close=4};
 inline ControlRequest control_request(ControlOperation op,unsigned kind=0){
-    if(op<ControlOperation::open||op>ControlOperation::close||kind>3||(op!=ControlOperation::add&&kind))throw std::invalid_argument("Invalid control request");
+    if(op<ControlOperation::open||op>ControlOperation::close||kind>4||(op!=ControlOperation::add&&kind))throw std::invalid_argument("Invalid control request");
     ControlRequest value{};std::copy(control_prefix.begin(),control_prefix.end(),value.begin());value[8]=static_cast<uint8_t>(op);value[9]=static_cast<uint8_t>(kind);return value;
 }
 inline std::pair<ControlOperation,unsigned> parse_control(const ControlRequest& value){

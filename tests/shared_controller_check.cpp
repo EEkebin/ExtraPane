@@ -123,6 +123,17 @@ int main(int argc,char** argv){
         until([&]{return !runtime->active()&&connections->connection(cam1)["phase"]=="idle";});
         // A failed sole connection must also release its control connection.
         runtime->toggle(bad,true);until([&]{return connections->connection(bad)["phase"]=="failed"&&!runtime->active();});
+        const auto speaker=connections->addConnection("speaker");
+        runtime->refreshDevices("speaker");until([&]{return !runtime->devices()["speaker"].toList().isEmpty();});
+        connections->setSource(speaker,"737065616b6572");runtime->toggle(speaker,true);
+        until([&]{return connections->connection(speaker)["phase"]=="active";});
+        runtime->setMuted(speaker,true);runtime->setVolume(speaker,25);runtime->setMuted(speaker,false);
+        runtime->toggle(speaker,false);until([&]{return !runtime->active();});
+        // Controls chosen while admission is pending must reach the later child.
+        qputenv("EXTRAPANE_TEST_SPEAKER_PENDING_CONTROLS","1");runtime->toggle(speaker,true);
+        runtime->setMuted(speaker,true);runtime->setVolume(speaker,25);
+        until([&]{return connections->connection(speaker)["phase"]=="active";});
+        runtime->toggle(speaker,false);until([&]{return !runtime->active();});qunsetenv("EXTRAPANE_TEST_SPEAKER_PENDING_CONTROLS");
         qputenv("EXTRAPANE_TEST_USB_BUSY","1");
         const auto storage=connections->addConnection("usb"),storage2=connections->addConnection("usb");connections->setSource(storage,"757362");connections->setSource(storage2,"757362");runtime->toggle(storage,true);
         until([&]{return connections->connection(storage)["phase"]=="active";});runtime->toggle(storage2,true);require(connections->connection(storage2)["phase"]!="active"&&connections->connection(storage2)["status"].toString().contains("reserved"));

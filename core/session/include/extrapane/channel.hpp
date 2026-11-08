@@ -19,7 +19,10 @@ public:
 private:
     Read read_; Write write_; bool failed_=false;
 };
-Bytes encode_capabilities(const Capabilities& capabilities);
+// Default is byte-compatible with existing four-resource peers. Only a new
+// speaker session opts into the fifth capability; legacy sessions keep v1 layout.
+enum class CapabilityFormat { legacy_four, with_speakers };
+Bytes encode_capabilities(const Capabilities& capabilities,CapabilityFormat format=CapabilityFormat::legacy_four);
 Capabilities decode_capabilities(std::span<const std::uint8_t> bytes);
 Bytes encode_request(const ResourceRequest& request);
 ResourceRequest decode_request(const Header& header, std::span<const std::uint8_t> bytes);

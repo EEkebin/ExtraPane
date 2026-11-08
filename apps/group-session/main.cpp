@@ -12,7 +12,7 @@ namespace {
 unsigned number(const std::string& text,unsigned max){unsigned value=0;const auto [end,error]=std::from_chars(text.data(),text.data()+text.size(),value);if(error!=std::errc{}||end!=text.data()+text.size()||!value||value>max)throw std::invalid_argument("Invalid numeric option");return value;}
 void ipv4(const std::string& text){std::size_t offset=0;for(unsigned i=0;i<4;++i){const auto dot=text.find('.',offset);if((i<3)==(dot==text.npos))throw std::invalid_argument("Expected IPv4 literal");const auto part=text.substr(offset,(dot==text.npos?text.size():dot)-offset);unsigned value=0;const auto [end,error]=std::from_chars(part.data(),part.data()+part.size(),value);if(error!=std::errc{}||end!=part.data()+part.size()||part.empty()||value>255||(i==0&&(!value||value==127||value>=224)))throw std::invalid_argument("Expected reachable unicast IPv4");offset=dot+1;}}
 struct Handle{HANDLE value=nullptr;~Handle(){if(value)CloseHandle(value);}};
-const char* name(unsigned kind){constexpr const char* names[]={"display","camera","microphone","usb"};return names[kind];}
+const char* name(unsigned kind){constexpr const char* names[]={"display","camera","microphone","usb","speaker"};return names[kind];}
 }
 int main(int argc,char** argv){try{
     std::map<std::string,std::string> values;bool input=false,check=false,session=false;
@@ -41,7 +41,7 @@ int main(int argc,char** argv){try{
             if(available){char value=0;DWORD read=0;if(!ReadFile(input_handle,&value,1,&read,nullptr)||read!=1)break;
                 if(value=='\n'){
                     if(pending=="Q")break;
-                    if(pending.size()!=5||pending.substr(0,4)!="ADD "||pending[4]<'0'||pending[4]>'3')throw std::invalid_argument("Invalid session command");
+                    if(pending.size()!=5||pending.substr(0,4)!="ADD "||pending[4]<'0'||pending[4]>'4')throw std::invalid_argument("Invalid session command");
                     const unsigned kind=pending[4]-'0';auto credential=exchange(ControlOperation::add,kind);
                     std::cout<<"SESSION_TICKET_V1\t"<<name(kind)<<'\t'<<(protected_mode?credential:"-")<<std::endl;SecureZeroMemory(credential.data(),credential.size());pending.clear();
                 }else{if(pending.size()>=16)throw std::invalid_argument("Session command too long");pending+=value;}

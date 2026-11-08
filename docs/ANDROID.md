@@ -20,7 +20,7 @@ That background behavior describes display sessions. Camera sessions use a separ
 ## Controls
 
 Enter the server IPv4 address and port, choose an optional network route/access
-code, then use the green power button for Display, Camera or Microphone in its
+code, then use the green power button for Display, Camera, Speakers or Microphone in its
 collapsible group. The button turns red to disconnect only that resource;
 Disconnect all stops all resources. Selectors
 refresh when opened and retain a still-present device selection. Missing/invalid
@@ -279,3 +279,14 @@ Configuration, admission and capture lifecycle checks also pass. Both APK
 architectures, instrumentation compilation and lint pass without device access.
 Actual camera/audio fanout, encoding cadence, multiple servers and Android
 background/privacy behavior still need authorized physical-device testing.
+
+## Speakers development preview
+
+The Speakers group above Microphones receives stereo 48 kHz PCM16 from a Windows
+server's normal ExtraPane playback endpoint. Each row selects an Android output,
+with independent mute, volume and connection lifetime. A media-playback foreground
+service keeps speaker playback separate from camera, microphone and display sessions.
+Its bounded jitter reserve starts at 40 ms and increases after starvation, up to
+80 ms. Removing/changing the selected route ends the session instead of silently
+switching outputs. See [Speakers](SPEAKERS.md) for setup and remaining device tests.
+This is a selectable remote playback device, not automatic system-audio mirroring.

@@ -3,10 +3,10 @@
 #include <utility>
 
 namespace extrapane {
-Negotiation::Negotiation(Server& server,std::uint64_t admitted_id,Capabilities local,Factory factory)
-    :server_(server),id_(admitted_id),local_(std::move(local)),factory_(std::move(factory)){
+Negotiation::Negotiation(Server& server,std::uint64_t admitted_id,Capabilities local,Factory factory,wire::CapabilityFormat format)
+    :server_(server),id_(admitted_id),local_(std::move(local)),format_(format),factory_(std::move(factory)){
     if(!server_.has_session(id_)||!factory_)throw std::invalid_argument("An admitted session and factory are required");
-    (void)wire::encode_capabilities(local_);
+    (void)wire::encode_capabilities(local_,format_);
 }
 wire::Message Negotiation::handle(const wire::Message& message){
     using namespace wire;
@@ -17,7 +17,7 @@ wire::Message Negotiation::handle(const wire::Message& message){
         if(h.operation==Operation::capabilities){
             if(exchanged_ || h.kind!=ResourceKind::display)throw std::invalid_argument("Invalid capability exchange");
             peer_=decode_capabilities(message.payload);exchanged_=true;
-            auto payload=encode_capabilities(local_);
+            auto payload=encode_capabilities(local_,format_);
             Header response{Operation::capabilities,ResourceKind::display,0,static_cast<std::uint32_t>(payload.size())};
             return {response,std::move(payload)};
         }
@@ -25,7 +25,7 @@ wire::Message Negotiation::handle(const wire::Message& message){
         Availability result;
         if(h.operation==Operation::request){
             auto request=decode_request(h,message.payload);
-            result=can_connect(h.kind,peer_,local_);
+            result=h.kind==ResourceKind::speaker&&format_!=CapabilityFormat::with_speakers?Availability{false,"Speakers require an extended session"}:can_connect(h.kind,peer_,local_);
             if(result.available){
                 // Duplicate IDs and session limits must reject BEFORE factory
                 // invocation, even though adapters are inert until prepare().

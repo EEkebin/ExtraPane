@@ -122,7 +122,7 @@ bool Tls::openControl(){
     control_=protected_->open_control(*gate_);return true;
 }
 std::vector<access::ChannelCredential> Tls::controlChannels(unsigned kind){
-    if(kind>3)throw std::runtime_error("Unknown resource kind");
+    if(kind>4)throw std::runtime_error("Unknown resource kind");
     if(!gate_)return {};
     if(!control_)throw std::runtime_error("Control must open first");
     return gate_->control_channels(1u<<kind,control_);

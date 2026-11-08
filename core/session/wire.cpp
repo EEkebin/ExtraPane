@@ -11,7 +11,7 @@ void validate(const Header& h){
     default:throw std::invalid_argument("Unknown resource operation");
     }
     switch(h.kind){
-    case ResourceKind::display:case ResourceKind::camera:case ResourceKind::microphone:case ResourceKind::usb:break;
+    case ResourceKind::display:case ResourceKind::camera:case ResourceKind::microphone:case ResourceKind::usb:case ResourceKind::speaker:break;
     default:throw std::invalid_argument("Unknown resource kind");
     }
     if(h.payload_bytes>max_control_payload)throw std::invalid_argument("Resource control payload exceeds limit");

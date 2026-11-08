@@ -7,6 +7,8 @@ int main(){
     extrapane::HostResources resources;std::atomic_bool quit=false,stop=false;
     std::vector<unsigned> usb;
     for(unsigned i=1;i<=80;++i){check(resources.acquire(0,quit,stop)==i);usb.push_back(resources.acquire(3,quit,stop));}
+    check(resources.acquire(4,quit,stop)==1);check(resources.acquire(4,quit,stop)==2);
+    resources.release(4,1);check(resources.acquire(4,quit,stop)==1);
     auto first=resources.eject_signal(usb[0]),second=resources.eject_signal(usb[1]);
     resources.eject_all();check(first->exchange(false));check(second->exchange(false));
     check(!first->exchange(false)); // one consumer cannot steal another's request

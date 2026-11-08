@@ -11,8 +11,8 @@
 
 namespace {
 using State=ConnectionModel::State;
-int kindIndex(QString kind){return kind=="display"?0:kind=="camera"?1:kind=="microphone"?2:kind=="usb"?3:-1;}
-QString executable(QString kind){return kind=="display"?"dm-view.exe":kind=="camera"?"ExtraPane.Resources.exe":kind=="microphone"?"ExtraPane.Microphone.exe":"ExtraPane.Usb.exe";}
+int kindIndex(QString kind){return kind=="display"?0:kind=="camera"?1:kind=="microphone"?2:kind=="usb"?3:kind=="speaker"?4:-1;}
+QString executable(QString kind){return kind=="display"?"dm-view.exe":kind=="camera"?"ExtraPane.Resources.exe":kind=="microphone"?"ExtraPane.Microphone.exe":kind=="speaker"?"ExtraPane.Speakers.exe":"ExtraPane.Usb.exe";}
 QString targetKey(QVariantMap target){return target["address"].toString()+":"+target["port"].toString()+"@"+target["localAddress"].toString()+"#"+target["interfaceIndex"].toString();}
 bool codeValid(const QString& code){return code.isEmpty()||QRegularExpression("^[0-9]{6}$").match(code).hasMatch();}
 bool ticketValid(const QByteArray& ticket,int kind){return QRegularExpression("^EPCT1:"+QString::number(kind)+":[0-9a-f]{32}:[0-9a-f]{64}$").match(QString::fromLatin1(ticket)).hasMatch();}
@@ -21,7 +21,7 @@ struct WindowsConnectionRuntime::Impl {
     struct Broker {QProcess* process=nullptr;QVariantMap target;QByteArray output,error;QString inflight;std::deque<QString> queue;bool ready=false,authenticated=false,closing=false,awaitingTicket=false;};
     struct Source {extrapane::windows_bridge::Child child;QString pending,kind,device;bool closing=false,mirror=false;};
     std::map<QString,std::unique_ptr<Source>> sources;
-    struct Row {extrapane::windows_bridge::Child child;QString broker,kind,pending,sharedSource,returnedStatus;bool sharedActive=false,ended=false, stopping=false,failed=false,recovery=false,returned=false,input=true,mirror=false,muted=false;};
+    struct Row {extrapane::windows_bridge::Child child;QString broker,kind,pending,sharedSource,returnedStatus;bool sharedActive=false,ended=false, stopping=false,failed=false,recovery=false,returned=false,input=true,mirror=false,muted=false;int volume=100;};
     std::map<QString,std::unique_ptr<Broker>> brokers;
     std::map<QString,std::unique_ptr<Row>> rows;
     QSet<QString> scanning;
@@ -78,7 +78,7 @@ void WindowsConnectionRuntime::toggle(QString id,bool enabled,QString code,bool 
     if(model_.connection(id)["busy"].toBool())return;
     if(!model_.beginConnection(id)){model_.setEnabled(id,false);emit changed();return;}
     auto& row=impl_->rows[id];if(!row)row=std::make_unique<Impl::Row>();
-    const auto config=model_.connection(id);row->kind=config["resourceKind"].toString();row->input=input;row->pending.clear();row->returnedStatus.clear();row->failed=false;row->recovery=false;row->returned=false;row->stopping=false;
+    const auto config=model_.connection(id);row->kind=config["resourceKind"].toString();row->input=input;row->pending.clear();row->returnedStatus.clear();row->failed=false;row->recovery=false;row->returned=false;row->stopping=false;if(row->kind=="speaker"){row->muted=false;row->volume=100;}
     row->broker=broker(config["effectiveTarget"].toMap(),std::move(code));if(row->broker.isEmpty()){model_.setEnabled(id,false);model_.setState(id,State::failed,status_);return;}
     if(row->kind=="display")emit displayEvent("client","DISPLAY_ADMISSION_QUEUED row="+id);
     impl_->brokers[row->broker]->queue.push_back(id);advance(row->broker);emit changed();
@@ -87,7 +87,7 @@ void WindowsConnectionRuntime::advance(QString key){
     auto f=impl_->brokers.find(key);if(f==impl_->brokers.end())return;auto& b=*f->second;
     if(!b.process||!b.ready||!b.inflight.isEmpty()||b.closing)return;
     while(!b.queue.empty()){const auto id=b.queue.front();b.queue.pop_front();if(!model_.connection(id)["connectionEnabled"].toBool()){model_.setState(id,State::idle);continue;}
-        b.inflight=id;b.awaitingTicket=true;QTimer::singleShot(30000,this,[this,key,id]{auto f=impl_->brokers.find(key);if(f!=impl_->brokers.end()&&f->second->inflight==id){auto r=impl_->rows.find(id);if(r==impl_->rows.end())return;model_.setEnabled(id,false);stop(id,true);r->second->failed=true;if(r->second->kind=="usb")r->second->recovery=true;model_.setState(id,r->second->kind=="usb"?State::recovery:State::returning,"Resource connection timed out.");if(!r->second->child.process&&!r->second->sharedActive){model_.setState(id,State::failed,"Resource admission timed out.");lost(key,"Resource admission timed out; reconnect this server.");}}});b.process->write("ADD "+QByteArray::number(kindIndex(impl_->rows[id]->kind))+"\n");return;}
+        b.inflight=id;b.awaitingTicket=true;QTimer::singleShot(impl_->rows[id]->kind=="speaker"?65000:30000,this,[this,key,id]{auto f=impl_->brokers.find(key);if(f!=impl_->brokers.end()&&f->second->inflight==id){auto r=impl_->rows.find(id);if(r==impl_->rows.end())return;model_.setEnabled(id,false);stop(id,true);r->second->failed=true;if(r->second->kind=="usb")r->second->recovery=true;model_.setState(id,r->second->kind=="usb"?State::recovery:State::returning,"Resource connection timed out.");if(!r->second->child.process&&!r->second->sharedActive){model_.setState(id,State::failed,"Resource admission timed out.");lost(key,"Resource admission timed out; reconnect this server.");}}});b.process->write("ADD "+QByteArray::number(kindIndex(impl_->rows[id]->kind))+"\n");return;}
 }
 void WindowsConnectionRuntime::launch(QString id,QByteArray credential){
     auto& row=*impl_->rows.at(id);const auto config=model_.connection(id);const auto target=config["effectiveTarget"].toMap();std::vector<std::wstring> args;
@@ -114,7 +114,7 @@ void WindowsConnectionRuntime::launch(QString id,QByteArray credential){
             if(mode["mode"]=="native"&&!mode["monitorId"].toString().isEmpty())args.insert(args.end(),{L"--monitor",mode["monitorId"].toString().toStdWString()});
             emit displayEvent("client","DISPLAY_LAUNCH row="+id+" mode="+mode["mode"].toString()+" width="+mode["width"].toString()+" height="+mode["height"].toString()+" fps="+mode["fps"].toString());
             if(mode["mode"]=="custom")args.insert(args.end(),{L"--width",mode["width"].toString().toStdWString(),L"--height",mode["height"].toString().toStdWString(),L"--fps",mode["fps"].toString().toStdWString()});
-        }else args={row.kind=="camera"?L"send-camera":row.kind=="microphone"?L"send-microphone":L"send-usb",L"--device-stdin"};
+        }else args={row.kind=="camera"?L"send-camera":row.kind=="microphone"?L"send-microphone":row.kind=="speaker"?L"receive-speakers":L"send-usb",L"--device-stdin"};
         args.insert(args.end(),{L"--bind",target["localAddress"].toString()=="0.0.0.0"?L"auto":target["localAddress"].toString().toStdWString(),L"--peer",target["address"].toString().toStdWString(),L"--port",target["port"].toString().toStdWString()});
         if(!credential.isEmpty())args.push_back(L"--access-stdin");
 #ifndef EXTRAPANE_CONTROLLER_TEST_CHILDREN
@@ -125,6 +125,7 @@ void WindowsConnectionRuntime::launch(QString id,QByteArray credential){
         if(row.kind!="display")row.child.send_control(QByteArray::fromHex(config["sourceId"].toString().toLatin1()).toStdString()+"\n");
         if(!credential.isEmpty())row.child.send_control(credential.toStdString()+"\n");
         if(row.kind=="camera")row.child.send_control(row.mirror?"MIRROR 1\n":"MIRROR 0\n");
+        if(row.kind=="speaker"){if(row.muted)row.child.send_control("M\n");if(row.volume!=100)row.child.send_control("V "+std::to_string(row.volume)+"\n");}
         model_.setState(id,State::connecting,"Connecting...");
     }catch(const std::exception& error){if(row.kind=="display")emit displayEvent("client","DISPLAY_LAUNCH_FAILED row="+id+" "+QString::fromUtf8(error.what()));row.failed=true;if(row.sharedActive){try{impl_->sources.at(row.sharedSource)->child.send_control("REMOVE\t"+id.toStdString()+"\n");}catch(...){}row.sharedActive=false;}row.child.stop();model_.setEnabled(id,false);model_.setState(id,State::failed,QString::fromUtf8(error.what()));auto& b=*impl_->brokers[row.broker];b.inflight.clear();advance(row.broker);}
     credential.fill('\0');emit changed();
@@ -183,7 +184,7 @@ void WindowsConnectionRuntime::poll(){
             if(row.kind=="usb"&&(line.startsWith("USB_")||line.startsWith("error:")))emit usbEvent("client",line);
             if(row.kind=="display"&&(line.startsWith("VIDEO_")||line.startsWith("DISPLAY_")||line.startsWith("KEYBOARD_")||line.startsWith("error:")))emit displayEvent("client","row="+id+" "+line.left(2048));
             auto& b=*impl_->brokers[row.broker];
-            const bool consumed=line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("USB_WAITING")||line.startsWith("USB_STARTED");
+            const bool consumed=line.startsWith("VIDEO_RECEIVING")||line.startsWith("VIDEO_STARTED")||line.startsWith("CAMERA_STARTED")||line.startsWith("MICROPHONE_STARTED")||line.startsWith("SPEAKER_STARTED")||line.startsWith("USB_WAITING")||line.startsWith("USB_STARTED");
             if(consumed){if(!row.stopping)model_.setState(id,State::active,line.startsWith("USB_WAITING")?"Waiting for USB storage on the server...":"Connected");if(b.inflight==id){b.inflight.clear();advance(row.broker);}}
             else if(line.startsWith("error:")){row.failed=true;model_.setState(id,State::returning,line.mid(6).trimmed());}
             else if(line.startsWith("USB_RECOVERY_REQUIRED")){row.recovery=true;model_.setState(id,State::recovery,line);}
@@ -208,12 +209,21 @@ void WindowsConnectionRuntime::poll(){
     for(auto& [key,source]:impl_->sources){if(!source->child.process||source->closing)continue;bool used=false;for(const auto& [id,row]:impl_->rows)if(row->sharedSource==key&&row->sharedActive)used=true;if(!used){try{source->child.send_control("Q\n");source->closing=true;}catch(...){source->child.stop();}}}
 }
 void WindowsConnectionRuntime::setMirror(QString id,bool enabled){auto f=impl_->rows.find(id);if(f==impl_->rows.end()||f->second->kind!="camera"||!f->second->sharedActive)return;auto& source=*impl_->sources.at(f->second->sharedSource);try{source.child.send_control(enabled?"MIRROR\t1\n":"MIRROR\t0\n");source.mirror=enabled;emit changed();}catch(...){} }
-void WindowsConnectionRuntime::setMuted(QString id,bool enabled){auto f=impl_->rows.find(id);if(f==impl_->rows.end()||f->second->kind!="microphone"||!f->second->sharedActive)return;auto& row=*f->second;try{impl_->sources.at(row.sharedSource)->child.send_control("MUTE\t"+id.toStdString()+(enabled?"\t1\n":"\t0\n"));row.muted=enabled;}catch(...){} }
+void WindowsConnectionRuntime::setVolume(QString id,int percent){
+    auto f=impl_->rows.find(id);if(f==impl_->rows.end()||f->second->kind!="speaker"||percent<0||percent>100)return;
+    f->second->volume=percent;if(!f->second->child.process)return;
+    try{f->second->child.send_control("V "+std::to_string(percent)+"\n");}catch(...){}
+}
+void WindowsConnectionRuntime::setMuted(QString id,bool enabled){
+    auto speaker=impl_->rows.find(id);if(speaker!=impl_->rows.end()&&speaker->second->kind=="speaker"){
+        speaker->second->muted=enabled;if(speaker->second->child.process)try{speaker->second->child.send_control(enabled?"M\n":"U\n");}catch(...){}return;
+    }
+auto f=impl_->rows.find(id);if(f==impl_->rows.end()||f->second->kind!="microphone"||!f->second->sharedActive)return;auto& row=*f->second;try{impl_->sources.at(row.sharedSource)->child.send_control("MUTE\t"+id.toStdString()+(enabled?"\t1\n":"\t0\n"));row.muted=enabled;}catch(...){} }
 void WindowsConnectionRuntime::refreshDevices(QString kind){
     if(kindIndex(kind)<1||impl_->scanning.contains(kind))return;impl_->scanning.insert(kind);auto* process=new QProcess(this);auto output=std::make_shared<QByteArray>();
     connect(process,&QProcess::readyReadStandardOutput,this,[process,output]{*output+=process->readAllStandardOutput();if(output->size()>1024*1024)process->kill();});
     auto done=[this,process,output,kind](bool success){if(!impl_->scanning.remove(kind))return;*output+=process->readAllStandardOutput();QVariantList list;bool complete=false,valid=success&&output->size()<=1024*1024;QSet<QString> ids;
-        const auto prefix=kind=="camera"?"CAMERA_DEVICE_V1":kind=="microphone"?"MICROPHONE_DEVICE_V1":"USB_DEVICE_V1";const auto end=kind=="camera"?"CAMERA_LIST_DONE":kind=="microphone"?"MICROPHONE_LIST_DONE":"USB_LIST_DONE";
+        const auto prefix=kind=="camera"?"CAMERA_DEVICE_V1":kind=="microphone"?"MICROPHONE_DEVICE_V1":kind=="speaker"?"SPEAKER_DEVICE_V1":"USB_DEVICE_V1";const auto end=kind=="camera"?"CAMERA_LIST_DONE":kind=="microphone"?"MICROPHONE_LIST_DONE":kind=="speaker"?"SPEAKER_LIST_DONE":"USB_LIST_DONE";
         for(auto line:output->split('\n')){line=line.trimmed();if(line.isEmpty())continue;if(line==end){if(complete)valid=false;complete=true;continue;}const auto fields=line.split('\t');if(complete||fields.size()!=4||fields[0]!=prefix||list.size()>=128||fields[2].isEmpty()||fields[2].size()>2048){valid=false;break;}
             const auto id=kind=="usb"?fields[1]:fields[3];const bool available=kind!="usb"||fields[3]=="available";
             if(id.size()>8192||id.size()%2||!QRegularExpression("^[0-9a-f]+$").match(QString::fromLatin1(id)).hasMatch()||ids.contains(id)){valid=false;break;}ids.insert(id);
@@ -223,7 +233,7 @@ void WindowsConnectionRuntime::refreshDevices(QString kind){
             const auto source=model_.connection(id)["sourceId"].toString();for(const auto& device:list)if(device.toMap()["id"]==source&&device.toMap()["available"].toBool()){row->recovery=false;model_.setEnabled(id,false);model_.setState(id,State::idle,"USB is available on this PC again.");break;}
         }
         devices_[kind]=valid&&complete?list:QVariantList{};if(!valid||!complete)status_="Could not list "+kind+" devices. Check installation and permissions.";process->deleteLater();emit devicesChanged();emit changed();};
-    connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[done](int code,QProcess::ExitStatus status){done(code==0&&status==QProcess::NormalExit);});connect(process,&QProcess::errorOccurred,this,[done](QProcess::ProcessError error){if(error==QProcess::FailedToStart)done(false);});QTimer::singleShot(10000,process,[process]{process->kill();});process->start(QCoreApplication::applicationDirPath()+"/"+executable(kind),{kind=="camera"?"list-cameras":kind=="microphone"?"list-microphones":"list-storage"});
+    connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[done](int code,QProcess::ExitStatus status){done(code==0&&status==QProcess::NormalExit);});connect(process,&QProcess::errorOccurred,this,[done](QProcess::ProcessError error){if(error==QProcess::FailedToStart)done(false);});QTimer::singleShot(10000,process,[process]{process->kill();});process->start(QCoreApplication::applicationDirPath()+"/"+executable(kind),{kind=="camera"?"list-cameras":kind=="microphone"?"list-microphones":kind=="speaker"?"list-speakers":"list-storage"});
 }
 void WindowsConnectionRuntime::shutdown(){
     if(!impl_)return;for(auto& [key,b]:impl_->brokers)if(b->process){b->process->disconnect(this);b->process->kill();b->process->waitForFinished(1000);b->process->deleteLater();b->process=nullptr;}for(auto& [id,row]:impl_->rows)row->child.stop();for(auto& [key,source]:impl_->sources)source->child.stop();
