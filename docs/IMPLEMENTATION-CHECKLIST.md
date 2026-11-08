@@ -500,16 +500,16 @@ connection, installation or system configuration change was performed.
 
 ## Active implementation: devices, sharing and gateways
 
-- [ ] Localhost/IPv4 loopback validation and self-connection transport parity.
+- [x] Localhost/IPv4 loopback validation and authenticated self-connection transport parity (isolated endpoints; physical self-display acceptance remains below).
 - [x] Portable bounded device/catalog/discovery framing and authorization policy (isolated checks; runtime integration tracked below).
 - [ ] LAN discovery on selected connected interfaces, expiry and direct-address fallback.
-- [ ] Default-on optional pairing, startup-lifetime codes, remembered cryptographic trust and revocation.
+- [x] Default-on optional pairing, startup-lifetime codes, remembered cryptographic trust and revocation (isolated authentication and service checks).
 - [ ] Resource offers backed by actual platform inventory; no capture/export merely from advertising.
-- [ ] Outbound consumer-to-provider control and authorized per-resource media tunnels.
+- [x] Outbound consumer-to-provider control and authorized per-resource media tunnels (synthetic native bytes delivered through real loopback TLS; hardware delivery remains a separate gate).
 - [ ] Devices / Share / Connections UI integration and cross-platform adapters.
 - [ ] Existing-screen capture separate from virtual extension; view-only default.
-- [ ] One-hop delegated gateway catalog and traffic relay, off by default; no UPnP.
-- [ ] Bounded non-USB reconnect with permission/identity rechecks; explicit USB reconnect.
+- [x] One-hop delegated gateway catalog and traffic relay, off by default; no UPnP (three-service forward/reverse relay and revocation checks).
+- [x] Bounded non-USB reconnect with permission/identity rechecks; explicit USB reconnect (actual transport-interruption checks with fake native endpoints).
 - [ ] Isolated protocol/lifecycle/security checks and four-platform package builds.
 - [ ] User-authorized physical acceptance tests and review before any main merge.
 
