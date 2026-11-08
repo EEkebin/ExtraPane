@@ -791,4 +791,11 @@ before a packaging-tool download failed. No release was published or branch merg
 - [x] Desktop offscreen action/color/identity/group/navigation tests and actual
   app startup pass. Android both-ABI build, instrumentation compilation and lint
   pass. No physical resource session was started.
-- [ ] Replacement packages and delivery pending; physical acceptance remains.
+- [x] `pre.95.1` locally packaged from clean code commit `01109f4`. Windows
+  extracted-app startup, manifest hashes and native payload checks passed; the
+  installer was copied to both Desktops and the Surface checksum verified.
+  Android release signature/metadata/ABIs/alignment passed; streamed update
+  succeeded and the phone reports versionCode `9501`.
+- [ ] Physical acceptance remains. No Windows installation or resource session
+  was started during delivery. Android CI run `42466926486` failed downloading
+  Gradle with GitHub HTTP 504; local cached-toolchain checks passed instead.
