@@ -64,9 +64,9 @@ DMIndirectDisplay.dll
 ; =================== Generic ==================================
 
 [Strings]
-ManufacturerName="DM Project" ; TODO: Replace with your manufacturer name
-DiskName = "DM Indirect Display Installation Disk" ; TODO: Replace with driver disk name
-DeviceName="DM LAN Virtual Display" ; TODO: Replace with correct device name
+ManufacturerName="DM Project" ; Stable provider identity used to recognize existing owned packages.
+DiskName = "ExtraPane Display Driver Installation Disk"
+DeviceName="ExtraPane LAN Virtual Display"
 
 REG_MULTI_SZ  = 0x00010000
 REG_SZ        = 0x00000000

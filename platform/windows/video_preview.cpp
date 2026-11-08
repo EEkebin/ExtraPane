@@ -3,6 +3,7 @@
 #include <shellapi.h>
 #pragma comment(lib,"shell32.lib")
 #include <dm/display.hpp>
+#include <dm/branding.hpp>
 #include <dwmapi.h>
 #pragma comment(lib,"dwmapi.lib")
 #include <d3d11.h>
@@ -137,7 +138,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     cls.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     cls.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(101));
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Register preview window failed");
-    const HWND hwnd = CreateWindowExW(0, cls.lpszClassName, control?L"DM Display ? F8 pauses input ? F11 fullscreen":L"DM Display ? View only ? F11 fullscreen", WS_OVERLAPPEDWINDOW,
+    const HWND hwnd = CreateWindowExW(0, cls.lpszClassName, control?branding::display_title:branding::display_view_title, WS_OVERLAPPEDWINDOW,
                                      CW_USEDEFAULT, CW_USEDEFAULT, 960, 600, nullptr, nullptr, cls.hInstance, &state);
     if (!hwnd) throw std::runtime_error("Create preview window failed");
     DestroyWindowOnExit window{hwnd};

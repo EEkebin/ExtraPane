@@ -28,7 +28,7 @@ unsigned number(const std::string& text, unsigned maximum,bool allow_zero=false)
 int main(int argc, char** argv) {
     try {
         if (argc < 2 || std::string_view(argv[1]) == "--help") {
-            std::cout << "DM encrypted display/input feasibility test (audio not implemented)\n"
+            std::cout << "ExtraPane encrypted display/input diagnostic (audio not implemented)\n"
                          "  dm-view info\n"
                          "  dm-view codec-check\n"
                          "  dm-view gpu-check\n"
@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
                          "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality native|75|50] [--renderer d3d11|d3d12|vulkan|opengl] [--monitor GDI-NAME] [--width N --height N] [--fps 1..360]\n"
                          "  Common options: --port 43824 --timeout-ms 15000\n"
                          "Pairs: dm-session. Displays: dm-display list. Default source: primary output.\n"
-                         "--extend requires separately installed signed DM driver and an administrator token.\n";
+                         "--extend requires separately installed signed ExtraPane driver and an administrator token.\n";
             return 0;
         }
         const std::string_view command(argv[1]);

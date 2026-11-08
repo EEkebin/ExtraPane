@@ -50,7 +50,7 @@ void save_pairing(const std::string& name, const Key& key) {
     credential.CredentialBlobSize = static_cast<DWORD>(key.size());
     credential.CredentialBlob = const_cast<BYTE*>(key.data());
     credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
-    credential.UserName = const_cast<wchar_t*>(L"DM paired peer");
+    credential.UserName = const_cast<wchar_t*>(L"ExtraPane paired peer");
     if (!CredWriteW(&credential, 0)) failure("Save pairing");
 }
 Key load_pairing(const std::string& name) {

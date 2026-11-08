@@ -146,7 +146,7 @@ void App::OnLaunched(LaunchActivatedEventArgs const&){
             shell->timer.Interval(std::chrono::milliseconds(700));shell->timer.Tick([](auto&&,auto&&){shell->timer.Stop();capture_check(shell.get());});
         }else if(wcsstr(GetCommandLineW(),L"--start")){auto& page=wcsstr(GetCommandLineW(),L"--client")?shell->client:shell->server;page->attempt([&]{page->start();});}
 
-    }catch(const hresult_error& e){MessageBoxW(nullptr,e.message().c_str(),L"DM startup",MB_OK|MB_ICONERROR);ExitProcess(1);}catch(const std::exception& e){MessageBoxW(nullptr,wide(e.what()).c_str(),L"DM startup",MB_OK|MB_ICONERROR);ExitProcess(1);}
+    }catch(const hresult_error& e){MessageBoxW(nullptr,e.message().c_str(),L"ExtraPane startup",MB_OK|MB_ICONERROR);ExitProcess(1);}catch(const std::exception& e){MessageBoxW(nullptr,wide(e.what()).c_str(),L"ExtraPane startup",MB_OK|MB_ICONERROR);ExitProcess(1);}
 }
 }
 

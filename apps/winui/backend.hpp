@@ -140,7 +140,7 @@ void firewall(bool add,unsigned port=43824,bool requireCode=false,const std::wst
         const bool owned = app && _wcsicmp(app, exe.c_str()) == 0;
         SysFreeString(app);
         if (!owned)
-            throw std::runtime_error("A different DM firewall rule exists; its application path needs review.");
+            throw std::runtime_error("A conflicting legacy ExtraPane firewall rule exists; its application path needs review.");
         check(rules->Remove(name));
     }
     if (!add)

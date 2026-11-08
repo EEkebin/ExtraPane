@@ -7,7 +7,7 @@
 
 namespace {
 constexpr std::string_view usage =
-    "DM network diagnostic (no media, authentication, or remote control)\n"
+    "ExtraPane network diagnostic (no media, authentication, or remote control)\n"
     "  dm-net interfaces\n"
     "  dm-net listen --bind <local-ipv4> [--port 43821] [--timeout-ms 5000]\n"
     "  dm-net probe --bind <local-ipv4> --peer <peer-ipv4> [--port 43821] [--timeout-ms 5000]\n"
