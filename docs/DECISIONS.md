@@ -535,3 +535,11 @@ active resources leaves the listener/catalog available for subsequent requests.
 Gateway sharing remains a separate, disabled-by-default setting. Android retains
 its foreground-only lifecycle and never resumes old capture sessions simply by
 returning to the app.
+
+
+## Matching Windows build for every Android revision
+
+Every delivered Android revision also produces the matching Windows version,
+even when its changes affect Android only. Deliver the installer to both the
+local and Surface Desktops. Do not finish an Android delivery leaving Windows
+on a previous version. Windows installation remains a user step.

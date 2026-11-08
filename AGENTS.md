@@ -30,3 +30,13 @@ concurrent agents. Isolated checks/builds are allowed; request permission before
 device connections, GPU/camera tests, installation or system-setting changes.
 
 Resolve the relevant decision and feasibility gate first. Prefer narrow vertical slices with observable behavior. Test meaningful state transitions and actual delivery to applications, not just successful API return codes. Pin dependencies and document build commands only when the toolchain is selected. Driver signing, packaging, and rollback are release work, not afterthoughts. Do not install drivers, change network addresses, or alter system security settings merely to validate planning documents.
+
+## Matching development-build delivery
+
+Every Android revision that is built or installed for the user must also have a
+matching Windows installer with the same full version, including minor and
+Android-only changes. Build and verify both before declaring delivery complete.
+Copy the Windows installer to this computer's Desktop and the Surface Desktop;
+stream-install Android over the authorized ADB connection. Copying the Windows
+installer does not authorize running it or changing drivers. Record delivery and
+remaining verification limits in docs/IMPLEMENTATION-CHECKLIST.md.

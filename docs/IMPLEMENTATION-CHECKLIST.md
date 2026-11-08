@@ -938,3 +938,10 @@ This replaces the earlier opt-in offer power behavior.
 - [x] Android release/test APK compilation and lint passed; signed `pre.101.1`
   verified and streamed to Pixel 8a, installed versionCode `10101` confirmed.
 - [ ] Physical drag acceptance pending; no resource session launched.
+
+- [x] Matching Windows `pre.101.1` packaged from clean `b75d56d`; exact
+  executable version, extracted startup, checksums and payload checks passed.
+  Installer copied to local and Surface Desktops; Surface hash verified.
+  Android is already on `pre.101.1`; no Windows installer was run.
+- [x] Persisted requirement in AGENTS.md: every Android revision delivery includes
+  the matching Windows build, including minor/Android-only changes.
