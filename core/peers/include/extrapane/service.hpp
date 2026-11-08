@@ -13,7 +13,8 @@ public:
     enum class Role {listen_local,connect_local};
     struct Endpoint {Role role=Role::listen_local;std::uint16_t port=0;};
     struct Hooks {
-        // All callbacks run on the service IO worker. Endpoint values must come
+        // All callbacks run on one dedicated serial native executor, never the TLS
+        // IO worker or UI thread. Endpoint values must come
         // from trusted local native adapters; no remote address is accepted.
         std::function<void(const Context&,rpc::Open&)> prepare_request;
         std::function<void(const Context&)> cancel_request;
@@ -22,8 +23,8 @@ public:
         std::function<void(const Context&)> stopped;
         std::function<std::vector<Context>()> poll;
     };
-    enum class EventKind {listening,connected,catalog,granted,stopped,disconnected,error,trust_changed};
-    struct Event {EventKind kind;Context context;std::uint16_t port=0;std::string detail;std::vector<Catalog> catalogs;bool verified=false;std::optional<rpc::Open> resource;};
+    enum class EventKind {listening,connected,catalog,granted,stopped,disconnected,error,trust_changed,reconnecting};
+    struct Event {EventKind kind;Context context;std::uint16_t port=0;std::string detail;std::vector<Catalog> catalogs;bool verified=false;std::optional<rpc::Open> resource;Token replaces_grant=0;};
     Service(Options,Hooks);
     ~Service();
     Service(const Service&)=delete;
@@ -39,6 +40,7 @@ public:
     Token catalog(Token connection);
     Token open(Token connection,rpc::Open);
     void close(Token connection,Token grant);
+    void cancel(Token connection,Token request);
     void disconnect(Token connection);
     void offers(std::vector<Offer>);
     void forget(DeviceId);

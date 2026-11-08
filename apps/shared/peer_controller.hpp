@@ -39,7 +39,7 @@ public:
     QVariantList offers()const;
     QVariantList remembered()const;
     QVariantList devices()const{return devices_;}
-    QVariantList connections()const{return connections_;}
+    QVariantList connections()const;
     void setLocalOffers(std::vector<extrapane::peers::Offer>);
     Q_INVOKABLE void enableOffer(QString id,bool enabled);
     Q_INVOKABLE void setPairingRequired(bool);
@@ -51,12 +51,15 @@ public:
     Q_INVOKABLE void forgetDevice(QString identity);
     Q_INVOKABLE void useResource(QString connection,QString owner,QString resource,bool input=false,unsigned width=0,unsigned height=0,unsigned refresh=0);
     Q_INVOKABLE void stopResource(QString connection,QString grant);
+    Q_INVOKABLE void cancelResource(QString connection,QString request);
     Q_INVOKABLE void disconnectAll();
     void shutdown();
 signals:
     void changed();
     void toast(QString message);
 private:
+    friend struct PeerControllerEventCheck;
+    void applyEvent(Service::Event&);
     DeviceDirectory directory_;
     QTimer timer_;
     std::unique_ptr<Service> service_;
@@ -71,7 +74,6 @@ private:
     QHash<QString,QVariantMap> pending_;
     std::vector<extrapane::peers::Offer> selectedOffers()const;
     void poll();
-    void closeIfIdle(const QString& connection);
     void announce(unsigned port);
     void error(const QString&);
 };

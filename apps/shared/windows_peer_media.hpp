@@ -10,8 +10,9 @@ namespace extrapane::windows_peer {
 struct Command {
     std::string executable;
     std::vector<std::string> arguments;
-    bool elevated=false,graceful=true;
+    bool elevated=false,graceful=true,parent_watch=true;
 };
+std::vector<std::string> native_arguments(const Command&,std::uint32_t parent_pid);
 // All methods run on an owned worker thread, never on the UI thread. Native stop
 // can wait for USB recovery; its existing exact-device cleanup must finish.
 class Process {

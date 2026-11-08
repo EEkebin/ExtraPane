@@ -27,10 +27,10 @@ void AuthenticatedConnection::queue(const rpc::Message& message){
 }
 bool AuthenticatedConnection::pump(transport::Deadline deadline){
     try{
-        if(std::chrono::steady_clock::now()>=deadline)fail("Peer session timed out");
+        if(std::chrono::steady_clock::now()>=deadline)throw transport::Error(transport::ErrorReason::timeout,"Peer session timed out");
         bool progress=false;
         const int read=stream_.read_some(*read_buffer_);
-        if(read==0)fail("Peer closed the session");
+        if(read==0)throw transport::Error(transport::ErrorReason::network,"Peer closed the session");
         if(read>0){
             for(auto& message:decoder_.feed(std::span(*read_buffer_).first(read))){
                 const auto size=message.payload.size()+rpc::header_size;
@@ -43,7 +43,7 @@ bool AuthenticatedConnection::pump(transport::Deadline deadline){
             auto data=std::span<const std::uint8_t>(output_.front()).subspan(offset_);
             data=data.first(std::min(data.size(),rpc::data_chunk));
             const int written=stream_.write_some(data);
-            if(written==0)fail("Peer closed the session");
+            if(written==0)throw transport::Error(transport::ErrorReason::network,"Peer closed the session");
             if(written>0){offset_+=written;output_bytes_-=written;progress=true;if(offset_==output_.front().size()){output_.pop_front();offset_=0;}}
         }
         return progress;

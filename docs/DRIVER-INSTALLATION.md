@@ -1,17 +1,17 @@
-# Server driver installation
+# Windows component installation
 
-The virtual-display driver is required on a PC that hosts an extended desktop. A receiving client does not need it. Selecting **Server + Client** in ExtraPane Setup makes driver installation a required dependency, not an optional finish-page task.
+The virtual-display driver is required on a PC that hosts an extended desktop. In the Devices workspace, this is the computer using a remote display destination, not the device showing its picture. Selecting **Full installation** in ExtraPane Setup makes driver installation a required dependency, not an optional finish-page task.
 
 ## Normal setup
 
-1. Run the ExtraPane installer and choose **Server + Client**.
+1. Run the ExtraPane installer and choose **Full installation**.
 2. Read and accept the development-certificate explanation.
 3. Approve the ExtraPane installer administrator prompt. The app and its managed components install under Program Files\ExtraPane.
 4. After setup completes, open Server and choose Start server. A monitor is created only after a client connects.
 
-If you choose **Client only**, setup does not install a driver or trust a certificate. Both app pages remain available. To host later, rerun setup as Server + Client to install the required components.
+If you choose **Share only**, setup omits receiving components and display-certificate trust; USB source support is still installed. Both app pages remain available. To host later, rerun setup as Full installation to install the required components.
 
-For the current shared-UI portable server, use the matching installer with **Server + Client** to prepare the managed components, then extract the ZIP and run `ExtraPane.exe`. The older `ExtraPane.DriverSetup.exe` is part of historical display-only packages. Display-driver installation is machine-wide and requires Windows administrator permission.
+For the current shared-UI portable server, use the matching installer with **Full installation** to prepare the managed components, then extract the ZIP and run `ExtraPane.exe`. The older `ExtraPane.DriverSetup.exe` is part of historical display-only packages. Display-driver installation is machine-wide and requires Windows administrator permission.
 
 Canceling elevation or certificate consent prevents server setup. Driver installation runs after the main app and its uninstaller are available. If it fails, setup reports a nonzero result, suppresses application launch, and keeps ExtraPane installed for repair or removal. Resolve the reported error and rerun the installer; the PC is not ready to host until driver setup succeeds.
 
@@ -40,7 +40,7 @@ Reinstalling the same driver package is idempotent. Installing a different packa
 
 Uninstall **ExtraPane** through Windows Apps to remove the app, its managed components and the executing account's saved settings. The main uninstaller calls the display manager directly. It verifies recorded package identities, removes only installer-owned driver-store packages, and removes only certificate entries it added when the corresponding package is no longer staged. Pre-existing packages and trust are preserved. No force-removal flag is used.
 
-The separately distributed portable driver setup remains available for portable users. A standalone installation has its own uninstall entry until a verified main-app upgrade takes ownership.
+Historical standalone display-driver installations have their own uninstall entry until a verified main-app upgrade takes ownership. Current portable users should prepare components through the matching main installer.
 If removal fails, the uninstaller keeps its manager and records for a retry. If Windows asks for a restart, restart manually and retry. Do not delete ownership records or guess an OEM INF number. The older development-script installations remain governed by their original records; see the historical notes in [EXTENDED-DISPLAY.md](EXTENDED-DISPLAY.md).
 
 ## Logs and troubleshooting
@@ -55,7 +55,7 @@ If installation succeeds but Start server or a client connection fails, preserve
 
 ## Silent deployment
 
-Silent app setup defaults to Client only. Explicit server deployment requires both flags:
+Silent app setup defaults to Share only. Explicit server deployment requires both flags:
 
 ```powershell
 .\ExtraPane-<version>-Setup-win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SERVER=1 /ACCEPTDEVELOPMENTCERT=1
@@ -78,7 +78,7 @@ ExtraPane was previously called SideScreen. The current manager imports verified
 An existing machine-wide ExtraPane installation enables a maintenance page.
 **Update** requires a strictly newer release label; prerelease run and attempt
 numbers are compared numerically, and a stable release outranks a prerelease of
-the same date/revision. Updates retain the previous Client only / Server + Client
+the same date/revision. Updates retain the previous Share only / Full installation
 selection by default.
 
 **Restore** is a clean reset: it runs the registered ExtraPane uninstaller to remove

@@ -186,16 +186,16 @@ begin
   MaintenanceChoice.CheckListBox.OnClickCheck := @MaintenanceChanged;
   RoleChoice := CreateInputOptionPage(MaintenanceChoice.ID, 'How will you use this PC?',
     'All choices install the same ExtraPane app.',
-    'Client only needs no virtual-display driver. Server + Client can also host displays and requires that driver.', True, False);
-  RoleChoice.Add('Client only');
-  RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
+    'Share only offers this PC''s devices to other computers. Full installation also creates virtual displays and receives camera, microphone, speaker and USB connections.', True, False);
+  RoleChoice.Add('Share only');
+  RoleChoice.Add('Full installation (receive and share)');
   RoleChoice.SelectedValueIndex := 0;
   if ExpandConstant('{param:SERVER|}') = '1' then RoleChoice.SelectedValueIndex := 1
   else if (ExpandConstant('{param:SERVER|}') = '') and
     (GetPreviousData('ServerInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 1;
-  DriverConsent := CreateOutputMsgPage(RoleChoice.ID, 'Required server driver',
-    'Server setup includes a machine-wide virtual-display driver.',
-    'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver is managed by the ExtraPane uninstaller. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.' + #13#10 + #13#10 + 'Select I agree - Next to install the driver and trust its development certificate. Otherwise, go Back and choose Client only.');
+  DriverConsent := CreateOutputMsgPage(RoleChoice.ID, 'Required virtual-display driver',
+    'Full installation includes a machine-wide virtual-display driver.',
+    'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver is managed by the ExtraPane uninstaller. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.' + #13#10 + #13#10 + 'Select I agree - Next to install the driver and trust its development certificate. Otherwise, go Back and choose Share only.');
   StandardBackLeft := WizardForm.BackButton.Left;
   StandardNextLeft := WizardForm.NextButton.Left;
   StandardNextWidth := WizardForm.NextButton.Width;
@@ -216,8 +216,8 @@ begin
   if IsUninstallMaintenance then begin Result := 'Remove ExtraPane, its managed components and current-user settings.'; Exit; end;
   Result := MemoDirInfo + NewLine + NewLine;
   if ExistingInstall and (MaintenanceMode = 'restore') then Result := 'Restore: completely remove the existing installation and settings, then reinstall.' + NewLine + NewLine + Result;
-  if RoleChoice.SelectedValueIndex = 1 then Result := Result + 'Use: Server + Client (virtual-display driver required)'
-  else Result := Result + 'Use: Client only (no virtual-display driver)';
+  if RoleChoice.SelectedValueIndex = 1 then Result := Result + 'Use: Full installation (virtual-display driver required)'
+  else Result := Result + 'Use: Share only (no virtual-display driver)';
 #if HasCamera
   if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the machine-wide camera receiving component.';
 #endif
@@ -340,7 +340,7 @@ begin
       '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'Camera component setup could not start or administrator permission was canceled.'
     else if (Code <> 0) and (Code <> 3010) then
-      Result := 'The camera component could not be installed (exit ' + IntToStr(Code) + '). Existing foreign registrations are not overwritten. Retry or choose Client only.'
+      Result := 'The camera component could not be installed (exit ' + IntToStr(Code) + '). Existing foreign registrations are not overwritten. Retry or choose Share only.'
     else begin CameraInstalled := True; if Code = 3010 then NeedsRestart := True; end;
   end;
 #endif

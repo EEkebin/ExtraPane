@@ -580,3 +580,34 @@ Universal compilation is pending CI; there has been no Mac installation or hardw
 session. Reverse existing-screen relay now passes a synthetic three-service test,
 including response bytes and revocation. The gateway can reopen remembered direct
 provider routes; this does not reconnect USB sessions.
+
+
+### Device workspace packaging and validation follow-up
+
+- Completed installer wording: **Share only** and **Full installation (receive and
+  share)** describe the existing component split. Defaults, previous-selection
+  migration, `/SERVER=1`, ownership rules and explicit development-certificate
+  consent are unchanged. No installer was run.
+- README and Windows driver guide explain equal-device roles, opt-in `--devices`,
+  display destinations versus existing-screen capture, default pairing, direct
+  addressing, manual forwarding and one-hop gateway limits. Release documentation
+  now describes the single managed uninstaller rather than historical separate
+  driver ownership.
+- Qt Devices validation highlights malformed address/port/code and incomplete
+  display dimensions temporarily, with one general toast. Sharing also validates
+  bind address and port. Connections resolve human-readable offered-resource names
+  instead of displaying internal opaque IDs.
+- Verification: isolated production Pascal maintenance fixture passed 19 version
+  cases; Qt controller private-startup and offscreen layout/routing checks passed.
+  These do not establish installer execution, native media or hardware behavior.
+- Default-workspace transition remains pending: after platform CI and device
+  acceptance, desktop startup can make Devices the default and retain the old
+  workflow via `--legacy`; retain `--devices` as a compatibility alias. No default
+  changed in this increment. macOS validation and native device acceptance remain
+  tracked separately; Android and Linux package CI succeeded in the current review.
+
+- Qt reconnect lifecycle follow-up: pending resources appear with Connecting and
+  scoped cancellation; interrupted non-USB sessions show Reconnecting and retain
+  their row until exact-grant replacement, cancellation or terminal failure.
+  Duplicate uses of one resource are replaced independently. Isolated controller
+  event tests and offscreen UI checks passed; no native device test was run.

@@ -41,13 +41,13 @@ ExtraPane shared-resource development build
 
 All choices install the app in Program Files/ExtraPane with administrator approval.
 Both roles include USB source support automatically.
-Client only does not install receiving drivers.
-Server + Client installs the same app, virtual-display driver, camera source,
+Share only does not install receiving drivers.
+Full installation installs the same app, virtual-display driver, camera source,
 and microphone/USB receiving components.
 Camera setup requires administrator permission. Camera use remains subject to
 Windows camera privacy settings. No physical camera is detached or replaced.
 
-Server + Client requires the bundled virtual-display driver package. The main
+Full installation requires the bundled virtual-display driver package. The main
 installer owns its installation, repair and removal; no second installer runs.
 
 Managed components live under Program Files/ExtraPane/Components. There is one

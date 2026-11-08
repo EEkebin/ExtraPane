@@ -57,7 +57,7 @@ if(result<0)return retry()?0:-1;if(!result)return 0;return p.revents&(POLLERR|PO
 }
 }
 struct MediaBridge::State {
-    struct Endpoint {Sock listener;std::uint16_t port=0;};
+    struct Endpoint {Sock listener;std::uint16_t port=0;bool paused=false;};
     struct Channel {Sock socket;std::uint64_t grant;bool connecting=false,local_eof=false,remote_eof=false,write_shutdown=false;Bytes outgoing;Clock::time_point deadline=Clock::now()+std::chrono::seconds(10);};
     rpc::Multiplexer::Authorize authorized;
     Emit emit;
@@ -72,14 +72,15 @@ struct MediaBridge::State {
 };
 MediaBridge::MediaBridge(bool initiator,rpc::Multiplexer::Authorize check,Emit emit):state_(std::make_unique<State>(initiator,std::move(check),std::move(emit))){}
 MediaBridge::~MediaBridge()=default;
-std::uint16_t MediaBridge::listen(std::uint64_t grant){auto& s=*state_;need(grant&&s.authorized(grant)&&!s.endpoints.contains(grant)&&s.endpoints.size()<256);auto socket=make_socket();auto a=address(0);need(!::bind(socket.s,reinterpret_cast<sockaddr*>(&a),sizeof(a))&&!::listen(socket.s,16));
+std::uint16_t MediaBridge::listen(std::uint64_t grant,bool paused){auto& s=*state_;need(grant&&s.authorized(grant)&&!s.endpoints.contains(grant)&&s.endpoints.size()<256);auto socket=make_socket();auto a=address(0);need(!::bind(socket.s,reinterpret_cast<sockaddr*>(&a),sizeof(a))&&!::listen(socket.s,16));
 #ifdef _WIN32
 int length=sizeof(a);
 #else
 socklen_t length=sizeof(a);
 #endif
-need(!getsockname(socket.s,reinterpret_cast<sockaddr*>(&a),&length));auto port=ntohs(a.sin_port);s.endpoints.emplace(grant,State::Endpoint{std::move(socket),port});return port;}
-void MediaBridge::connect(std::uint64_t grant,std::uint16_t port){auto& s=*state_;need(grant&&port&&s.authorized(grant)&&!s.endpoints.contains(grant)&&s.endpoints.size()<256);s.endpoints.emplace(grant,State::Endpoint{Sock{},port});}
+need(!getsockname(socket.s,reinterpret_cast<sockaddr*>(&a),&length));auto port=ntohs(a.sin_port);s.endpoints.emplace(grant,State::Endpoint{std::move(socket),port,paused});return port;}
+void MediaBridge::connect(std::uint64_t grant,std::uint16_t port,bool paused){auto& s=*state_;need(grant&&port&&s.authorized(grant)&&!s.endpoints.contains(grant)&&s.endpoints.size()<256);s.endpoints.emplace(grant,State::Endpoint{Sock{},port,paused});}
+void MediaBridge::resume(std::uint64_t grant){auto& s=*state_;auto found=s.endpoints.find(grant);need(found!=s.endpoints.end()&&s.authorized(grant));found->second.paused=false;}
 void MediaBridge::receive(const rpc::Message& m){auto& s=*state_;
     // Already queued peer bytes/credits may arrive after local revocation/EOF.
     // Bound tombstones; never reinterpret a closed stream as a new grant.
@@ -92,7 +93,7 @@ void MediaBridge::receive(const rpc::Message& m){auto& s=*state_;
     else need(false);
 }
 bool MediaBridge::pump(){auto& s=*state_;bool progress=false;std::vector<std::uint64_t> revoked;std::size_t accepts=0;
-    for(auto& [grant,ep]:s.endpoints){if(!s.authorized(grant)){revoked.push_back(grant);continue;}if(ep.listener.s==invalid||s.channels.size()>=rpc::Multiplexer::max_streams||accepts>=16)continue;Sock accepted(::accept(ep.listener.s,nullptr,nullptr));if(accepted.s==invalid){need(retry());continue;}nonblock(accepted.s);auto msg=s.mux.open(grant);s.channels.emplace(msg.id,State::Channel{std::move(accepted),grant});s.emit(msg);++accepts;progress=true;}
+    for(auto& [grant,ep]:s.endpoints){if(!s.authorized(grant)){revoked.push_back(grant);continue;}if(ep.paused||ep.listener.s==invalid||s.channels.size()>=rpc::Multiplexer::max_streams||accepts>=16)continue;Sock accepted(::accept(ep.listener.s,nullptr,nullptr));if(accepted.s==invalid){need(retry());continue;}nonblock(accepted.s);auto msg=s.mux.open(grant);s.channels.emplace(msg.id,State::Channel{std::move(accepted),grant});s.emit(msg);++accepts;progress=true;}
     for(auto grant:revoked){revoke(grant);progress=true;}
     std::vector<std::uint64_t> ended,order;
     for(auto i=s.channels.upper_bound(s.cursor);i!=s.channels.end();++i)order.push_back(i->first);

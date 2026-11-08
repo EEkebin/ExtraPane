@@ -104,7 +104,16 @@ std::vector<Grant> SharingPolicy::cancel_matching(const DeviceId* id,bool delega
 std::vector<Grant> SharingPolicy::forget(const DeviceId& id){trusted_.erase(id);remotes_.erase(id);return cancel_matching(&id,false);}
 std::vector<Grant> SharingPolicy::remote_removed(const DeviceId& id){remotes_.erase(id);return cancel_matching(&id,true);}
 std::vector<Grant> SharingPolicy::sharing(bool value){sharing_=value;return value?std::vector<Grant>{}:cancel_matching(nullptr,false);}
-std::vector<Grant> SharingPolicy::pairing_required(bool value){pairing_required_=value;std::vector<Grant> result;if(value)for(auto i=grants_.begin();i!=grants_.end();)if(!i->second.paired){result.push_back(i->second);i=grants_.erase(i);}else ++i;return result;}
+std::vector<Grant> SharingPolicy::pairing_required(bool value){
+    pairing_required_=value;std::vector<Grant> result;
+    if(value){
+        for(auto i=grants_.begin();i!=grants_.end();){
+            if(!i->second.paired){result.push_back(i->second);i=grants_.erase(i);}
+            else ++i;
+        }
+    }
+    return result;
+}
 std::vector<Grant> SharingPolicy::gateway(bool value){gateway_=value;return value?std::vector<Grant>{}:cancel_matching(nullptr,true);}
 std::vector<Grant> SharingPolicy::offers(std::vector<Offer> values){
     Catalog next=local_;need(next.revision!=UINT64_MAX,"Catalog revision exhausted");next.offers=std::move(values);++next.revision;validate(next);local_=std::move(next);std::vector<Grant> result;

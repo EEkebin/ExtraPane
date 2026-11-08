@@ -5,8 +5,15 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <stdexcept>
 
 namespace extrapane::peers::transport {
+enum class ErrorReason { network, timeout, cancelled, protocol };
+class Error:public std::runtime_error {
+public:
+    ErrorReason reason;
+    Error(ErrorReason why,const char* message):std::runtime_error(message),reason(why){}
+};
 using Deadline = std::chrono::steady_clock::time_point;
 // Encryption only: ephemeral certificates do not authenticate the remote peer.
 // Complete peer_auth before accepting application messages.

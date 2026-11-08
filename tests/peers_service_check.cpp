@@ -69,8 +69,10 @@ auto visitorLink=client.connect({"localhost",gatewayPort,"127.0.0.1",gateway.ide
 while(!visitorConnected){for(auto& e:client.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::connected&&e.context.connection==visitorLink)visitorConnected=true;}waiting();}
 auto before=client.catalog(visitorLink);bool checked=false;
 while(!checked){for(auto& e:client.poll())if(e.kind==Service::EventKind::catalog&&e.context.request==before){check(e.catalogs.size()==1,"gateway must be off by default");checked=true;}waiting();}
+gateway.disconnect(providerLink);bool providerGone=false;
+while(!providerGone){for(auto& e:gateway.poll())if(e.kind==Service::EventKind::disconnected&&e.context.connection==providerLink)providerGone=true;waiting();}
 gateway.gateway(true);bool providerCatalog=false;
-while(!providerCatalog){for(auto& e:gateway.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::catalog&&e.context.connection==providerLink)providerCatalog=true;}waiting();}
+while(!providerCatalog){for(auto& e:gateway.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::connected&&e.context.peer==host.identity())providerLink=e.context.connection;if(e.kind==Service::EventKind::catalog&&e.context.connection==providerLink)providerCatalog=true;}waiting();}
 auto after=client.catalog(visitorLink);checked=false;
 while(!checked){for(auto& e:client.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::catalog&&e.context.request==after){check(e.catalogs.size()==2,"direct paired provider absent from gateway");checked=true;}}waiting();}
 auto relayRequest=client.open(visitorLink,{host.identity(),"camera",false});Service::Token relayGrant=0;received=invalid;

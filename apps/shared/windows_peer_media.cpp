@@ -7,6 +7,7 @@
 #include "windows_child.hpp"
 #endif
 namespace extrapane::windows_peer {
+std::vector<std::string> native_arguments(const Command& command,std::uint32_t parent_pid){auto args=command.arguments;if(command.parent_watch&&!command.elevated){if(!parent_pid)throw std::invalid_argument("Missing launcher identity");args.insert(args.end(),{"--parent-pid",std::to_string(parent_pid)});}return args;}
 namespace {
 using Kind=peers::Kind;
 void wipe(std::string& value){volatile char* p=value.data();for(std::size_t i=0;i<value.size();++i)p[i]=0;value.clear();}
@@ -33,9 +34,9 @@ class NativeProcess final:public Process {
     windows_bridge::Child child_;
 public:
     void start(const Command& command)override{
-        std::vector<std::wstring> args;for(const auto& arg:command.arguments)args.push_back(wide(arg));
+        std::vector<std::wstring> args;for(const auto& arg:native_arguments(command,GetCurrentProcessId()))args.push_back(wide(arg));
         if(command.elevated)child_.start_elevated(wide(command.executable),args,command.executable!="ExtraPane.Service.exe");
-        else{args.insert(args.end(),{L"--parent-pid",std::to_wstring(GetCurrentProcessId())});child_.start((windows_bridge::directory()/wide(command.executable)).wstring(),args,command.graceful);}
+        else{child_.start((windows_bridge::directory()/wide(command.executable)).wstring(),args,command.graceful);}
     }
     void write(const std::string& text)override{child_.send_control(text);}
     std::string drain()override{return child_.drain();}

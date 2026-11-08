@@ -25,6 +25,44 @@ pairing. This redesign is not yet a tested replacement for the existing Server /
 Client workflow. Its current gates are recorded in the [implementation
 checklist](docs/IMPLEMENTATION-CHECKLIST.md#active-implementation-devices-sharing-and-gateways).
 
+## Devices workspace (development preview)
+
+Launch the desktop app with `--devices` to try the new workspace. The existing
+Server/Client interface remains the default until cross-platform build and device
+acceptance checks pass. Android exposes the preview through **Devices ? offer this
+phone**. Do not assume a published package contains this branch's preview.
+
+Devices are peers: a computer can offer its camera while using another device's
+speakers. **Share** selects available resources and a local network address;
+**Start sharing** makes those offers available without starting capture. **Devices**
+finds nearby peers or connects to an entered IPv4 address and port. Select a
+resource to use it; **Connections** stops individual resources independently.
+
+A **display destination** is the device that shows an extended desktop. The
+computer using that destination creates the virtual monitor and needs its native
+virtual-display support. Choose the destination's advertised monitor mode or a
+custom resolution/refresh rate. **Existing screen** instead captures an existing
+monitor; it does not create an extended desktop.
+
+Pairing is enabled by default. Enter the other device's six-digit code on the
+first connection; remembered devices subsequently prove their saved secret.
+Codes stay fixed for the app/service process lifetime, including sharing restarts.
+Disabling pairing requires an explicit unverified connection. Discovery is only a
+hint, never proof of identity. Direct IPv4, `localhost` and `127.0.0.1` work without
+multicast; loopback alone does not bypass authentication.
+
+For another network, manually forward the chosen TCP port to the sharing device
+and enter its reachable address and code. There is no UPnP. Optional gateway
+sharing is off by default: an authenticated trusted visitor can use explicitly
+offered resources from devices paired with the gateway, through one relay hop.
+This does not expose arbitrary network services or recursively discover networks.
+
+Windows, Linux and macOS use native platform adapters with different endpoint
+capabilities; Android currently offers supported local resources while foregrounded.
+The preview does not imply that every OS can receive every resource type. See the
+[implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md) and platform guides
+for unsupported paths and verification limits.
+
 ## Requirements
 
 The following requirements apply to Windows. See [Linux setup](docs/LINUX.md), [Android setup](docs/ANDROID.md) and [macOS setup](docs/MACOS.md) for those platforms.
@@ -49,8 +87,8 @@ Run `ExtraPane-<version>-Setup-win-x64.exe` and select how this PC will be used:
 
 | Setup choice | What it installs |
 | --- | --- |
-| **Client only** | The ExtraPane app. No display-driver or certificate changes. |
-| **Server + Client** | The same app, plus the required machine-wide virtual-display driver. Driver installation asks for explicit certificate consent and administrator permission. |
+| **Share only** | The app and USB source support. Offer local cameras, microphones, speakers, storage and display destinations; receiving virtual-device components are omitted. |
+| **Full installation** | Receive and share resources: the app, virtual-display driver, camera component, audio/USB receiving components and USB source support. Driver installation requires explicit certificate consent and administrator permission. |
 
 When ExtraPane is already installed, setup offers **Update**, **Restore**, and
 **Uninstall**. Update is available only when the installer version is newer and
@@ -59,7 +97,7 @@ settings, then installs the bundled version again. Uninstall removes them withou
 reinstalling. Both removal choices preserve independently installed shared drivers
 and stop if the registered uninstaller cannot finish cleanup.
 
-Both roles include USB source support automatically. Server + Client requires administrator permission and explicit certificate consent through the driver page's **I agree - Next** button. If driver installation fails after the app is copied, setup reports failure and retains ExtraPane for repair or removal. Client only does not hide the Server page; to host later, rerun setup as Server + Client. The main installer manages the display driver directly, and Windows Apps lists one ExtraPane uninstall entry.
+Both roles include USB source support automatically. Full installation requires administrator permission and explicit certificate consent through the driver page's **I agree - Next** button. If driver installation fails after the app is copied, setup reports failure and retains ExtraPane for repair or removal. Share only does not hide the Server page; to host later, rerun setup as Full installation. The main installer manages the display driver directly, and Windows Apps lists one ExtraPane uninstall entry.
 
 The app is registered in Windows **Settings > Apps > Installed apps**. Setup offers a desktop shortcut and a checked **Launch ExtraPane** option on its Finish page. Silent setup does not launch the app. Updating requests that running ExtraPane instances shut down and waits for their server helpers to stop before replacing files.
 
@@ -67,7 +105,7 @@ The app is registered in Windows **Settings > Apps > Installed apps**. Setup off
 
 Extract the entire ZIP and run `ExtraPane.exe`. Keep the accompanying files together.
 
-For a Windows server, use the matching installer with **Server + Client** to prepare the managed display, camera, microphone and USB components before running a portable copy. Extracting a ZIP does not install drivers. The older standalone `ExtraPane.DriverSetup.exe` belongs to previous display-only packages.
+For a Windows server, use the matching installer with **Full installation** to prepare the managed display, camera, microphone and USB components before running a portable copy. Extracting a ZIP does not install drivers. The older standalone `ExtraPane.DriverSetup.exe` belongs to previous display-only packages.
 
 ### Driver signing and Windows policy
 

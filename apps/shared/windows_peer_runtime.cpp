@@ -24,8 +24,8 @@ std::vector<Source> devices(Factory factory,Kind kind){
     const std::array<std::string,5> command{"","list-cameras","list-microphones","list-storage","list-speakers"};
     const std::array<std::string,5> prefix{"","CAMERA","MICROPHONE","USB","SPEAKER"};const auto i=static_cast<unsigned>(kind);
     auto process=factory();if(!process)fail("Missing native inventory process");std::string output;
-    try{process->start({exe[i],{command[i]},false,false});const auto until=Clock::now()+std::chrono::seconds(10);
-        do{auto bytes=process->drain();if(bytes.size()>1048576-output.size())fail("Native inventory exceeded limit");output+=bytes;if(!process->running())break;if(Clock::now()>=until)fail("Native inventory timed out");std::this_thread::sleep_for(std::chrono::milliseconds(10));}while(true);process->stop();
+    try{process->start({exe[i],{command[i]},false,false,false});const auto until=Clock::now()+std::chrono::seconds(10);
+        do{auto bytes=process->drain();if(bytes.size()>1048576-output.size())fail("Native inventory exceeded limit");output+=bytes;if(!process->running())break;if(Clock::now()>=until)fail("Native inventory timed out");std::this_thread::sleep_for(std::chrono::milliseconds(10));}while(true);auto tail=process->drain();if(tail.size()>1048576-output.size())fail("Native inventory exceeded limit");output+=tail;process->stop();
     }catch(...){process->stop();throw;}
     bool complete=false;std::vector<Source> result;
     for(auto line:split(output,'\n')){if(!line.empty()&&line.back()=='\r')line.pop_back();if(line.empty())continue;if(line==prefix[i]+"_LIST_DONE"){if(complete)fail("Duplicate native inventory completion");complete=true;continue;}

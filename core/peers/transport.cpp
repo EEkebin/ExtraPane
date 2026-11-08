@@ -53,7 +53,7 @@ struct SocketOwner {
     const std::atomic<bool>* parentCancelled=nullptr;
     ~SocketOwner(){if(socket!=invalid)close_socket(socket);}
     void cancel() noexcept {cancelled.store(true);if(socket!=invalid)shutdown_socket(socket);}
-    void check(Deadline d) const {if(cancelled.load() || (parentCancelled&&parentCancelled->load()))fail("Connection cancelled");if(std::chrono::steady_clock::now()>=d)fail("Connection timed out");}
+    void check(Deadline d) const {if(cancelled.load() || (parentCancelled&&parentCancelled->load()))throw Error(ErrorReason::cancelled,"Connection cancelled");if(std::chrono::steady_clock::now()>=d)throw Error(ErrorReason::timeout,"Connection timed out");}
     void wait_events(short events,Deadline d) {
         for(;;){
             check(d);
@@ -66,7 +66,7 @@ struct SocketOwner {
             pollfd p{socket,events,0};
             const int r=poll(&p,1,ms);
 #endif
-            if(r<0){if(interrupted(socket_error()))continue;fail("Socket wait failed");}
+            if(r<0){if(interrupted(socket_error()))continue;throw Error(ErrorReason::network,"Socket wait failed");}
             if(r>0){check(d);if(p.revents&POLLNVAL)fail("Socket is invalid");if(p.revents&(p.events|POLLERR|POLLHUP))return;}
         }
     }
@@ -154,7 +154,7 @@ struct Stream::State:SocketOwner {
     std::unique_ptr<SSL,decltype(&SSL_free)> ssl{nullptr,SSL_free};
     std::string peer;
     short readWant=0,writeWant=0;
-    void retry(int r,Deadline d){const int e=SSL_get_error(ssl.get(),r);if(e==SSL_ERROR_WANT_READ)wait(false,d);else if(e==SSL_ERROR_WANT_WRITE)wait(true,d);else fail("TLS connection closed or failed");}
+    void retry(int r,Deadline d){const int e=SSL_get_error(ssl.get(),r);if(e==SSL_ERROR_WANT_READ)wait(false,d);else if(e==SSL_ERROR_WANT_WRITE)wait(true,d);else throw Error((e==SSL_ERROR_SYSCALL||e==SSL_ERROR_ZERO_RETURN)?ErrorReason::network:ErrorReason::protocol,"TLS connection closed or failed");}
     void handshake(SSL_CTX* ctx,bool server,Deadline d){
         ssl.reset(SSL_new(ctx));
         if(!ssl)fail("Cannot create TLS stream");
@@ -173,8 +173,8 @@ Stream Stream::connect(const std::string& peer,std::uint16_t port,const std::str
     auto s=std::make_unique<State>();s->socket=::socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);if(s->socket==invalid)fail("Cannot create socket");configure(s->socket);
     if(!local.empty()&&::bind(s->socket,reinterpret_cast<const sockaddr*>(&src),sizeof(src)))fail("Cannot bind selected local address");
     if(::connect(s->socket,reinterpret_cast<const sockaddr*>(&dst),sizeof(dst))){
-        if(!pending(socket_error()))fail("Cannot connect to peer");s->wait(true,d);int error=0;SockLen size=sizeof(error);
-        if(getsockopt(s->socket,SOL_SOCKET,SO_ERROR,reinterpret_cast<char*>(&error),&size) || error)fail("Cannot connect to peer");
+        if(!pending(socket_error()))throw Error(ErrorReason::network,"Cannot connect to peer");s->wait(true,d);int error=0;SockLen size=sizeof(error);
+        if(getsockopt(s->socket,SOL_SOCKET,SO_ERROR,reinterpret_cast<char*>(&error),&size) || error)throw Error(ErrorReason::network,"Cannot connect to peer");
     }
     char text[INET_ADDRSTRLEN]{};inet_ntop(AF_INET,&dst.sin_addr,text,sizeof(text));s->peer=text;
     s->context=context(false);s->handshake(s->context.get(),false,d);return Stream(std::move(s));
@@ -193,26 +193,26 @@ int Stream::read_some(std::span<std::uint8_t> bytes){
     if(!state_)fail("Stream is empty");
     try{
         if(bytes.empty()||bytes.size()>1024*1024)fail("Invalid nonblocking read size");
-        if(state_->cancelled.load())fail("Connection cancelled");
+        if(state_->cancelled.load())throw Error(ErrorReason::cancelled,"Connection cancelled");
         ERR_clear_error();const int r=SSL_read(state_->ssl.get(),bytes.data(),static_cast<int>(bytes.size()));
         state_->readWant=0;if(r>0)return r;
         const int e=SSL_get_error(state_->ssl.get(),r);
         if(e==SSL_ERROR_ZERO_RETURN)return 0;
         if(e==SSL_ERROR_WANT_READ || e==SSL_ERROR_WANT_WRITE){state_->readWant=static_cast<short>(e==SSL_ERROR_WANT_READ?POLLIN:POLLOUT);return -1;}
-        fail("TLS read failed");
+        throw Error(e==SSL_ERROR_SYSCALL?ErrorReason::network:ErrorReason::protocol,"TLS read failed");
     }catch(...){cancel();throw;}
 }
 int Stream::write_some(std::span<const std::uint8_t> bytes){
     if(!state_)fail("Stream is empty");
     try{
         if(bytes.empty()||bytes.size()>16384)fail("Nonblocking writes require 1 to 16384 bytes");
-        if(state_->cancelled.load())fail("Connection cancelled");
+        if(state_->cancelled.load())throw Error(ErrorReason::cancelled,"Connection cancelled");
         ERR_clear_error();const int r=SSL_write(state_->ssl.get(),bytes.data(),static_cast<int>(bytes.size()));
         state_->writeWant=0;if(r>0)return r;
         const int e=SSL_get_error(state_->ssl.get(),r);
         if(e==SSL_ERROR_ZERO_RETURN)return 0;
         if(e==SSL_ERROR_WANT_READ || e==SSL_ERROR_WANT_WRITE){state_->writeWant=static_cast<short>(e==SSL_ERROR_WANT_READ?POLLIN:POLLOUT);return -1;}
-        fail("TLS write failed");
+        throw Error(e==SSL_ERROR_SYSCALL?ErrorReason::network:ErrorReason::protocol,"TLS write failed");
     }catch(...){cancel();throw;}
 }
 void Stream::wait_io(Deadline d){
