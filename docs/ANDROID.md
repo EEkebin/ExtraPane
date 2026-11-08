@@ -340,7 +340,9 @@ fullscreen does not add history. At the first page, Back exits only while idle;
 active resources keep the workspace open with a reminder to stop sharing.
 Page navigation does not stop resource sessions.
 
-Swipe right across empty page space to open the navigation drawer. Swipes starting
+Drag right across empty page space to pull the navigation drawer along with your
+finger. Drag left on the open drawer to close it. Release settles the drawer based
+on its position and fling direction; a short drag can return it to its starting side. Swipes starting
 on controls, selectable text or the remote display remain with those views.
 Vertical scrolling, multiple fingers and the system edge-Back gesture are not
 repurposed. The hamburger button remains available.

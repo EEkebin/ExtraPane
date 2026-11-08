@@ -50,7 +50,11 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private Button fullscreenButton;
     private boolean fullscreen,drawerOpen;
     private final DrawerSwipe drawerSwipe=new DrawerSwipe();
-    private boolean drawerSwipeConsumed;
+    private boolean drawerSwipeConsumed,drawerDragStartedOpen,drawerDragCancelled;
+    private float drawerProgress;
+    private View drawerScrim;
+    private VelocityTracker drawerVelocity;
+    private android.animation.ValueAnimator drawerAnimator;
     private String selectedPage="Devices";
     private final PageHistory pageHistory=new PageHistory();
     private int streamWidth=16,streamHeight=9;
@@ -162,13 +166,32 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     }
     @Override public boolean dispatchTouchEvent(MotionEvent event){
         int action=event.getActionMasked();
-        if(action==MotionEvent.ACTION_DOWN){drawerSwipeConsumed=false;drawerSwipe.begin(event.getRawX(),event.getRawY(),!drawerOpen&&!fullscreen&&scroll!=null&&containsPoint(scroll,event.getRawX(),event.getRawY())&&!interactiveAt(page,event.getRawX(),event.getRawY()));}
-        if(drawerSwipeConsumed){if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)drawerSwipeConsumed=false;return true;}
-        if(action==MotionEvent.ACTION_POINTER_DOWN||action==MotionEvent.ACTION_CANCEL)drawerSwipe.cancel();
-        if(action==MotionEvent.ACTION_MOVE&&drawerSwipe.move(event.getRawX(),event.getRawY(),event.getPointerCount(),ViewConfiguration.get(this).getScaledTouchSlop(),dp(64))){
-            MotionEvent cancel=MotionEvent.obtain(event);cancel.setAction(MotionEvent.ACTION_CANCEL);super.dispatchTouchEvent(cancel);cancel.recycle();drawerSwipeConsumed=true;showDrawer(true);return true;
+        if(action==MotionEvent.ACTION_DOWN){
+            drawerSwipeConsumed=false;drawerDragCancelled=false;drawerDragStartedOpen=drawerOpen;
+            boolean eligible=drawer!=null&&!fullscreen&&(drawerOpen||(scroll!=null&&containsPoint(scroll,event.getRawX(),event.getRawY())&&!interactiveAt(page,event.getRawX(),event.getRawY())));
+            drawerSwipe.begin(event.getRawX(),event.getRawY(),eligible,drawerProgress,drawer==null?1:drawer.getLayoutParams().width);
+            if(drawerVelocity!=null)drawerVelocity.recycle();drawerVelocity=eligible?VelocityTracker.obtain():null;
         }
-        if(action==MotionEvent.ACTION_UP)drawerSwipe.cancel();
+        if(drawerVelocity!=null)drawerVelocity.addMovement(event);
+        if(action==MotionEvent.ACTION_MOVE&&drawerSwipe.move(event.getRawX(),event.getRawY(),event.getPointerCount(),ViewConfiguration.get(this).getScaledTouchSlop())){
+            if(!drawerSwipeConsumed){
+                MotionEvent cancel=MotionEvent.obtain(event);cancel.setAction(MotionEvent.ACTION_CANCEL);super.dispatchTouchEvent(cancel);cancel.recycle();
+                cancelDrawerAnimation();drawerSwipeConsumed=true;input.reset();surface.clearFocus();page.requestFocus();
+            }
+            setDrawerProgress(drawerSwipe.progress());return true;
+        }
+        if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL||action==MotionEvent.ACTION_POINTER_DOWN){
+            boolean consumed=drawerSwipeConsumed;
+            if(consumed){
+                float velocity=0;if(drawerVelocity!=null&&action==MotionEvent.ACTION_UP){drawerVelocity.computeCurrentVelocity(1000,ViewConfiguration.get(this).getScaledMaximumFlingVelocity());velocity=drawerVelocity.getXVelocity();}
+                boolean open=action==MotionEvent.ACTION_UP&&!drawerDragCancelled?drawerSwipe.release(velocity,dp(400)):drawerDragStartedOpen;
+                drawerSwipe.cancel();if(action==MotionEvent.ACTION_POINTER_DOWN)drawerDragCancelled=true;showDrawer(open);
+            }else drawerSwipe.cancel();
+            if(drawerVelocity!=null){drawerVelocity.recycle();drawerVelocity=null;}
+            if(action!=MotionEvent.ACTION_POINTER_DOWN)drawerSwipeConsumed=false;
+            if(consumed)return true;
+        }
+        if(drawerSwipeConsumed)return true;
         return super.dispatchTouchEvent(event);
     }
     private void buildDevices(){LinearLayout content=pages.get("Devices");content.addView(label("Your devices, together",25));content.addView(note("This phone is available to your paired devices while ExtraPane stays open. Select its resources from your other computer."));content.addView(button("View available resources",()->selectPage("Share")));content.addView(label("Paired devices",19));trustedRows=column();content.addView(trustedRows,full());}
@@ -179,19 +202,32 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     }
     private void buildConnections(){connections=pages.get("Connections");connections.addView(label("Connections",25));connectionEmpty=note("No resources are connected. Request this phone's available resources from your other device.");connections.addView(connectionEmpty,full());for(int kind:new int[]{0,1,4,2,3}){ResourceGroup group=new ResourceGroup(groupName(kind),connections);group.box.setVisibility(View.GONE);activeGroups.put(kind,group);}}
     private void buildAbout(){LinearLayout content=pages.get("About");ImageView logo=new ImageView(this);logo.setImageResource(R.drawable.extrapane);content.addView(logo,new LinearLayout.LayoutParams(dp(72),dp(72)));content.addView(label("ExtraPane",26));content.addView(note("Share your devices across your network."));content.addView(note("Version "+BuildConfig.VERSION_NAME));content.addView(note("Android offers its display, cameras, microphones and speakers while this app stays open. System-wide virtual camera/microphone devices, USB sharing and capture of this phone's existing screen are not available on Android."));content.addView(button("GitHub repository",()->startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/EEkebin/ExtraPane")))));content.addView(button("Legacy connections",()->{startActivity(new android.content.Intent(this,MainActivity.class));finish();}));}
-    private void buildDrawer(){drawerLayer=new FrameLayout(this);drawerLayer.setVisibility(View.GONE);root.addView(drawerLayer,new FrameLayout.LayoutParams(-1,-1));View scrim=new View(this);scrim.setBackgroundColor(0x99000000);scrim.setContentDescription("Close navigation menu");scrim.setOnClickListener(v->showDrawer(false));drawerLayer.addView(scrim,new FrameLayout.LayoutParams(-1,-1));drawer=column();drawer.setPadding(dp(16),dp(16),dp(16),dp(16));drawer.setBackgroundColor(BG);drawer.setClickable(true);FrameLayout.LayoutParams drawerParams=new FrameLayout.LayoutParams(Math.min(dp(300),getResources().getDisplayMetrics().widthPixels-dp(56)),-1,Gravity.START);drawerLayer.addView(drawer,drawerParams);ScrollView drawerScroll=new ScrollView(this);drawerScroll.setFillViewport(true);drawer.addView(drawerScroll,new LinearLayout.LayoutParams(-1,-1));LinearLayout drawerContent=column();drawerScroll.addView(drawerContent,new ScrollView.LayoutParams(-1,-2));
+    private void buildDrawer(){drawerLayer=new FrameLayout(this);drawerLayer.setVisibility(View.GONE);root.addView(drawerLayer,new FrameLayout.LayoutParams(-1,-1));View scrim=new View(this);drawerScrim=scrim;scrim.setAlpha(0);scrim.setBackgroundColor(0x99000000);scrim.setContentDescription("Close navigation menu");scrim.setOnClickListener(v->showDrawer(false));drawerLayer.addView(scrim,new FrameLayout.LayoutParams(-1,-1));drawer=column();drawer.setPadding(dp(16),dp(16),dp(16),dp(16));drawer.setBackgroundColor(BG);drawer.setClickable(true);FrameLayout.LayoutParams drawerParams=new FrameLayout.LayoutParams(Math.min(dp(300),getResources().getDisplayMetrics().widthPixels-dp(56)),-1,Gravity.START);drawerLayer.addView(drawer,drawerParams);ScrollView drawerScroll=new ScrollView(this);drawerScroll.setFillViewport(true);drawer.addView(drawerScroll,new LinearLayout.LayoutParams(-1,-1));LinearLayout drawerContent=column();drawerScroll.addView(drawerContent,new ScrollView.LayoutParams(-1,-2));
         LinearLayout brand=new LinearLayout(this);brand.setGravity(Gravity.CENTER_VERTICAL);ImageView icon=new ImageView(this);icon.setImageResource(R.drawable.extrapane);brand.addView(icon,new LinearLayout.LayoutParams(dp(32),dp(32)));TextView name=label("ExtraPane",23);name.setPadding(dp(12),dp(16),0,dp(20));name.setTypeface(null,Typeface.BOLD);brand.addView(name);drawerContent.addView(brand,full());
         for(String nameKey:new String[]{"Devices","Share","Connections","About"}){Button nav=button(nameKey,()->{selectPage(nameKey);showDrawer(false);});nav.setGravity(Gravity.CENTER_VERTICAL|Gravity.START);nav.setCompoundDrawables(new LineIcon(nameKey),null,null,null);nav.setCompoundDrawablePadding(dp(16));drawerContent.addView(nav);navigation.put(nameKey,nav);}
     }
     private void selectPage(String name){pageHistory.visit(name);renderPage(name);}
     private void renderPage(String name){input.reset();surface.clearFocus();page.setFocusableInTouchMode(true);page.requestFocus();selectedPage=name;pageTitle.setText(name);for(Map.Entry<String,LinearLayout> entry:pages.entrySet())entry.getValue().setVisibility(!fullscreen&&entry.getKey().equals(name)?View.VISIBLE:View.GONE);for(Map.Entry<String,Button> entry:navigation.entrySet())entry.getValue().setBackground(rounded(entry.getKey().equals(name)?0xff223c5b:BG,0));if(!videoActive)scroll.smoothScrollTo(0,0);}
-    private void showDrawer(boolean open){drawerOpen=open;drawer.animate().cancel();drawerLayer.animate().cancel();if(open){input.reset();surface.clearFocus();page.requestFocus();drawerLayer.setVisibility(View.VISIBLE);drawer.setTranslationX(-drawer.getLayoutParams().width);drawer.animate().translationX(0).setInterpolator(new DecelerateInterpolator()).setDuration(180).start();menuButton.setContentDescription("Close navigation menu");}else{drawer.animate().translationX(-drawer.getLayoutParams().width).setDuration(160).withEndAction(()->{if(!drawerOpen)drawerLayer.setVisibility(View.GONE);}).start();menuButton.setContentDescription("Open navigation menu");}}
+    private void cancelDrawerAnimation(){if(drawerAnimator!=null){android.animation.ValueAnimator old=drawerAnimator;drawerAnimator=null;old.cancel();}}
+    private void setDrawerProgress(float progress){
+        drawerProgress=Math.max(0,Math.min(1,progress));drawer.setTranslationX((drawerProgress-1)*drawer.getLayoutParams().width);
+        drawerScrim.setAlpha(drawerProgress);drawerLayer.setVisibility(drawerProgress>0||drawerSwipeConsumed?View.VISIBLE:View.GONE);
+    }
+    private void showDrawer(boolean open){
+        cancelDrawerAnimation();drawerOpen=open;
+        if(open){input.reset();surface.clearFocus();page.requestFocus();}
+        menuButton.setContentDescription(open?"Close navigation menu":"Open navigation menu");
+        android.animation.ValueAnimator animation=android.animation.ValueAnimator.ofFloat(drawerProgress,open?1f:0f);drawerAnimator=animation;
+        animation.setDuration(Math.max(80,Math.round(220*Math.abs((open?1f:0f)-drawerProgress))));animation.setInterpolator(new DecelerateInterpolator());
+        animation.addUpdateListener(value->setDrawerProgress((Float)value.getAnimatedValue()));
+        animation.addListener(new android.animation.AnimatorListenerAdapter(){@Override public void onAnimationEnd(android.animation.Animator value){if(drawerAnimator==animation){drawerAnimator=null;setDrawerProgress(open?1:0);}}});animation.start();
+    }
     private String groupName(int kind){return switch(kind){case 0,5->"Monitors";case 1->"Cameras";case 2->"Microphones";case 3->"USB";case 4->"Speakers";default->"Resources";};}
     private void refreshInterfaces(){List<String> before=new ArrayList<>(addresses);String previous=interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString();addresses.clear();try{for(NetworkInterface nic:Collections.list(NetworkInterface.getNetworkInterfaces()))if(nic.isUp()&&!nic.isLoopback())for(InetAddress address:Collections.list(nic.getInetAddresses()))if(address instanceof Inet4Address&&!address.isLoopbackAddress()&&!address.isLinkLocalAddress())addresses.add(address.getHostAddress());}catch(Exception e){status("Network addresses could not be read");}if(addresses.isEmpty())addresses.add("127.0.0.1");if(before.equals(addresses))return;ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,addresses){@Override public View getView(int position,View recycled,ViewGroup parent){TextView v=(TextView)super.getView(position,recycled,parent);v.setTextColor(TEXT);v.setTextSize(16);v.setPadding(dp(12),dp(10),dp(12),dp(10));return v;}@Override public View getDropDownView(int position,View recycled,ViewGroup parent){TextView v=(TextView)super.getDropDownView(position,recycled,parent);v.setTextColor(TEXT);v.setBackgroundColor(PANEL);v.setMinHeight(dp(48));return v;}};interfaces.setAdapter(adapter);int preserved=addresses.indexOf(previous);if(preserved>=0)interfaces.setSelection(preserved);}
     private void refreshTrusted(){if(peers==null)return;safely(()->{trustedRows.removeAllViews();for(String[] device:peers.remembered())if(device.length>=2){String id=device[0];LinearLayout row=column();row.setPadding(dp(14),dp(8),dp(14),dp(8));row.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams params=full();params.bottomMargin=dp(12);trustedRows.addView(row,params);row.addView(label(device[1],17));row.addView(button("Forget device",()->new android.app.AlertDialog.Builder(this).setTitle("Forget this device?").setMessage("Its active connections will close. A new pairing code will be needed to reconnect.").setPositiveButton("Forget",(dialog,which)->safely(()->peers.forget(id))).setNegativeButton("Cancel",null).show()));}if(trustedRows.getChildCount()==0)trustedRows.addView(note("No paired devices yet. Use the pairing code on your other device."));});}
     private void setFullscreen(boolean value){fullscreen=value;if(drawerOpen)showDrawer(false);toolbar.setVisibility(value?View.GONE:View.VISIBLE);status.setVisibility(value||status.getText().length()==0?View.GONE:View.VISIBLE);selectPage(selectedPage);fullscreenButton.setText(value?"Exit fullscreen":"Fullscreen");fitVideo();}
     private void fitVideo(){int width=Math.max(dp(120),page.getWidth()-page.getPaddingLeft()-page.getPaddingRight());int height=Math.max(1,width*streamHeight/Math.max(1,streamWidth));int maximum=fullscreen?Math.max(dp(120),scroll.getHeight()-dp(88)):dp(340);if(height>maximum){height=maximum;width=Math.max(1,height*streamWidth/Math.max(1,streamHeight));}surface.setLayoutParams(new LinearLayout.LayoutParams(width,height));}
-    @Override public void onConfigurationChanged(android.content.res.Configuration config){super.onConfigurationChanged(config);FrameLayout.LayoutParams params=(FrameLayout.LayoutParams)drawer.getLayoutParams();params.width=Math.min(dp(300),getResources().getDisplayMetrics().widthPixels-dp(56));drawer.setLayoutParams(params);page.post(this::fitVideo);}
+    @Override public void onConfigurationChanged(android.content.res.Configuration config){super.onConfigurationChanged(config);FrameLayout.LayoutParams params=(FrameLayout.LayoutParams)drawer.getLayoutParams();params.width=Math.min(dp(300),getResources().getDisplayMetrics().widthPixels-dp(56));drawer.setLayoutParams(params);cancelDrawerAnimation();drawerSwipe.cancel();drawerSwipeConsumed=false;setDrawerProgress(drawerOpen?1:0);page.post(this::fitVideo);}
     @android.annotation.SuppressLint("GestureBackNavigation") // API 30-32 fallback; 33+ uses OnBackInvokedDispatcher.
     @Override public void onBackPressed(){back();}
     private void back(){if(drawerOpen){showDrawer(false);return;}if(fullscreen){setFullscreen(false);return;}String previous=pageHistory.back();if(previous!=null){renderPage(previous);return;}if(!activeRows.isEmpty()){Toast.makeText(this,"Disconnect active resources before leaving ExtraPane.",Toast.LENGTH_SHORT).show();return;}finish();}
@@ -297,7 +333,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(!focused)input.reset();}
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(foreground)safely(()->{refreshOffers();ensureListening();});}
     @Override protected void onResume(){super.onResume();foreground=true;listenFailed=false;if(peers!=null)safely(()->{peers.setForeground(true);refreshInterfaces();refreshOffers();ensureListening();});handler.post(poll);}
-    @Override protected void onPause(){foreground=false;handler.removeCallbacks(poll);if(peers!=null)safely(()->peers.setForeground(false));stopSharing();super.onPause();}
+    @Override protected void onPause(){cancelDrawerAnimation();drawerSwipe.cancel();drawerSwipeConsumed=false;if(drawerVelocity!=null){drawerVelocity.recycle();drawerVelocity=null;}if(drawer!=null)setDrawerProgress(drawerOpen?1:0);foreground=false;handler.removeCallbacks(poll);if(peers!=null)safely(()->peers.setForeground(false));stopSharing();super.onPause();}
     @Override protected void onStop(){foreground=false;handler.removeCallbacks(poll);stopSharing();super.onStop();}
     @Override protected void onDestroy(){handler.removeCallbacks(poll);if(peers!=null){PeerService closing=peers;peers=null;new Thread(closing::close,"ExtraPane peer shutdown").start();}super.onDestroy();}
 }

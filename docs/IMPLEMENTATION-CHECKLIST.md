@@ -925,3 +925,14 @@ This replaces the earlier opt-in offer power behavior.
   physical resource session was performed.
 - Hosted run `42471761296` hit an Mbed TLS download HTTP 504 on macOS;
   native macOS compilation is not yet verified for this increment.
+
+
+### Android drawer follows the finger
+
+- [x] Replaced threshold-triggered swipe opening with continuous drawer position
+  and scrim opacity during drag, in both directions. Release settles by position
+  or fling; cancelled/multi-touch gestures restore their starting side.
+- [x] Buttons, vertical scrolling, selectable text and remote-display touch input
+  retain their touch streams unless a drawer drag is claimed. Rotation/pause
+  cancel tracking. Isolated drag progress/reversal/release checks pass.
+- [ ] Final APK build/delivery and physical drag acceptance pending.
