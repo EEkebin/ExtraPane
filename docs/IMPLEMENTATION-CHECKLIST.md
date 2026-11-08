@@ -1042,6 +1042,19 @@ This replaces the earlier opt-in offer power behavior.
   Windows app rebuilt. Resource cancellation negotiation is covered by an
   older-peer echo/no-new-opcode/late-grant-close regression. Unchanged periodic
   catalogs do not reset the resource UI.
-- [ ] Matching Windows/Android packages, delivery and physical acceptance pending.
+- [x] Matching `2026.11.08-pre.105.1` built from clean `7ef7073` and delivered:
+  installer copied to both Desktops with SHA256 verified; Android streamed install
+  succeeded and versionCode `10501` / versionName verified. All 12 Android host
+  suites, both ABI builds, test APK and lint passed. Windows portable extraction,
+  version/build metadata, UI smoke and native payload checks passed.
+  Installer SHA256:
+  `0d80bfd2a0b768e53c954d2170cb97c5782ef373111f4130c8899985791c4de4`.
+  APK SHA256:
+  `89756229b434823f0864b56d5e776f8d96af5e26054ea1b555cefa13cf1407f3`.
+- [ ] Physical camera/auto-presence acceptance pending after user updates Windows;
+  no Windows installer or media connection was run. Cross-platform hosted run
+  `42476646478` remains in progress.
+- [ ] Nonblocking native macOS UI followup: mutual incoming/outgoing control links
+  may show duplicate device rows; each row currently disconnects its own link.
 - Previous pre.104.1 hosted Linux/Android jobs passed. Both macOS jobs exposed an
   Objective-C ivar initializer syntax error; source corrected here, CI recheck pending.
