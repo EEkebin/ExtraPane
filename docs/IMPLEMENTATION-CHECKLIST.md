@@ -886,3 +886,6 @@ before a packaging-tool download failed. No release was published or branch merg
   cancel the underlying scroll gesture and consume the remaining events.
 - [x] Isolated swipe direction/threshold/cancellation checks and Android build
   and lint pass. Physical gesture acceptance remains pending.
+- [x] Signed Android `pre.99.1` release and lint passed; package verified and
+  streamed to Pixel 8a. Installed versionCode `9901` confirmed. No physical
+  resource session was started.
