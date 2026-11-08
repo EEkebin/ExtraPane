@@ -100,7 +100,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Configure camera compilation and hardware-free checks
         run: cmake -S . -B out/camera-checks -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_MICROPHONE_TESTS=ON
       - name: Build camera source and checks
@@ -111,7 +111,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Select pinned Rust compiler
         run: rustup toolchain install 1.88.0 --profile minimal
       - name: Check bounded PCM endpoint logic without devices
@@ -126,7 +126,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Configure isolated core
         run: cmake -S core/session -B out/session-checks -DEXTRAPANE_SESSION_TESTS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -141,7 +141,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Configure in-memory security checks
         run: cmake -S . -B out/resource-security -DDM_ACCESS_ONLY=ON -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build
