@@ -49,6 +49,9 @@ Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**
 Share, Connections and About. Its audio choices identify physical routes such as
 Loudspeaker, Earpiece and connected headsets instead of internal Android port
 numbers. Actual route availability depends on Android's audio policy.
+Resource rows use green power buttons to enable/connect and red power buttons to
+disable/disconnect. Enabling an offer makes it available; capture starts only when
+another device requests it. Desktop and Android navigation use hamburger menus.
 
 A **display destination** is the device that shows an extended desktop. The
 computer using that destination creates the virtual monitor and needs its native

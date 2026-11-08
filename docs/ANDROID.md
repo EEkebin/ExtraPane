@@ -24,6 +24,9 @@ separates Devices, Share, Connections and About. Share lists resources in
 collapsible Monitors, Cameras, Speakers and Microphones groups. USB is shown as
 unavailable on Android. Connections groups active resources independently;
 changing pages or collapsing a group must not disconnect them.
+Resource rows use green power buttons to enable their offer and red power buttons
+to withdraw it. Connections uses red power buttons to disconnect individual
+sessions. Pairing and input permission options remain separate settings controls.
 
 Android currently offers resources to other computers. It advertises the selected
 offers on the LAN while sharing is running, supports direct connections to its

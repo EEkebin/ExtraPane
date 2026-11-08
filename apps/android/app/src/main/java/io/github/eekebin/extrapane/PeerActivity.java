@@ -19,7 +19,7 @@ import java.util.*;
 /** Explicit foreground offers. Publishing metadata never starts capture. */
 public final class PeerActivity extends Activity implements SurfaceHolder.Callback {
     private static final int BG=0xff0e1521, PANEL=0xff172336, TEXT=0xffe7eff9,
-            MUTED=0xffa3b4ca, ACCENT=0xff8abdff, BORDER=0xff35465e, RED=0xffa93643;
+            MUTED=0xffa3b4ca, ACCENT=0xff8abdff, BORDER=0xff35465e, RED=0xffa93643, GREEN=0xff237a49;
     private final Handler handler=new Handler();
     private final Map<String,Offered> offered=new LinkedHashMap<>();
     private final Map<String,Runnable> cancellations=new HashMap<>();
@@ -49,7 +49,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private String displayKey;
     private String[] pendingDisplay,displayEvent;
     private final ArrayList<String> addresses=new ArrayList<>();
-    private record Offered(String id,String label,int kind,Object source,CheckBox selected) {}
+    private record Offered(String id,String label,int kind,Object source,PowerButton selected) {}
     private String key(String[] event){return event[1]+":"+event[3];}
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private GradientDrawable rounded(int color,int stroke){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(14));if(stroke!=0)d.setStroke(dp(1),stroke);return d;}
@@ -59,6 +59,35 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private TextView note(String text){TextView v=label(text,14);v.setTextColor(MUTED);return v;}
     private Button button(String text,Runnable action){Button v=new Button(this);v.setText(text);v.setTextSize(14);v.setAllCaps(false);v.setTextColor(TEXT);v.setMinHeight(dp(48));v.setMinimumHeight(dp(48));v.setPadding(dp(16),dp(10),dp(16),dp(10));v.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams lp=full();lp.topMargin=dp(8);lp.bottomMargin=dp(8);v.setLayoutParams(lp);v.setOnClickListener(w->action.run());return v;}
     private CheckBox check(String text){CheckBox v=new CheckBox(this);v.setText(text);v.setTextSize(15);v.setTextColor(TEXT);v.setMinHeight(dp(52));v.setPadding(dp(4),dp(8),dp(4),dp(8));v.setButtonTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{ACCENT,MUTED}));return v;}
+    /** Resource actions use power icons; checked means offered, not actively streaming. */
+    private final class PowerButton extends ImageButton implements Checkable {
+        private final String resourceLabel;
+        private boolean checked;
+        private java.util.function.Consumer<Boolean> changed;
+        PowerButton(String resourceLabel){
+            super(PeerActivity.this);this.resourceLabel=resourceLabel;
+            setImageDrawable(new LineIcon("power"));setPadding(dp(12),dp(12),dp(12),dp(12));
+            setMinimumWidth(dp(48));setMinimumHeight(dp(48));setScaleType(ImageView.ScaleType.CENTER);
+            setOnClickListener(view->toggle());render();
+        }
+        private void render(){
+            setSelected(checked);setBackground(new android.graphics.drawable.RippleDrawable(
+                    ColorStateList.valueOf(0x33ffffff),rounded(checked?RED:GREEN,0),rounded(Color.WHITE,0)));
+            setContentDescription((checked?"Disable sharing of ":"Enable sharing of ")+resourceLabel);
+            setTooltipText((checked?"Disable sharing of ":"Enable sharing of ")+resourceLabel);
+            setStateDescription(checked?"Available for sharing":"Not shared");
+        }
+        @Override public boolean isChecked(){return checked;}
+        @Override public void setChecked(boolean value){if(checked==value)return;checked=value;render();if(changed!=null)changed.accept(value);}
+        @Override public void toggle(){setChecked(!checked);}
+        void setOnCheckedChangeListener(java.util.function.Consumer<Boolean> listener){changed=listener;}
+        @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(info);info.setCheckable(true);info.setChecked(checked);}
+    }
+    private LinearLayout resourceRow(String name,PowerButton power){
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(0,dp(4),0,dp(4));
+        TextView title=label(name,16);title.setPadding(dp(4),dp(8),dp(12),dp(8));row.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        row.addView(power,new LinearLayout.LayoutParams(dp(48),dp(48)));return row;
+    }
     private void status(String text){status.setText(text);status.setVisibility(fullscreen||text==null||text.isBlank()?View.GONE:View.VISIBLE);}
     private interface Action {void run()throws Exception;}
     private void safely(Action action){try{action.run();}catch(Exception e){status(e.getMessage()==null?"Device sharing failed":e.getMessage());}}
@@ -69,6 +98,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         LineIcon(String type){this.type=type;setBounds(0,0,dp(24),dp(24));}
         @Override public void draw(Canvas canvas){canvas.save();canvas.translate(getBounds().left,getBounds().top);canvas.scale(getBounds().width()/24f,getBounds().height()/24f);paint.setColor(ACCENT);paint.setStrokeWidth(1.8f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);paint.setStyle(Paint.Style.STROKE);
             switch(type){
+                case "power" -> {paint.setColor(TEXT);canvas.drawArc(4,5,20,21,-50,280,false,paint);canvas.drawLine(12,3,12,12,paint);}
                 case "menu" -> {canvas.drawLine(4,6,20,6,paint);canvas.drawLine(4,12,20,12,paint);canvas.drawLine(4,18,20,18,paint);}
                 case "chevron" -> {canvas.drawLine(9,5,16,12,paint);canvas.drawLine(16,12,9,19,paint);}
                 case "Monitors", "Devices" -> {canvas.drawRoundRect(3,4,21,16,2,2,paint);canvas.drawLine(12,16,12,21,paint);canvas.drawLine(8,21,16,21,paint);}
@@ -138,7 +168,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     @Override public void onBackPressed(){back();}
     private void back(){if(drawerOpen){showDrawer(false);return;}if(fullscreen){setFullscreen(false);return;}finish();}
     private String opaque(String local){android.content.SharedPreferences settings=getSharedPreferences("peer-offer-identifiers",MODE_PRIVATE);String id=settings.getString(local,null);if(id==null){id=UUID.randomUUID().toString();settings.edit().putString(local,id).apply();}return id;}
-    private void addOffer(String local,String label,int kind,Object source){String id=opaque(local);CheckBox selected=check(label);ResourceGroup group=offerGroups.get(kind);group.body.addView(selected,full());Offered item=new Offered(id,label,kind,source,selected);offered.put(id,item);selected.setOnCheckedChangeListener((view,checked)->{if(updating)return;String permission=kind==1?Manifest.permission.CAMERA:kind==2?Manifest.permission.RECORD_AUDIO:null;if(checked&&permission!=null&&checkSelfPermission(permission)!=PackageManager.PERMISSION_GRANTED){updating=true;selected.setChecked(false);updating=false;requestPermissions(new String[]{permission},kind);status("Allow permission, then select this resource again");return;}publish();});}
+    private void addOffer(String local,String label,int kind,Object source){String id=opaque(local);PowerButton selected=new PowerButton(label);ResourceGroup group=offerGroups.get(kind);group.body.addView(resourceRow(label,selected),full());Offered item=new Offered(id,label,kind,source,selected);offered.put(id,item);selected.setOnCheckedChangeListener(checked->{if(updating)return;String permission=kind==1?Manifest.permission.CAMERA:kind==2?Manifest.permission.RECORD_AUDIO:null;if(checked&&permission!=null&&checkSelfPermission(permission)!=PackageManager.PERMISSION_GRANTED){updating=true;selected.setChecked(false);updating=false;requestPermissions(new String[]{permission},kind);status("Allow permission, then select this resource again");return;}publish();});}
     private void refreshOffers(){Set<String> selectedIds=new HashSet<>();for(Offered old:offered.values())if(old.selected().isChecked())selectedIds.add(old.id());if(inputAllowed.getParent() instanceof ViewGroup oldParent)oldParent.removeView(inputAllowed);offerRows.removeAllViews();offerGroups.clear();offered.clear();for(int kind:new int[]{0,1,4,2,3})offerGroups.put(kind,new ResourceGroup(groupName(kind),offerRows));addOffer("display","This phone's display",0,null);Point size=new Point();getDisplay().getRealSize(size);offerGroups.get(0).body.addView(note(size.x+" x "+size.y+" / "+Math.round(getDisplay().getRefreshRate())+" Hz. Shows a virtual monitor created on your other computer."));offerGroups.get(0).body.addView(inputAllowed,full());
         try{for(CameraCapture.Choice choice:CameraCapture.choices(this))addOffer("camera:"+choice.id(),choice.toString(),1,choice);}catch(Exception e){offerGroups.get(1).body.addView(note("Camera inventory unavailable: "+e.getMessage()));}
         for(SpeakerSession.Choice choice:SpeakerSession.choices(this))addOffer("speaker:"+choice.id(),choice.label(),4,choice);
@@ -161,7 +191,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private void stopNative(String key){Runnable cancel=cancellations.remove(key);if(cancel!=null)cancel.run();View row=activeRows.remove(key);if(row!=null&&row.getParent() instanceof ViewGroup parent)parent.removeView(row);updateConnectionGroups();if(key.equals(displayKey)){if(fullscreen)setFullscreen(false);pendingDisplay=null;displayEvent=null;videoActive=false;displayKey=null;input.enable(false);videoArea.setVisibility(View.GONE);}}
     private void ended(String[] event,String reason){handler.post(()->{String key=key(event);if(!activeRows.containsKey(key)&&!key.equals(displayKey))return;stopNative(key);status(reason);if(peers!=null)safely(()->peers.closeResource(Long.parseLong(event[1]),Long.parseLong(event[3])));});}
     private void startNative(String[] event)throws Exception{String key=key(event);Offered item=offered.get(event[9]);if(!foreground||!listening||item==null||!item.selected().isChecked()){peers.closeResource(Long.parseLong(event[1]),Long.parseLong(event[3]));return;}if(cancellations.containsKey(key))return;
-        LinearLayout row=column();row.addView(label(item.label(),16));Button stop=button("Disconnect",()->{stopNative(key);safely(()->peers.closeResource(Long.parseLong(event[1]),Long.parseLong(event[3])));});stop.setBackground(rounded(RED,0));row.addView(stop);activeGroups.get(item.kind()).body.addView(row,full());activeRows.put(key,row);updateConnectionGroups();
+        PowerButton stop=new PowerButton(item.label());stop.setChecked(true);stop.setContentDescription("Disconnect "+item.label());stop.setTooltipText("Disconnect "+item.label());stop.setStateDescription("Connected");stop.setOnClickListener(view->{stopNative(key);safely(()->peers.closeResource(Long.parseLong(event[1]),Long.parseLong(event[3])));});LinearLayout row=resourceRow(item.label(),stop);activeGroups.get(item.kind()).body.addView(row,full());activeRows.put(key,row);updateConnectionGroups();
         int port=Integer.parseInt(event[6]);String credential=event[13];if(item.kind()!=0)event[13]="";
         if(item.kind()==0){if(displayKey!=null){peers.closeResource(Long.parseLong(event[1]),Long.parseLong(event[3]));stopNative(key);return;}displayKey=key;pendingDisplay=event.clone();displayEvent=event.clone();videoArea.setVisibility(View.VISIBLE);if(surfaceReady)startDisplay();return;}
         if(item.kind()==1){if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){ended(event,"Camera permission was withdrawn");return;}CameraSession session=new CameraSession(this,"127.0.0.1",port,"",null,credential,(CameraCapture.Choice)item.source(),new CameraSession.Listener(){public void status(String text){}public void connected(){handler.post(()->status("Camera connected"));}public void ended(String reason){PeerActivity.this.ended(event,reason);}});cancellations.put(key,session::cancel);session.start();}

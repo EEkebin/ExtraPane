@@ -488,3 +488,14 @@ Desktop normal startup uses the new workspace; `--devices` remains an alias and
 commands retain their dispatch behavior. Android's launcher opens device sharing,
 with explicit Legacy connections navigation. This does not imply physical-device
 acceptance or authorize merging the branch.
+
+## Resource controls and navigation consistency
+
+Resource rows use power buttons, not checkboxes: green enables/offers or connects
+the resource; red disables/withdraws or disconnects it. Action labels distinguish
+offering a resource from starting an active connection. Pairing, input permission
+and gateway preferences remain settings controls. Merely enabling an offer does
+not activate its camera, microphone or other native capture.
+
+Desktop navigation uses a fixed hamburger icon, matching Android. The sidebar
+may slide, but its toggle does not rotate or swap between arrow glyphs.

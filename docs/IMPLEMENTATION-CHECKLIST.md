@@ -775,3 +775,20 @@ being updated; application source matches `1ff17bc`.
 CI retries still encounter external download timeouts/HTTP 504s; do not describe
 this revision as passing all four remote package jobs. Linux compiled successfully
 before a packaging-tool download failed. No release was published or branch merged.
+
+### Restore power controls and consistent navigation
+
+- [x] Desktop and Android resource offer checkboxes replaced with green enable /
+  red disable power icons and adjacent resource labels. Settings such as pairing
+  and input permissions remain separate controls. Offering still does not start
+  native capture by itself.
+- [x] Desktop resource actions turn red for active/pending sessions matching that
+  exact peer, owner and resource. They disconnect/cancel those sessions without
+  affecting another peer or starting a duplicate. Connections uses red power
+  controls on both desktop and Android.
+- [x] Desktop sidebar toggle uses the same fixed hamburger convention as Android;
+  sidebar sliding remains, icon rotation is removed.
+- [x] Desktop offscreen action/color/identity/group/navigation tests and actual
+  app startup pass. Android both-ABI build, instrumentation compilation and lint
+  pass. No physical resource session was started.
+- [ ] Replacement packages and delivery pending; physical acceptance remains.

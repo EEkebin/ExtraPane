@@ -50,6 +50,11 @@ Item {
         leftPadding: 18; rightPadding: 18
         background: Rectangle { implicitHeight: 44; radius: 10; color: !parent.enabled ? "#243147" : parent.destructive ? (parent.hovered ? "#c33849" : "#a52b3b") : (parent.hovered ? "#3e7ab7" : "#2b6099") }
     }
+    component PowerButton: IconButton {
+        symbol: "disconnect"
+        implicitWidth: 48; implicitHeight: 48; padding: 12
+        positive: !destructive
+    }
     readonly property var resourceGroups: [
         {key:"monitors", title:"Monitors", icon:"display", kinds:[0,5]},
         {key:"cameras", title:"Cameras", icon:"camera", kinds:[1]},
@@ -97,7 +102,7 @@ Item {
                     Layout.fillWidth: true; Layout.preferredHeight: 104
                     Image { id: logo; source: "qrc:/extrapane.png"; width: 30; height: 30; x: 9; y: 12 }
                     Label { textFormat: Text.PlainText; text: "ExtraPane"; font.pixelSize: 20; anchors.left: logo.right; anchors.leftMargin: 8; anchors.verticalCenter: logo.verticalCenter; opacity: workspace.expansion }
-                    IconButton { x: 6; y: 56; symbol: "chevron"; rotation: 180*workspace.expansion; transformOrigin: Item.Center; description: workspace.collapsed ? "Expand navigation" : "Collapse navigation"; onClicked: workspace.collapsed=!workspace.collapsed }
+                    IconButton { objectName: "peerNavigationMenu"; x: 6; y: 56; symbol: "menu"; description: workspace.collapsed ? "Expand navigation" : "Collapse navigation"; onClicked: workspace.collapsed=!workspace.collapsed }
                 }
                 Repeater {
                     model: [{name:"Devices", icon:"client"},{name:"Share", icon:"server"},{name:"Connections", icon:"settings"}]
@@ -236,6 +241,7 @@ Item {
                                             required property var modelData
                                             objectName: "peerResource_"+modelData.id
                                             property string connectionId: peerDevice.modelData.connection
+                                        property var sessions: peers.connections.filter(row => row.connection===connectionId && row.owner===modelData.owner && row.resource===modelData.id)
                                             Layout.fillWidth: true; implicitHeight: resourceContent.implicitHeight+28; radius: 12; color: "#162339"
                                             ColumnLayout {
                                                 id: resourceContent; anchors.fill: parent; anchors.margins: 14; spacing: 10
@@ -250,7 +256,25 @@ Item {
                                                     Field { id: modeHeight; text: String(resourceCard.modelData.height||1080); placeholderText: "Height"; Layout.fillWidth: true; validator: IntValidator { bottom:64; top:4096 } }
                                                     Field { id: modeRefresh; text: String(Math.min(resourceCard.modelData.refresh||60,360)); placeholderText: "Hz / FPS"; Layout.preferredWidth: 90; validator: IntValidator { bottom:1; top:360 } }
                                                 }
-                                                Action { objectName: "peerUse_"+resourceCard.modelData.id; text: resourceCard.modelData.kind; enabled: resourceCard.modelData.available; onClicked: { if(resourceCard.modelData.kindId===0&&!workspace.checkFields([modeWidth,modeHeight,modeRefresh])) return; peers.useResource(resourceCard.connectionId,resourceCard.modelData.owner,resourceCard.modelData.id,resourceCard.modelData.inputAllowed&&input.checked,resourceCard.modelData.kindId===0?Number(modeWidth.text):0,resourceCard.modelData.kindId===0?Number(modeHeight.text):0,resourceCard.modelData.kindId===0?Number(modeRefresh.text):0) } }
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    Label { text: resourceCard.modelData.kind; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                                    PowerButton {
+                                                        objectName: "peerUse_"+resourceCard.modelData.id
+                                                        destructive: resourceCard.sessions.length>0
+                                                        description: destructive ? "Disconnect "+resourceCard.modelData.label+(resourceCard.sessions.length>1 ? " ("+resourceCard.sessions.length+" connections)" : "") : "Connect "+resourceCard.modelData.label+" - "+resourceCard.modelData.kind
+                                                        enabled: destructive || resourceCard.modelData.available
+                                                        onClicked: {
+                                                            const current=resourceCard.sessions.slice()
+                                                            if(current.length>0) {
+                                                                for(const row of current) { if(row.phase==="connecting") peers.cancelResource(row.connection,row.request); else peers.stopResource(row.connection,row.grant) }
+                                                                return
+                                                            }
+                                                            if(resourceCard.modelData.kindId===0&&!workspace.checkFields([modeWidth,modeHeight,modeRefresh])) return
+                                                            peers.useResource(resourceCard.connectionId,resourceCard.modelData.owner,resourceCard.modelData.id,resourceCard.modelData.inputAllowed&&input.checked,resourceCard.modelData.kindId===0?Number(modeWidth.text):0,resourceCard.modelData.kindId===0?Number(modeHeight.text):0,resourceCard.modelData.kindId===0?Number(modeRefresh.text):0)
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -291,14 +315,18 @@ Item {
                                 delegate: ColumnLayout {
                                     required property var modelData
                                     Layout.fillWidth: true; spacing: 2
-                                    CheckBox {
-                                        objectName: "peerOffer_"+modelData.id
-                                        Layout.fillWidth: true; text: modelData.label; checked: modelData.enabled; enabled: modelData.available
-                                        onToggled: peers.enableOffer(modelData.id,checked)
-                                        contentItem: Label { text: parent.text; textFormat: Text.PlainText; wrapMode: Text.WordWrap; leftPadding: parent.indicator.width+parent.spacing; verticalAlignment: Text.AlignVCenter; opacity: parent.enabled ? 1 : 0.6 }
+                                    RowLayout {
+                                        Layout.fillWidth: true; spacing: 12
+                                        Label { text: modelData.label; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; opacity: modelData.available ? 1 : 0.6 }
+                                        PowerButton {
+                                            objectName: "peerOffer_"+modelData.id
+                                            destructive: modelData.enabled; enabled: modelData.available || modelData.enabled
+                                            description: (modelData.enabled ? "Stop offering " : "Offer ")+modelData.label
+                                            onClicked: peers.enableOffer(modelData.id,!modelData.enabled)
+                                        }
                                     }
-                                    Label { visible: modelData.kindId===0 || modelData.kindId===5; text: modelData.kindId===0 ? "Virtual monitor destination" : "Existing screen (view only)"; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap; leftPadding: 40 }
-                                    Label { visible: !modelData.available; text: modelData.reason||"Unavailable"; color: "#f0c66e"; Layout.fillWidth: true; wrapMode: Text.WordWrap; leftPadding: 40 }
+                                    Label { visible: modelData.kindId===0 || modelData.kindId===5; text: modelData.kindId===0 ? "Virtual monitor destination" : "Existing screen (view only)"; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                    Label { visible: !modelData.available; text: modelData.reason||"Unavailable"; color: "#f0c66e"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                 }
                             }
                         }
@@ -325,7 +353,7 @@ Item {
                                     required property var modelData
                                     Layout.fillWidth: true
                                     Label { textFormat: Text.PlainText; Layout.fillWidth: true; text: (modelData.label||modelData.kind||"Shared resource")+(modelData.phase==="reconnecting" ? " - Reconnecting..." : modelData.phase==="connecting" ? " - Connecting..." : ""); wrapMode: Text.WordWrap }
-                                    Action { objectName: "peerStop_"+modelData.grant; text: "Disconnect"; destructive: true; onClicked: { if(modelData.phase==="connecting") peers.cancelResource(modelData.connection,modelData.request); else peers.stopResource(modelData.connection,modelData.grant) } }
+                                    PowerButton { objectName: "peerStop_"+modelData.grant; description: (modelData.phase==="connecting" ? "Cancel " : "Disconnect ")+(modelData.label||modelData.kind||"resource"); destructive: true; onClicked: { if(modelData.phase==="connecting") peers.cancelResource(modelData.connection,modelData.request); else peers.stopResource(modelData.connection,modelData.grant) } }
                                 }
                             }
                         }
