@@ -958,5 +958,9 @@ This replaces the earlier opt-in offer power behavior.
 - [x] Offscreen checks verify independent peers, refresh retention and no session
   changes on collapse. Windows compiled; Android build/test APK and lint passed.
 - [x] Native macOS device headers/body collapse implemented and statically reviewed.
-- [ ] Matching package delivery and Linux/macOS hosted verification pending.
+- [x] Matching `pre.102.1` Windows/Android packages verified from `23b754b`.
+  Windows exact version, extracted startup, checksums and payload checks passed;
+  installer copied to both Desktops with Surface checksum verified. Android
+  streamed install succeeded; installed versionCode `10201` confirmed.
+- [ ] Linux/macOS hosted verification pending (run `42472790511`).
 - [ ] Physical acceptance remains; no resource session started.
