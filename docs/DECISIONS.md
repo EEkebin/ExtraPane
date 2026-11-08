@@ -410,3 +410,47 @@ above Microphones, with repeatable connections, per-session mute and volume. Ini
 implementation is a Windows virtual playback endpoint and Windows/Android output;
 unsupported Linux/macOS paths remain explicit. Reuse the managed USB/IP audio backend
 and existing installer ownership rather than introducing a new kernel driver.
+
+## Device discovery and remembered pairing: next branch design
+
+Status: design decisions for `feat/device-discovery`, branched from the preserved
+`feat/shared-resources` baseline. These describe intended behavior, not capabilities
+of the currently shipped app. Do not merge either branch into main until the user
+says the work is ready.
+
+- Devices are equal participants: each may offer local resources and use remote
+  resources concurrently. Proposed primary pages are Devices, Share and Connections,
+  with Settings/About retained. Server/client remain implementation roles.
+- Advertise only resources explicitly enabled for sharing. Advertising does not
+  start camera/microphone capture or export a USB disk. Retain direct IPv4/port and
+  selected-interface access when discovery is unavailable, including static-IP LANs.
+- Pairing codes are optional and enabled by default. Six-digit codes rotate between
+  sessions. Remembered access is desired; use device identity/trust rather than
+  treating a stored short code or IP address as proof of identity. Exact rotation
+  boundaries are awaiting the user's answer. Trust must be revocable, and disabling
+  pairing must be explicit; do not imply peer identity verification in open mode.
+- Default sharing lifecycle (delegated choice): remember offered-resource selections,
+  provide Start sharing / Stop sharing, and start sharing manually by default.
+  Stop sharing withdraws offers and ends sessions using them. Merely offering a
+  resource does not activate it.
+- Keep two explicit display modes: Extend desktop creates a virtual monitor on the
+  computer using another device as its display; Share existing screen captures an
+  already-existing display. Do not call existing-display capture an extended monitor.
+- Virtual monitor configuration retains both matching a selected receiver monitor's
+  native resolution/refresh and custom resolution/target FPS. Selecting a physical
+  monitor remains optional. Hardware/OS limits remain visible.
+- Existing-screen sharing is now in scope; its default remote-input policy is awaiting
+  the user's answer. Existing virtual-display input semantics remain intact.
+- Brief network loss should trigger bounded retries for non-USB resources, provided
+  permission/trust and resource availability still hold. Never silently fall back to
+  another camera, microphone, screen or output. USB reconnect requires explicit action
+  and remains exclusive; preserve safe ownership-return behavior.
+
+Implementation gates: settle pairing lifetime and existing-screen input defaults;
+then define capability/identity/discovery messages and cross-platform adapters;
+implement device/resource discovery with direct-IP fallback; add trust and revocation;
+connect resource selection to existing media sessions; add existing-screen capture
+and bounded reconnect. Preserve current device-sharing paths while migrating.
+Security checks must cover code replay/rate limits, remembered identity changes,
+revocation and cross-device resource isolation before claiming the new pairing mode
+ready. Physical-device validation remains a separate gate.

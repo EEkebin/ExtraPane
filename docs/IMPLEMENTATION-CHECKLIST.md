@@ -482,3 +482,18 @@ are included as a preservation checkpoint. They were not newly integrated or
 verified by this checkpoint; no driver removal or system operation was performed.
 The new discovery/pairing design will proceed on a child branch. Neither branch is
 ready to merge into main; merging requires the user's later readiness decision.
+
+## Device discovery child branch
+
+- [x] Preserved and pushed complete baseline source on `feat/shared-resources` at
+  `ecf5633`; older uncommitted files are explicitly marked unverified checkpoint work.
+- [x] Created `feat/device-discovery` directly from that baseline.
+- [x] Recorded approved direction and pending questions in DECISIONS.md: optional
+  default-on pairing, remembered trust, manual sharing, virtual vs existing screens,
+  native/custom virtual monitor configuration and bounded reconnect excluding USB.
+- [ ] Resolve exact pairing-code rotation and existing-screen input defaults.
+- [ ] Implement and verify discovery, trust, UI migration and additional display mode.
+- [ ] User acceptance before child-to-parent and eventual main integration.
+
+This increment changes planning documents and Git history only. No build, device
+connection, installation or system configuration change was performed.
