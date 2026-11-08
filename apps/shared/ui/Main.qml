@@ -34,6 +34,8 @@ ApplicationWindow {
     readonly property bool multiClient: typeof receiver.connectionRuntime !== "undefined"
     property bool windowsClient: receiver.platformLabel === "Windows"
     property bool sidebarCollapsed: false
+    property real sidebarExpansion: sidebarCollapsed ? 0 : 1
+    Behavior on sidebarExpansion { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
     property bool inputPaused: false
     component ToolbarButton: ToolButton {
         id: control
@@ -94,7 +96,8 @@ ApplicationWindow {
             id: sidebar
             objectName: "navigationSidebar"
             Layout.fillHeight: true
-            Layout.preferredWidth: root.sidebarCollapsed ? 72 : 224
+            Layout.preferredWidth: 72 + 152 * root.sidebarExpansion
+            clip: true
             visible: !root.fullscreen && root.width >= 700
             color: "#0a1120"
             Rectangle { anchors.right: parent.right; height: parent.height; width: 1; color: "#1a2940" }
@@ -102,9 +105,9 @@ ApplicationWindow {
                 anchors.fill: parent; anchors.margins: 12; spacing: 8
                 Item {
                     Layout.fillWidth: true; Layout.preferredHeight: 64
-                    Image { id: brandIcon; visible: !root.sidebarCollapsed; source: "qrc:/extrapane.png"; width: 30; height: 30; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; fillMode: Image.PreserveAspectFit }
-                    Label { visible: !root.sidebarCollapsed; text: "ExtraPane"; font.pixelSize: 20; font.weight: Font.DemiBold; anchors.left: brandIcon.right; anchors.leftMargin: 6; anchors.verticalCenter: parent.verticalCenter }
-                    IconButton { objectName: "sidebarToggle"; symbol: "menu"; description: root.sidebarCollapsed ? "Expand navigation" : "Collapse navigation"; x: root.sidebarCollapsed ? (parent.width - width) / 2 : parent.width - width; anchors.verticalCenter: parent.verticalCenter; onClicked: root.sidebarCollapsed = !root.sidebarCollapsed }
+                    Image { id: brandIcon; opacity: Math.max(0, root.sidebarExpansion * 3 - 2); visible: opacity > 0; source: "qrc:/extrapane.png"; width: 30; height: 30; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; fillMode: Image.PreserveAspectFit }
+                    Label { opacity: Math.max(0, root.sidebarExpansion * 3 - 2); visible: opacity > 0; text: "ExtraPane"; font.pixelSize: 20; font.weight: Font.DemiBold; anchors.left: brandIcon.right; anchors.leftMargin: 6; anchors.verticalCenter: parent.verticalCenter }
+                    IconButton { objectName: "sidebarToggle"; symbol: "chevron"; iconRotation: 180 * root.sidebarExpansion; description: root.sidebarCollapsed ? "Expand navigation" : "Collapse navigation"; x: (parent.width - width) * (0.5 + 0.5 * root.sidebarExpansion); anchors.verticalCenter: parent.verticalCenter; onClicked: root.sidebarCollapsed = !root.sidebarCollapsed }
                 }
                 Repeater {
                     model: [{name: "Server", icon: "server"}, {name: "Client", icon: "client"}, {name: "Settings", icon: "settings"}]
@@ -120,8 +123,8 @@ ApplicationWindow {
                         onClicked: root.page = index
                         padding: 0
                         contentItem: Item {
-                            AppIcon { id: navIcon; symbol: navigation.modelData.icon; stroke: root.page === navigation.index ? "#9ac4ff" : "#8fa2bf"; width: 22; height: 22; x: root.sidebarCollapsed ? (parent.width - width) / 2 : 14; anchors.verticalCenter: parent.verticalCenter }
-                            Label { visible: !root.sidebarCollapsed; text: navigation.modelData.name; color: root.page === navigation.index ? "#eaf2ff" : "#aabbd3"; font.weight: root.page === navigation.index ? Font.DemiBold : Font.Normal; anchors.left: navIcon.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter }
+                            AppIcon { id: navIcon; symbol: navigation.modelData.icon; stroke: root.page === navigation.index ? "#9ac4ff" : "#8fa2bf"; width: 22; height: 22; x: 14 * root.sidebarExpansion + (parent.width - width) / 2 * (1 - root.sidebarExpansion); anchors.verticalCenter: parent.verticalCenter }
+                            Label { opacity: root.sidebarExpansion; visible: opacity > 0; text: navigation.modelData.name; color: root.page === navigation.index ? "#eaf2ff" : "#aabbd3"; font.weight: root.page === navigation.index ? Font.DemiBold : Font.Normal; anchors.left: navIcon.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter }
                         }
                         background: Rectangle {
                             radius: 10
@@ -131,7 +134,7 @@ ApplicationWindow {
                     }
                 }
                 Item { Layout.fillHeight: true }
-                Label { visible: !root.sidebarCollapsed; text: receiver.platformLabel.toUpperCase(); font.pixelSize: 10; font.letterSpacing: 1.5; color: "#7287a4"; leftPadding: 14; bottomPadding: 8 }
+                Label { opacity: root.sidebarExpansion; visible: opacity > 0; text: receiver.platformLabel.toUpperCase(); font.pixelSize: 10; font.letterSpacing: 1.5; color: "#7287a4"; leftPadding: 14; bottomPadding: 8 }
                 ToolButton {
                     id: aboutNavigation
                     objectName: "navigation_about"
@@ -141,8 +144,8 @@ ApplicationWindow {
                     onClicked: root.page = 3
                     padding: 0
                     contentItem: Item {
-                        AppIcon { id: aboutIcon; symbol: "about"; width: 22; height: 22; x: root.sidebarCollapsed ? (parent.width - width) / 2 : 14; anchors.verticalCenter: parent.verticalCenter; stroke: root.page === 3 ? "#9ac4ff" : "#8fa2bf" }
-                        Label { visible: !root.sidebarCollapsed; text: "About"; color: "#aabbd3"; anchors.left: aboutIcon.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter }
+                        AppIcon { id: aboutIcon; symbol: "about"; width: 22; height: 22; x: 14 * root.sidebarExpansion + (parent.width - width) / 2 * (1 - root.sidebarExpansion); anchors.verticalCenter: parent.verticalCenter; stroke: root.page === 3 ? "#9ac4ff" : "#8fa2bf" }
+                        Label { opacity: root.sidebarExpansion; visible: opacity > 0; text: "About"; color: "#aabbd3"; anchors.left: aboutIcon.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter }
                     }
                     background: Rectangle { radius: 10; color: root.page === 3 ? "#192e4b" : aboutNavigation.hovered ? "#132136" : "transparent" }
                 }
