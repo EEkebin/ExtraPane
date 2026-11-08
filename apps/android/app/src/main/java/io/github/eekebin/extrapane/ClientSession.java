@@ -33,13 +33,13 @@ final class ClientSession extends Thread {
     private final Listener listener;
     private volatile boolean cancelled;
     private volatile String admissionLost;private boolean reportedConnected;
-    private volatile Socket socket;
+    private volatile Socket socket;private final SocketCancellation socketCancellation=new SocketCancellation();
     private Decoder decoder;
     ClientSession(String address,String local,Network network,Surface surface,int width,int height,int hz,int caps,int scale,InputQueue input,Listener listener,int port,String accessCode,boolean exactMode){
         super("ExtraPane connection");this.exactMode=exactMode;this.port=port;this.accessCode=accessCode;this.address=address;this.local=local;this.network=network;this.surface=surface;
         this.width=width;this.height=height;this.hz=hz;this.requested=caps;this.scale=scale;this.input=input;this.listener=listener;
     }
-    void cancel(){cancelled=true;input.grant(0);Socket s=socket;if(s!=null)try{s.close();}catch(IOException ignored){}interrupt();}
+    void cancel(){cancelled=true;input.grant(0);socketCancellation.close(socket);interrupt();}
     private void status(String text){Log.i("ExtraPane",text);listener.status(text);}
     static InetAddress ipv4(String text)throws IOException{
         String[] pieces=text.split("\\.",-1);if(pieces.length!=4)throw new IOException("Enter a numeric server IPv4 address");

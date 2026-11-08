@@ -15,11 +15,11 @@ final class CameraSession extends Thread {
     private final Context context;private final String address,local;private final int port;private String code;
     private final Network network;private final CameraCapture.Choice choice;private final Listener listener;
     private volatile String admissionLost;
-    private volatile boolean cancelled;private volatile Socket socket;private volatile Exception captureFailure;
+    private volatile boolean cancelled;private volatile Socket socket;private final SocketCancellation socketCancellation=new SocketCancellation();private volatile Exception captureFailure;
     CameraSession(Context context,String address,int port,String local,Network network,String code,CameraCapture.Choice choice,Listener listener){
         super("ExtraPane camera connection");this.context=context.getApplicationContext();this.address=address;this.port=port;this.local=local;this.network=network;this.code=code;this.choice=choice;this.listener=listener;
     }
-    void cancel(){cancelled=true;Socket current=socket;if(current!=null)try{current.close();}catch(IOException ignored){}interrupt();}
+    void cancel(){cancelled=true;socketCancellation.close(socket);interrupt();}
     private static long id(SecureRandom random){long value;do{value=random.nextLong()&Long.MAX_VALUE;}while(value==0);return value;}
     private static byte[] read(DataInputStream in,int count)throws IOException{byte[] bytes=new byte[count];in.readFully(bytes);return bytes;}
     public void run(){String ending="Camera sharing stopped";CaptureFanout<CameraCapture.Packet>.Subscription capture=null;AccessChannel access=null;AdmissionBroker.Lease admissionLease=null;Timer watchdog=new Timer("ExtraPane camera deadlines",true);

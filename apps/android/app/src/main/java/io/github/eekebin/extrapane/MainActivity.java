@@ -26,7 +26,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private FrameLayout root,videoArea;
     private SurfaceView video;
     private LinearLayout setup,toolbar,destinationFields;
-    private ResourceCard displayCard;
+    private ResourceCard displayCard;private Button disconnectAllButton;
     private TextView destinationSummary;private boolean changingChecks,displayConnected;
     private String displayTargetKey="";
     private String displayDestination="",cachedCode="",cachedDestination="";
@@ -137,6 +137,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         displayCard.state(session!=null,false,displayConnected,displayDestination,streamWidth+" x "+streamHeight+" @ "+(displayCard.summary.getTag()==null?"":displayCard.summary.getTag()),false);
         changingChecks=false;cameraRows.refreshLayout();microphoneRows.refreshLayout();
         boolean capture=cameraRows.active()||microphoneRows.active();
+        disconnectAllButton.setVisibility(session!=null||capture?View.VISIBLE:View.GONE);
         boolean matching=(!displayConnected||targetKey().equals(displayTargetKey))&&cameraRows.matches(captureTarget())&&microphoneRows.matches(captureTarget());
         destinationFields.setVisibility((displayConnected||capture)&&singleServer.isChecked()&&matching&&marked.isEmpty()?View.GONE:View.VISIBLE);
         destinationSummary.setVisibility(displayConnected?View.VISIBLE:View.GONE);destinationSummary.setText("Display server: "+displayDestination);
@@ -165,7 +166,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         accessCode=field("Access code (optional)","");accessCode.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);accessCode.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});accessCode.setSaveEnabled(false);destinationFields.addView(accessCode);
         destinationFields.addView(text("Connect through",14,muted));routes=new RefreshSpinner(this,this::refreshRoutes);destinationFields.addView(routes);refreshRoutes();
         destinationSummary=text("",15,accent);setup.addView(destinationSummary);
-        setup.addView(redButton("Disconnect all",this::disconnectAll));status=text("Ready",14,accent);setup.addView(status);
+        disconnectAllButton=redButton("Disconnect all",this::disconnectAll);disconnectAllButton.setVisibility(View.GONE);setup.addView(disconnectAllButton);status=text("Ready",14,accent);setup.addView(status);
         displayCard=new ResourceCard("Displays","Display",()->{if(displayCard.enable.isChecked())connect();else disconnect();});
         displayMode=new Spinner(this);displayMode.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Native phone display","Custom resolution and frame rate"}));displayCard.configuration.addView(displayMode);
         customDisplay=new LinearLayout(this);customDisplay.setOrientation(LinearLayout.VERTICAL);displayCard.configuration.addView(customDisplay);

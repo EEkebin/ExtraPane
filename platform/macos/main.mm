@@ -60,6 +60,7 @@ struct Session {std::atomic_bool stopped=false;std::mutex mutex;std::shared_ptr<
 @property(nonatomic,strong) NSTextField* statistics;
 @property(nonatomic,strong) NSPopUpButton* routes;
 @property(nonatomic,strong) NSButton* connectButton;
+@property(nonatomic,strong) NSButton* disconnectAllButton;
 @property(nonatomic,strong) NSButton* serverButton;
 @property(nonatomic,strong) NSTextField* serverStatus;
 @property(nonatomic,strong) NSStatusItem* tray;
@@ -114,8 +115,8 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
     self.routes=[[NSPopUpButton alloc]initWithFrame:NSZeroRect pullsDown:NO];[self refresh:nil];
     self.connectButton=button(@"Connect",self,@selector(connect:));
     NSStackView* destinationRow=[NSStackView stackViewWithViews:@[self.address,self.port,self.accessCode,self.routes,button(@"Refresh",self,@selector(refresh:))]];destinationRow.spacing=8;
-    NSButton* disconnectButton=button(@"Disconnect all",self,@selector(disconnectAll:));disconnectButton.contentTintColor=NSColor.systemRedColor;
-    NSStackView* actionRow=[NSStackView stackViewWithViews:@[self.connectButton,disconnectButton,button(@"Settings",self,@selector(settings:)),button(@"About",self,@selector(about:))]];actionRow.spacing=8;
+    self.disconnectAllButton=button(@"Disconnect all",self,@selector(disconnectAll:));self.disconnectAllButton.contentTintColor=NSColor.systemRedColor;self.disconnectAllButton.hidden=YES;
+    NSStackView* actionRow=[NSStackView stackViewWithViews:@[self.connectButton,self.disconnectAllButton,button(@"Settings",self,@selector(settings:)),button(@"About",self,@selector(about:))]];actionRow.spacing=8;
     self.controls=[NSStackView stackViewWithViews:@[destinationRow,actionRow]];self.controls.orientation=NSUserInterfaceLayoutOrientationVertical;self.controls.alignment=NSLayoutAttributeLeading;self.controls.spacing=6;
     [root addArrangedSubview:self.controls];self.serverButton=button(@"Start Server",self,@selector(toggleServer:));self.serverStatus=label(@"Server stopped. Automatic listens on connected Ethernet/Wi-Fi addresses.");NSStackView* serverRow=[NSStackView stackViewWithViews:@[self.serverButton,self.serverStatus]];serverRow.spacing=12;[root addArrangedSubview:serverRow];[NSTimer scheduledTimerWithTimeInterval:0.5 target:self selector:@selector(refreshAccessStatus:) userInfo:nil repeats:YES];self.requireCode=[NSButton checkboxWithTitle:@"Require access code" target:nil action:nil];self.generatedCode=label(@"One use, expires in 5 minutes");NSStackView* gateRow=[NSStackView stackViewWithViews:@[self.requireCode,self.generatedCode,button(@"Generate new code",self,@selector(generateCode:))]];gateRow.spacing=12;[root addArrangedSubview:gateRow];self.status=label(@"Client ready");[root addArrangedSubview:self.status];
     self.video=[[VideoView alloc]initWithFrame:NSMakeRect(0,0,960,550)];self.video.owner=self;[root addArrangedSubview:self.video];[self.video.widthAnchor constraintEqualToAnchor:root.widthAnchor constant:-24].active=YES;[self.video.heightAnchor constraintGreaterThanOrEqualToConstant:240].active=YES;
@@ -146,6 +147,7 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 - (void)resetInput{heldKeys.clear();heldButtons.clear();if(session)session->input.reset();}
 - (void)finishQuit{[NSApp replyToApplicationShouldTerminate:YES];}
 - (void)updateActive {
+    self.disconnectAllButton.hidden=!(session!=nullptr||self.resources.active);
     const BOOL active=session!=nullptr||self.resources.active||(host&&host->running());
     if(active&&!self.tray){
         self.tray=[[NSStatusBar systemStatusBar]statusItemWithLength:NSVariableStatusItemLength];self.tray.button.title=@"ExtraPane";

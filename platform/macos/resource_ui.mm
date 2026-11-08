@@ -53,6 +53,9 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
 @property(nonatomic,strong) NSStackView* cameras;
 @property(nonatomic,strong) NSStackView* microphones;
 @property(nonatomic,strong) NSButton* single;
+@property(nonatomic,strong) NSButton* disconnectAll;
+@property(nonatomic,strong) NSButton* disconnectCameras;
+@property(nonatomic,strong) NSButton* disconnectMicrophones;
 @property(nonatomic,strong) NSTextField* notice;
 @property(nonatomic,strong) NSMutableArray<EPResourceRow*>* rows;
 @property(nonatomic,copy) void (^changed)(void);
@@ -148,12 +151,15 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
         targetProvider=std::move(target);self.changed=changed;self.rows=[NSMutableArray new];
         auto* stack=[EPResourceStack stackViewWithViews:@[]];stack.orientation=NSUserInterfaceLayoutOrientationVertical;stack.alignment=NSLayoutAttributeLeading;stack.spacing=10;stack.edgeInsets=NSEdgeInsetsMake(8,8,8,20);
         self.single=[NSButton checkboxWithTitle:@"Use server address above for all resources" target:self action:@selector(layoutChanged:)];self.single.state=NSControlStateValueOn;
-        [stack addArrangedSubview:[NSStackView stackViewWithViews:@[self.single,action(@"Disconnect all capture",self,@selector(stopAll),true)]]];
+        self.disconnectAll=action(@"Disconnect all capture",self,@selector(stopAll),true);self.disconnectAll.hidden=YES;
+        self.disconnectCameras=action(@"Disconnect cameras",self,@selector(stopCameras:),true);self.disconnectCameras.hidden=YES;
+        self.disconnectMicrophones=action(@"Disconnect microphones",self,@selector(stopMicrophones:),true);self.disconnectMicrophones.hidden=YES;
+        [stack addArrangedSubview:[NSStackView stackViewWithViews:@[self.single,self.disconnectAll]]];
         self.notice=[NSTextField wrappingLabelWithString:@""];[stack addArrangedSubview:self.notice];
         self.cameras=[NSStackView stackViewWithViews:@[]];self.cameras.orientation=NSUserInterfaceLayoutOrientationVertical;self.cameras.alignment=NSLayoutAttributeLeading;
         self.microphones=[NSStackView stackViewWithViews:@[]];self.microphones.orientation=NSUserInterfaceLayoutOrientationVertical;self.microphones.alignment=NSLayoutAttributeLeading;
-        [stack addArrangedSubview:[NSStackView stackViewWithViews:@[action(@"Cameras ▾",self,@selector(toggleCameras:)),action(@"+ Add camera",self,@selector(addCamera:)),action(@"Disconnect cameras",self,@selector(stopCameras:),true)]]];[stack addArrangedSubview:self.cameras];
-        [stack addArrangedSubview:[NSStackView stackViewWithViews:@[action(@"Microphones ▾",self,@selector(toggleMicrophones:)),action(@"+ Add microphone",self,@selector(addMicrophone:)),action(@"Disconnect microphones",self,@selector(stopMicrophones:),true)]]];[stack addArrangedSubview:self.microphones];
+        [stack addArrangedSubview:[NSStackView stackViewWithViews:@[action(@"Cameras ▾",self,@selector(toggleCameras:)),action(@"+ Add camera",self,@selector(addCamera:)),self.disconnectCameras]]];[stack addArrangedSubview:self.cameras];
+        [stack addArrangedSubview:[NSStackView stackViewWithViews:@[action(@"Microphones ▾",self,@selector(toggleMicrophones:)),action(@"+ Add microphone",self,@selector(addMicrophone:)),self.disconnectMicrophones]]];[stack addArrangedSubview:self.microphones];
         [stack addArrangedSubview:[NSTextField wrappingLabelWithString:@"USB sharing and virtual camera/microphone receiving are not available on macOS yet. Each capture uses the selected network above."]];
         auto* scroll=[NSScrollView new];scroll.hasVerticalScroller=YES;scroll.drawsBackground=NO;scroll.documentView=stack;stack.translatesAutoresizingMaskIntoConstraints=NO;[stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active=YES;[scroll.heightAnchor constraintGreaterThanOrEqualToConstant:140].active=YES;auto* preferredHeight=[scroll.heightAnchor constraintEqualToConstant:210];preferredHeight.priority=NSLayoutPriorityDefaultHigh;preferredHeight.active=YES;self.view=scroll;
         [self addCamera:nil];[self addMicrophone:nil];
@@ -168,6 +174,6 @@ static void invalid(NSView* view){view.wantsLayer=YES;view.layer.borderWidth=2;v
 - (void)stopAll{for(EPResourceRow* row in self.rows)[row stop:nil];}
 - (BOOL)active{for(EPResourceRow* row in self.rows)if(row.pending||row->session)return YES;return NO;}
 - (void)layoutChanged:(id)sender{(void)sender;for(EPResourceRow* row in self.rows)[row render];}
-- (void)update{if(self.changed)self.changed();}
+- (void)update{BOOL cameraActive=NO,microphoneActive=NO;for(EPResourceRow* row in self.rows)if(row.pending||row->session){if(row.camera)cameraActive=YES;else microphoneActive=YES;}self.disconnectCameras.hidden=!cameraActive;self.disconnectMicrophones.hidden=!microphoneActive;self.disconnectAll.hidden=!(cameraActive||microphoneActive);if(self.changed)self.changed();}
 - (void)notify:(NSString*)message{self.notice.stringValue=message;const NSUInteger generation=++self.noticeGeneration;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(self.noticeGeneration==generation)self.notice.stringValue=@"";});}
 @end

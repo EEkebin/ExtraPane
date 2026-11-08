@@ -17,12 +17,12 @@ final class MicrophoneSession extends Thread {
     private volatile String admissionLost;
     private final Object muteLock=new Object();private final FanoutPackets.MicrophoneMute muteState=new FanoutPackets.MicrophoneMute();
     private volatile CaptureFanout<MicrophoneCapture.Packet>.Subscription active;
-    private volatile boolean cancelled;private volatile Socket socket;private volatile Exception captureFailure;
+    private volatile boolean cancelled;private volatile Socket socket;private final SocketCancellation socketCancellation=new SocketCancellation();private volatile Exception captureFailure;
     MicrophoneSession(Context context,String address,int port,String local,Network network,String code,MicrophoneCapture.Choice choice,Listener listener){
         super("ExtraPane microphone connection");this.context=context.getApplicationContext();this.address=address;this.port=port;this.local=local;this.network=network;this.code=code;this.choice=choice;this.listener=listener;
     }
     void mute(boolean value){synchronized(muteLock){if(muteState.set(value,System.nanoTime())){var current=active;if(current!=null)current.clearQueue();}}}
-    void cancel(){cancelled=true;Socket current=socket;if(current!=null)try{current.close();}catch(IOException ignored){}interrupt();}
+    void cancel(){cancelled=true;socketCancellation.close(socket);interrupt();}
     private static long id(SecureRandom random){long value;do{value=random.nextLong()&Long.MAX_VALUE;}while(value==0);return value;}
     private static byte[] read(DataInputStream in,int count)throws IOException{byte[] bytes=new byte[count];in.readFully(bytes);return bytes;}
     public void run(){String ending="Microphone sharing stopped";CaptureFanout<MicrophoneCapture.Packet>.Subscription capture=null;AccessChannel access=null;AdmissionBroker.Lease admissionLease=null;Timer watchdog=new Timer("ExtraPane microphone deadlines",true);

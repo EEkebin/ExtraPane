@@ -18,6 +18,7 @@ final class CaptureRows {
     private final Activity activity;private final boolean camera;private final LinearLayout group;private final Supplier<Target> sharedTarget;private final BooleanSupplier shared;private final Permissions permissions;private final Runnable changed,invalidShared;private final BiConsumer<Boolean,String> failure;
     private final LinkedHashMap<String,Row> rows=new LinkedHashMap<>();private final Handler main=new Handler(Looper.getMainLooper());
     private final Map<View,android.graphics.drawable.Drawable> markBackgrounds=new HashMap<>();private final Map<View,Runnable> markTimers=new HashMap<>();
+    private final Button disconnectAll;
     private CaptureShareService.LocalBinder binder;private boolean bound,visible;private final Class<?> service;
     private final ServiceConnection connection=new ServiceConnection(){
         public void onServiceConnected(ComponentName name,IBinder value){binder=(CaptureShareService.LocalBinder)value;binder.listen(CaptureRows.this::snapshots);}
@@ -25,7 +26,7 @@ final class CaptureRows {
     };
     CaptureRows(Activity activity,boolean camera,LinearLayout group,Supplier<Target> target,BooleanSupplier shared,Permissions permissions,Runnable changed,Runnable invalidShared,BiConsumer<Boolean,String> failure){
         this.activity=activity;this.camera=camera;this.group=group;sharedTarget=target;this.shared=shared;this.permissions=permissions;this.changed=changed;this.invalidShared=invalidShared;this.failure=failure;service=camera?CameraShareService.class:MicrophoneShareService.class;
-        LinearLayout actions=new LinearLayout(activity);actions.addView(button("+ Add "+kind().toLowerCase(Locale.ROOT),()->add(UUID.randomUUID().toString()),false));actions.addView(button("Disconnect all",this::stopAll,true));group.addView(actions);
+        LinearLayout actions=new LinearLayout(activity);actions.addView(button("+ Add "+kind().toLowerCase(Locale.ROOT),()->add(UUID.randomUUID().toString()),false));disconnectAll=button("Disconnect all",this::stopAll,true);disconnectAll.setVisibility(View.GONE);actions.addView(disconnectAll);group.addView(actions);
         add(UUID.randomUUID().toString());
     }
     private String kind(){return camera?"Camera":"Microphone";}
@@ -74,8 +75,8 @@ final class CaptureRows {
             // Freeze the selected source, destination and network before any permission prompt.
             String attempt=attempts.begin();Intent request=new Intent(activity,service).putExtra("attempt",attempt).putExtra("row",id).putExtra("address",candidate.address()).putExtra("port",candidate.port()).putExtra("local",candidate.local()).putExtra("network",candidate.network()).putExtra("code",candidate.code());
             if(camera){CameraCapture.Choice c=cameras.get(index);selectedSource=c.id();detail=c.toString();request.putExtra("camera",c.id()).putExtra("cameraLabel",c.label()).putExtra("width",c.width()).putExtra("height",c.height()).putExtra("fps",c.fps());}else{MicrophoneCapture.Choice m=microphones.get(index);selectedSource=Integer.toString(m.id());detail=m.label()+" - 48 kHz mono";request.putExtra("microphone",m.id()).putExtra("microphoneLabel",m.label());}
-            target=new Target(candidate.address(),candidate.port(),candidate.local(),candidate.network(),"");pending=true;render();
-            permissions.request(camera,()->{if(!attempts.current(attempt)||!pending||!visible){request.removeExtra("code");if(attempts.current(attempt)){pending=false;render();}return;}try{activity.startForegroundService(request);code.setText("");active=true;pending=false;status.setText("Connecting...");bind();}catch(RuntimeException error){active=false;pending=false;status.setText("Cannot start sharing: "+error.getMessage());request.removeExtra("code");}render();changed.run();},()->{request.removeExtra("code");if(!attempts.current(attempt))return;pending=false;status.setText("Capture permission was not granted");render();changed.run();});
+            target=new Target(candidate.address(),candidate.port(),candidate.local(),candidate.network(),"");pending=true;render();changed.run();
+            permissions.request(camera,()->{if(!attempts.current(attempt)||!pending||!visible){request.removeExtra("code");if(attempts.current(attempt)){pending=false;render();changed.run();}return;}try{activity.startForegroundService(request);code.setText("");active=true;pending=false;status.setText("Connecting...");bind();}catch(RuntimeException error){active=false;pending=false;status.setText("Cannot start sharing: "+error.getMessage());request.removeExtra("code");}render();changed.run();},()->{request.removeExtra("code");if(!attempts.current(attempt))return;pending=false;status.setText("Capture permission was not granted");render();changed.run();});
         }
         @SuppressWarnings("deprecation") void snapshot(CaptureShareService.Snapshot value){
             if(!attempts.accept(value.configuration().getStringExtra("attempt"),value.active()))return;
@@ -90,7 +91,7 @@ final class CaptureRows {
     void resume(){visible=true;bind();}
     void pause(){visible=false;for(Row row:rows.values()){if(row.pending)row.attempts.cancelPending();row.pending=false;}if(binder!=null){binder.listen(null);binder=null;}if(bound){activity.unbindService(connection);bound=false;}}
     void stopAll(){for(Row row:rows.values())row.stop();}
-    void refreshLayout(){for(Row row:rows.values())row.render();}
+    void refreshLayout(){for(Row row:rows.values())row.render();disconnectAll.setVisibility(active()?View.VISIBLE:View.GONE);}
     boolean active(){for(Row row:rows.values())if(row.active||row.pending)return true;return false;}
     boolean matches(Target value){for(Row row:rows.values())if((row.active||row.pending)&&(row.target==null||!row.target.key().equals(value.key())))return false;return true;}
 }

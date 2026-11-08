@@ -25,7 +25,7 @@ final class AdmissionBroker {
     static void testTransport(java.util.function.Supplier<Transport> factory){synchronized(brokers){if(!brokers.isEmpty())throw new IllegalStateException("Active admission brokers");transports=factory;}}
     private static final class NativeTransport implements Transport {
         static { System.loadLibrary("extrapane"); }
-        private volatile boolean cancelled;private volatile Socket socket;
+        private volatile boolean cancelled;private volatile Socket socket;private final SocketCancellation socketCancellation=new SocketCancellation();
         private AccessChannel access;private DataInputStream in;private OutputStream out;
         private final Timer deadline=new Timer("ExtraPane admission deadline",true);
         public void open(String address,int port,String local,Network network,String code)throws Exception {
@@ -43,7 +43,7 @@ final class AdmissionBroker {
             try{if(cancelled)throw new IOException("Server admission ended");out.write(request(operation,kind));in.readFully(reply);return credential(reply,operation,kind,true);}
             finally{Arrays.fill(reply,(byte)0);timeout.cancel();deadline.purge();}
         }
-        public void cancel(){cancelled=true;Socket current=socket;if(current!=null)try{current.close();}catch(IOException ignored){}}
+        public void cancel(){cancelled=true;socketCancellation.close(socket);}
         public void close(){cancel();deadline.cancel();if(access!=null){access.close();access=null;}}
     }
 

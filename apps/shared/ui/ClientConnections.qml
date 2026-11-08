@@ -122,6 +122,7 @@ ScrollView {
             color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true
         }
         RowLayout {
+            visible: panel.runtime.active
             Button { text: "Disconnect all"; background: Rectangle { implicitHeight: 44; radius: 10; color: !parent.enabled ? "#27364c" : parent.down ? "#8f1d2a" : parent.hovered ? "#ce3949" : "#b32635"; border.width: parent.activeFocus ? 2 : 0; border.color: "#ff9da8" } Material.foreground: "white"; enabled: panel.runtime.active; onClicked: panel.runtime.disconnectAll() }
         }
         Repeater {
@@ -205,6 +206,7 @@ ScrollView {
                         IconButton {
                             objectName: "connectionGroupDisconnect_" + resourceGroup.modelData.kind
                             symbol: "disconnect"; destructive: true; description: "Disconnect all " + resourceGroup.modelData.title.toLowerCase()
+                            visible: enabled
                             enabled: resourceGroup.hasConnections()
                             onClicked: resourceGroup.disconnectGroup()
                         }
