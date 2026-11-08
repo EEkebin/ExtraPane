@@ -219,14 +219,15 @@ int modify(bool install){
 }
 }
 int wmain(int argc,wchar_t** argv){
+    const bool quiet=argc==3&&std::wstring_view(argv[2])==L"--quiet";
     try{
-        check(argc==2,"Use --status, --check-package, --install or --remove");const std::wstring mode=argv[1];
+        check(argc==2||quiet,"Use --status, --check-package, --install or --remove [--quiet]");const std::wstring mode=argv[1];
         if(mode==L"--status")return status();
         if(mode==L"--check-package"){const auto bytes=payload();std::wcout<<L"valid-x64-camera-payload\nsha256="<<sha256(bytes)<<L'\n';return 0;}
         if(mode==L"--install")return modify(true);if(mode==L"--remove")return modify(false);
         throw std::runtime_error("Unknown camera setup operation");
     }catch(const std::exception& error){std::cerr<<"Camera setup: "<<error.what()<<'\n';
-        if(argc==2&&(std::wstring_view(argv[1])==L"--install"||std::wstring_view(argv[1])==L"--remove"))
+        if(!quiet&&argc==2&&(std::wstring_view(argv[1])==L"--install"||std::wstring_view(argv[1])==L"--remove"))
             MessageBoxA(nullptr,error.what(),"ExtraPane camera setup failed",MB_OK|MB_ICONERROR);
         return 1;}
 }

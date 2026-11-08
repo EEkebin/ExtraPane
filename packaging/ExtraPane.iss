@@ -414,13 +414,13 @@ begin
       DirExists(ExpandConstant('{app}\Components\Camera'))) then begin
     if not FileExists(ExpandConstant('{app}\ExtraPane.CameraSetup.exe')) then
       StopUninstall('Camera setup helper is missing. The shared camera component was not removed.');
-    if not RunComponent(ExpandConstant('{app}\ExtraPane.CameraSetup.exe'), '--remove', '', CameraCode) then
+    if not RunComponent(ExpandConstant('{app}\ExtraPane.CameraSetup.exe'), '--remove --quiet', '', CameraCode) then
       StopUninstall('Camera removal could not start or administrator permission was canceled.');
     if (CameraCode <> 0) and (CameraCode <> 3010) then
       StopUninstall('Camera component removal failed (exit ' + IntToStr(CameraCode) + '). ' + ComponentError);
     if CameraCode = 3010 then ComponentRestart := True;
     if CameraCode = 3010 then
-      SuppressibleMsgBox('The camera registration was removed. Restart Windows to finish deleting camera files currently loaded by Windows.', mbInformation, MB_OK, IDOK);
+      Log('Camera registration removed; loaded files will be deleted after the final requested restart.');
   end;
   { Run after the app mutex check, before files are removed. Cancel never resets data. }
   if (CurUninstallStep = usUninstall) and RemoveUserData then begin

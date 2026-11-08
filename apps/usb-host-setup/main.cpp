@@ -16,6 +16,7 @@
 #include <cstring>
 #include "usb_host_payload.hpp"
 #include <setupapi.h>
+#include <cfgmgr32.h>
 #include <initguid.h>
 #include <devpkey.h>
 #include <wintrust.h>
@@ -276,7 +277,7 @@ fs::path removable_inf(HKEY ownership){
     check(sha256(read_file(store))==setup::files[4].digest&&sha256(read_file(store.parent_path()/L"VBoxUSB.cat"))==setup::files[5].digest,"Installed USB package identity differs; preserved");
     signed_file(store.parent_path()/L"VBoxUSB.cat");return path;
 }
-void remove_owned_phantom_stubs(const fs::path& inf){
+void remove_owned_phantom_stubs(const fs::path& inf,SC_HANDLE monitor,SC_HANDLE usb){
     const auto devices=SetupDiGetClassDevsW(nullptr,L"USB",nullptr,DIGCF_ALLCLASSES);
     check(devices!=INVALID_HANDLE_VALUE,"Cannot inspect USB package device references");
     struct Cleanup { HDEVINFO value; ~Cleanup(){SetupDiDestroyDeviceInfoList(value);} } cleanup{devices};
@@ -291,11 +292,20 @@ void remove_owned_phantom_stubs(const fs::path& inf){
         if(!SetupDiGetDeviceInstanceIdW(devices,&device,id,1024,nullptr))return false;
         DEVPROPTYPE type=0;DEVPROP_BOOLEAN present=DEVPROP_TRUE;DWORD size=0;
         const bool known=SetupDiGetDevicePropertyW(devices,&device,&DEVPKEY_Device_IsPresent,&type,reinterpret_cast<PBYTE>(&present),sizeof(present),&size,0)&&type==DEVPROP_TYPE_BOOLEAN&&size==sizeof(present);
-        return extrapane::usb_uninstall::removable_stub(
-            _wcsnicmp(id,L"USB\\VID_80EE&PID_CAFE\\",22)==0,
-            _wcsicmp(property(device,DEVPKEY_Device_DriverInfPath).c_str(),inf.filename().c_str())==0,
-            _wcsicmp(property(device,DEVPKEY_Device_Service).c_str(),L"VBoxUSB")==0,
-            known,present!=DEVPROP_FALSE);
+        const bool stub=_wcsnicmp(id,L"USB\\VID_80EE&PID_CAFE\\",22)==0;
+        const bool exact_inf=_wcsicmp(property(device,DEVPKEY_Device_DriverInfPath).c_str(),inf.filename().c_str())==0;
+        const bool exact_service=_wcsicmp(property(device,DEVPKEY_Device_Service).c_str(),L"VBoxUSB")==0;
+        if(extrapane::usb_uninstall::removable_stub(stub,exact_inf,exact_service,known,present!=DEVPROP_FALSE))return true;
+        // A failed capture can leave its exact stub present with Code 21 even
+        // after returning the source and stopping both drivers. Retry only that
+        // pending removal, never a live capture or a node with storage children.
+        ULONG status=0,problem=0;DEVINST child=0;
+        const bool pending=CM_Get_DevNode_Status(&status,&problem,device.DevInst,0)==CR_SUCCESS&&
+            (status&DN_HAS_PROBLEM)&&problem==CM_PROB_WILL_BE_REMOVED;
+        const bool no_children=CM_Get_Child(&child,device.DevInst,0)==CR_NO_SUCH_DEVNODE;
+        auto stopped=[](SC_HANDLE driver){SERVICE_STATUS current{};return !driver||(QueryServiceStatus(driver,&current)&&current.dwCurrentState==SERVICE_STOPPED);};
+        return extrapane::usb_uninstall::removable_pending_stub(stub,exact_inf,exact_service,
+            known&&present!=DEVPROP_FALSE,pending,no_children,stopped(monitor)&&stopped(usb));
     };
     for(DWORD i=0;;++i){
         SP_DEVINFO_DATA device{sizeof(device)};
@@ -304,8 +314,8 @@ void remove_owned_phantom_stubs(const fs::path& inf){
         SP_REMOVEDEVICE_PARAMS parameters{};parameters.ClassInstallHeader.cbSize=sizeof(SP_CLASSINSTALL_HEADER);parameters.ClassInstallHeader.InstallFunction=DIF_REMOVE;parameters.Scope=DI_REMOVEDEVICE_GLOBAL;
         check(SetupDiSetClassInstallParamsW(devices,&device,&parameters.ClassInstallHeader,sizeof(parameters)),"Cannot prepare absent USB stub cleanup");
         check(eligible(device),"USB stub changed before cleanup; preserved");
-        check(SetupDiCallClassInstaller(DIF_REMOVE,devices,&device),"Cannot remove absent owned USB stub");
-        std::cout<<"Removed disconnected stub referencing the exact owned USB driver package.\n";
+        check(SetupDiCallClassInstaller(DIF_REMOVE,devices,&device),"Cannot finish removing the exact owned USB capture stub; Windows may require a restart");
+        std::cout<<"Removed disconnected or removal-pending stub referencing the exact owned USB driver package.\n";
     }
 }
 void remove_owned_driver(const fs::path& root,HKEY ownership,bool inspect=false){
@@ -352,7 +362,7 @@ void remove_owned_driver(const fs::path& root,HKEY ownership,bool inspect=false)
         check(DeleteService(writable.value),"Remove owned USB monitor failed");
     }
     if(!inf.empty()){
-        remove_owned_phantom_stubs(inf);
+        remove_owned_phantom_stubs(inf,service.value,usb.value);
         check(SetupUninstallOEMInfW(inf.filename().c_str(),0,nullptr),"USB driver package still has active or unrecognized device references; preserved");
     }
 }

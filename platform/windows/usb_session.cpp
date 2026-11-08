@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <exception>
 #include <mutex>
 #include <thread>
 #include <sstream>
@@ -166,17 +167,23 @@ Cancellation cancellation(remote,session_stop);expect(remote,0);remote.write(con
             catch(const std::exception& error){report("USB_PORT_CLEANUP "+clean(error.what()));}
         }
     }};
+    // Written only by the worker and read after join: retain the import error
+    // instead of replacing it with a secondary TLS cancellation/cleanup error.
+    std::exception_ptr import_failure;
     std::jthread importer([&](std::stop_token token){try{
         Com worker_com;const auto port=runner->attach(local_port,offer.bus,serial);owned_port=port;
         report("USB_WAITING Import port allocated; waiting for the owned storage disk.");
-        bool ready=false,not_ready_reported=false;std::string last_enumeration_error;
+        bool ready=false;std::string last_enumeration_error;
         auto next_probe=Clock::now();const auto enumeration_deadline=Clock::now()+std::chrono::seconds(30);
         while(!token.stop_requested()&&!session_stop.load()){
             if(!ready&&Clock::now()>=next_probe){
                 try{const auto disk=owned_disk(offer,serial);eject_check(runner->verify_owned(port,local_port,offer.bus,serial),TunnelControl::return_identity,"Imported port identity changed during enumeration");ready=true;notice=TunnelControl::storage_ready;report("USB_STARTED receiving");}
                 catch(const std::exception& error){const std::string detail=clean(error.what());if(detail!=last_enumeration_error){last_enumeration_error=detail;report("USB_ENUMERATING "+detail);}}
                 next_probe=Clock::now()+std::chrono::milliseconds(500);
-                if(!ready&&!not_ready_reported&&Clock::now()>=enumeration_deadline){not_ready_reported=true;notice=TunnelControl::storage_not_ready;report("USB_NOT_READY "+last_enumeration_error);}
+                if(!ready&&Clock::now()>=enumeration_deadline){
+                    report("USB_NOT_READY "+last_enumeration_error);
+                    throw std::runtime_error("USB storage did not enumerate within 30 seconds: "+last_enumeration_error);
+                }
             }
             if(eject.exchange(false)){
                 in_eject=true;
@@ -186,10 +193,11 @@ Cancellation cancellation(remote,session_stop);expect(remote,0);remote.write(con
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-    }catch(const std::exception& error){report("USB_IMPORT_FAILED "+clean(error.what()));session_stop=true;}});
+    }catch(const std::exception& error){import_failure=std::current_exception();report("USB_IMPORT_FAILED "+clean(error.what()));session_stop=true;}});
+    try{
     std::unique_ptr<net::TcpStream> local;const auto deadline=Clock::now()+std::chrono::seconds(20);while(!session_stop.load()&&Clock::now()<deadline){try{local=std::make_unique<net::TcpStream>(local_listener.accept());break;}catch(const std::exception& e){if(std::string(e.what())!="Accept timed out")throw;}}
     check(local!=nullptr,"USB driver did not connect to its private tunnel");
-    try{pump_tunnel(remote,*local,true,"",session_stop,true,&eject,&notice,{},[&](bool local_failure){
+    pump_tunnel(remote,*local,true,"",session_stop,true,&eject,&notice,{},[&](bool local_failure){
         // Device eject may close/reset its loopback socket before the PnP call
         // returns. Only a completed successful eject authorizes the receipt.
         const auto limit=Clock::now()+std::chrono::seconds(2);
@@ -197,8 +205,8 @@ Cancellation cancellation(remote,session_stop);expect(remote,0);remote.write(con
         return clean_eject.load();});const auto wait=Clock::now()+std::chrono::seconds(5);while(in_eject.load()&&!clean_eject.load()&&Clock::now()<wait)std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if(clean_eject.load()){remote.write(receipt(offer),Clock::now()+std::chrono::seconds(5));try{runner->detach_ejected(owned_port,local_port,offer.bus,serial);owned_port=0;}catch(const std::exception& e){report("USB_PORT_CLEANUP "+std::string(e.what()));}}
         else report("USB_DISCONNECTED no clean eject receipt; source will revoke export and attempt local return");
-    }catch(...){session_stop=true;throw;}
-    importer.request_stop();
+    }catch(...){session_stop=true;importer.request_stop();importer.join();if(import_failure)std::rethrow_exception(import_failure);throw;}
+    importer.request_stop();importer.join();if(import_failure)std::rethrow_exception(import_failure);
 }
 void receive_storage(const net::Options& options,std::atomic_bool& stop,std::atomic_bool& eject,const Report& report){
     Com com;check(IsUserAnAdmin(),"USB receiver requires explicit elevation");auto runner=native_import_runner();auto readiness=runner->ready();check(readiness.available,readiness.reason.c_str());net::TcpListener listener(options);report("LISTENING "+listener.endpoints());

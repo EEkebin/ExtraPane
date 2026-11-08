@@ -24,7 +24,7 @@ add_executable(extrapane_usb_host_setup apps/usb-host-setup/main.cpp "${usb_host
 target_include_directories(extrapane_usb_host_setup PRIVATE "${usb_host_generated}")
 target_compile_features(extrapane_usb_host_setup PRIVATE cxx_std_20)
 target_compile_definitions(extrapane_usb_host_setup PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(extrapane_usb_host_setup PRIVATE bcrypt advapi32 shell32 ole32 wintrust crypt32 setupapi)
+target_link_libraries(extrapane_usb_host_setup PRIVATE bcrypt advapi32 shell32 ole32 wintrust crypt32 setupapi cfgmgr32)
 set_target_properties(extrapane_usb_host_setup PROPERTIES OUTPUT_NAME "ExtraPane.UsbHostSetup")
 if(EXTRAPANE_RESOURCE_SECURITY_TESTS)
   add_executable(extrapane-usb-monitor-policy-check tests/usb_monitor_policy_check.cpp)

@@ -26,6 +26,10 @@ for(unsigned bits=0;bits<32;++bits){
     if(eligible!=(bits==15))throw std::runtime_error("only absent exact owned USB stubs may be removed");
 }
 if(independent_service(L"VBoxUSB",true)||!independent_service(L"VBoxUSB",false))throw std::runtime_error("exact owned USB device driver must not count as foreign monitor consumer");
+for(unsigned bits=0;bits<128;++bits){
+    if(removable_pending_stub(bits&1,bits&2,bits&4,bits&8,bits&16,bits&32,bits&64)!=(bits==127))
+        throw std::runtime_error("pending capture removal requires exact ownership, Code 21, no children and stopped backend");
+}
 for(auto name:{L"usbipd",L"VBoxSup",L"VBoxDrv"})if(!independent_service(name,true)||!independent_service(name,false))throw std::runtime_error("independent services always block owned monitor deletion");
 for(unsigned bits=0;bits<32;++bits){
     const bool exists=bits&1,created=bits&2,managed=bits&4,hash=bits&8,shared=bits&16;

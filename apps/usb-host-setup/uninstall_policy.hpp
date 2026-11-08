@@ -7,6 +7,10 @@ constexpr bool empty_removal_ready(bool empty_record,bool empty_current_payload,
 constexpr bool removable_stub(bool stub_id,bool exact_owned_inf,bool usb_service,bool presence_known,bool present) {
     return stub_id&&exact_owned_inf&&usb_service&&presence_known&&!present;
 }
+constexpr bool removable_pending_stub(bool stub_id,bool exact_owned_inf,bool usb_service,
+                                     bool present,bool removal_pending,bool no_children,bool backend_stopped) {
+    return stub_id&&exact_owned_inf&&usb_service&&present&&removal_pending&&no_children&&backend_stopped;
+}
 constexpr bool independent_service(std::wstring_view name,bool exact_owned_usb_driver) {
     return name != L"VBoxUSB" || !exact_owned_usb_driver;
 }
