@@ -40,13 +40,14 @@ jobs:
         run: |
           mkdir -p out/android-host-checks
           source=apps/android/app/src/main/java/io/github/eekebin/extrapane
-          javac -d out/android-host-checks apps/android/tests/stubs/*.java "$source/AdmissionBroker.java" "$source/SocketCancellation.java" "$source/ConnectionValidation.java" "$source/CaptureRegistry.java" "$source/CaptureAttempt.java" "$source/DeviceCaptureLease.java" "$source/CaptureFanout.java" "$source/FanoutPackets.java" "$source/CameraPackets.java" "$source/SpeakerProtocol.java" "$source/SpeakerJitter.java" apps/android/tests/SpeakerCheck.java apps/android/tests/AdmissionBrokerCheck.java apps/android/tests/ConnectionValidationCheck.java apps/android/tests/CaptureRegistryCheck.java apps/android/tests/CaptureFanoutCheck.java apps/android/tests/SocketCancellationCheck.java
+          javac -d out/android-host-checks apps/android/tests/stubs/*.java "$source/AdmissionBroker.java" "$source/SocketCancellation.java" "$source/ConnectionValidation.java" "$source/CaptureRegistry.java" "$source/CaptureAttempt.java" "$source/DeviceCaptureLease.java" "$source/CaptureFanout.java" "$source/FanoutPackets.java" "$source/CameraPackets.java" "$source/SpeakerProtocol.java" "$source/SpeakerJitter.java" "$source/AudioRouteCatalog.java" apps/android/tests/AudioRouteCatalogCheck.java apps/android/tests/SpeakerCheck.java apps/android/tests/AdmissionBrokerCheck.java apps/android/tests/ConnectionValidationCheck.java apps/android/tests/CaptureRegistryCheck.java apps/android/tests/CaptureFanoutCheck.java apps/android/tests/SocketCancellationCheck.java
           java -cp out/android-host-checks io.github.eekebin.extrapane.AdmissionBrokerCheck
           java -cp out/android-host-checks io.github.eekebin.extrapane.ConnectionValidationCheck
           java -cp out/android-host-checks io.github.eekebin.extrapane.CaptureRegistryCheck
           java -cp out/android-host-checks io.github.eekebin.extrapane.CaptureFanoutCheck
           java -cp out/android-host-checks io.github.eekebin.extrapane.SocketCancellationCheck
           java -cp out/android-host-checks io.github.eekebin.extrapane.SpeakerCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.AudioRouteCatalogCheck
       - name: Build and lint
         working-directory: apps/android
         run: bash gradlew assembleDebug assembleDebugAndroidTest lintDebug assembleRelease --no-daemon --console=plain

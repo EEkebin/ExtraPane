@@ -12,7 +12,7 @@ struct PeerControllerEventCheck {
         auto require=[](bool good,const char* why){if(!good)throw std::runtime_error(why);};
         DeviceId owner{};owner[0]=7;
         Service::Event event{};event.kind=Service::EventKind::granted;event.context.connection=41;event.context.grant=8;event.context.kind=Kind::camera;event.resource=rpc::Open{owner,"camera-a"};
-        controller.applyEvent(event);require(controller.connections_.size()==1,"Grant not shown");
+        controller.applyEvent(event);require(controller.connections_.size()==1,"Grant not shown");require(controller.connections().first().toMap().value("kindId").toInt()==static_cast<int>(Kind::camera),"Granted camera lost resource grouping kind");
         event.kind=Service::EventKind::reconnecting;controller.applyEvent(event);
         require(controller.connections_.first().toMap().value("phase")=="reconnecting","Retry row not retained");
         event.kind=Service::EventKind::stopped;controller.applyEvent(event);require(controller.connections_.size()==1,"Old teardown removed retry row");
@@ -22,7 +22,8 @@ struct PeerControllerEventCheck {
         event.kind=Service::EventKind::granted;event.context.grant=11;event.replaces_grant=9;controller.applyEvent(event);event.replaces_grant=0;require(controller.connections_.size()==2,"Replay removed multiple same-resource sessions");
         event.kind=Service::EventKind::stopped;event.detail="Reconnect ended";event.context.grant=10;controller.applyEvent(event);require(controller.connections_.size()==1,"Replay rejection left retry row");
         event.kind=Service::EventKind::reconnecting;event.context.grant=11;event.replaces_grant=9;controller.applyEvent(event);event.replaces_grant=0;controller.stopResource("41","11");require(controller.connections_.empty(),"Cancelled retry row remains");
-        controller.pending_.insert("12",{{"connection","41"},{"resource","camera-a"}});
+        controller.pending_.insert("12",{{"connection","41"},{"resource","camera-a"},{"label","Saved camera"},{"kind","Camera"},{"kindId",static_cast<int>(Kind::camera)}});
+        require(controller.devices_.empty()&&controller.connections().first().toMap().value("kindId").toInt()==static_cast<int>(Kind::camera)&&controller.connections().first().toMap().value("label")=="Saved camera","Pending resource grouping snapshot lost without catalog");
         require(controller.connections().size()==1&&controller.connections().first().toMap().value("request")=="12","Pending resource absent from UI");
         controller.cancelResource("99","12");require(controller.pending_.contains("12"),"Wrong connection cancelled pending row");
         event.kind=Service::EventKind::error;event.context.request=12;event.context.connection=99;controller.applyEvent(event);require(controller.pending_.contains("12"),"Other connection consumed pending request");

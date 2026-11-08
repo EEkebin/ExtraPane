@@ -732,3 +732,26 @@ Connections; desktop `--legacy` explicitly selects the older interface.
 Windows installation and physical resource acceptance remain user steps. No
 Windows driver installation or media session was started during this delivery.
 The child branch and draft PR remain unmerged; these are test artifacts.
+
+### Resource groups and Android navigation correction
+
+- [x] Desktop Devices catalogs, Share offers and Connections use collapsible
+  Monitors, Cameras, Speakers, Microphones and USB groups with full-width header
+  actions, centered labels, counts and icons. Empty groups are hidden. Existing
+  screen capture stays distinct from virtual-display destinations.
+- [x] Pending resource names/kinds are retained if a catalog changes, so their
+  group and individual cancellation control remain visible.
+- [x] Android replaces its long single form with Devices, Share, Connections and
+  About pages and an animated navigation drawer. Group collapse/navigation retain
+  the display surface; system/keyboard insets, readable dark controls and touch
+  targets are explicit. USB remains visibly unsupported.
+- [x] Android audio inventory filters internal ports and names physical routes:
+  Loudspeaker, Earpiece, built-in microphones and connected peripherals. Exact
+  routing IDs remain internal. Earpiece requests per-track communication usage;
+  it does not seize global call routing and can fail under device audio policy.
+- [x] Isolated desktop group/selection/cancel tests, controller kind-retention
+  regression and actual app startup pass. Synthetic desktop screenshots reviewed.
+  Android audio catalog host checks, both-ABI APK build, instrumentation compilation
+  and lint pass. No physical audio route or streamed resource test was run.
+- [ ] Replacement package build/delivery and physical Android layout/audio-route
+  acceptance remain pending.

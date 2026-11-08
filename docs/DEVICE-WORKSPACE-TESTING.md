@@ -32,6 +32,27 @@ Android opens device sharing normally, with **Legacy connections** for the older
 workflow. This preview shares only while its activity is in the foreground; backgrounding stops
 sharing and capture. Android cannot consume virtual camera/microphone endpoints.
 
+## Navigation and resource groups
+
+Resources are grouped into Monitors, Cameras, Speakers, Microphones and USB.
+Click or tap a group header to expand or collapse it. Collapsing a group must
+retain its selections and active sessions. Within Monitors, extending a desktop
+and viewing an existing screen remain separate actions.
+
+On Android, use the top-left menu for Devices, Share, Connections and About.
+Check portrait and landscape layouts: the toolbar and bottom controls must stay
+clear of system bars, and resource labels must wrap without hiding actions.
+Switch pages while multiple resources are active; navigation must not stop them.
+The phone's Devices page manages paired peers; select offers on Share and request
+them from the other computer. Android resource consumption remains limited to the
+older workflow available through About's Legacy connections action.
+
+For Android audio, expect recognizable route names such as Loudspeaker, Earpiece,
+Built-in microphone and connected headset/USB names, rather than internal output
+numbers. Verify the actual selected output with playback; an advertised route is
+not proof the device's audio policy permits playback through it. Unplugging a
+selected headset must not redirect its session to the loudspeaker.
+
 ## First connection: extend the desktop
 
 1. On the laptop that will show the extra screen, open **Share**. Select a display

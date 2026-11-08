@@ -44,6 +44,12 @@ speakers. **Share** selects available resources and a local network address;
 finds nearby peers or connects to an entered IPv4 address and port. Select a
 resource to use it; **Connections** stops individual resources independently.
 
+Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**,
+**Microphones** and **USB** groups. Android uses a navigation drawer for Devices,
+Share, Connections and About. Its audio choices identify physical routes such as
+Loudspeaker, Earpiece and connected headsets instead of internal Android port
+numbers. Actual route availability depends on Android's audio policy.
+
 A **display destination** is the device that shows an extended desktop. The
 computer using that destination creates the virtual monitor and needs its native
 virtual-display support. Choose the destination's advertised monitor mode or a
