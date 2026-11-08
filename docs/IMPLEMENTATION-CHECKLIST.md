@@ -869,3 +869,10 @@ before a packaging-tool download failed. No release was published or branch merg
 - [x] Signed Android `pre.98.1` packaged and streamed to Pixel 8a; installed
   versionCode `9801` confirmed. No app/resource session launched.
 - [ ] Physical gesture acceptance pending.
+
+- [x] Matching Windows `pre.98.1` installer/portable packaged on request from
+  clean `dacc578`. Exact executable version, extracted offscreen startup,
+  checksums and component payload checks pass. Installer copied to both
+  Desktops; Surface SHA256 verified. Windows behavior is unchanged from
+  `pre.97.1`; the `.98` feature fix is Android Back navigation. No Windows
+  installation was performed.
