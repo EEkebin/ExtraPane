@@ -84,7 +84,9 @@ int main(int argc,char** argv){
         try{
             peerRuntime=std::make_shared<extrapane::windows_peer::WindowsPeerRuntime>(extrapane::windows_peer::native_process_factory());
             peers=std::make_unique<PeerController>(peerRuntime->hooks(),QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/peers");
-            inventory=std::async(std::launch::async,[peerRuntime]{return peerRuntime->refresh();});
+            auto refreshInventory=[&]{if(inventory.valid())return;inventory=std::async(std::launch::async,[peerRuntime]{return peerRuntime->refresh();});inventoryTimer.start(50);};
+            QObject::connect(peers.get(),&PeerController::refreshRequested,&app,refreshInventory);
+            refreshInventory();
             QObject::connect(&inventoryTimer,&QTimer::timeout,&app,[&]{
                 if(!inventory.valid()||inventory.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
                 inventoryTimer.stop();try{peers->setLocalOffers(inventory.get());}catch(const std::exception& e){QMessageBox::warning(nullptr,"ExtraPane",QString::fromUtf8(e.what()));}
@@ -105,7 +107,7 @@ int main(int argc,char** argv){
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane");
-    QMenu menu;auto* show=menu.addAction("Open ExtraPane");auto* stop=menu.addAction("Stop server");menu.addSeparator();auto* quit=menu.addAction("Exit ExtraPane");
+    QMenu menu;auto* show=menu.addAction("Open ExtraPane");auto* stop=menu.addAction(peers?"Stop sharing":"Stop server");menu.addSeparator();auto* quit=menu.addAction("Exit ExtraPane");
     tray.setContextMenu(&menu);
     auto restoreWindow=[&]{if(window->visibility()==QWindow::Minimized)window->showNormal();else window->show();window->raise();window->requestActivate();tray.hide();};
     QObject::connect(show,&QAction::triggered,window,restoreWindow);

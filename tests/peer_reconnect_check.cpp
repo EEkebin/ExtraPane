@@ -39,7 +39,13 @@ public:
             while(!stopping){if(cutRequested.exchange(false))reset();
                 if(client==invalid){client=accept(listener,nullptr,nullptr);if(client!=invalid){server=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);auto a=address(target);if(::connect(server,reinterpret_cast<sockaddr*>(&a),sizeof(a)))reset();}}
                 if(client!=invalid){fd_set set;FD_ZERO(&set);FD_SET(client,&set);FD_SET(server,&set);timeval timeout{0,5000};auto n=select(static_cast<int>(std::max(client,server)+1),&set,nullptr,nullptr,&timeout);
-                    if(n>0){for(auto pair:{std::pair{client,server},std::pair{server,client}})if(FD_ISSET(pair.first,&set)){char b[8192];int count=recv(pair.first,b,sizeof(b),0);if(count<=0){reset();break;}int offset=0;while(offset<count){int wrote=send(pair.second,b+offset,count-offset,0);if(wrote<=0){reset();break;}offset+=wrote;}if(client==invalid)break;}}
+                    if(n>0){for(auto pair:{std::pair{client,server},std::pair{server,client}})if(FD_ISSET(pair.first,&set)){char b[8192];int count=recv(pair.first,b,sizeof(b),0);if(count<=0){reset();break;}int offset=0;while(offset<count){int wrote=send(pair.second,b+offset,count-offset,
+#ifdef _WIN32
+0
+#else
+MSG_NOSIGNAL
+#endif
+);if(wrote<=0){reset();break;}offset+=wrote;}if(client==invalid)break;}}
                 }else std::this_thread::sleep_for(1ms);
             }reset();});
     }
@@ -58,7 +64,8 @@ int main(){
         Service provider({dir/"provider","Provider",offers,true},hooks), consumer({dir/"consumer","Consumer",{},true},hooks);
         auto wait=[&](auto predicate){auto end=std::chrono::steady_clock::now()+8s;while(!predicate()){need(std::chrono::steady_clock::now()<end,"Reconnect deadline");std::this_thread::sleep_for(2ms);}};
         provider.start("127.0.0.1",0);unsigned port=0;wait([&]{for(auto e:provider.poll())if(e.kind==Service::EventKind::listening)port=e.port;return port!=0;});Proxy proxy(port);
-        auto open=[&](std::string resource){auto token=consumer.connect({"127.0.0.1",static_cast<std::uint16_t>(proxy.port),"127.0.0.1",provider.identity(),provider.pairing_code(),false});
+        bool initial=true;
+        auto open=[&](std::string resource){auto token=consumer.connect({initial?"127.0.0.1":"localhost",static_cast<std::uint16_t>(proxy.port),"127.0.0.1",initial?provider.identity():DeviceId{},initial?provider.pairing_code():std::string{},false});initial=false;
             bool connected=false;wait([&]{for(auto e:consumer.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::connected)connected=true;}return connected;});
             auto query=consumer.catalog(token);bool catalog=false;wait([&]{for(auto e:consumer.poll())if(e.kind==Service::EventKind::catalog&&e.context.request==query)catalog=true;return catalog;});
             auto request=consumer.open(token,{provider.identity(),resource,false});Service::Token grant=0;wait([&]{for(auto e:consumer.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::granted&&e.context.request==request)grant=e.context.grant;}return grant!=0;});return std::pair{token,grant};};
@@ -72,6 +79,12 @@ int main(){
         consumer.close(third,thirdGrant);gone=false;wait([&]{for(auto e:consumer.poll())if(e.kind==Service::EventKind::disconnected)gone=true;return gone;});
         auto until=std::chrono::steady_clock::now()+1300ms;while(std::chrono::steady_clock::now()<until){for(auto e:consumer.poll())need(e.kind!=Service::EventKind::connected&&e.kind!=Service::EventKind::granted,"Cancelled reconnect resurrected");std::this_thread::sleep_for(2ms);}
         auto [fourth,usbGrant]=open("usb");proxy.cut();gone=false;wait([&]{for(auto e:consumer.poll()){need(e.kind!=Service::EventKind::reconnecting,"USB retried automatically");if(e.kind==Service::EventKind::disconnected)gone=true;}return gone;});
+        auto wrong=provider.identity();wrong[0]^=0x80;
+        consumer.connect({"localhost",static_cast<std::uint16_t>(proxy.port),"127.0.0.1",wrong,provider.pairing_code(),false});bool rejected=false;
+        wait([&]{for(auto e:consumer.poll()){need(e.kind!=Service::EventKind::connected,"Explicit identity was replaced by address hint");if(e.kind==Service::EventKind::error)rejected=true;}return rejected;});
+        {TrustStore store(dir/"ambiguous");PairSecret secret{};secret.fill(7);store.remember({provider.identity(),"One","127.0.0.1",static_cast<std::uint16_t>(proxy.port)},secret);store.remember({wrong,"Two","localhost",static_cast<std::uint16_t>(proxy.port)},secret);}
+        Service ambiguous({dir/"ambiguous","Ambiguous",{},true},hooks);ambiguous.connect({"localhost",static_cast<std::uint16_t>(proxy.port),"127.0.0.1",{},provider.pairing_code(),false});rejected=false;
+        wait([&]{for(auto e:ambiguous.poll()){need(e.kind!=Service::EventKind::connected,"Ambiguous hint was trusted");if(e.kind==Service::EventKind::error){need(e.detail.find("Several remembered")!=std::string::npos,"Wrong ambiguity failure");rejected=true;}}return rejected;});
         std::cout<<"Actual TLS reconnect: stable token, fresh permissions, explicit cancellation and no USB retry passed\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
     std::filesystem::remove_all(dir);return 0;

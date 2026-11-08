@@ -611,3 +611,62 @@ provider routes; this does not reconnect USB sessions.
   their row until exact-grant replacement, cancellation or terminal failure.
   Duplicate uses of one resource are replaced independently. Isolated controller
   event tests and offscreen UI checks passed; no native device test was run.
+
+### Peer transport continuity and local connections
+
+- [x] Native endpoint setup, teardown and polling run on one serialized executor,
+  separate from TLS and media I/O. Slow setup does not pause existing streams.
+  Incoming media waits in bounded per-grant queues until the authorized endpoint
+  is ready. Cancellation invalidates pending setup and discards late grants and
+  streams without starting a replacement capture session.
+- [x] Remembered, authenticated outgoing non-USB resources can reconnect after
+  transport loss, with at most five attempts within 30 seconds. Each attempt
+  authenticates again, fetches a fresh catalog and checks the same owner, resource,
+  kind and input permission before preparing new native admission credentials.
+  Protocol, identity, authorization and resource rejection do not trigger retries.
+  Explicit disconnect, per-resource cancellation and forgetting a device cancel
+  restoration. USB is never automatically reattached.
+- [x] Reconnect events retain the connection token and map each restored grant to
+  its exact prior grant; terminal failure and cancellation identify that prior
+  row. Pending requests have scoped cancellation that preserves sibling uses.
+- [x] Isolated Windows checks passed for actual TLS interruption through a local
+  TCP proxy, successful restoration, changed permission, cancellation and USB
+  exclusion. Async tests delivered synthetic bytes while native setup was blocked,
+  then verified deferred delivery and no resurrection after cancellation. Service
+  orchestration, reverse gateway and authenticated localhost/self-connection tests
+  passed, including self-catalog handling with gateway enabled. Linux syntax checks
+  passed for the service and media bridge.
+- [ ] Verify native media continuity, physical self-display creation and reconnection
+  on actual devices. These checks used ephemeral loopback transports and fake
+  endpoints; they did not install components, capture devices or alter displays.
+
+- Devices outgoing connections now expose Automatic route or a connected IPv4
+  interface, independent of the sharing listener. Manual and remembered-device
+  connections both pass this choice to the transport. Offscreen routing checks
+  cover the selected-interface path; no network settings were changed.
+
+- macOS Devices now offers Automatic route plus every connected non-loopback IPv4
+  interface, refreshed when its route menu opens. Both manual and remembered-device
+  connections pass the chosen local address to the authenticated transport; a stale
+  selection is rejected before connecting. A unique remembered address/port hint
+  can select a saved identity without re-entering its code; it does not authenticate
+  by address, and ambiguous hints require explicit remembered-device selection.
+  Static review completed; the updated macOS package CI and physical interface
+  selection checks remain pending.
+
+- Peer review follow-up: manual connection to a unique remembered address/port
+  pins that saved identity, including localhost/127.0.0.1 equivalence. Ambiguous
+  saved hints fail rather than choosing a device, and an explicit expected identity
+  takes precedence. Actual TLS tests passed no-code remembered reconnection,
+  explicit wrong-identity rejection and ambiguous-hint rejection. Interrupted
+  pending requests now emit scoped stopped events even when established sibling
+  resources are being restored.
+
+- Explicit Share-page resource refresh now re-enumerates Windows and Linux
+  inventories off the UI thread and ignores overlapping requests. Unchanged
+  resources keep their enabled state; cosmetic label/mode metadata refresh does
+  not terminate an active Windows helper. Removed resources and withdrawn
+  availability/input permissions still revoke their affected uses. Windows app
+  compilation, private-startup/offscreen UI checks and the fake-process metadata
+  refresh regression passed. Linux wiring uses its existing guarded inventory
+  worker; full Linux compilation remains a CI check.

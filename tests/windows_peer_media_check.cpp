@@ -40,6 +40,7 @@ int main(){try{
     grant={3,{},owner,"opaque-display",peers::Kind::display_destination,true,false,true};request={owner,"opaque-display",true,2560,1440,120};
     require(provider.start(grant,request,12347,ticket(0),reason),"display helper not prepared");
     const auto& args=records.back()->command.arguments;require(std::find(args.begin(),args.end(),"--control")!=args.end()&&std::find(args.begin(),args.end(),"2560")!=args.end(),"display input/mode missing");
+    display.offer.label="Renamed display";display.offer.width=3840;provider.sources({camera,display});require(records.back()->live,"Metadata refresh stopped active grant");
     provider.sources({camera});require(!records.back()->live,"removed source retained helper");
     WindowsPeerReceiver receiver(factory);receiver.start(12345,std::chrono::steady_clock::now()+1s);auto host=records.back();
     require(host->command.elevated&&std::find(host->command.arguments.begin(),host->command.arguments.end(),"127.0.0.1")!=host->command.arguments.end(),"receiver not loopback scoped");

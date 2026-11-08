@@ -14,7 +14,7 @@ class MockPeers final:public QQmlPropertyMap {
  Q_OBJECT
 public:
  QQmlPropertyMap directory;
- QString connection,owner,resource,expectedIdentity,suppliedCode,forgotten;bool input=true;unsigned width=0,height=0,hz=0;unsigned calls=0;
+ QString connection,owner,resource,expectedIdentity,suppliedCode,forgotten,localAddress;bool input=true;unsigned width=0,height=0,hz=0;unsigned calls=0,refreshCalls=0;
  MockPeers():QQmlPropertyMap(this,nullptr){directory.insert("scanning",false);directory.insert("status",QString{});directory.insert("devices",QVariantList{});insert("directory",QVariant::fromValue(&directory));insert("status","Ready");insert("sharing",false);insert("gatewayEnabled",false);insert("pairingRequired",true);insert("pairingCode","123456");insert("deviceName","Test machine");insert("offers",QVariantList{});insert("networkAddresses",QVariantList{QVariantMap{{"label","Ethernet ? 192.0.2.1"},{"address","192.0.2.1"},{"interfaceIndex",1}}});insert("remembered",QVariantList{QVariantMap{{"id","known-device"},{"name","Saved device"},{"address","192.0.2.10"},{"port",43824}}});insert("connections",QVariantList{});
  QVariantMap display{{"id","display-one"},{"label","First display"},{"owner","owner-a"},{"kind","Extend desktop"},{"kindId",0},{"available",true},{"inputAllowed",false},{"reason",""},{"width",1920},{"height",1080},{"refresh",60}};
  QVariantMap screen=display;screen["id"]="screen-two";screen["kindId"]=5;screen["kind"]="Existing screen";screen["label"]="Second screen";screen["owner"]="owner-b";screen["inputAllowed"]=true;
@@ -26,9 +26,10 @@ public:
  Q_INVOKABLE void disconnectAll(){}
  Q_INVOKABLE void stopResource(QString,QString){}
  Q_INVOKABLE void enableOffer(QString,bool){}
+ Q_INVOKABLE void refreshOffers(){++refreshCalls;}
  Q_INVOKABLE void startSharing(QString,unsigned){}
  Q_INVOKABLE void stopSharing(){}
- Q_INVOKABLE void connectDevice(QString,unsigned,QString code,QString expected,QString,bool){suppliedCode=code;expectedIdentity=expected;}
+ Q_INVOKABLE void connectDevice(QString,unsigned,QString code,QString expected,QString local,bool){suppliedCode=code;expectedIdentity=expected;localAddress=local;}
  signals:void toast(QString message);
 };
 void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
@@ -37,7 +38,13 @@ int main(int argc,char** argv){qputenv("QT_QPA_PLATFORM","offscreen");qputenv("Q
  auto* content=named(root,"peerPageContent");auto* scroll=named(root,"peerPageScroll");require(content->property("width").toDouble()>400,"Content collapsed to zero width");require(content->property("width").toDouble()<=scroll->property("availableWidth").toDouble()+1,"Content overlaps scrollbar");
  require(QMetaObject::invokeMethod(named(root,"peerUse_display-one"),"clicked"),"Cannot activate first resource");require(peers.calls==1&&peers.connection=="101"&&peers.owner=="owner-a"&&!peers.input&&peers.width==1920&&peers.height==1080&&peers.hz==60,"First resource used wrong peer, mode or input permission");
  require(QMetaObject::invokeMethod(named(root,"peerUse_screen-two"),"clicked"),"Cannot activate second resource");require(peers.calls==2&&peers.connection=="202"&&peers.owner=="owner-b"&&!peers.input&&!peers.width&&!peers.height&&!peers.hz,"Existing-screen default must be view-only with no virtual mode");
- require(QMetaObject::invokeMethod(named(root,"peerRemembered_known-device"),"clicked"),"Cannot connect saved peer");require(peers.expectedIdentity=="known-device"&&peers.suppliedCode.isEmpty(),"Saved peer must pin identity without asking for code");require(QMetaObject::invokeMethod(named(root,"peerForget_known-device"),"clicked"),"Cannot forget saved peer");require(peers.forgotten=="known-device","Wrong peer forgotten");
+ named(root,"peerOutgoingNic")->setProperty("selectedAddress","192.0.2.1");app.processEvents();
+ require(QMetaObject::invokeMethod(named(root,"peerRemembered_known-device"),"clicked"),"Cannot connect saved peer");require(peers.expectedIdentity=="known-device"&&peers.suppliedCode.isEmpty()&&peers.localAddress=="192.0.2.1","Saved peer must pin identity and retain selected interface without asking for code");require(QMetaObject::invokeMethod(named(root,"peerForget_known-device"),"clicked"),"Cannot forget saved peer");require(peers.forgotten=="known-device","Wrong peer forgotten");
+ named(root,"peerBindNic")->setProperty("selectedAddress","127.0.0.1");
+ peers.insert("networkAddresses",QVariantList{QVariantMap{{"label","Other NIC"},{"address","192.0.2.2"}},QVariantMap{{"label","Renamed NIC"},{"address","192.0.2.1"}}});app.processEvents();require(named(root,"peerOutgoingNic")->property("selectedAddress")=="192.0.2.1"&&named(root,"peerOutgoingNic")->property("currentIndex").toInt()==2,"Refreshed interfaces lost selected address");
+ require(named(root,"peerBindNic")->property("selectedAddress")=="127.0.0.1"&&named(root,"peerBindNic")->property("editText")=="127.0.0.1","Refresh replaced manual bind address");require(QMetaObject::invokeMethod(named(root,"peerRefreshOffers"),"clicked"),"Cannot refresh inventory");require(peers.refreshCalls==1,"Inventory refresh not routed");
+ auto* manualAddress=named(root,"peerAddress");manualAddress->setProperty("text","192.0.2.10");peers.localAddress.clear();require(QMetaObject::invokeMethod(named(root,"peerConnect"),"clicked"),"Cannot connect through selected interface");require(peers.localAddress=="192.0.2.1","Manual connection ignored selected interface");named(root,"peerOutgoingNic")->setProperty("selectedAddress","");app.processEvents();require(QMetaObject::invokeMethod(named(root,"peerConnect"),"clicked"),"Cannot use automatic route");require(peers.localAddress.isEmpty(),"Automatic route retained an explicit interface");
+ manualAddress->setProperty("text","192.0.2.55");peers.localAddress="not-called";require(QMetaObject::invokeMethod(named(root,"peerConnect"),"clicked"),"Cannot validate missing pairing code");require(named(root,"peerCode")->property("invalid").toBool()&&peers.localAddress=="not-called","First pairing with missing code reached backend");
  auto* addressField=named(root,"peerAddress");addressField->setProperty("text","999.1.2.3");peers.expectedIdentity.clear();require(QMetaObject::invokeMethod(named(root,"peerConnect"),"clicked"),"Cannot validate address");require(addressField->property("invalid").toBool()&&peers.expectedIdentity.isEmpty(),"Invalid address reached connection backend");
  auto* widthField=named(root,"peerWidth_display-one");widthField->setProperty("text","");require(QMetaObject::invokeMethod(named(root,"peerUse_display-one"),"clicked"),"Cannot validate display mode");require(widthField->property("invalid").toBool()&&peers.calls==2,"Missing display width reached backend");
  root->setProperty("collapsed",true);for(int n=0;n<60;++n){app.processEvents();QThread::msleep(5);}require(root->property("expansion").toDouble()<0.01,"Sidebar did not collapse");require(content->property("width").toDouble()<=scroll->property("availableWidth").toDouble()+1,"Collapsed sidebar overflows content");

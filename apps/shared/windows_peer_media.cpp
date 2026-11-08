@@ -64,7 +64,7 @@ void WindowsPeerMediaAdapter::sources(std::vector<Source> sources){
     for(auto& source:sources){peers::Catalog check;check.device[0]=1;check.instance=1;check.revision=1;check.name="Native sources";check.offers={source.offer};peers::validate(check);
         if(source.offer.kind!=Kind::display_destination && source.offer.kind!=Kind::existing_screen && !safe_device(source.device))fail("Invalid native source identifier");
         if(!replacement.emplace(source.offer.id,std::move(source)).second)fail("Duplicate native offer identifier");}
-    std::vector<std::uint64_t> removed;for(const auto& [id,row]:impl_->rows){const auto found=replacement.find(row.resource),old=impl_->sources.find(row.resource);if(found==replacement.end()||!found->second.offer.available||old==impl_->sources.end()||old->second.device!=found->second.device||!(old->second.offer==found->second.offer))removed.push_back(id);}
+    std::vector<std::uint64_t> removed;for(const auto& [id,row]:impl_->rows){const auto found=replacement.find(row.resource),old=impl_->sources.find(row.resource);if(found==replacement.end()||!found->second.offer.available||old==impl_->sources.end()||old->second.device!=found->second.device||old->second.offer.kind!=found->second.offer.kind||(row.grant.input&&!found->second.offer.input_allowed))removed.push_back(id);}
     for(auto id:removed)stop(id);impl_->sources=std::move(replacement);
 }
 bool WindowsPeerMediaAdapter::start(const peers::Grant& grant,const peers::rpc::Open& open,std::uint16_t port,std::string credential,std::string& reason){

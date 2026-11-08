@@ -104,6 +104,7 @@ int main(int argc,char** argv){
         try{peerRuntime=std::make_unique<LinuxPeerRuntime>(&engine,unavailable);peers=std::make_unique<PeerController>(peerRuntime->hooks(),QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/peers");
             QObject::connect(peerRuntime.get(),&LinuxPeerRuntime::inventoryChanged,&app,[&]{try{peers->setLocalOffers(peerRuntime->offers());}catch(const std::exception& e){qWarning()<<e.what();}});
             QObject::connect(peerRuntime.get(),&LinuxPeerRuntime::inventoryFailed,&app,[](const QString& reason){qWarning().noquote()<<reason;});
+            QObject::connect(peers.get(),&PeerController::refreshRequested,peerRuntime.get(),&LinuxPeerRuntime::refreshInventory);
             engine.rootContext()->setContextProperty("peers",peers.get());peerRuntime->refreshInventory();
         }catch(const std::exception& e){qWarning()<<e.what();return 1;}
     }
@@ -114,7 +115,7 @@ int main(int argc,char** argv){
     if(!window)return 1;
     controller.setWindow(window);
     QSystemTrayIcon tray(QIcon(":/extrapane.png"));tray.setToolTip("ExtraPane");
-    QMenu trayMenu;auto* open=trayMenu.addAction("Open ExtraPane");auto* stop=trayMenu.addAction("Stop server");
+    QMenu trayMenu;auto* open=trayMenu.addAction("Open ExtraPane");auto* stop=trayMenu.addAction(peers?"Stop sharing":"Stop server");
     auto* disconnect=trayMenu.addAction("Disconnect all");trayMenu.addSeparator();auto* exit=trayMenu.addAction("Exit ExtraPane");tray.setContextMenu(&trayMenu);
     auto restore=[&]{if(window->visibility()==QWindow::Minimized)window->showNormal();else window->show();window->raise();window->requestActivate();tray.hide();};
     QObject::connect(open,&QAction::triggered,&app,restore);

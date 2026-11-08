@@ -41,6 +41,7 @@ public:
     QVariantList devices()const{return devices_;}
     QVariantList connections()const;
     void setLocalOffers(std::vector<extrapane::peers::Offer>);
+    Q_INVOKABLE void refreshOffers();
     Q_INVOKABLE void enableOffer(QString id,bool enabled);
     Q_INVOKABLE void setPairingRequired(bool);
     Q_INVOKABLE void setGatewayEnabled(bool);
@@ -56,6 +57,7 @@ public:
     void shutdown();
 signals:
     void changed();
+    void refreshRequested();
     void toast(QString message);
 private:
     friend struct PeerControllerEventCheck;

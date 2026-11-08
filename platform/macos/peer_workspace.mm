@@ -11,6 +11,7 @@
 #include <map>
 #include <filesystem>
 #include <algorithm>
+#include <cctype>
 using namespace extrapane::peers;
 namespace {
 NSString* text(const std::string& s){return [[NSString alloc] initWithBytes:s.data() length:s.size() encoding:NSUTF8StringEncoding]?:@"";}
@@ -31,7 +32,7 @@ void clear(NSStackView* s){for(NSView* v in [s.arrangedSubviews copy]){[s remove
 -(void)execute:(id)sender{(void)sender;if(self.actionBlock)self.actionBlock();}
 @end
 static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL destructive=NO){auto* b=[ExtraPanePeerAction new];b.title=title;b.bezelStyle=NSBezelStyleRounded;b.target=b;b.action=@selector(execute:);b.actionBlock=action;if(destructive)b.contentTintColor=NSColor.systemRedColor;return b;}
-@interface ExtraPanePeerApp:NSObject<NSApplicationDelegate,NSWindowDelegate,NSTextFieldDelegate>{
+@interface ExtraPanePeerApp:NSObject<NSApplicationDelegate,NSWindowDelegate,NSTextFieldDelegate,NSMenuDelegate>{
     std::shared_ptr<dm::mac::peer::MacPeerRuntime> runtime;
     std::unique_ptr<Service> service;
     dm::mac::PeerDiscovery discovery;
@@ -51,6 +52,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
 @property(nonatomic,strong) NSTextField* address;
 @property(nonatomic,strong) NSTextField* port;
 @property(nonatomic,strong) NSSecureTextField* code;
+@property(nonatomic,strong) NSPopUpButton* outboundRoute;
 @property(nonatomic,strong) NSTextField* bindAddress;
 @property(nonatomic,strong) NSTextField* listenPort;
 @property(nonatomic,strong) NSTextField* status;
@@ -70,6 +72,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
 @property(nonatomic,strong) NSStatusItem* tray;
 -(void)poll;
 -(void)refreshInventory;
+-(void)refreshRoutes;
 -(void)publish;
 -(void)renderOffers;
 -(void)renderConnections;
@@ -107,6 +110,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         self.status=label(@"Ready");[navigation addArrangedSubview:self.status];
         auto* devices=[self page:@"Devices"];[devices addArrangedSubview:label(@"Connect to a device by its reachable address, or choose one discovered on your local network.")];
         auto* target=stack(YES);self.address=[NSTextField textFieldWithString:@""];self.address.placeholderString=@"Address or localhost";self.address.delegate=self;[self.address.widthAnchor constraintGreaterThanOrEqualToConstant:240].active=YES;self.port=[NSTextField textFieldWithString:@"43824"];self.port.delegate=self;[self.port.widthAnchor constraintEqualToConstant:85].active=YES;[target addArrangedSubview:self.address];[target addArrangedSubview:self.port];[devices addArrangedSubview:target];
+        auto* routeRow=stack(YES);[routeRow addArrangedSubview:label(@"Connect through")];self.outboundRoute=[[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];[self.outboundRoute.widthAnchor constraintGreaterThanOrEqualToConstant:280].active=YES;self.outboundRoute.menu.delegate=self;[routeRow addArrangedSubview:self.outboundRoute];[devices addArrangedSubview:routeRow];[self refreshRoutes];
         auto* auth=stack(YES);self.code=[NSSecureTextField textFieldWithString:@""];self.code.placeholderString=@"Pairing code";[auth addArrangedSubview:self.code];[auth addArrangedSubview:button(@"Connect",^{ExtraPanePeerApp* strong=weak;if(!strong)return;[weak connectAddress:str(weak.address.stringValue) port:portValue(weak.port.stringValue) expected:strong->expected code:str(weak.code.stringValue) open:weak.openConnection.state==NSControlStateValueOn];})];[devices addArrangedSubview:auth];
         self.openConnection=button(@"Connect without pairing",^{});[self.openConnection setButtonType:NSButtonTypeSwitch];[devices addArrangedSubview:self.openConnection];
         [devices addArrangedSubview:button(@"Find nearby devices",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{if(!strong->scanning){strong->discovery.start(strong->sharing?str(weak.bindAddress.stringValue):std::string{});strong->scanning=true;if(strong->sharing)[weak publish];}else [weak poll];}catch(const std::exception& e){[weak error:text(e.what())];}})];self.nearby=stack();[devices addArrangedSubview:self.nearby];
@@ -128,16 +132,28 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         self.timer=[NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer* timer){(void)timer;[weak poll];}];[self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];[self refreshInventory];[self renderDevices];
     }catch(const std::exception& e){NSAlert* alert=[NSAlert new];alert.messageText=@"ExtraPane could not start";alert.informativeText=text(e.what());[alert runModal];[NSApp terminate:nil];}
 }
+-(void)refreshRoutes{
+    NSString* selected=self.outboundRoute.selectedItem.representedObject?:@"";
+    try{const auto addresses=dm::mac::localAddresses();[self.outboundRoute removeAllItems];[self.outboundRoute addItemWithTitle:@"Automatic route"];self.outboundRoute.lastItem.representedObject=@"";
+        for(const auto& entry:addresses){[self.outboundRoute addItemWithTitle:text(entry.interface+" - "+entry.address)];self.outboundRoute.lastItem.representedObject=text(entry.address);}
+        for(NSMenuItem* item in self.outboundRoute.itemArray)if([item.representedObject isEqual:selected]){[self.outboundRoute selectItem:item];break;}
+    }catch(const std::exception& e){[self error:text(e.what())];}
+}
+-(void)menuNeedsUpdate:(NSMenu*)menu{if(menu==self.outboundRoute.menu)[self refreshRoutes];}
 -(void)controlTextDidChange:(NSNotification*)notification{if(notification.object==self.address||notification.object==self.port)expected={};}
 -(void)error:(NSString*)message{self.status.stringValue=message?:@"";self.status.textColor=NSColor.systemYellowColor;}
 -(void)connectAddress:(std::string)address port:(unsigned)port expected:(DeviceId)identity code:(std::string)code open:(BOOL)open{
     try{
-        const auto saved=service->remembered();const bool remembered=valid_id(identity)&&std::any_of(saved.begin(),saved.end(),[&](const auto& item){return item.id==identity;});
+        const auto saved=service->remembered();auto normalized=[](std::string value){if(value.size()==9){auto lower=value;std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char c){return char(std::tolower(c));});if(lower=="localhost")return std::string("127.0.0.1");}return value;};
+        const auto hinted=std::count_if(saved.begin(),saved.end(),[&](const auto& item){return item.port_hint==port&&normalized(item.address_hint)==normalized(address);});
+        if(!open&&!valid_id(identity)&&code.empty()&&hinted>1){invalidField(self.address);[self error:@"Choose the intended device from Remembered devices."];return;}
+        // Address hints choose a saved key candidate only. Service still pins and proves its identity.
+        const bool remembered=(valid_id(identity)&&std::any_of(saved.begin(),saved.end(),[&](const auto& item){return item.id==identity;}))||(!valid_id(identity)&&code.empty()&&hinted==1);
         const bool badAddress=!dm::mac::ipv4(address.c_str()),badPort=!port||port>65535;
         const bool badCode=!open&&!remembered&&(code.size()!=6||!std::all_of(code.begin(),code.end(),[](char c){return c>='0'&&c<='9';}));
         if(badAddress)invalidField(self.address);if(badPort)invalidField(self.port);if(badCode)invalidField(self.code);
         if(badAddress||badPort||badCode){const unsigned count=unsigned(badAddress)+unsigned(badPort)+unsigned(badCode);[self error:count>1?@"Check the highlighted connection details.":badAddress?@"Enter an IPv4 address or localhost.":badPort?@"Enter a port between 1 and 65535.":@"Enter the six-digit pairing code."];return;}
-        service->connect({address,static_cast<std::uint16_t>(port),"",identity,code,bool(open)});self.code.stringValue=@"";self.status.stringValue=@"Connecting...";self.status.textColor=NSColor.labelColor;
+        const auto local=str(self.outboundRoute.selectedItem.representedObject?:@"");if(!local.empty()){const auto connected=dm::mac::localAddresses();if(std::none_of(connected.begin(),connected.end(),[&](const auto& item){return item.address==local;})){invalidField(self.outboundRoute);[self error:@"The selected network address is disconnected. Choose another route."];return;}}service->connect({address,static_cast<std::uint16_t>(port),local,identity,code,bool(open)});self.code.stringValue=@"";self.status.stringValue=@"Connecting...";self.status.textColor=NSColor.labelColor;
     }catch(const std::exception& e){[self error:text(e.what())];}
 }
 -(void)refreshInventory{if(refreshing||terminating)return;refreshing=true;auto shared=runtime;__weak ExtraPanePeerApp* weak=self;dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{try{auto offers=shared->refresh();dispatch_async(dispatch_get_main_queue(),^{ExtraPanePeerApp* strong=weak;if(!strong||strong->terminating)return;strong->inventory=offers;strong->refreshing=false;[strong publish];[strong renderOffers];});}catch(const std::exception& e){auto message=text(e.what());dispatch_async(dispatch_get_main_queue(),^{ExtraPanePeerApp* strong=weak;if(!strong)return;if(weak){strong->refreshing=false;[weak error:message];}});}});}

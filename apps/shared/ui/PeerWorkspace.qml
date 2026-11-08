@@ -76,7 +76,16 @@ Item {
                     }
                 }
                 Item { Layout.fillHeight: true }
-                ToolButton { text: workspace.collapsed ? "?" : "About ExtraPane"; Layout.fillWidth: true; onClicked: workspace.page=3 }
+                ToolButton {
+                    id: aboutNavigation; Layout.fillWidth: true; Layout.preferredHeight: 48; padding: 0
+                    Accessible.name: "About ExtraPane"; onClicked: workspace.page=3
+                    ToolTip.visible: hovered && workspace.collapsed; ToolTip.text: "About ExtraPane"
+                    background: Rectangle { radius: 10; color: workspace.page===3 ? "#192e4b" : aboutNavigation.hovered ? "#132136" : "transparent" }
+                    contentItem: Item {
+                        AppIcon { id: aboutGlyph; symbol: "about"; width: 22; height: 22; anchors.verticalCenter: parent.verticalCenter; x: 14*workspace.expansion+(parent.width-width)/2*(1-workspace.expansion) }
+                        Label { textFormat: Text.PlainText; text: "About ExtraPane"; anchors.left: aboutGlyph.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter; opacity: workspace.expansion }
+                    }
+                }
             }
         }
         ScrollView {
@@ -99,13 +108,33 @@ Item {
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        Field { id: code; Layout.fillWidth: true; placeholderText: "Pairing code (first connection)"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly }
+                        Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; placeholderText: "Pairing code (first connection)"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly }
                         Action { objectName: "peerConnect"; text: "Connect"; onClicked: {
                             const numeric=workspace.checkFields([port]); host.invalid=!workspace.validAddress(host.text)
-                            code.invalid=code.text.length>0&&!/^\d{6}$/.test(code.text)
+                            let remembered=false; let matches=0
+                            for(const device of peers.remembered) {
+                                if(workspace.expectedDeviceId && device.id===workspace.expectedDeviceId) remembered=true
+                                if(device.address===(host.text.trim().toLowerCase()==="localhost" ? "127.0.0.1" : host.text.trim()) && Number(device.port)===Number(port.text)) matches++
+                            }
+                            if(!workspace.expectedDeviceId && matches>1 && !openConnection.checked) { notification.text="Choose a paired device below; this address matches more than one device."; notification.open(); return }
+                            if(!workspace.expectedDeviceId && matches===1) remembered=true
+                            code.invalid=!openConnection.checked && (!remembered || code.text.length>0) && !/^\d{6}$/.test(code.text)
                             if(!numeric||host.invalid||code.invalid) { notification.text="Check the highlighted information."; notification.open(); return }
-                            peers.connectDevice(host.text,Number(port.text),code.text,workspace.expectedDeviceId,"",openConnection.checked); code.clear()
+                            peers.connectDevice(host.text,Number(port.text),code.text,workspace.expectedDeviceId,outgoingNic.selectedAddress,openConnection.checked); code.clear()
                         } }
+                    }
+                    ComboBox {
+                        id: outgoingNic; objectName: "peerOutgoingNic"; Layout.fillWidth: true
+                        textRole: "label"; valueRole: "address"
+                        property string selectedAddress: ""
+                        model: {
+                            let rows=[{label:"Automatic route",address:""}].concat(peers.networkAddresses)
+                            if(selectedAddress && !rows.some(row=>row.address===selectedAddress)) rows.push({label:selectedAddress+" (unavailable)",address:selectedAddress})
+                            return rows
+                        }
+                        onActivated: selectedAddress=currentValue||""
+                        onModelChanged: Qt.callLater(function() { outgoingNic.currentIndex=outgoingNic.indexOfValue(outgoingNic.selectedAddress) })
+                        Accessible.name: "Connect through local interface"
                     }
                     CheckBox { id: openConnection; text: "Connect without pairing"; checked: false }
                     Label { textFormat: Text.PlainText; visible: openConnection.checked; text: "The other device must also have pairing disabled. Its identity will not be verified."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
@@ -135,7 +164,7 @@ Item {
                                 Label { textFormat: Text.PlainText; text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight }
                                 Label { textFormat: Text.PlainText; text: modelData.address ? modelData.address+":"+modelData.port : "Choose this device from discovery or enter its address"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
-                            Action { objectName: "peerRemembered_"+modelData.id; text: "Connect"; enabled: !!modelData.address && modelData.port>0; onClicked: peers.connectDevice(modelData.address,modelData.port,"",modelData.id,"",false) }
+                            Action { objectName: "peerRemembered_"+modelData.id; text: "Connect"; enabled: !!modelData.address && modelData.port>0; onClicked: peers.connectDevice(modelData.address,modelData.port,"",modelData.id,outgoingNic.selectedAddress,false) }
                             Action { objectName: "peerForget_"+modelData.id; text: "Forget"; destructive: true; onClicked: peers.forgetDevice(modelData.id) }
                         }
                     }
@@ -179,10 +208,18 @@ Item {
                 }
                 ColumnLayout {
                     visible: workspace.page===1; Layout.fillWidth: true; spacing: 14
-                    Label { textFormat: Text.PlainText; text: peers.deviceName; font.pixelSize: 20 }
                     RowLayout {
                         Layout.fillWidth: true
-                        ComboBox { id: bind; property bool invalid: false; Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: bind.invalid } Timer { id: bindInvalidTimer; interval: 4500; onTriggered: bind.invalid=false } Layout.fillWidth: true; editable: true; model: peers.networkAddresses; textRole: "label"; valueRole: "address"; enabled: !peers.sharing; property string selectedAddress: currentValue||editText; onActivated: selectedAddress=currentValue; onEditTextChanged: { if (activeFocus) selectedAddress=editText } }
+                        Label { textFormat: Text.PlainText; text: peers.deviceName; font.pixelSize: 20; Layout.fillWidth: true }
+                        Button { objectName: "peerRefreshOffers"; text: "Refresh resources"; onClicked: peers.refreshOffers() }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ComboBox { id: bind; objectName: "peerBindNic"; property bool invalid: false; Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: bind.invalid } Timer { id: bindInvalidTimer; interval: 4500; onTriggered: bind.invalid=false } Layout.fillWidth: true; editable: true; model: peers.networkAddresses; textRole: "label"; valueRole: "address"; enabled: !peers.sharing; property string selectedAddress: ""
+                            onActivated: selectedAddress=currentValue
+                            onModelChanged: Qt.callLater(function() { if(!bind.selectedAddress&&bind.count) bind.selectedAddress=bind.valueAt(0); bind.currentIndex=bind.indexOfValue(bind.selectedAddress); bind.editText=bind.selectedAddress })
+                            Connections { target: bind.contentItem; function onTextEdited() { bind.selectedAddress=bind.contentItem.text } }
+                         }
                         Field { id: listenPort; text: "43824"; Layout.preferredWidth: 100; placeholderText: "Port"; enabled: !peers.sharing; validator: IntValidator { bottom:1; top:65535 } }
                     }
                     CheckBox { text: "Require pairing"; checked: peers.pairingRequired; onToggled: peers.pairingRequired=checked }

@@ -1,6 +1,7 @@
 #include <extrapane/service.hpp>
 #include <extrapane/media_bridge.hpp>
 #include <atomic>
+#include <cctype>
 #include <condition_variable>
 #include <future>
 #include <thread>
@@ -146,6 +147,15 @@ struct Service::State {
     dm::peer_auth::Remember remember(std::string address={},std::uint16_t port=0,std::uint64_t generation=0){if(!generation)generation=epoch.load();return [this,address=std::move(address),port,generation](const DeviceId& id,const dm::peer_auth::Secret& key){std::lock_guard lock(trust_mutex);need(epoch==generation,"Pairing was cancelled");store.remember({id,"Paired device",address,port},key.bytes);};}
     void launch_dial(Token token,ConnectOptions options,std::uint64_t generation){
         need(dialing.size()<4,"Too many pending peer connections");
+        if(!options.open_mode&&!valid_id(options.expected_peer)){
+            const auto normalized=[](std::string address){for(auto& c:address)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return address=="localhost"?std::string("127.0.0.1"):address;};
+            std::optional<DeviceId> remembered;
+            for(const auto& device:store.devices())if(device.port_hint==options.port&&!device.address_hint.empty()&&normalized(device.address_hint)==normalized(options.address)){
+                need(!remembered||*remembered==device.id,"Several remembered devices use this address; select a saved device explicitly");
+                remembered=device.id;
+            }
+            if(remembered)options.expected_peer=*remembered;
+        }
         dialing.push_back(std::async(std::launch::async,[this,token,generation,options=std::move(options)]{
             try{need(epoch==generation,"Connection cancelled");dm::peer_auth::ClientOptions proof;proof.local=store.identity();proof.expected_peer=options.expected_peer;proof.code=options.code;proof.mode=options.open_mode?dm::peer_auth::Mode::open:dm::peer_auth::Mode::pair;
                 if(!options.open_mode&&valid_id(options.expected_peer)){auto key=store.secret(options.expected_peer);if(key){proof.mode=dm::peer_auth::Mode::remembered;dm::peer_auth::Secret secret;secret.bytes=*key;proof.remembered=secret;}}
@@ -240,7 +250,13 @@ struct Service::State {
         }else {auto f=l.pending_contexts.find(request);if(f!=l.pending_contexts.end()){auto native=l.pending_native.find(request);native_cleanup(f->second,true,native==l.pending_native.end()?NativeCancel{}:native->second);l.pending_contexts.erase(f);}}
         l.pending.erase(request);l.pending_native.erase(request);l.requests.erase(request);
     }
-    void drop(Token id,std::string reason={},bool transient=false){auto f=links.find(id);if(f==links.end())return;auto& l=*f->second;const bool retry=transient&&schedule_retry(l,reason);if(!retry)retries.erase(id);l.connection->cancel();if(l.dispatcher)l.dispatcher->close();while(!l.resources.empty())stop_resource(l,l.resources.begin()->first);while(!l.pending_contexts.empty())cancel_request(l,l.pending_contexts.begin()->first);Context c{id,0,0,l.connection->remote_id(),l.incoming};const bool wasProvider=!l.incoming;links.erase(f);if(wasProvider)revoked(policy.remote_removed(c.peer));if(!retry)event({EventKind::disconnected,c,0,std::move(reason)});}
+    void end_pending(Link& l,Token request,const std::string& reason){
+        if(!l.pending.contains(request))return;
+        if(l.requests.contains(request)){need(l.abandoned.size()<256,"Cancelled request budget exhausted");l.abandoned.insert(request);}
+        cancel_request(l,request);retry_done(l.token,request,false);
+        event({EventKind::stopped,{l.token,request},0,reason});
+    }
+    void drop(Token id,std::string reason={},bool transient=false){auto f=links.find(id);if(f==links.end())return;auto& l=*f->second;const bool retry=transient&&schedule_retry(l,reason);if(!retry)retries.erase(id);l.connection->cancel();if(l.dispatcher)l.dispatcher->close();while(!l.resources.empty())stop_resource(l,l.resources.begin()->first);while(!l.pending_contexts.empty()){auto context=l.pending_contexts.begin()->second;cancel_request(l,context.request);event({EventKind::stopped,context,0,"Connection ended before resource was ready"});}Context c{id,0,0,l.connection->remote_id(),l.incoming};const bool wasProvider=!l.incoming;links.erase(f);if(wasProvider)revoked(policy.remote_removed(c.peer));if(!retry)event({EventKind::disconnected,c,0,std::move(reason)});}
 
     void granted(Link& l,Token grant,std::uint16_t port){const auto& resource=l.resources.at(grant);auto public_request=resource.request;public_request.native_credential.clear();Token previous=0;auto retry=retries.find(l.token);if(retry!=retries.end())for(const auto& saved:retry->second.resources)if(saved.restoring_request==resource.context.request)previous=saved.previous_grant;
         event({EventKind::granted,resource.context,port,{},{},l.connection->identity().paired,std::move(public_request),previous});retry_done(l.token,resource.context.request,true);}
@@ -338,7 +354,7 @@ struct Service::State {
         if(hooks.poll&&!native_poll_pending&&Clock::now()-last_poll>=std::chrono::milliseconds(50)){
             last_poll=Clock::now();native_poll_pending=true;
             try{native_post([this]{std::vector<Context> ended;std::string failure;try{ended=hooks.poll();}catch(const std::exception& e){failure=e.what();}catch(...){failure="Native resource status failed";}
-                complete([this,ended=std::move(ended),failure=std::move(failure)]{native_poll_pending=false;if(!failure.empty()){event({EventKind::error,{},0,failure});return;}for(const auto& context:ended){auto f=links.find(context.connection);if(f==links.end())continue;auto& l=*f->second;if(!context.grant){cancel_request(l,context.request);continue;}if(!l.resources.contains(context.grant))continue;if(l.incoming)l.connection->queue(l.dispatcher->handle({rpc::Operation::close,context.grant,{}},now()));else{stop_resource(l,context.grant);l.connection->queue({rpc::Operation::close,context.grant,{}});}}});
+                complete([this,ended=std::move(ended),failure=std::move(failure)]{native_poll_pending=false;if(!failure.empty()){event({EventKind::error,{},0,failure});return;}for(const auto& context:ended){auto f=links.find(context.connection);if(f==links.end())continue;auto& l=*f->second;if(!context.grant){end_pending(l,context.request,"Native preparation ended");continue;}if(!l.resources.contains(context.grant))continue;if(l.incoming)l.connection->queue(l.dispatcher->handle({rpc::Operation::close,context.grant,{}},now()));else{stop_resource(l,context.grant);l.connection->queue({rpc::Operation::close,context.grant,{}});}}});
             });}catch(const std::exception& e){native_poll_pending=false;event({EventKind::error,{},0,e.what()});}
         }
         if(progress)std::this_thread::yield();else {std::unique_lock lock(mutex);wake.wait_for(lock,std::chrono::milliseconds(2),[this]{return ending||!commands.empty();});}
@@ -391,7 +407,7 @@ void Service::close(Token connection,Token grant){auto& s=*state_;s.post([&s,con
     auto& l=s.link(connection);if(l.incoming){auto f=l.resources.find(grant);if(f!=l.resources.end()&&f->second.relay){s.stop_resource(l,grant);l.connection->queue({rpc::Operation::stopped,grant,{}});}else l.connection->queue(l.dispatcher->handle({rpc::Operation::close,grant,{}},now()));}else{s.stop_resource(l,grant);l.connection->queue({rpc::Operation::close,grant,{}});}});}
 void Service::cancel(Token connection,Token request){auto& s=*state_;s.post([&s,connection,request]{
     auto f=s.links.find(connection);if(f==s.links.end())return;auto& l=*f->second;
-    if(l.pending.contains(request)){need(l.abandoned.size()<256,"Cancelled request budget exhausted");l.abandoned.insert(request);s.cancel_request(l,request);s.retry_done(connection,request,false);s.event({EventKind::stopped,{connection,request},0,"Connection cancelled"});}
+    s.end_pending(l,request,"Connection cancelled");
     std::vector<Token> active;for(const auto& [id,resource]:l.resources)if(resource.context.request==request)active.push_back(id);
     for(auto grant:active){s.stop_resource(l,grant);l.connection->queue({rpc::Operation::close,grant,{}});}
 });}

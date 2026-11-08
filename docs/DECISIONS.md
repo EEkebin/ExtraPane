@@ -424,8 +424,7 @@ says the work is ready.
 - Advertise only resources explicitly enabled for sharing. Advertising does not
   start camera/microphone capture or export a USB disk. Retain direct IPv4/port and
   selected-interface access when discovery is unavailable, including static-IP LANs.
-- Pairing codes are optional and enabled by default. Six-digit codes rotate between
-  sessions. Remembered access is desired; use device identity/trust rather than
+- Pairing codes are optional and enabled by default. Remembered access uses device identity/trust rather than
   treating a stored short code or IP address as proof of identity. Codes rotate only on a fresh app/sharing-service startup, not on pairing or reconnect. Trust must be revocable, and disabling
   pairing must be explicit; do not imply peer identity verification in open mode.
 - Default sharing lifecycle (delegated choice): remember offered-resource selections,
@@ -473,3 +472,9 @@ Accept localhost and IPv4 loopback for manual/self connections while excluding
 loopback from LAN address listings. IPv6 support requires an explicit transport
 gate; never treat an unsupported address as a different destination. Self-extension
 still uses the real media pipeline unless a separate local path is implemented.
+
+For manual reconnection, a unique saved address/port may select the remembered
+identity to authenticate. The address is only a lookup hint: the peer must prove
+the saved secret. An explicit selected identity takes precedence. Ambiguous saved
+addresses require choosing a saved device; a failed identity proof never falls
+back to pairing or unverified access automatically.

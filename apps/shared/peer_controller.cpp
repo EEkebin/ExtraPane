@@ -48,6 +48,7 @@ QVariantList PeerController::networkAddresses()const{
 QVariantList PeerController::offers()const{QVariantList result;for(const auto& offer:inventory_){auto item=offerMap(offer);item["enabled"]=enabled_.contains(QString::fromStdString(offer.id));result.push_back(item);}return result;}
 QVariantList PeerController::remembered()const{QVariantList result;if(!service_)return result;for(const auto& device:service_->remembered())result.push_back(QVariantMap{{"id",hex(device.id)},{"name",device.name.empty()?hex(device.id).left(12):QString::fromStdString(device.name)},{"address",QString::fromStdString(device.address_hint)},{"port",device.port_hint}});return result;}
 void PeerController::setLocalOffers(std::vector<Offer> offers){inventory_=std::move(offers);if(service_)service_->offers(selectedOffers());if(sharing_)announce(listenPort_);emit changed();}
+void PeerController::refreshOffers(){emit refreshRequested();}
 void PeerController::enableOffer(QString id,bool enabled){
     const auto found=std::find_if(inventory_.begin(),inventory_.end(),[&](const auto& offer){return QString::fromStdString(offer.id)==id;});if(found==inventory_.end()||(enabled&&!found->available)){error("This resource is unavailable");return;}
     if(enabled)enabled_.insert(id);else enabled_.remove(id);QSettings().setValue("peers/offers",QStringList(enabled_.begin(),enabled_.end()));try{service_->offers(selectedOffers());if(sharing_)announce(listenPort_);emit changed();}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}
