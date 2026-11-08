@@ -866,4 +866,6 @@ before a packaging-tool download failed. No release was published or branch merg
   guarded while sharing/connected and retains ordinary idle exit behavior.
 - [x] Nine isolated host checks pass, including page history and branching after
   Back. Android debug/test APK compilation and lint pass.
-- [ ] Updated APK delivery and physical gesture acceptance pending.
+- [x] Signed Android `pre.98.1` packaged and streamed to Pixel 8a; installed
+  versionCode `9801` confirmed. No app/resource session launched.
+- [ ] Physical gesture acceptance pending.
