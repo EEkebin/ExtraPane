@@ -20,7 +20,7 @@ playback device that sends audio to a selected Windows or Android client output.
 This new path has isolated checks; physical playback verification is pending.
 
 The `feat/device-discovery` branch is developing a device-oriented interface with
-explicit resource offers, LAN discovery, direct-address connections and remembered
+automatic resource availability, LAN discovery, direct-address connections and remembered
 pairing. This redesign is not yet a tested replacement for the existing Server /
 Client workflow. Its current gates are recorded in the [implementation
 checklist](docs/IMPLEMENTATION-CHECKLIST.md#active-implementation-devices-sharing-and-gateways).

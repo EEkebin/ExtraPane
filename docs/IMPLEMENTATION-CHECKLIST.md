@@ -916,4 +916,12 @@ This replaces the earlier opt-in offer power behavior.
 - [x] Native macOS default availability, provider-use names and exact-resource
   consumer power/cancellation implemented and statically reviewed.
 - [ ] Linux/macOS hosted build/package validation pending.
-- [ ] Matching package delivery and physical pairing/camera acceptance pending.
+- [x] Signed Android `pre.100.1` built/verified and streamed to Pixel 8a;
+  installed versionCode `10001` confirmed. No app/resource session launched.
+- [x] Windows `pre.100.1` packaged from clean `dc120b1`; exact version,
+  extracted offscreen startup, manifest and native payload checks passed.
+  Installer copied to both Desktops; Surface checksum verified.
+- [ ] Physical pairing/camera acceptance pending. No Windows installation or
+  physical resource session was performed.
+- Hosted run `42471761296` hit an Mbed TLS download HTTP 504 on macOS;
+  native macOS compilation is not yet verified for this increment.
