@@ -114,7 +114,7 @@ int main(int argc,char** argv){
     auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
     if(!window)return 1;
     controller.setWindow(window);
-    if(peers&&(platform=="xcb"||platform.startsWith("wayland"))){peers->startDiscovery();peers->startAvailableSharing();}
+    if(peers&&(platform=="xcb"||platform.startsWith("wayland"))){peers->startAvailableSharing();}
     QSystemTrayIcon tray(QIcon(":/extrapane.png"));tray.setToolTip("ExtraPane");
     QMenu trayMenu;auto* open=trayMenu.addAction("Open ExtraPane");auto* stop=trayMenu.addAction(peers?"Disconnect shared resources":"Stop server");
     auto* disconnect=trayMenu.addAction("Disconnect all");trayMenu.addSeparator();auto* exit=trayMenu.addAction("Exit ExtraPane");tray.setContextMenu(&trayMenu);

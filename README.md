@@ -49,13 +49,15 @@ power indicates actual use of that exact resource and shows who is using it.
 Disconnecting one resource preserves the others; disconnecting all active shares
 leaves the device discoverable and ready for a new request.
 
-**Devices** looks for nearby peers by default. Expand **Connect by address** for
+**Devices** manages pairing and saved devices. Press **Search nearby** to run a
+short LAN search for new devices; paired devices are excluded. Expand **Connect by address** for
 an IPv4 address or localhost, port, optional interface and pairing code. This also
 works on static-IP LANs and when multicast discovery is unavailable. Across networks,
 the address/port must already be reachable; discovery does not cross the internet.
-Select a resource to use it; **Connections** stops individual resources independently.
+Open **Connections** to browse a connected device's grouped resources. Green power
+connects a resource; red power stops it without interrupting other resources.
 
-Each connected device has a collapsible header in Devices. Collapsing it hides
+Each connected device has a bordered, collapsible card in Connections. Collapsing it hides
 its resource controls without disconnecting or changing any active resource.
 
 Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**,

@@ -9,6 +9,23 @@
 #include <iostream>
 #include <stdexcept>
 
+struct DeviceDirectoryCheck {
+    static void run(){
+        using namespace extrapane::peers;auto require=[](bool good,const char* why){if(!good)throw std::runtime_error(why);};
+        DeviceDirectory directory;require(!directory.scanning()&&!directory.transportActive(),"Directory startup opened discovery");directory.table_.interfaces({7});
+        Announcement beacon;beacon.device[0]=1;beacon.instance=1;beacon.sequence=1;beacon.name="Synthetic device";beacon.port=43824;
+        auto bytes=[](const auto& value){auto encoded=encode(value);return QByteArray(reinterpret_cast<const char*>(encoded.data()),encoded.size());};
+        directory.observeMessage(bytes(beacon),"192.0.2.2",7);directory.publish();require(directory.devices().empty(),"Idle discovery collected unsolicited beacon");
+        directory.beginSearch();require(directory.scanning()&&directory.searchTimer_.interval()==10000,"Explicit search not bounded");directory.observeMessage(bytes(beacon),"192.0.2.2",7);directory.publish();require(directory.devices().size()==1,"Explicit search ignored beacon");
+        Announcement local=beacon;local.device[0]=3;directory.announcement_=local;directory.finishSearch();require(!directory.scanning()&&directory.devices().size()==1&&directory.announcement_.has_value(),"Finishing search stopped advertising or discarded current result");
+        ++beacon.sequence;beacon.name="Changed while idle";directory.observeMessage(bytes(beacon),"192.0.2.2",7);directory.publish();require(directory.devices().first().toMap().value("name")=="Synthetic device","Idle beacon refreshed search results");
+        auto second=beacon;second.device[0]=2;directory.observeMessage(bytes(second),"192.0.2.3",7);directory.publish();require(directory.devices().size()==1,"Idle beacon added a new result");
+        directory.observeMessage(bytes(Withdrawal{beacon.device,beacon.instance,++beacon.sequence}),"192.0.2.2",7);directory.publish();require(directory.devices().empty(),"Idle withdrawal retained obsolete device");
+        directory.beginSearch();directory.observeMessage(bytes(second),"192.0.2.3",7);directory.publish();require(directory.devices().size()==1,"Subsequent explicit search not functional");directory.beginSearch();require(directory.devices().empty(),"Refresh retained previous search snapshot");
+        directory.stop();require(!directory.scanning()&&!directory.announcement_,"Stop retained discovery or advertisement");
+    }
+};
+
 struct PeerControllerEventCheck {
     static void sharing(PeerController& controller) {
         using namespace extrapane::peers;
@@ -74,6 +91,10 @@ struct PeerControllerEventCheck {
         using namespace extrapane::peers;
         auto require=[](bool good,const char* why){if(!good)throw std::runtime_error(why);};
         DeviceId owner{};owner[0]=7;
+        controller.connectionEndpoints_.insert("65",{{"address","127.0.0.1"},{"port",43824}});
+        Service::Event connected{};connected.kind=Service::EventKind::connected;connected.context.connection=65;connected.context.peer=owner;controller.applyEvent(connected);
+        require(controller.devices_.last().toMap().value("address")=="127.0.0.1"&&controller.devices_.last().toMap().value("port")==43824,"Connected device lost normalized endpoint metadata");
+        connected.kind=Service::EventKind::disconnected;controller.applyEvent(connected);require(!controller.connectionEndpoints_.contains("65"),"Disconnected endpoint metadata retained");
         Service::Event event{};event.kind=Service::EventKind::granted;event.context.connection=41;event.context.grant=8;event.context.kind=Kind::camera;event.resource=rpc::Open{owner,"camera-a"};
         controller.applyEvent(event);require(controller.connections_.size()==1,"Grant not shown");require(controller.connections().first().toMap().value("kindId").toInt()==static_cast<int>(Kind::camera),"Granted camera lost resource grouping kind");
         event.kind=Service::EventKind::reconnecting;controller.applyEvent(event);
@@ -100,6 +121,7 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);app.setOrganizati
     QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,temporary.path());
     const auto path=temporary.path()+"/app/peers";
     try{
+        DeviceDirectoryCheck::run();
         QSettings().setValue("peers/offers",QStringList{"camera"});
         extrapane::peers::DeviceId identity{};
         {PeerController controller({},path);if(controller.active()||controller.sharing()||controller.pairingCode().size()!=6)throw std::runtime_error("Unexpected startup policy");

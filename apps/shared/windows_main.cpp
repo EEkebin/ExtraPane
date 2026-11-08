@@ -116,7 +116,7 @@ int main(int argc,char** argv){
         if(!peers)for(int i=1;i<4;++i)controller.resources()->select(i,true);
         QTimer::singleShot(0,&app,[&]{app.exit(qmlFailed?1:0);});return app.exec();
     }
-    if(peers){peers->startDiscovery();peers->startAvailableSharing();}
+    if(peers){peers->startAvailableSharing();}
     QSystemTrayIcon tray(icon);tray.setToolTip("ExtraPane");
     QMenu menu;auto* show=menu.addAction("Open ExtraPane");auto* stop=menu.addAction(peers?"Disconnect shared resources":"Stop server");menu.addSeparator();auto* quit=menu.addAction("Exit ExtraPane");
     tray.setContextMenu(&menu);

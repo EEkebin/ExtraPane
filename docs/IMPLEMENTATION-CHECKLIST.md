@@ -982,3 +982,32 @@ This replaces the earlier opt-in offer power behavior.
 - Installer review: ordinary Update does not delete the current peer trust store;
   the cause of lost local pairing is unproven. Separately, current uninstall
   cleanup misses the new peer trust directory; track for a scoped cleanup fix.
+
+
+### Devices card boundary (2026-11-08)
+
+- [x] Shared desktop Devices page wraps each connected device's header,
+  Disconnect button and resource groups in one rounded, bordered card with
+  internal padding. The border remains when collapsed and follows the expanded
+  content height; resource and pairing behavior is unchanged.
+- Verification: source diff reviewed and whitespace check passed. This is a
+  presentation-only change; no device sessions or installations performed.
+- [ ] New packaged build and visual acceptance pending.
+
+
+### Devices management and Connections catalogs (2026-11-08)
+
+- [x] Shared desktop Devices manages discovery, saved peers and device links;
+  Connections contains bordered, collapsible resource catalogs and active session
+  controls. Connected peers hide Connect; known peers are excluded from Nearby.
+- [x] Nearby is an explicit, bounded search. Automatic provider announcements
+  remain independent; browsing never starts resource capture or media sessions.
+- [x] About displays the running application version. Android and native macOS
+  navigation/management updated, preserving platform capability limits.
+- Verification: shared desktop offscreen UI/routing checks, synthetic discovery
+  and endpoint lifecycle checks, and Windows compilation passed. All 12 Android host
+  suites and final compilation/lint passed. Native macOS source reviewed; native
+  compilation remains pending.
+- [ ] Matching Windows/Android packaging and delivery pending.
+- [ ] Linux/macOS hosted compile and physical acceptance pending; no new media
+  connection, driver installation or device test performed.

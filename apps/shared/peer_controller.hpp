@@ -86,6 +86,7 @@ private:
     QSet<QString> enabled_;
     QVariantList devices_,connections_;
     QHash<QString,QVariantMap> pending_;
+    QHash<QString,QVariantMap> connectionEndpoints_;
     std::vector<extrapane::peers::Offer> selectedOffers()const;
     void poll();
     void announce(unsigned port);

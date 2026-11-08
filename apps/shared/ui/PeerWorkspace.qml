@@ -9,6 +9,14 @@ Item {
     property bool collapsed: false
     property string expectedDeviceId: ""
     property bool manualExpanded: false
+    function connectedDevice(identity) { return peers.devices.some(row => row.identity===identity && row.incoming!==true) }
+    readonly property bool manualConnected: peers.devices.some(row => row.incoming!==true &&
+        (workspace.expectedDeviceId ? row.identity===workspace.expectedDeviceId :
+         row.address===(host.text.trim().toLowerCase()==="localhost" ? "127.0.0.1" : host.text.trim()) && Number(row.port)===Number(port.text))) ||
+        peers.remembered.some(row => (workspace.expectedDeviceId ? row.id===workspace.expectedDeviceId :
+            row.address===(host.text.trim().toLowerCase()==="localhost" ? "127.0.0.1" : host.text.trim()) && Number(row.port)===Number(port.text)) && connectedDevice(row.id))
+    readonly property var newNearbyDevices: peers.directory.devices.filter(row =>
+        !peers.remembered.some(saved => saved.id===row.id) && !peers.devices.some(device => device.identity===row.id))
     property var collapsedDevices: ({})
     function toggleDevice(key) { const next=Object.assign({},collapsedDevices); if(next[key]) delete next[key]; else next[key]=true; collapsedDevices=next }
     readonly property bool sharingBusy: peers.sharing || peers.sharingStarting
@@ -184,16 +192,16 @@ Item {
                 objectName: "peerPageContent"
                 width: pageScroll.availableWidth; spacing: 18
                 Label { textFormat: Text.PlainText; text: ["Devices","Share","Connections","ExtraPane"][workspace.page]; font.pixelSize: 30; font.weight: Font.DemiBold }
-                Label { textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#aabbd3"; text: workspace.page===0 ? "Use resources from another device. Connect over your local network or enter a reachable address." : workspace.page===1 ? "Choose what other devices can use. Sharing a resource does not activate it until someone connects." : workspace.page===2 ? "Each resource has its own connection. Stop one without interrupting the others." : "Displays, cameras, microphones, speakers and USB devices across your computers." }
+                Label { textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#aabbd3"; text: workspace.page===0 ? "Pair a new device or manage your saved devices. Search nearby or connect by address." : workspace.page===1 ? "Choose what other devices can use. Sharing a resource does not activate it until someone connects." : workspace.page===2 ? "Choose resources from your connected devices. Each power button connects or disconnects only that resource." : "Displays, cameras, microphones, speakers and USB devices across your computers." }
                 ColumnLayout {
                     visible: workspace.page===0; Layout.fillWidth: true; spacing: 14
                     RowLayout {
                         Label { textFormat: Text.PlainText; text: "Nearby devices"; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                        Button { objectName: "peerRefreshDiscovery"; text: "Refresh"; onClicked: peers.startDiscovery() }
+                        Button { objectName: "peerRefreshDiscovery"; text: peers.directory.scanning ? "Searching..." : "Search nearby"; enabled: !peers.directory.scanning; onClicked: peers.startDiscovery() }
                     }
                     Label { textFormat: Text.PlainText; text: peers.directory.status; visible: text.length>0; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Repeater {
-                        model: peers.directory.devices
+                        model: workspace.newNearbyDevices
                         delegate: ItemDelegate {
                             required property var modelData
                             objectName: "peerNearby_"+modelData.id
@@ -214,7 +222,9 @@ Item {
                                 Label { textFormat: Text.PlainText; text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight }
                                 Label { textFormat: Text.PlainText; text: modelData.address ? modelData.address+":"+modelData.port : "Choose this device from discovery or enter its address"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
-                            Action { objectName: "peerRemembered_"+modelData.id; text: "Connect"; enabled: !!modelData.address && modelData.port>0; onClicked: peers.connectDevice(modelData.address,modelData.port,"",modelData.id,outgoingNic.selectedAddress,false) }
+                            Action { objectName: "peerRemembered_"+modelData.id; text: "Connect"; visible: !workspace.connectedDevice(modelData.id); enabled: !!modelData.address && modelData.port>0; onClicked: peers.connectDevice(modelData.address,modelData.port,"",modelData.id,outgoingNic.selectedAddress,false) }
+                            Label { text: "Connected"; color: "#aabbd3"; visible: workspace.connectedDevice(modelData.id) }
+                            Action { text: "Resources"; visible: workspace.connectedDevice(modelData.id); onClicked: workspace.page=2 }
                             Action { objectName: "peerForget_"+modelData.id; text: "Forget"; destructive: true; onClicked: peers.forgetDevice(modelData.id) }
                         }
                     }
@@ -242,7 +252,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; placeholderText: "Pairing code (first connection)"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly }
-                            Action { objectName: "peerConnect"; text: "Connect"; onClicked: {
+                            Action { objectName: "peerConnect"; text: "Connect"; visible: !workspace.manualConnected; onClicked: {
                                 const numeric=workspace.checkFields([port]); host.invalid=!workspace.validAddress(host.text)
                                 let remembered=false; let matches=0
                                 for(const device of peers.remembered) {
@@ -272,15 +282,103 @@ Item {
                         CheckBox { id: openConnection; text: "Connect without pairing"; checked: false }
                         Label { textFormat: Text.PlainText; visible: openConnection.checked; text: "The other device must also have pairing disabled. Its identity will not be verified."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
+                    Label { text: "Connected devices"; font.weight: Font.DemiBold; visible: peers.devices.length>0 }
                     Repeater {
                         model: peers.devices
-                        delegate: ColumnLayout {
+                        delegate: Frame {
+                            required property var modelData
+                            Layout.fillWidth: true; padding: 12
+                            background: Rectangle { radius: 12; color: "#111f32"; border.color: "#48617e" }
+                            contentItem: RowLayout {
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Label { text: modelData.name; textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    Label { text: modelData.verified ? "Connected - verified" : "Connected - unverified"; color: "#aabbd3" }
+                                }
+                                Action { text: "Resources"; visible: !modelData.incoming; onClicked: workspace.page=2 }
+                                Action { text: "Disconnect"; destructive: true; onClicked: peers.disconnectDevice(modelData.connection) }
+                            }
+                        }
+                    }
+                }
+                ColumnLayout {
+                    visible: workspace.page===1; Layout.fillWidth: true; spacing: 14
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { textFormat: Text.PlainText; text: peers.deviceName; font.pixelSize: 20; Layout.fillWidth: true }
+                        Button { objectName: "peerRefreshOffers"; text: "Refresh resources"; onClicked: peers.refreshOffers() }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ComboBox { id: bind; objectName: "peerBindNic"; property bool invalid: false; Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: bind.invalid } Timer { id: bindInvalidTimer; interval: 4500; onTriggered: bind.invalid=false } Layout.fillWidth: true; editable: true; model: peers.networkAddresses; textRole: "label"; valueRole: "address"; enabled: peers.connections.length===0; property string selectedAddress: ""
+                            onActivated: selectedAddress=currentValue
+                            onModelChanged: Qt.callLater(function() { if(!bind.selectedAddress&&bind.count) bind.selectedAddress=bind.valueAt(0); bind.currentIndex=bind.indexOfValue(bind.selectedAddress); bind.editText=bind.selectedAddress })
+                            Connections { target: bind.contentItem; function onTextEdited() { bind.selectedAddress=bind.contentItem.text } }
+                         }
+                        Field { id: listenPort; objectName: "peerListenPort"; text: "43824"; Layout.preferredWidth: 100; placeholderText: "Port"; enabled: peers.connections.length===0; validator: IntValidator { bottom:1; top:65535 } }
+                    }
+                    Action { text: workspace.sharingBusy ? "Apply address" : "Retry availability"; enabled: peers.connections.length===0; onClicked: { if(workspace.sharingConfigurationValid()) peers.startAvailableSharing(bind.selectedAddress,Number(listenPort.text)) } }
+                    Label { text: "Available resources can be used from your paired devices. A red power button disconnects an active connection."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    CheckBox { text: "Require pairing"; checked: peers.pairingRequired; onToggled: peers.pairingRequired=checked }
+                    Label { textFormat: Text.PlainText; visible: peers.pairingRequired; text: "Pairing code: "+peers.pairingCode; font.pixelSize: 24; font.letterSpacing: 2 }
+                    Label { textFormat: Text.PlainText; visible: peers.pairingRequired; text: "The code stays the same until ExtraPane restarts. Previously paired devices use their saved identity."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Repeater {
+                        model: workspace.resourceGroups
+                        delegate: ResourceGroup {
+                            id: offerGroup
+                            required property var modelData
+                            property var items: workspace.groupedRows(peers.offers, modelData)
+                            title: modelData.title; symbol: modelData.icon; count: items.length
+                            groupKey: "peerOffers_"+modelData.key; visible: count>0
+                            Repeater {
+                                model: offerGroup.items
+                                delegate: ColumnLayout {
+                                    id: offerRow
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true; spacing: 2
+                                    MonitorSection { objectName: offerGroup.groupKey+"Section_"+offerRow.index; kind: offerRow.modelData.kindId; visible: workspace.startsMonitorSection(offerGroup.items,offerRow.index) }
+                                    RowLayout {
+                                        Layout.fillWidth: true; spacing: 12
+                                        Label { text: modelData.label; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; opacity: modelData.available ? 1 : 0.6 }
+                                        PowerButton {
+                                            objectName: "peerOffer_"+modelData.id
+                                            destructive: modelData.inUse===true; enabled: modelData.inUse===true
+                                            description: (modelData.inUse ? "Disconnect " : "Available to paired devices: ")+modelData.label
+                                            onClicked: { if(modelData.inUse) peers.stopIncomingResource(modelData.id) }
+                                        }
+                                    }
+                                    Label { visible: modelData.inUse===true; textFormat: Text.PlainText; text: modelData.users && modelData.users.length ? "Connected to "+modelData.users.join(", ") : String(modelData.sessionCount||1)+" active connection(s)"; color: "#9eacc2"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                    Label { visible: !modelData.available; text: modelData.reason||"Unavailable"; color: "#f0c66e"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                }
+                            }
+                        }
+                    }
+                    CheckBox { objectName: "peerGatewaySharing"; text: "Allow paired devices to use my paired devices"; checked: peers.gatewayEnabled; onToggled: { workspace.setGatewaySharing(checked); checked=Qt.binding(function() { return peers.gatewayEnabled }) } }
+                    Label { textFormat: Text.PlainText; visible: peers.gatewayEnabled; text: "ExtraPane relays permitted resources through this computer. Turning this off ends relayed connections. It does not open ports on your router."; color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Action { objectName: "peerStopSharingAll"; text: "Disconnect shared resources"; destructive: true; visible: workspace.hasSharedResources; onClicked: peers.disconnectIncomingAll() }
+                }
+                ColumnLayout {
+                    visible: workspace.page===2; Layout.fillWidth: true; spacing: 14
+                    Label { text: "Connect a device on the Devices page to see its resources here."; visible: !peers.devices.some(row => row.incoming!==true); wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#aabbd3" }
+                    Repeater {
+                        model: peers.devices
+                        delegate: Frame {
                             id: peerDevice
                             required property var modelData
-                            visible: !modelData.incoming; Layout.fillWidth: true; spacing: 10
+                            visible: !modelData.incoming; Layout.fillWidth: true
+                            padding: 12
+                            background: Rectangle {
+                                radius: 16
+                                color: "#111f32"
+                                border.width: 1
+                                border.color: "#48617e"
+                            }
                             readonly property string deviceKey: JSON.stringify([modelData.identity||"",String(modelData.connection)])
                             readonly property bool expanded: !workspace.collapsedDevices[deviceKey]
                             readonly property int activeCount: peers.connections.filter(row => row.incoming!==true && row.connection===modelData.connection).length
+                            contentItem: ColumnLayout {
+                                spacing: 10
                             RowLayout {
                                 Layout.fillWidth: true; spacing: 8
                                 ToolButton {
@@ -369,66 +467,8 @@ Item {
                         }
                     }
                     }
-                }
-                ColumnLayout {
-                    visible: workspace.page===1; Layout.fillWidth: true; spacing: 14
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { textFormat: Text.PlainText; text: peers.deviceName; font.pixelSize: 20; Layout.fillWidth: true }
-                        Button { objectName: "peerRefreshOffers"; text: "Refresh resources"; onClicked: peers.refreshOffers() }
                     }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        ComboBox { id: bind; objectName: "peerBindNic"; property bool invalid: false; Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: bind.invalid } Timer { id: bindInvalidTimer; interval: 4500; onTriggered: bind.invalid=false } Layout.fillWidth: true; editable: true; model: peers.networkAddresses; textRole: "label"; valueRole: "address"; enabled: peers.connections.length===0; property string selectedAddress: ""
-                            onActivated: selectedAddress=currentValue
-                            onModelChanged: Qt.callLater(function() { if(!bind.selectedAddress&&bind.count) bind.selectedAddress=bind.valueAt(0); bind.currentIndex=bind.indexOfValue(bind.selectedAddress); bind.editText=bind.selectedAddress })
-                            Connections { target: bind.contentItem; function onTextEdited() { bind.selectedAddress=bind.contentItem.text } }
-                         }
-                        Field { id: listenPort; objectName: "peerListenPort"; text: "43824"; Layout.preferredWidth: 100; placeholderText: "Port"; enabled: peers.connections.length===0; validator: IntValidator { bottom:1; top:65535 } }
-                    }
-                    Action { text: workspace.sharingBusy ? "Apply address" : "Retry availability"; enabled: peers.connections.length===0; onClicked: { if(workspace.sharingConfigurationValid()) peers.startAvailableSharing(bind.selectedAddress,Number(listenPort.text)) } }
-                    Label { text: "Available resources can be used from your paired devices. A red power button disconnects an active connection."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    CheckBox { text: "Require pairing"; checked: peers.pairingRequired; onToggled: peers.pairingRequired=checked }
-                    Label { textFormat: Text.PlainText; visible: peers.pairingRequired; text: "Pairing code: "+peers.pairingCode; font.pixelSize: 24; font.letterSpacing: 2 }
-                    Label { textFormat: Text.PlainText; visible: peers.pairingRequired; text: "The code stays the same until ExtraPane restarts. Previously paired devices use their saved identity."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Repeater {
-                        model: workspace.resourceGroups
-                        delegate: ResourceGroup {
-                            id: offerGroup
-                            required property var modelData
-                            property var items: workspace.groupedRows(peers.offers, modelData)
-                            title: modelData.title; symbol: modelData.icon; count: items.length
-                            groupKey: "peerOffers_"+modelData.key; visible: count>0
-                            Repeater {
-                                model: offerGroup.items
-                                delegate: ColumnLayout {
-                                    id: offerRow
-                                    required property var modelData
-                                    required property int index
-                                    Layout.fillWidth: true; spacing: 2
-                                    MonitorSection { objectName: offerGroup.groupKey+"Section_"+offerRow.index; kind: offerRow.modelData.kindId; visible: workspace.startsMonitorSection(offerGroup.items,offerRow.index) }
-                                    RowLayout {
-                                        Layout.fillWidth: true; spacing: 12
-                                        Label { text: modelData.label; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; opacity: modelData.available ? 1 : 0.6 }
-                                        PowerButton {
-                                            objectName: "peerOffer_"+modelData.id
-                                            destructive: modelData.inUse===true; enabled: modelData.inUse===true
-                                            description: (modelData.inUse ? "Disconnect " : "Available to paired devices: ")+modelData.label
-                                            onClicked: { if(modelData.inUse) peers.stopIncomingResource(modelData.id) }
-                                        }
-                                    }
-                                    Label { visible: modelData.inUse===true; textFormat: Text.PlainText; text: modelData.users && modelData.users.length ? "Connected to "+modelData.users.join(", ") : String(modelData.sessionCount||1)+" active connection(s)"; color: "#9eacc2"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                                    Label { visible: !modelData.available; text: modelData.reason||"Unavailable"; color: "#f0c66e"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                                }
-                            }
-                        }
-                    }
-                    CheckBox { objectName: "peerGatewaySharing"; text: "Allow paired devices to use my paired devices"; checked: peers.gatewayEnabled; onToggled: { workspace.setGatewaySharing(checked); checked=Qt.binding(function() { return peers.gatewayEnabled }) } }
-                    Label { textFormat: Text.PlainText; visible: peers.gatewayEnabled; text: "ExtraPane relays permitted resources through this computer. Turning this off ends relayed connections. It does not open ports on your router."; color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Action { objectName: "peerStopSharingAll"; text: "Disconnect shared resources"; destructive: true; visible: workspace.hasSharedResources; onClicked: peers.disconnectIncomingAll() }
-                }
-                ColumnLayout {
-                    visible: workspace.page===2; Layout.fillWidth: true; spacing: 14
+                    Label { text: "Active connections"; visible: peers.connections.length>0; font.weight: Font.DemiBold }
                     Label { textFormat: Text.PlainText; visible: peers.connections.length===0; text: "No resources connected"; color: "#aabbd3" }
                     Action { visible: peers.connections.length>0; text: "Disconnect all"; destructive: true; onClicked: peers.disconnectAll() }
                     Repeater {
@@ -454,7 +494,7 @@ Item {
                 ColumnLayout {
                     visible: workspace.page===3; Layout.fillWidth: true; spacing: 18
                     Image { source: "qrc:/extrapane.png"; Layout.preferredWidth: 96; Layout.preferredHeight: 96; Layout.alignment: Qt.AlignRight }
-                    Label { textFormat: Text.PlainText; text: "Device-sharing development build"; color: "#aabbd3" }
+                    Label { textFormat: Text.PlainText; objectName: "peerRunningVersion"; text: "Running version: "+(typeof receiver!=="undefined" ? receiver.version : Qt.application.version); color: "#aabbd3" }
                     Button { text: "Read the documentation"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane#readme") }
                     Button { text: "Releases and changelog"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane/releases") }
                     Button { text: "GitHub repository"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane") }

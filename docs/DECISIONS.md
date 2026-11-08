@@ -543,3 +543,17 @@ Every delivered Android revision also produces the matching Windows version,
 even when its changes affect Android only. Deliver the installer to both the
 local and Surface Desktops. Do not finish an Android delivery leaving Windows
 on a previous version. Windows installation remains a user step.
+
+
+## Device management and manual Nearby search (2026-11-08)
+
+Devices manages pairing, saved devices and device-level connections. Nearby is
+for discovering new peers only: the user explicitly starts a bounded search;
+paired and connected identities are excluded. Announcements remain automatic
+while sharing is available, independently of searching. This supersedes earlier
+automatic browsing behavior. Direct address connections remain available.
+
+Connections contains each connected peer's bordered, collapsible resource
+catalog, with independent green/red power controls and active-session controls.
+Connecting or pairing a peer never starts a media resource. A device's Connect
+action disappears once connected. About displays the running build version.

@@ -50,8 +50,9 @@ On Android, use the top-left menu for Devices, Share, Connections and About.
 Check portrait and landscape layouts: the toolbar and bottom controls must stay
 clear of system bars, and resource labels must wrap without hiding actions.
 Switch pages while multiple resources are active; navigation must not stop them.
-The phone's Devices page manages paired peers; review available resources on Share and request
-them from the other computer. Android resource consumption remains limited to the
+The phone's Devices page manages pairing and saved/connected peers. Connections
+shows its available resources and active streams; request those resources from
+the other computer. Share retains provider permissions and availability settings. Android resource consumption remains limited to the
 older workflow available through About's Legacy connections action.
 
 For Android audio, expect recognizable route names such as Loudspeaker, Earpiece,
@@ -67,11 +68,10 @@ selected headset must not redirect its session to the loudspeaker.
    no per-resource enable or separate Start sharing action is needed.
    Keep **Require pairing** enabled. Offering the destination alone must not create
    a virtual monitor or start a stream.
-2. On the desktop being extended, open **Devices**. Nearby discovery starts by
-   default. Select the laptop, or expand **Connect by address** and enter its
+2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or expand **Connect by address** and enter its
    IPv4 address and port. Enter the laptop's displayed six-digit code. Choose
    Automatic route, or the intended local interface on a multihomed computer.
-3. Connect and select the advertised display destination. Use its advertised mode
+3. Connect, open **Connections**, and select the advertised display destination. Use its advertised mode
    or enter a custom resolution and refresh target. The desktop creates the virtual
    monitor; the laptop opens the receiver window.
 4. Verify picture, supported input, fullscreen and monitor arrangement. Disconnect
@@ -146,3 +146,13 @@ and remove the stale pairing on the device that still remembers it, then pair
 again using the current code. Do not disable pairing, clear every device's trust,
 or infer that TLS/network encryption itself failed from this message. An ordinary
 installer update is intended to preserve pairing data.
+
+
+### Devices / Connections navigation
+
+- Devices: press Search nearby; no search starts at launch. After pairing, the
+  peer disappears from Nearby and appears in the saved/connected device list.
+- A connected device has no Connect button. Disconnect restores that action.
+- Connections: expand a device card, then a resource group, and use its power
+  button. Moving pages or collapsing cards must preserve active resources.
+- About: Running version must match the installed package version.

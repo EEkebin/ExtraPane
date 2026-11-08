@@ -18,25 +18,32 @@ public:
     explicit DeviceDirectory(QObject* parent=nullptr);
     ~DeviceDirectory() override;
     QVariantList devices()const{return devices_;}
-    bool scanning()const{return socket_.state()==QAbstractSocket::BoundState;}
+    bool scanning()const{return searchTimer_.isActive();}
+    bool transportActive()const{return socket_.state()==QAbstractSocket::BoundState;}
     QString status()const{return status_;}
     // Announce only after the actual resource-control listener is ready.
     void advertise(extrapane::peers::Announcement announcement);
     void withdraw();
-    Q_INVOKABLE bool start(unsigned interfaceIndex=0);
+    // Transport supports advertisements independently of user-requested browsing.
+    bool start(unsigned interfaceIndex=0);
+    Q_INVOKABLE bool search(unsigned interfaceIndex=0);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void refresh();
 signals:
     void changed();
 private:
+    friend struct DeviceDirectoryCheck;
     QUdpSocket socket_;
-    QTimer timer_;
+    QTimer timer_,searchTimer_;
     QElapsedTimer clock_;
     QList<QNetworkInterface> interfaces_;
     extrapane::peers::DiscoveryTable table_;
     std::optional<extrapane::peers::Announcement> announcement_;
     QVariantList devices_;
-    QString status_="Discovery stopped";
+    QString status_="Refresh to find nearby devices";
+    void beginSearch();
+    void finishSearch();
+    void observeMessage(const QByteArray&,const QString&,unsigned);
     void receive();
     void publish();
     void send(const extrapane::peers::Bytes&);
