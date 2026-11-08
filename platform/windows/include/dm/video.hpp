@@ -11,6 +11,9 @@
 namespace dm::security { class TlsStream; }
 namespace dm::video {
 struct GpuFrame;
+// Explicit local permission, pinned to monitor identity rather than a mutable GDI name.
+struct SharedScreen { std::uint32_t id=0; std::wstring identity; bool allow_input=false; };
+SharedScreen share_screen(std::uint32_t id,const std::wstring& source,bool allow_input=false);
 struct StreamStats {double received_fps=0,mbps=0,decode_ms=0;unsigned width=0,height=0,target_fps=0;};
 struct Frame {
     std::uint32_t width = 0, height = 0;
@@ -31,11 +34,11 @@ private:
 std::vector<std::uint8_t> encode_jpeg(const Frame& frame);
 Frame decode_jpeg(const std::vector<std::uint8_t>& jpeg, std::uint32_t width, std::uint32_t height);
 void hardware_info();
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec=wire::Codec::h264, const std::wstring& source=L"", bool extend=false,bool allow_input=false,unsigned width=1280,unsigned height=720,bool keep_layout=false,bool client_mode=false,const std::function<std::wstring(bool&)>& acquire_monitor={},bool* listener_ready=nullptr,net::TcpStream* accepted=nullptr,unsigned monitor_slot=0,security::TlsStream* admitted=nullptr);
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec=wire::Codec::h264, const std::wstring& source=L"", bool extend=false,bool allow_input=false,unsigned width=1280,unsigned height=720,bool keep_layout=false,bool client_mode=false,const std::function<std::wstring(bool&)>& acquire_monitor={},bool* listener_ready=nullptr,net::TcpStream* accepted=nullptr,unsigned monitor_slot=0,security::TlsStream* admitted=nullptr,std::span<const SharedScreen> shared_screens={},bool existing_only=false);
 void serve_video(const net::Options& options,const std::string& pair,bool allow_input,unsigned frames=0);
-void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink, std::optional<unsigned> decoder_adapter=std::nullopt, const std::function<std::vector<input::Event>()>& input_source={},const std::function<void(unsigned)>& input_grant={},wire::ClientDisplay client_display={},Quality quality=Quality::native,const std::function<void(StreamStats)>& statistics={},const std::function<void()>& editable_touch={});
+void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink, std::optional<unsigned> decoder_adapter=std::nullopt, const std::function<std::vector<input::Event>()>& input_source={},const std::function<void(unsigned)>& input_grant={},wire::ClientDisplay client_display={},Quality quality=Quality::native,const std::function<void(StreamStats)>& statistics={},const std::function<void()>& editable_touch={},wire::ScreenRequest screen={});
 enum class Renderer {d3d11,d3d12,vulkan,opengl};
 inline const char* renderer_name(Renderer renderer){return renderer==Renderer::opengl?"OpenGL":renderer==Renderer::vulkan?"Vulkan":renderer==Renderer::d3d12?"D3D12":"D3D11";}
-struct PreviewOptions { std::wstring monitor; unsigned width=0,height=0,fps=0; };
+struct PreviewOptions { std::wstring monitor; unsigned width=0,height=0,fps=0; wire::ScreenRequest screen; };
 void preview_video(const net::Options& options, const std::string& pair, std::optional<unsigned> decoder_adapter=std::nullopt,bool control=false,bool fullscreen=false,Quality quality=Quality::native,Renderer renderer=Renderer::d3d11,PreviewOptions preview={});
 }

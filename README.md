@@ -19,6 +19,12 @@ The development build also adds [Speakers](docs/SPEAKERS.md): a Windows server
 playback device that sends audio to a selected Windows or Android client output.
 This new path has isolated checks; physical playback verification is pending.
 
+The `feat/device-discovery` branch is developing a device-oriented interface with
+explicit resource offers, LAN discovery, direct-address connections and remembered
+pairing. This redesign is not yet a tested replacement for the existing Server /
+Client workflow. Its current gates are recorded in the [implementation
+checklist](docs/IMPLEMENTATION-CHECKLIST.md#active-implementation-devices-sharing-and-gateways).
+
 ## Requirements
 
 The following requirements apply to Windows. See [Linux setup](docs/LINUX.md), [Android setup](docs/ANDROID.md) and [macOS setup](docs/MACOS.md) for those platforms.

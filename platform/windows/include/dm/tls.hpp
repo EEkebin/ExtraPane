@@ -29,7 +29,8 @@ public:
     std::vector<access::ChannelCredential> issue_channels(unsigned mask);
     void require_resource(unsigned kind)const;
     bool open_control();
-    std::vector<access::ChannelCredential> control_channels(unsigned kind);
+    std::vector<access::ChannelCredential> control_channels(unsigned kind,std::optional<bool> display_input={});
+    std::optional<bool> authorized_display_input()const;
 private:
     void read_raw(std::span<std::uint8_t>,std::chrono::steady_clock::time_point);
     void write_raw(std::span<const std::uint8_t>,std::chrono::steady_clock::time_point);

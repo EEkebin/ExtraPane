@@ -167,7 +167,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     // EnumDisplaySettings reports 59 for common 59.94 Hz panels; target 60 frames.
     if(native.hz==59)native.hz=60;
     const bool custom=preview.width||preview.fps;
-    const wire::ClientDisplay preference{preview.width?preview.width:native.width,preview.height?preview.height:native.height,preview.fps?preview.fps:std::min(native.hz,60u),custom};
+    const wire::ClientDisplay preference{preview.width?preview.width:native.width,preview.height?preview.height:native.height,preview.fps?preview.fps:std::min(native.hz,60u),custom && preview.screen.mode!=wire::DisplayMode::existing_screen};
     std::cout<<"CLIENT_DISPLAY "<<preference.width<<'x'<<preference.height<<'@'<<preference.hz<<std::endl;
     ShowWindow(hwnd, SW_SHOWNORMAL);
     // Test launcher hides its PowerShell parent; explicitly show the native preview.
@@ -198,7 +198,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 if (cancel.load()) throw std::runtime_error("Video preview closed by user");
                 std::lock_guard guard(mutex);
                 if(latest){++dropped_total;}latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
-            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,quality,[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;},state.auto_keyboard.load()?std::function<void()>([]{std::cout<<"KEYBOARD_EDITABLE_TOUCH host keyboard requested"<<std::endl;}):std::function<void()>{});
+            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,quality,[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;},state.auto_keyboard.load()?std::function<void()>([]{std::cout<<"KEYBOARD_EDITABLE_TOUCH host keyboard requested"<<std::endl;}):std::function<void()>{},preview.screen);
         } catch (...) { error = std::current_exception(); }
         done.store(true);
     });

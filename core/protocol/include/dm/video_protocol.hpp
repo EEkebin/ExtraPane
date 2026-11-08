@@ -8,6 +8,10 @@ namespace dm::video::wire {
 constexpr std::uint32_t max_jpeg = 2 * 1024 * 1024;
 constexpr std::array<std::uint8_t, 32> request{'D','M','V','R',9,1,3}; // byte 7: input request; byte 9: quality; byte 10: opt-in touch focus hints
 constexpr std::array<std::uint8_t, 4> ready{'R','D','Y','9'};
+enum class DisplayMode : std::uint8_t { extend_desktop=0, existing_screen=1 };
+struct ScreenRequest { DisplayMode mode=DisplayMode::extend_desktop; std::uint32_t screen_id=0; };
+void set_screen_request(std::span<std::uint8_t> request, ScreenRequest screen);
+ScreenRequest take_screen_request(std::span<std::uint8_t> request);
 struct ClientDisplay { std::uint32_t width=0,height=0,hz=0; bool exact_mode=false; };
 void set_client_display(std::span<std::uint8_t> request, ClientDisplay display);
 ClientDisplay take_client_display(std::span<std::uint8_t> request);

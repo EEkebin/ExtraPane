@@ -37,7 +37,8 @@ int main(int argc, char** argv) {
                          "  dm-view opengl-check [adapter-index]\n"
                          "  dm-view renderer-info\n"
                          "  dm-view host --lan --bind <local-ipv4> --allow-screen [--extend | --display <GDI-name>] [--allow-input] [--frames 0] [--fps 30] [--width 1280 --height 720] [--codec h264|jpeg]\n"
-                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality native|75|50] [--renderer d3d11|d3d12|vulkan|opengl] [--monitor GDI-NAME] [--width N --height N] [--fps 1..360]\n"
+                         "  dm-view receive --lan --bind <local-ipv4> --peer <host-ipv4> [--headless | --control] [--fullscreen] [--decoder-adapter INDEX] [--quality native|75|50] [--renderer d3d11|d3d12|vulkan|opengl] [--monitor GDI-NAME] [--existing-screen ID] [--width N --height N] [--fps 1..360]\n"
+                         "  Existing screen: host --serve --extend --share-display GDI-NAME [--allow-screen-input]; receiver --existing-screen 1 (view-only unless --control is also requested).\n"
                          "  Common options: --port 43824 --timeout-ms 15000\n"
                          "Pairs: dm-session. Displays: dm-display list. Default source: primary output.\n"
                          "--extend requires separately installed signed ExtraPane driver and an administrator token.\n";
@@ -68,10 +69,13 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (command != "host" && command != "receive") throw std::invalid_argument("Unknown command");
-        bool allow = false, headless = false, extend=false,allow_input=false,control=false,fullscreen=false,keep_layout=false,client_mode=false,serve=false;
+        bool scoped_screen=false,screen_identity_stdin=false;std::wstring scoped_identity;
+        bool allow_screen_input=false, allow = false, headless = false, extend=false,allow_input=false,control=false,fullscreen=false,keep_layout=false,client_mode=false,serve=false;
         std::map<std::string,std::string> args;bool automatic_lan=false,require_code=false,access_stdin=false;
         for (int i = 2; i < argc; ++i) {
             const std::string key(argv[i]);
+            if(key=="--scoped-screen"){scoped_screen=true;continue;}
+            if(key=="--screen-identity-stdin"){screen_identity_stdin=true;continue;}
             if(key=="--require-code"){require_code=true;continue;}
             if(key=="--access-stdin"){access_stdin=true;continue;}
             if(key=="--lan"){automatic_lan=true;continue;}
@@ -82,13 +86,19 @@ int main(int argc, char** argv) {
             if (key == "--allow-screen") { if (allow) throw std::invalid_argument("Duplicate consent flag"); allow = true; continue; }
             if (key == "--headless") { if (headless) throw std::invalid_argument("Duplicate headless flag"); headless = true; continue; }
             if (key == "--extend") { if(extend) throw std::invalid_argument("Duplicate extend flag"); extend=true;continue; }
+            if(key=="--allow-screen-input"){if(allow_screen_input)throw std::invalid_argument("Duplicate screen input grant");allow_screen_input=true;continue;}
             if(key=="--allow-input") {if(allow_input)throw std::invalid_argument("Duplicate input grant");allow_input=true;continue;}
             if(key=="--control") {if(control)throw std::invalid_argument("Duplicate control request");control=true;continue;}
-            if (key != "--monitor" && key != "--renderer" && key != "--quality" && key != "--name" && key != "--bind" && key != "--peer" && key != "--port" && key != "--timeout-ms" && key != "--frames" && key != "--fps" && key != "--codec" && key != "--decoder-adapter" && key != "--display" && key != "--width" && key != "--height" && key != "--parent-pid") throw std::invalid_argument("Unknown option: " + key);
+            if (key != "--share-display" && key != "--existing-screen" && key != "--monitor" && key != "--renderer" && key != "--quality" && key != "--name" && key != "--bind" && key != "--peer" && key != "--port" && key != "--timeout-ms" && key != "--frames" && key != "--fps" && key != "--codec" && key != "--decoder-adapter" && key != "--display" && key != "--width" && key != "--height" && key != "--parent-pid") throw std::invalid_argument("Unknown option: " + key);
             if (++i >= argc || !args.emplace(key, argv[i]).second) throw std::invalid_argument("Missing value or duplicate option");
         }
         if(automatic_lan){if(args.contains("--name"))throw std::invalid_argument("Choose --lan or --name");args["--name"]="";}
         if (!args.contains("--name") || !args.contains("--bind")) throw std::invalid_argument("--lan (or diagnostic --name) and --bind are required");
+        if(scoped_screen||screen_identity_stdin){
+            if(!scoped_screen||!screen_identity_stdin||command!="host"||!serve||!automatic_lan||!require_code||args.at("--bind")!="127.0.0.1"||extend||allow_input||args.contains("--display")||args.contains("--share-display"))throw std::invalid_argument("Invalid scoped screen host options");
+            std::string identity;std::getline(std::cin,identity);if(identity.empty()||identity.size()>4096||std::any_of(identity.begin(),identity.end(),[](unsigned char c){return c<32||c==127;}))throw std::invalid_argument("Invalid screen identity");
+            const int size=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,identity.data(),static_cast<int>(identity.size()),nullptr,0);if(!size)throw std::invalid_argument("Invalid UTF-8 screen identity");scoped_identity.resize(size);MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,identity.data(),static_cast<int>(identity.size()),scoped_identity.data(),size);
+        }
         if(args.contains("--parent-pid")) {
             const auto pid=number(args.at("--parent-pid"),0xffffffffu);
             const auto parent=OpenProcess(SYNCHRONIZE,FALSE,pid);
@@ -116,7 +126,7 @@ int main(int argc, char** argv) {
         if (args.contains("--timeout-ms")) options.timeout = std::chrono::milliseconds(number(args.at("--timeout-ms"),60000,command=="host"));
         if (command == "host") {
             if (!allow) throw std::invalid_argument("Screen capture requires explicit --allow-screen consent");
-            if (headless || control || fullscreen || args.contains("--monitor") || args.contains("--renderer") || args.contains("--quality") || args.contains("--peer") || args.contains("--decoder-adapter")) throw std::invalid_argument("Unsupported host option");
+            if (args.contains("--existing-screen") || headless || control || fullscreen || args.contains("--monitor") || args.contains("--renderer") || args.contains("--quality") || args.contains("--peer") || args.contains("--decoder-adapter")) throw std::invalid_argument("Unsupported host option");
             auto codec=dm::video::wire::Codec::h264;
             if (args.contains("--codec")) {
                 if(args.at("--codec")=="jpeg") codec=dm::video::wire::Codec::jpeg;
@@ -130,11 +140,22 @@ int main(int argc, char** argv) {
                 if(text.empty() || text.size()>32) throw std::invalid_argument("Invalid GDI display name");
                 for(const unsigned char c:text) { if(c>127) throw std::invalid_argument("Display name must be ASCII");source.push_back(c); }
             }
-            if(serve){if(!extend || !source.empty() || codec!=dm::video::wire::Codec::h264)throw std::invalid_argument("--serve requires H264 extension");dm::host::serve(options,args.at("--name"),allow_input,frames,unified_control);}
+            std::vector<dm::video::SharedScreen> shared_screens;
+            if(args.contains("--share-display")) {
+                const auto& name=args.at("--share-display");
+                if(!serve||!name.starts_with("\\\\.\\DISPLAY")||name.size()>32||name.size()<=11||!std::all_of(name.begin()+11,name.end(),[](char c){return c>='0'&&c<='9';}))throw std::invalid_argument("Share an attached Windows monitor on the unified server");
+                shared_screens.push_back(dm::video::share_screen(1,std::wstring(name.begin(),name.end()),allow_screen_input));
+            }else if(scoped_screen)shared_screens.push_back({1,scoped_identity,allow_screen_input});
+            else if(allow_screen_input)throw std::invalid_argument("Screen input requires an explicitly shared display");
+            if(serve){if((!extend&&!scoped_screen) || !source.empty() || codec!=dm::video::wire::Codec::h264)throw std::invalid_argument("--serve requires H264 extension");dm::host::serve(options,args.at("--name"),allow_input,frames,unified_control,shared_screens,scoped_screen);}
             else dm::video::host_video(options,args.at("--name"),frames,fps,codec,source,extend,allow_input,args.contains("--width")?number(args.at("--width"),4096):1280,args.contains("--height")?number(args.at("--height"),4096):720,keep_layout,client_mode);
         } else {
-            if (allow || allow_input || serve || extend || keep_layout || client_mode || ((control || fullscreen) && headless) || args.contains("--display") || args.contains("--frames") || args.contains("--codec") || !args.contains("--peer")) throw std::invalid_argument("Unsupported receiver options or missing --peer");
+            if (allow_screen_input || args.contains("--share-display") || allow || allow_input || serve || extend || keep_layout || client_mode || ((control || fullscreen) && headless) || args.contains("--display") || args.contains("--frames") || args.contains("--codec") || !args.contains("--peer")) throw std::invalid_argument("Unsupported receiver options or missing --peer");
             dm::video::PreviewOptions preview;
+            if(args.contains("--existing-screen")) {
+                preview.screen={dm::video::wire::DisplayMode::existing_screen,number(args.at("--existing-screen"),0xffffffffu)};
+                if(args.contains("--width")||args.contains("--height"))throw std::invalid_argument("Existing-screen capture does not configure a virtual monitor");
+            }
             if(headless&&(args.contains("--width")||args.contains("--height")||args.contains("--fps")))throw std::invalid_argument("Custom display mode requires a preview window");
             if(args.contains("--width")!=args.contains("--height"))throw std::invalid_argument("Custom resolution requires both --width and --height");
             if(args.contains("--width")){preview.width=number(args.at("--width"),4096);preview.height=number(args.at("--height"),4096);if(preview.width<2||preview.height<2||preview.width%2||preview.height%2)throw std::invalid_argument("Custom display dimensions must be even and between 2 and 4096");}
@@ -147,7 +168,7 @@ int main(int argc, char** argv) {
             auto renderer=dm::video::Renderer::d3d11;
             if(args.contains("--renderer")){if(headless)throw std::invalid_argument("Headless receive has no renderer");const auto& value=args.at("--renderer");if(value=="d3d12")renderer=dm::video::Renderer::d3d12;else if(value=="vulkan")renderer=dm::video::Renderer::vulkan;else if(value=="opengl")renderer=dm::video::Renderer::opengl;else if(value!="d3d11")throw std::invalid_argument("Renderer must be d3d11, d3d12, vulkan or opengl");}
             if(args.contains("--quality")){const auto& value=args.at("--quality");if(value=="75")quality=dm::video::Quality::reduced;else if(value=="50")quality=dm::video::Quality::low_bandwidth;else if(value!="native")throw std::invalid_argument("Stream quality must be native, 75 or 50");}
-            if (headless) dm::video::receive_video(options,args.at("--name"),[](dm::video::Frame){},adapter,{},{},{},quality);
+            if (headless) dm::video::receive_video(options,args.at("--name"),[](dm::video::Frame){},adapter,{},{},{},quality,{},{},preview.screen);
             else dm::video::preview_video(options,args.at("--name"),adapter,control,fullscreen,quality,renderer,preview);
         }
         return 0;

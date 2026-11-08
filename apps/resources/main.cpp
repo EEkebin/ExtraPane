@@ -17,7 +17,7 @@ std::atomic_bool stopped=false,mirrored=false;
 BOOL WINAPI control(DWORD event){if(event==CTRL_C_EVENT||event==CTRL_BREAK_EVENT||event==CTRL_CLOSE_EVENT){stopped=true;return TRUE;}return FALSE;}
 void report(const std::string& line){std::osyncstream(std::cout)<<line<<std::endl;}
 unsigned number(const std::string& value,unsigned limit,bool zero=false){unsigned result=0;auto [end,error]=std::from_chars(value.data(),value.data()+value.size(),result);if(error!=std::errc{}||end!=value.data()+value.size()||result>limit||(!zero&&!result))throw std::invalid_argument("Invalid numeric option");return result;}
-void ipv4(const std::string& value){
+void ipv4(const std::string& value){if(_stricmp(value.c_str(),"localhost")==0)return;
     std::size_t offset=0;unsigned first=0;
     for(unsigned group=0;group<4;++group){const auto end=value.find('.',offset);if((group<3)==(end==std::string::npos))throw std::invalid_argument("Expected an IPv4 literal");
         const auto piece=value.substr(offset,(end==std::string::npos?value.size():end)-offset);const auto octet=number(piece,255,true);if(group==0)first=octet;offset=end+1;}

@@ -426,8 +426,7 @@ says the work is ready.
   selected-interface access when discovery is unavailable, including static-IP LANs.
 - Pairing codes are optional and enabled by default. Six-digit codes rotate between
   sessions. Remembered access is desired; use device identity/trust rather than
-  treating a stored short code or IP address as proof of identity. Exact rotation
-  boundaries are awaiting the user's answer. Trust must be revocable, and disabling
+  treating a stored short code or IP address as proof of identity. Codes rotate only on a fresh app/sharing-service startup, not on pairing or reconnect. Trust must be revocable, and disabling
   pairing must be explicit; do not imply peer identity verification in open mode.
 - Default sharing lifecycle (delegated choice): remember offered-resource selections,
   provide Start sharing / Stop sharing, and start sharing manually by default.
@@ -439,8 +438,7 @@ says the work is ready.
 - Virtual monitor configuration retains both matching a selected receiver monitor's
   native resolution/refresh and custom resolution/target FPS. Selecting a physical
   monitor remains optional. Hardware/OS limits remain visible.
-- Existing-screen sharing is now in scope; its default remote-input policy is awaiting
-  the user's answer. Existing virtual-display input semantics remain intact.
+- Existing-screen sharing is now in scope; its default is view-only, with input explicitly enabled. Existing virtual-display input semantics remain intact.
 - Brief network loss should trigger bounded retries for non-USB resources, provided
   permission/trust and resource availability still hold. Never silently fall back to
   another camera, microphone, screen or output. USB reconnect requires explicit action
@@ -454,3 +452,24 @@ and bounded reconnect. Preserve current device-sharing paths while migrating.
 Security checks must cover code replay/rate limits, remembered identity changes,
 revocation and cross-device resource isolation before claiming the new pairing mode
 ready. Physical-device validation remains a separate gate.
+
+## Device discovery implementation authorization
+
+The user authorized implementing this design on the child branch. UPnP is explicitly
+excluded. Manual port forwarding uses the offering device's reachable address/port;
+LAN discovery is optional convenience. The using device initiates a connection to
+the offering device. Media may flow in either direction; the virtual-display driver
+always belongs on the computer whose desktop is extended.
+
+Gateway sharing is disabled by default. When explicitly enabled for a trusted
+visitor, the gateway delegates its authorized access to its paired devices without
+requiring that visitor to pair separately with each destination. This does not
+create permanent visitor/destination trust. Enforce one gateway hop, ExtraPane-only
+resource sessions, existing resource permissions, bounded queues and immediate
+revocation/stop. Gateway discovery alone is insufficient: relay traffic over an
+authorized session when private destinations cannot be reached directly.
+
+Accept localhost and IPv4 loopback for manual/self connections while excluding
+loopback from LAN address listings. IPv6 support requires an explicit transport
+gate; never treat an unsupported address as a different destination. Self-extension
+still uses the real media pipeline unless a separate local path is implemented.

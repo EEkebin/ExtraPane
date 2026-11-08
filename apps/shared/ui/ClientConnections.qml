@@ -36,10 +36,11 @@ ScrollView {
         contentItem: Label { objectName: "connectionSuccessMessage"; text: panel.connectedMessages.join("\n"); color: "white"; wrapMode: Text.WordWrap; Accessible.role: Accessible.AlertMessage }
     }
     function validAddress(value, local) {
+        if (!local && value.toLowerCase() === "localhost") return true
         if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) return false
         const parts = value.split(".").map(Number)
         if (parts.some(v => v > 255)) return false
-        return local && value === "0.0.0.0" || (parts[0] !== 127 && parts[0] < 224 && value !== "0.0.0.0")
+        return local && value === "0.0.0.0" || (parts[0] > 0 && parts[0] < 224 && value !== "0.0.0.0")
     }
     component ErrorBorder: Item {
         id: errorOutline

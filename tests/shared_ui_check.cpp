@@ -264,7 +264,7 @@ int main(int argc,char** argv){
             while(instances.rowCount()){const auto id=instances.data(instances.index(0),ConnectionModel::Id).toString();instances.setState(id,ConnectionModel::State::idle);require(instances.removeConnection(id));}
             runtime.insert("active",false);repeatedWindow->resize(1120,760);repeatedRoot->setProperty("sidebarCollapsed",false);capture("client-empty-1120");
             auto* destination=named(repeatedRoot,"sharedDestinationFields");
-            auto* address=named(destination,"connectionAddress");address->setProperty("text","localhost");
+            auto* address=named(destination,"connectionAddress");address->setProperty("text","invalid-host");
             require(QMetaObject::invokeMethod(destination,"save"));require(QMetaObject::invokeMethod(destination,"validate"));
             capture("client-invalid-address");
             repeatedRoot->setProperty("sidebarCollapsed",true);capture("client-invalid-collapsed");

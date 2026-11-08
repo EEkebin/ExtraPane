@@ -22,6 +22,10 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);try{
     require(model.removeConnection(camera));require(model.connection(second)["connectionId"]==second&&model.connection(mic)["connectionId"]==mic);
     auto secret=target("192.0.2.10");secret["accessCode"]="123456";require(!model.setSharedTarget(secret)&&!model.setTarget(mic,secret));
     require(!model.setSharedTarget(target("example.org"))&&!model.setSharedTarget(target("0.0.0.0"))&&!model.setSharedTarget(target("224.0.0.1")));
+    require(model.setSharedTarget(target("localhost"))&&model.sharedTarget().value("address")=="127.0.0.1");
+    require(model.setTarget(mic,target("LOCALHOST"))&&model.connection(mic)["target"].toMap()["address"]=="127.0.0.1");
+    require(model.setSharedTarget(target("127.0.0.1"))&&!model.setSharedTarget(target("::1")));
+    require(model.setSharedTarget(target("192.0.2.20")));
     auto bad=target("192.0.2.10");bad["port"]=65536;require(!model.setTarget(mic,bad));bad["port"]=1.5;require(!model.setTarget(mic,bad));
     const auto usb=model.addConnection("usb"),usb2=model.addConnection("usb");model.setSource(usb,"disk-a");model.setSource(usb2,"disk-a");model.setEnabled(usb,true);model.setEnabled(usb2,true);
     require(model.beginConnection(usb)&&!model.beginConnection(usb2));model.setEnabled(usb,false);model.setState(usb,ConnectionModel::State::returning,"Returning");require(!model.beginConnection(usb2));

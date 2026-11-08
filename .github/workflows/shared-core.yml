@@ -1,8 +1,11 @@
 ﻿name: Shared resource core
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'core/session/**'
+      - 'core/peers/**'
+      - 'cmake/Peers.cmake'
       - 'core/access/**'
       - 'apps/group-session/**'
       - 'tests/group_admission_check.cpp'
@@ -50,6 +53,8 @@ on:
     branches: [main]
     paths:
       - 'core/session/**'
+      - 'core/peers/**'
+      - 'cmake/Peers.cmake'
       - 'core/access/**'
       - 'apps/group-session/**'
       - 'tests/group_admission_check.cpp'
@@ -143,7 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Configure in-memory security checks
-        run: cmake -S . -B out/resource-security -DDM_ACCESS_ONLY=ON -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B out/resource-security -DDM_ACCESS_ONLY=ON -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_PEERS_TESTS=ON -DEXTRAPANE_PEER_AUTH_TESTS=ON -DEXTRAPANE_PEER_TRANSPORT_TESTS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build out/resource-security --config Release --parallel 2
       - name: Check admission and encrypted control

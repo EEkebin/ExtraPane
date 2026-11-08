@@ -1,0 +1,43 @@
+#include <QGuiApplication>
+#include <QQmlEngine>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlPropertyMap>
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <QQuickStyle>
+#include <QThread>
+#include <QSet>
+#include <iostream>
+#include <stdexcept>
+class MockPeers final:public QQmlPropertyMap {
+ Q_OBJECT
+public:
+ QQmlPropertyMap directory;
+ QString connection,owner,resource,expectedIdentity,suppliedCode,forgotten;bool input=true;unsigned width=0,height=0,hz=0;unsigned calls=0;
+ MockPeers():QQmlPropertyMap(this,nullptr){directory.insert("scanning",false);directory.insert("status",QString{});directory.insert("devices",QVariantList{});insert("directory",QVariant::fromValue(&directory));insert("status","Ready");insert("sharing",false);insert("gatewayEnabled",false);insert("pairingRequired",true);insert("pairingCode","123456");insert("deviceName","Test machine");insert("offers",QVariantList{});insert("networkAddresses",QVariantList{QVariantMap{{"label","Ethernet ? 192.0.2.1"},{"address","192.0.2.1"},{"interfaceIndex",1}}});insert("remembered",QVariantList{QVariantMap{{"id","known-device"},{"name","Saved device"},{"address","192.0.2.10"},{"port",43824}}});insert("connections",QVariantList{});
+ QVariantMap display{{"id","display-one"},{"label","First display"},{"owner","owner-a"},{"kind","Extend desktop"},{"kindId",0},{"available",true},{"inputAllowed",false},{"reason",""},{"width",1920},{"height",1080},{"refresh",60}};
+ QVariantMap screen=display;screen["id"]="screen-two";screen["kindId"]=5;screen["kind"]="Existing screen";screen["label"]="Second screen";screen["owner"]="owner-b";screen["inputAllowed"]=true;
+ insert("devices",QVariantList{QVariantMap{{"name","First peer"},{"connection","101"},{"incoming",false},{"resources",QVariantList{display}}},QVariantMap{{"name","Second peer"},{"connection","202"},{"incoming",false},{"resources",QVariantList{screen}}}});
+ }
+ Q_INVOKABLE void useResource(QString c,QString o,QString r,bool i,unsigned w,unsigned h,unsigned f){connection=c;owner=o;resource=r;input=i;width=w;height=h;hz=f;++calls;}
+ Q_INVOKABLE void disconnectDevice(QString){}
+ Q_INVOKABLE void forgetDevice(QString id){forgotten=id;}
+ Q_INVOKABLE void disconnectAll(){}
+ Q_INVOKABLE void stopResource(QString,QString){}
+ Q_INVOKABLE void enableOffer(QString,bool){}
+ Q_INVOKABLE void startSharing(QString,unsigned){}
+ Q_INVOKABLE void stopSharing(){}
+ Q_INVOKABLE void connectDevice(QString,unsigned,QString code,QString expected,QString,bool){suppliedCode=code;expectedIdentity=expected;}
+ signals:void toast(QString message);
+};
+void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
+QObject* named(QObject* root,const QString& name){QSet<QObject*> seen;QList<QObject*> pending{root};while(!pending.empty()){auto* item=pending.takeLast();if(seen.contains(item))continue;seen.insert(item);if(item->objectName()==name)return item;for(auto* child:item->children())pending.append(child);if(auto* quick=qobject_cast<QQuickItem*>(item))for(auto* child:quick->childItems())pending.append(child);}throw std::runtime_error(("Missing "+name).toStdString());}
+int main(int argc,char** argv){qputenv("QT_QPA_PLATFORM","offscreen");qputenv("QT_QUICK_BACKEND","software");QGuiApplication app(argc,argv);QQuickStyle::setStyle("Material");try{MockPeers peers;QQmlEngine engine;QStringList warnings;QObject::connect(&engine,&QQmlEngine::warnings,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings<<e.toString();});engine.rootContext()->setContextProperty("peers",&peers);QQmlComponent component(&engine,QUrl("qrc:/PeerWorkspace.qml"));std::unique_ptr<QObject> owned(component.create());if(!owned){for(const auto& e:component.errors())std::cerr<<e.toString().toStdString()<<'\n';throw std::runtime_error("Peer QML failed to load");}auto* root=qobject_cast<QQuickItem*>(owned.get());require(root,"Peer root must be an item");QQuickWindow window;window.resize(1100,800);root->setParentItem(window.contentItem());root->setWidth(1100);root->setHeight(800);window.show();for(int n=0;n<20;++n){app.processEvents();QThread::msleep(5);}
+ auto* content=named(root,"peerPageContent");auto* scroll=named(root,"peerPageScroll");require(content->property("width").toDouble()>400,"Content collapsed to zero width");require(content->property("width").toDouble()<=scroll->property("availableWidth").toDouble()+1,"Content overlaps scrollbar");
+ require(QMetaObject::invokeMethod(named(root,"peerUse_display-one"),"clicked"),"Cannot activate first resource");require(peers.calls==1&&peers.connection=="101"&&peers.owner=="owner-a"&&!peers.input&&peers.width==1920&&peers.height==1080&&peers.hz==60,"First resource used wrong peer, mode or input permission");
+ require(QMetaObject::invokeMethod(named(root,"peerUse_screen-two"),"clicked"),"Cannot activate second resource");require(peers.calls==2&&peers.connection=="202"&&peers.owner=="owner-b"&&!peers.input&&!peers.width&&!peers.height&&!peers.hz,"Existing-screen default must be view-only with no virtual mode");
+ require(QMetaObject::invokeMethod(named(root,"peerRemembered_known-device"),"clicked"),"Cannot connect saved peer");require(peers.expectedIdentity=="known-device"&&peers.suppliedCode.isEmpty(),"Saved peer must pin identity without asking for code");require(QMetaObject::invokeMethod(named(root,"peerForget_known-device"),"clicked"),"Cannot forget saved peer");require(peers.forgotten=="known-device","Wrong peer forgotten");
+ root->setProperty("collapsed",true);for(int n=0;n<60;++n){app.processEvents();QThread::msleep(5);}require(root->property("expansion").toDouble()<0.01,"Sidebar did not collapse");require(content->property("width").toDouble()<=scroll->property("availableWidth").toDouble()+1,"Collapsed sidebar overflows content");
+ for(int page=1;page<4;++page){root->setProperty("page",page);app.processEvents();}for(const auto& warning:warnings)std::cerr<<warning.toStdString()<<'\n';require(warnings.empty(),"Peer QML emitted warnings");std::cout<<"Peer offscreen layout, resource routing and input defaults passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+#include "peer_ui_check.moc"

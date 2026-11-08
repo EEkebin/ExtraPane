@@ -11,6 +11,7 @@
 #include <dm/control.hpp>
 #include <dm/quality.hpp>
 #import <ApplicationServices/ApplicationServices.h>
+#import <ColorSync/ColorSync.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -28,11 +29,25 @@
 #include <stdexcept>
 namespace dm::mac {
 namespace wire=video::wire;using Clock=std::chrono::steady_clock;using namespace std::chrono_literals;
+namespace {
+std::string displayIdentity(CGDirectDisplayID display){
+    CFUUIDRef uuid=CGDisplayCreateUUIDFromDisplayID(display);if(!uuid)throw std::runtime_error("Cannot identify the selected display");
+    CFStringRef text=CFUUIDCreateString(kCFAllocatorDefault,uuid);CFRelease(uuid);if(!text)throw std::runtime_error("Cannot identify the selected display");
+    char bytes[64]{};const bool ok=CFStringGetCString(text,bytes,sizeof(bytes),kCFStringEncodingUTF8);CFRelease(text);if(!ok)throw std::runtime_error("Invalid display identity");return bytes;
+}
+CGDirectDisplayID resolveScreen(const SharedScreen& screen){
+    CFStringRef text=CFStringCreateWithCString(kCFAllocatorDefault,screen.displayUuid.c_str(),kCFStringEncodingUTF8);if(!text)throw std::runtime_error("Invalid shared screen identity");
+    CFUUIDRef uuid=CFUUIDCreateFromString(kCFAllocatorDefault,text);CFRelease(text);if(!uuid)throw std::runtime_error("Invalid shared screen identity");
+    auto display=CGDisplayGetDisplayIDFromUUID(uuid);CFRelease(uuid);if(!displayOnline(display)||displayIdentity(display)!=screen.displayUuid)throw std::runtime_error("Shared screen is no longer connected");return display;
+}
+}
+SharedScreen shareScreen(uint32_t id,uint32_t display,bool allowInput){if(!id||!displayOnline(display))throw std::runtime_error("Select a connected screen to share");return {id,displayIdentity(display),allowInput};}
 struct Host::State {
     std::shared_ptr<access::Gate> gate;unsigned port;std::atomic_bool stop=false,running=true;std::string address;std::function<void(std::string)> report;std::thread listener;
     struct Worker {std::thread thread;std::atomic_bool done=false;};
+    std::vector<SharedScreen> screens;
     std::vector<std::unique_ptr<Worker>> workers;AdmissionBudget admissions;DisplaySlots displays;
-    State(std::string bind,std::function<void(std::string)> callback,unsigned selectedPort,std::shared_ptr<access::Gate> selectedGate):gate(std::move(selectedGate)),port(selectedPort),address(std::move(bind)),report(std::move(callback)){}
+    State(std::string bind,std::function<void(std::string)> callback,unsigned selectedPort,std::shared_ptr<access::Gate> selectedGate,std::vector<SharedScreen> shared):gate(std::move(selectedGate)),port(selectedPort),address(std::move(bind)),report(std::move(callback)),screens(std::move(shared)){}
     void serve(int socket,AdmissionBudget::Lease admission){@autoreleasepool{if(@available(macOS 13.0,*)){
         auto cancelled=[this]{return stop.load();};HostTls transport(socket,cancelled,gate.get());auto bytes=transport.read(8,10);
         if(std::equal(bytes.begin(),bytes.end(),access::control_prefix.begin())){
@@ -46,22 +61,22 @@ struct Host::State {
                 if(operation==access::ControlOperation::close)break;
             }return;
         }
-        transport.requireResource(0);auto rest=transport.read(24,10);bytes.insert(bytes.end(),rest.begin(),rest.end());auto display=wire::take_client_display(bytes);unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7],keyboard=bytes[10];bytes[7]=bytes[8]=bytes[9]=bytes[10]=0;
+        transport.requireResource(0);auto rest=transport.read(24,10);bytes.insert(bytes.end(),rest.begin(),rest.end());auto display=wire::take_client_display(bytes);auto screenRequest=wire::take_screen_request(bytes);const bool existing=screenRequest.mode==wire::DisplayMode::existing_screen;const SharedScreen* shared=nullptr;if(existing){for(const auto& candidate:screens)if(candidate.id==screenRequest.screen_id){if(shared)throw std::runtime_error("Duplicate screen offer");shared=&candidate;}if(!shared)throw std::runtime_error("Screen is not offered for sharing");if(display.exact_mode)throw std::runtime_error("Existing screens use their current display mode");}unsigned wanted=bytes[8],scale=bytes[9],inputRequested=bytes[7],keyboard=bytes[10];bytes[7]=bytes[8]=bytes[9]=bytes[10]=0;
         if(!std::equal(bytes.begin(),bytes.end(),wire::request.begin()) || inputRequested>1 || wanted>15 || bool(inputRequested)!=bool(wanted) || scale>2 || keyboard>2 || (keyboard&&(!inputRequested||!(wanted&4))))throw std::runtime_error("Invalid client request");
         if(!CGPreflightScreenCaptureAccess())throw std::runtime_error("Screen Recording permission is required");
         auto displayLease=displays.acquire();const unsigned slot=displayLease.index();admission.release();
         unsigned w=display.width?display.width:1920,h=display.height?display.height:1080,hz=std::clamp(display.hz?display.hz:60,1u,60u);
         double reduction=std::min({1.0,4096.0/w,4096.0/h,std::sqrt(8847360.0/(double(w)*h))});w=std::max(640u,unsigned(w*reduction)&~1u);h=std::max(480u,unsigned(h*reduction)&~1u);
-        VirtualDisplay monitor(w,h,hz,slot);HostInput broker(slot,monitor.displayID());unsigned granted=wanted&(AXIsProcessTrusted()?3u:0u);std::unique_ptr<HostMedia> media;uint64_t epoch=0;unsigned outW=0,outH=0;
-        auto prepare=[&]{broker.reset();media.reset();auto rect=CGDisplayBounds(monitor.displayID());w=unsigned(rect.size.width);h=unsigned(rect.size.height);auto dimensions=video::stream_size(w,h,scale==1?75:scale==2?50:100);outW=dimensions.first;outH=dimensions.second;
+        std::unique_ptr<VirtualDisplay> monitor;CGDirectDisplayID captureDisplay=0;if(existing){captureDisplay=resolveScreen(*shared);auto mode=CGDisplayCopyDisplayMode(captureDisplay);if(mode){const auto refresh=CGDisplayModeGetRefreshRate(mode);if(refresh>=1)hz=std::clamp(unsigned(refresh),1u,60u);CGDisplayModeRelease(mode);}}else{monitor=std::make_unique<VirtualDisplay>(w,h,hz,slot);captureDisplay=monitor->displayID();}HostInput broker(slot,captureDisplay);unsigned granted=wanted&((!existing||shared->allowInput)&&AXIsProcessTrusted()?3u:0u);std::unique_ptr<HostMedia> media;uint64_t epoch=0;unsigned outW=0,outH=0;
+        auto prepare=[&]{broker.reset();media.reset();auto rect=CGDisplayBounds(captureDisplay);w=existing?unsigned(CGDisplayPixelsWide(captureDisplay)):unsigned(rect.size.width);h=existing?unsigned(CGDisplayPixelsHigh(captureDisplay)):unsigned(rect.size.height);auto dimensions=video::stream_size(w,h,scale==1?75:scale==2?50:100);outW=dimensions.first;outH=dimensions.second;
             if(outW>4096 || outH>4096 || uint64_t(outW)*outH>8847360)throw std::runtime_error("Display mode exceeds streaming limits");
-            media=std::make_unique<HostMedia>(monitor.displayID(),outW,outH,hz);if(granted){uint64_t next=0;do{arc4random_buf(&next,sizeof(next));}while(!next || next==epoch);epoch=next;}
+            media=std::make_unique<HostMedia>(captureDisplay,outW,outH,hz);if(granted){uint64_t next=0;do{arc4random_buf(&next,sizeof(next));}while(!next || next==epoch);epoch=next;}
             transport.write(wire::encode_offer({outW,outH,hz,0,wire::Codec::h264,uint8_t(granted),epoch}),10);if(transport.read(4,20)!=std::vector<uint8_t>(wire::ready.begin(),wire::ready.end()))throw std::runtime_error("Invalid client ready marker");
-            report("Client "+std::to_string(slot+1)+": "+std::to_string(w)+"x"+std::to_string(h)+" virtual monitor, "+std::to_string(outW)+"x"+std::to_string(outH)+" stream"+(granted?", mouse/keyboard enabled":", view only (Accessibility permission required for input)"));
+            report("Client "+std::to_string(slot+1)+": "+std::to_string(w)+"x"+std::to_string(h)+(existing?" existing screen, ":" virtual monitor, ")+std::to_string(outW)+"x"+std::to_string(outH)+" stream"+(granted?", mouse/keyboard enabled":", view only"));
         };prepare();uint32_t sequence=0;const auto start=Clock::now();auto tick=start;uint64_t lastMicros=0;
-        while(!stop){if(!displayOnline(monitor.displayID()))throw std::runtime_error("Virtual monitor removed");if(granted && !AXIsProcessTrusted())throw std::runtime_error("Accessibility permission was withdrawn");
+        while(!stop){if(existing&&resolveScreen(*shared)!=captureDisplay)throw std::runtime_error("Shared screen identity changed");if(!displayOnline(captureDisplay))throw std::runtime_error("Captured screen removed");if(granted && !AXIsProcessTrusted())throw std::runtime_error("Accessibility permission was withdrawn");
             auto now=Clock::now();uint64_t micros=std::max(lastMicros+1,uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(now-start).count()));lastMicros=micros;
-            auto rect=CGDisplayBounds(monitor.displayID());if(unsigned(rect.size.width)!=w || unsigned(rect.size.height)!=h){transport.write(wire::encode_header({sequence,0,micros}));prepare();continue;}
+            auto rect=CGDisplayBounds(captureDisplay);if((existing?unsigned(CGDisplayPixelsWide(captureDisplay)):unsigned(rect.size.width))!=w || (existing?unsigned(CGDisplayPixelsHigh(captureDisplay)):unsigned(rect.size.height))!=h){transport.write(wire::encode_header({sequence,0,micros}));prepare();continue;}
             auto packet=media->frame(micros,cancelled);transport.write(wire::encode_header({sequence,uint32_t(packet.size()),micros}));transport.write(packet);
             if(granted){auto header=input::decode_header(transport.read(input::header_size,1));if(header.epoch!=epoch || header.sequence!=sequence)throw std::runtime_error("Invalid input epoch or sequence");auto events=input::decode_events(transport.read(header.count*input::event_size,1),header.count);
                 for(const auto& event:events){if(input::capability(event.kind)&~granted)throw std::runtime_error("Ungrant​ed input family");broker.inject(event);}}
@@ -71,7 +86,9 @@ struct Host::State {
     void run(){@autoreleasepool{std::vector<pollfd> listeners;try{
         auto local=localAddresses();std::vector<std::string> addresses;
         for(const auto& entry:local)if(address.empty() || entry.address==address)addresses.push_back(entry.address);
-        if(addresses.empty())throw std::runtime_error(address.empty()?"No connected Ethernet/Wi-Fi IPv4 address is available":"Selected local address is no longer connected; refresh addresses and retry");
+        if(addresses.empty() && !address.empty() && address!="127.0.0.1" && address!="localhost")throw std::runtime_error("Selected local address is no longer connected; refresh addresses and retry");
+        // Local self-connections use the same admission policy; never advertise loopback.
+        addresses.push_back("127.0.0.1");
         std::string listening;
         for(const auto& ip:addresses){
             int fd=socket(AF_INET,SOCK_STREAM,0);if(fd<0)throw std::runtime_error("Cannot create listener");
@@ -103,7 +120,7 @@ struct Host::State {
     }}
 
 };
-Host::Host(std::string address,std::function<void(std::string)> report,unsigned port,std::shared_ptr<access::Gate> gate):state_(std::make_shared<State>(std::move(address),std::move(report),port,std::move(gate))){auto state=state_;state_->listener=std::thread([state]{state->run();});}
+Host::Host(std::string address,std::function<void(std::string)> report,unsigned port,std::shared_ptr<access::Gate> gate,std::vector<SharedScreen> screens):state_(std::make_shared<State>(std::move(address),std::move(report),port,std::move(gate),std::move(screens))){auto state=state_;state_->listener=std::thread([state]{state->run();});}
 Host::~Host(){stop();if(state_->listener.joinable())state_->listener.join();}
 void Host::stop(){state_->stop=true;}
 bool Host::running()const{return state_->running;}

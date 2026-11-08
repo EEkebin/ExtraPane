@@ -1,4 +1,9 @@
 #include "windows_controller.hpp"
+#include "peer_controller.hpp"
+#include "windows_peer_runtime.hpp"
+#include <QStandardPaths>
+#include <QMessageBox>
+#include <future>
 #include <QApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -71,10 +76,26 @@ int main(int argc,char** argv){
     app.setQuitOnLastWindowClosed(false);
     const QIcon icon(":/extrapane.png");app.setWindowIcon(icon);
     WindowsController controller;
+    std::unique_ptr<PeerController> peers;
+    std::shared_ptr<extrapane::windows_peer::WindowsPeerRuntime> peerRuntime;
+    std::future<std::vector<extrapane::peers::Offer>> inventory;
+    QTimer inventoryTimer;
+    if(!checkUi&&app.arguments().contains("--devices")){
+        try{
+            peerRuntime=std::make_shared<extrapane::windows_peer::WindowsPeerRuntime>(extrapane::windows_peer::native_process_factory());
+            peers=std::make_unique<PeerController>(peerRuntime->hooks(),QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/peers");
+            inventory=std::async(std::launch::async,[peerRuntime]{return peerRuntime->refresh();});
+            QObject::connect(&inventoryTimer,&QTimer::timeout,&app,[&]{
+                if(!inventory.valid()||inventory.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
+                inventoryTimer.stop();try{peers->setLocalOffers(inventory.get());}catch(const std::exception& e){QMessageBox::warning(nullptr,"ExtraPane",QString::fromUtf8(e.what()));}
+            });inventoryTimer.start(50);
+        }catch(const std::exception& e){QMessageBox::critical(nullptr,"ExtraPane",QString::fromUtf8(e.what()));return 1;}
+    }
     QQmlApplicationEngine engine;
     bool qmlFailed=false;
     QObject::connect(&engine,&QQmlEngine::warnings,&app,[&](const QList<QQmlError>&){qmlFailed=true;});
     engine.rootContext()->setContextProperty("receiver",&controller);
+    if(peers)engine.rootContext()->setContextProperty("peers",peers.get());
     engine.load(QUrl("qrc:/Main.qml"));
     if(engine.rootObjects().isEmpty())return 1;
     auto* window=qobject_cast<QWindow*>(engine.rootObjects().first());
@@ -89,22 +110,24 @@ int main(int argc,char** argv){
     auto restoreWindow=[&]{if(window->visibility()==QWindow::Minimized)window->showNormal();else window->show();window->raise();window->requestActivate();tray.hide();};
     QObject::connect(show,&QAction::triggered,window,restoreWindow);
     QObject::connect(&tray,&QSystemTrayIcon::activated,window,[&](QSystemTrayIcon::ActivationReason reason){if(reason==QSystemTrayIcon::DoubleClick)restoreWindow();});
-    QObject::connect(stop,&QAction::triggered,&controller,&WindowsController::stopHost);
-    auto hasWork=[&]{return controller.hosting()||controller.active()||controller.cameraSetupRunning();};
+    QObject::connect(stop,&QAction::triggered,&controller,[&]{if(peers)peers->stopSharing();else controller.stopHost();});
+    auto hasWork=[&]{return controller.hosting()||controller.active()||controller.cameraSetupRunning()||(peers&&peers->active());};
     bool exitRequested=false;
     QObject::connect(quit,&QAction::triggered,&app,[&]{
         exitRequested=true;
         // Keep status and any USB eject blocker visible while children stop.
         // aboutToQuit is final cleanup, not the normal USB return protocol.
         restoreWindow();
-        controller.disconnectFromServer();controller.stopHost();
+        controller.disconnectFromServer();controller.stopHost();if(peers)peers->shutdown();
         if(!hasWork())app.quit();
     });
     QObject::connect(&app,&QGuiApplication::lastWindowClosed,&app,[&]{if(hasWork()&&QSystemTrayIcon::isSystemTrayAvailable())tray.show();else app.quit();});
-    auto stateChanged=[&]{stop->setEnabled(controller.hosting());if(!hasWork()&&(exitRequested||!window->isVisible()))app.quit();};
+    auto stateChanged=[&]{stop->setEnabled(controller.hosting()||(peers&&peers->sharing()));if(!hasWork()&&(exitRequested||!window->isVisible()))app.quit();};
+    if(peers)QObject::connect(peers.get(),&PeerController::changed,&app,stateChanged);
     QObject::connect(&controller,&WindowsController::hostChanged,&app,stateChanged);
     QObject::connect(&controller,&WindowsController::changed,&app,stateChanged);
     QObject::connect(&app,&QCoreApplication::aboutToQuit,&controller,&WindowsController::shutdown);
+    QObject::connect(&app,&QCoreApplication::aboutToQuit,&app,[&]{inventoryTimer.stop();if(peers)peers->shutdown();});
     InstallerShutdownWindow installerShutdown;
     if(!installerShutdown.create())return 1;
     return app.exec();

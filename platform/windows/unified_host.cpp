@@ -36,18 +36,19 @@ struct Lease {
     ~Lease(){if(value){ReleaseMutex(value);CloseHandle(value);}}
 };
 }
-void serve(const net::Options& requested,const std::string& pair,bool allow_input,unsigned frames,Control& control){
+void serve(const net::Options& requested,const std::string& pair,bool allow_input,unsigned frames,Control& control,std::span<const video::SharedScreen> shared_screens,bool existing_only){
+    if(existing_only&&(requested.bind_address!="127.0.0.1"||shared_screens.size()!=1||shared_screens[0].id!=1||shared_screens[0].identity.empty()))throw std::invalid_argument("Scoped screen requires one local screen and loopback listener");
     Apartment apartment;
     auto options=requested;options.timeout=std::chrono::milliseconds(250);
     net::TcpListener listener(options);extrapane::HostResources slots;
     std::atomic_bool quit_pending=false;
     Clock::time_point quit_deadline{};
     std::unique_ptr<Lease> camera_lease;std::string camera_busy;
-    try{camera_lease=std::make_unique<Lease>(L"Local\\ExtraPane.CameraServer");}catch(const std::exception& error){camera_busy=error.what();report("SERVER_RESOURCE_UNAVAILABLE kind=camera "+camera_busy);}
+    if(!existing_only)try{camera_lease=std::make_unique<Lease>(L"Local\\ExtraPane.CameraServer");}catch(const std::exception& error){camera_busy=error.what();report("SERVER_RESOURCE_UNAVAILABLE kind=camera "+camera_busy);}
     struct Worker{std::thread thread;std::atomic_bool done=false;};std::vector<std::unique_ptr<Worker>> workers;
     // Bound unauthenticated/unfinished admission work, not established sessions.
     std::atomic_uint pending=0;
-    report("SERVER_STARTED resources=display,camera,microphone,usb,speaker");report("LISTENING "+listener.endpoints());
+    report(existing_only?"SERVER_STARTED resources=existing-screen":"SERVER_STARTED resources=display,camera,microphone,usb,speaker");report("LISTENING "+listener.endpoints());
     auto events=[&](const std::string& text){
         if(control.quit.load()&&(text.starts_with("USB_EJECT_BUSY")||text.starts_with("USB_RETURN_FAILED")))report("SERVER_STOPPING USB could not eject cleanly; ending the session so the source can reclaim its device. Writes may be incomplete.");
         report(text);
@@ -86,19 +87,19 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                             if(op==access::ControlOperation::close)break;
                             if(op==access::ControlOperation::open)throw std::runtime_error("Control is already open");
                             std::string credential;
-                            if(op==access::ControlOperation::add){auto tickets=tls.control_channels(kind);if(protected_mode){credential=access::formatCredential(tickets.at(0));SecureZeroMemory(tickets[0].secret.data(),tickets[0].secret.size());}}
+                            if(access::control_add(op)){if(existing_only&&kind!=0)throw std::runtime_error("This grant permits only screen capture");auto tickets=tls.control_channels(kind,access::control_input(op));if(protected_mode){credential=access::formatCredential(tickets.at(0));SecureZeroMemory(tickets[0].secret.data(),tickets[0].secret.size());}}
                             auto reply=access::control_reply(op,kind,protected_mode,credential);
                             struct Wipe{std::string& credential;access::ControlReply& reply;~Wipe(){SecureZeroMemory(credential.data(),credential.size());SecureZeroMemory(reply.data(),reply.size());}}wipe{credential,reply};
                             tls.write(reply,Clock::now()+std::chrono::seconds(5));
                         }
                     }else if(prefix==access::group_prefix){
                         if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping");
-                        access::GroupRequest request{};tls.read(request,Clock::now()+std::chrono::seconds(5));const auto mask=access::group_mask(request);
+                        access::GroupRequest request{};tls.read(request,Clock::now()+std::chrono::seconds(5));const auto mask=access::group_mask(request);if(existing_only&&mask!=1)throw std::runtime_error("This grant permits only screen capture");
                         auto tickets=tls.issue_channels(mask);auto reply=access::group_reply(mask,tickets);
                         struct Wipe {std::vector<access::ChannelCredential>& tickets;access::GroupReply& reply;~Wipe(){for(auto& item:tickets)SecureZeroMemory(item.secret.data(),item.secret.size());SecureZeroMemory(reply.data(),reply.size());}}wipe{tickets,reply};
                         tls.write(reply,Clock::now()+std::chrono::seconds(5));resource="admission";
                     }else{
-                    const auto kind=extrapane::classify_session_prefix(prefix);tls.require_resource(static_cast<unsigned>(kind));resource=name(kind);
+                    const auto kind=extrapane::classify_session_prefix(prefix);if(existing_only&&kind!=ResourceKind::display)throw std::runtime_error("This grant permits only screen capture");tls.require_resource(static_cast<unsigned>(kind));resource=name(kind);
                     if(control.quit.load()||control.stop.load())throw std::runtime_error("Server is stopping; retry after restart");
                     slot=slots.acquire(static_cast<unsigned>(kind),control.quit,control.stop);
                     struct Release{extrapane::HostResources& slots;ResourceKind kind;unsigned slot;~Release(){slots.release(static_cast<unsigned>(kind),slot);}}release{slots,kind,slot};
@@ -106,8 +107,8 @@ void serve(const net::Options& requested,const std::string& pair,bool allow_inpu
                     report("SERVER_RESOURCE_STARTING kind="+resource+" slot="+std::to_string(slot)+" peer="+peer);
                     switch(kind){
                     case ResourceKind::display:{
-                        const auto ip=peer.substr(0,peer.find(':'));display::select_client_layout_profile(std::wstring(ip.begin(),ip.end()),slot);
-                        video::host_video(options,pair,frames,60,video::wire::Codec::h264,L"",true,allow_input,1280,720,true,true,{},nullptr,nullptr,slot,&tls);break;
+                        const auto ip=peer.substr(0,peer.find(':'));if(!existing_only)display::select_client_layout_profile(std::wstring(ip.begin(),ip.end()),slot);
+                        video::host_video(options,pair,frames,60,video::wire::Codec::h264,L"",!existing_only,existing_only?false:allow_input,1280,720,!existing_only,!existing_only,{},nullptr,nullptr,slot,&tls,shared_screens,existing_only);break;
                     }
                     case ResourceKind::camera: if(!camera_lease)throw std::runtime_error(camera_busy);resources::receive_camera_admitted(tls,slot,control.stop,events);break;
                     case ResourceKind::microphone:{microphone::receive_admitted(tls,control.stop,events,slot);break;}

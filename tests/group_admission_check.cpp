@@ -56,5 +56,16 @@ int main(){try{
  auto badSpeaker=speakerTickets[0];badSpeaker.kind=5;rejects([&]{formatCredential(badSpeaker);});
  const auto speakerRequest=control_request(ControlOperation::add,4);check(parse_control(speakerRequest).second==4);
  rejects([&]{control_request(ControlOperation::add,5);});
+ // Input permission is server-owned per-ticket metadata, never client-editable text.
+ Pair mixedRoot;check(mixedRoot.authenticate(gate,gate.generate()));const auto mixedControl=mixedRoot.server.open_control(gate);
+ auto viewTicket=gate.control_channels(1,mixedControl,false);auto inputTicket=gate.control_channels(1,mixedControl,true);
+ auto legacyTicket=gate.control_channels(1,mixedControl);Pair viewChild,inputChild,legacyChild;
+ check(viewChild.authenticate(gate,formatCredential(viewTicket[0])));check(inputChild.authenticate(gate,formatCredential(inputTicket[0])));check(legacyChild.authenticate(gate,formatCredential(legacyTicket[0])));
+ check(viewChild.server.authorized_display_input()==false);check(inputChild.server.authorized_display_input()==true);check(!legacyChild.server.authorized_display_input().has_value());
+ check(viewChild.server.authorized_kind()==0&&inputChild.server.authorized_kind()==0);
+ rejects([&]{gate.control_channels(2,mixedControl,true);});
+ for(auto op:{ControlOperation::add_display_view,ControlOperation::add_display_control}){auto request=control_request(op);check(parse_control(request).first==op);check(control_add(op));check(control_input(op)==(op==ControlOperation::add_display_control));rejects([&]{control_request(op,1);});const auto reply=control_reply(op,0,true,formatCredential(viewTicket[0]));check(control_credential(reply,op,0,true)==formatCredential(viewTicket[0]));rejects([&]{control_credential(reply,op==ControlOperation::add_display_view?ControlOperation::add_display_control:ControlOperation::add_display_view,0,true);});}
+ auto forged=viewTicket[0];forged.kind=1;Pair forgedChild;check(!forgedChild.authenticate(gate,formatCredential(forged)));
+ auto pendingInput=gate.control_channels(1,mixedControl,true);gate.close_control(mixedControl);Pair revokedInput;check(!revokedInput.authenticate(gate,formatCredential(pendingInput[0])));
  std::cout<<"Grouped code admission, per-kind tickets, replay/expiry/revocation, concurrency and independent protected streams passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

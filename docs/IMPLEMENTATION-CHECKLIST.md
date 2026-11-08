@@ -491,9 +491,67 @@ ready to merge into main; merging requires the user's later readiness decision.
 - [x] Recorded approved direction and pending questions in DECISIONS.md: optional
   default-on pairing, remembered trust, manual sharing, virtual vs existing screens,
   native/custom virtual monitor configuration and bounded reconnect excluding USB.
-- [ ] Resolve exact pairing-code rotation and existing-screen input defaults.
+- [x] Resolve code rotation: fresh app/service startup only; existing-screen sharing defaults to view-only.
 - [ ] Implement and verify discovery, trust, UI migration and additional display mode.
 - [ ] User acceptance before child-to-parent and eventual main integration.
 
 This increment changes planning documents and Git history only. No build, device
 connection, installation or system configuration change was performed.
+
+## Active implementation: devices, sharing and gateways
+
+- [ ] Localhost/IPv4 loopback validation and self-connection transport parity.
+- [x] Portable bounded device/catalog/discovery framing and authorization policy (isolated checks; runtime integration tracked below).
+- [ ] LAN discovery on selected connected interfaces, expiry and direct-address fallback.
+- [ ] Default-on optional pairing, startup-lifetime codes, remembered cryptographic trust and revocation.
+- [ ] Resource offers backed by actual platform inventory; no capture/export merely from advertising.
+- [ ] Outbound consumer-to-provider control and authorized per-resource media tunnels.
+- [ ] Devices / Share / Connections UI integration and cross-platform adapters.
+- [ ] Existing-screen capture separate from virtual extension; view-only default.
+- [ ] One-hop delegated gateway catalog and traffic relay, off by default; no UPnP.
+- [ ] Bounded non-USB reconnect with permission/identity rechecks; explicit USB reconnect.
+- [ ] Isolated protocol/lifecycle/security checks and four-platform package builds.
+- [ ] User-authorized physical acceptance tests and review before any main merge.
+
+These gates are not marked implemented merely because their model or UI exists.
+
+### Device discovery implementation increment
+
+Implemented the portable catalog/permission core, private remembered-device store,
+exporter-bound pairing over TLS 1.3, bounded RPC framing and credit-based media
+multiplexing. Isolated Windows checks cover malformed/partial packets, discovery
+expiry and replay, trust-store persistence, pairing-code limits, identity changes,
+revocation, stream credits, multi-socket grants, half-close and teardown. A 300 KB
+synthetic transfer in both directions crosses several flow-control windows. These
+checks use temporary files, in-memory channels or loopback sockets; they do not
+connect physical devices or install components.
+
+Localhost validation is implemented in Windows, Linux, macOS and Android source.
+Existing-screen protocol requests remain distinct from virtual-display requests;
+Windows has a scoped capture-host adapter, Linux uses an explicit screen chooser,
+and macOS pins a display identity. Android decodes the new request mode. Windows
+native builds, fake helper lifecycle checks and Android debug compilation passed.
+Linux/macOS compilation and actual screen capture remain pending.
+
+The Qt discovery adapter, peer service orchestration, new workspace UI and Windows
+resource adapters are being integrated. Their presence is not evidence of a usable
+end-to-end device-sharing build. Gateway traffic relay, reconnect wiring and the
+other platform runtime/UI adapters remain open. No new package has been installed
+or sent to the test devices during this increment.
+
+Second integration increment: the Windows development workspace is available via
+`ExtraPane.exe --devices`; the regular launch still uses the preserved interface.
+It wires the shared peer service to local native helpers and keeps tickets out of
+command lines. Per-ticket input permission allows controlled and view-only display
+sessions to coexist without granting input to the latter. Offscreen UI checks cover
+resource-to-device routing, remembered identity selection, default view-only screen
+requests, sidebar animation geometry and scroll gutters. The Windows app compiles.
+
+The peer service passes a synthetic loopback end-to-end test with TLS pairing,
+remembered reconnect, catalog selection, native byte transfer and revocation. A
+three-service test also verifies off-by-default gateway visibility, authorized
+forwarding and revocation of both relay legs. Stop sharing preserves independent
+outgoing resource sessions. Automatic gateway dialing, reverse-flow relay coverage,
+transient reconnect, and Linux/Android/macOS workspace integration remain open.
+Native media startup is exercised with fake processes, not real devices. The new
+workspace remains opt-in until those integration and acceptance gates are complete.

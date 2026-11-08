@@ -1,0 +1,52 @@
+#pragma once
+#include "peer_session.hpp"
+#include "store.hpp"
+#include <filesystem>
+
+namespace extrapane::peers {
+class Service {
+public:
+    using Token=std::uint64_t;
+    struct Options {std::filesystem::path private_directory;std::string name;std::vector<Offer> offers;bool pairing_required=true;};
+    struct ConnectOptions {std::string address;std::uint16_t port=0;std::string local;DeviceId expected_peer{};std::string code;bool open_mode=false;};
+    struct Context {Token connection=0,request=0,grant=0;DeviceId peer{};bool incoming=false;Kind kind=Kind::display_destination;};
+    enum class Role {listen_local,connect_local};
+    struct Endpoint {Role role=Role::listen_local;std::uint16_t port=0;};
+    struct Hooks {
+        // All callbacks run on the service IO worker. Endpoint values must come
+        // from trusted local native adapters; no remote address is accepted.
+        std::function<void(const Context&,rpc::Open&)> prepare_request;
+        std::function<void(const Context&)> cancel_request;
+        std::function<Endpoint(const Context&,rpc::Open&)> prepare;
+        std::function<void(const Context&,const rpc::Open&,std::uint16_t)> ready;
+        std::function<void(const Context&)> stopped;
+        std::function<std::vector<Context>()> poll;
+    };
+    enum class EventKind {listening,connected,catalog,granted,stopped,disconnected,error,trust_changed};
+    struct Event {EventKind kind;Context context;std::uint16_t port=0;std::string detail;std::vector<Catalog> catalogs;bool verified=false;std::optional<rpc::Open> resource;};
+    Service(Options,Hooks);
+    ~Service();
+    Service(const Service&)=delete;
+    DeviceId identity()const;
+    std::string pairing_code()const;
+    std::vector<RememberedDevice> remembered()const;
+    // Start/stop sharing preserves process-lifetime pairing code. stop withdraws
+    // local offers/incoming use; independent outgoing resources remain active.
+    // Methods enqueue bounded commands; poll drains UI events.
+    void start(std::string bind,std::uint16_t port);
+    void stop();
+    Token connect(ConnectOptions);
+    Token catalog(Token connection);
+    Token open(Token connection,rpc::Open);
+    void close(Token connection,Token grant);
+    void disconnect(Token connection);
+    void offers(std::vector<Offer>);
+    void forget(DeviceId);
+    void pairing_required(bool);
+    void gateway(bool enabled);
+    std::vector<Event> poll();
+private:
+    struct State;
+    std::unique_ptr<State> state_;
+};
+}
