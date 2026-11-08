@@ -7,12 +7,15 @@
 #include <limits>
 #include <iostream>
 #include <stdexcept>
+#include <source_location>
 using namespace dm::camera;
 using namespace extrapane::media;
 using Microsoft::WRL::ComPtr;
-void check(bool ok){if(!ok)throw std::runtime_error("Camera receiver check failed");}
+void check(bool ok,const std::source_location location=std::source_location::current()){
+    if(!ok)throw std::runtime_error("Camera receiver check failed at line "+std::to_string(location.line()));
+}
 template<class F>void rejects(F action){bool rejected=false;try{action();}catch(const std::exception&){rejected=true;}check(rejected);}
-struct Counts{int created=0,decoded=0,destroyed=0,prepared=0,started=0,stopped=0;std::wstring pipe;bool wrong_size=false,throw_decode=false;};
+struct Counts{int created=0,decoded=0,destroyed=0,prepared=0,started=0,stopped=0;std::wstring pipe;bool wrong_size=false,throw_decode=false;std::int64_t decoded_timestamp=-1;};
 struct Registration final:CameraRegistration {
     Counts& counts;explicit Registration(Counts& c):counts(c){}
     extrapane::Availability prepare(const std::wstring& pipe,Format,unsigned)override{++counts.prepared;counts.pipe=pipe;return {true,{}};}
@@ -23,7 +26,7 @@ struct SyntheticDecoder final:Decoder {
     Counts& counts;explicit SyntheticDecoder(Counts& c):counts(c){++counts.created;}
     ~SyntheticDecoder(){++counts.destroyed;}
     void decode(std::span<const std::uint8_t> bytes,std::int64_t timestamp,const Sink& sink)override{
-        ++counts.decoded;if(counts.throw_decode)throw std::runtime_error("Simulated malformed H264");
+        ++counts.decoded;counts.decoded_timestamp=timestamp;if(counts.throw_decode)throw std::runtime_error("Simulated malformed H264");
         check(bytes.size()==1&&bytes[0]==42);
         sink(std::vector<std::uint8_t>(counts.wrong_size?23:24,91),timestamp);
     }
@@ -66,11 +69,16 @@ int main(){try{
     extrapane::wire::Bytes wire;std::size_t cursor=0;
     auto read=[&](std::span<std::uint8_t> out){if(out.size()>wire.size()-cursor)throw std::runtime_error("Disconnected");std::copy_n(wire.begin()+cursor,out.size(),out.begin());cursor+=out.size();};
     auto write=[&](std::span<const std::uint8_t> bytes){wire.insert(wire.end(),bytes.begin(),bytes.end());};
+    const auto beforeDelivery=MFGetSystemTime();
     Channel channel({7,9},read,write);channel.send({{7,9},0,9000000,{42}});receiver->receive_one(channel);
+    check(counts.decoded_timestamp==0); // Network epoch is rebased before decoding.
     if(delivery.wait_for(std::chrono::seconds(2))!=std::future_status::ready){source->Shutdown();throw std::runtime_error("Receiver frame delivery timed out");}
     auto [hr,event]=delivery.get();check(SUCCEEDED(hr));MediaEventType type{};check(SUCCEEDED(event->GetType(&type))&&type==MEMediaSample);
     check(SUCCEEDED(event->GetValue(&value)));ComPtr<IMFSample> sample;check(SUCCEEDED(value.punkVal->QueryInterface(IID_PPV_ARGS(&sample))));PropVariantClear(&value);
-    LONGLONG timestamp=-1;check(SUCCEEDED(sample->GetSampleTime(&timestamp))&&timestamp==0);
+    // The virtual camera must expose local QPC-correlated time to Frame Server,
+    // rather than the rebased network timestamp accepted by the decoder.
+    const auto afterDelivery=MFGetSystemTime();
+    LONGLONG timestamp=-1;check(SUCCEEDED(sample->GetSampleTime(&timestamp))&&timestamp>=beforeDelivery&&timestamp<=afterDelivery);
     ComPtr<IMFMediaBuffer> buffer;check(SUCCEEDED(sample->ConvertToContiguousBuffer(&buffer)));BYTE* pixels=nullptr;DWORD size=0;
     check(SUCCEEDED(buffer->Lock(&pixels,nullptr,&size)));bool correct=size==24&&pixels[0]==91&&pixels[23]==91;buffer->Unlock();check(correct);
     rejects([&]{receiver->receive_one(channel);});check(receiver->failed()&&counts.stopped==1&&counts.destroyed==1);feed.stop();
