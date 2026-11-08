@@ -813,4 +813,10 @@ before a packaging-tool download failed. No release was published or branch merg
 - [x] Offscreen subgroup ordering/single-heading tests and existing power/routing
   checks pass. Actual Windows app rebuild and startup check pass, including native
   friendly-name mapping compilation. No physical display session was started.
-- [ ] Updated installer delivery pending; Linux/macOS package validation pending.
+- [x] `pre.96.1` Windows installer/portable built locally from clean `6a73020`.
+  Standard extracted startup, complete file hashes and embedded payload checks
+  passed. Installer copied to both Desktops with Surface SHA256 verified. Windows
+  installation remains a user step; no physical display session was started.
+- [ ] Linux/macOS package validation pending. Run `42467692279` again encountered
+  external dependency HTTP 504/download timeouts on macOS/Android. Android source
+  is unchanged by this correction and the phone remains on `pre.95.1`.
