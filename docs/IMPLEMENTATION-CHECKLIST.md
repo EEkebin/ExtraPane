@@ -889,3 +889,7 @@ before a packaging-tool download failed. No release was published or branch merg
 - [x] Signed Android `pre.99.1` release and lint passed; package verified and
   streamed to Pixel 8a. Installed versionCode `9901` confirmed. No physical
   resource session was started.
+- [x] On request, Android `pre.99.1` reinstalled and matching Windows installer
+  packaged from clean `e9f92f0`. Exact version, extracted startup and payload
+  checks passed; installer copied to both Desktops with Surface SHA256 verified.
+  Windows behavior is unchanged; no Windows installation performed.
