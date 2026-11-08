@@ -15,13 +15,13 @@ final class MicrophoneSession extends Thread {
     private final Context context;private final String address,local;private final int port;private String code;
     private final Network network;private final MicrophoneCapture.Choice choice;private final Listener listener;
     private volatile String admissionLost;
-    private final Object muteLock=new Object();private long muteGeneration;
+    private final Object muteLock=new Object();private final FanoutPackets.MicrophoneMute muteState=new FanoutPackets.MicrophoneMute();
     private volatile CaptureFanout<MicrophoneCapture.Packet>.Subscription active;
-    private volatile boolean cancelled,muted;private volatile Socket socket;private volatile Exception captureFailure;
+    private volatile boolean cancelled;private volatile Socket socket;private volatile Exception captureFailure;
     MicrophoneSession(Context context,String address,int port,String local,Network network,String code,MicrophoneCapture.Choice choice,Listener listener){
         super("ExtraPane microphone connection");this.context=context.getApplicationContext();this.address=address;this.port=port;this.local=local;this.network=network;this.code=code;this.choice=choice;this.listener=listener;
     }
-    void mute(boolean value){synchronized(muteLock){if(muted!=value){muted=value;++muteGeneration;var current=active;if(current!=null)current.clearQueue();}}}
+    void mute(boolean value){synchronized(muteLock){if(muteState.set(value,System.nanoTime())){var current=active;if(current!=null)current.clearQueue();}}}
     void cancel(){cancelled=true;Socket current=socket;if(current!=null)try{current.close();}catch(IOException ignored){}interrupt();}
     private static long id(SecureRandom random){long value;do{value=random.nextLong()&Long.MAX_VALUE;}while(value==0);return value;}
     private static byte[] read(DataInputStream in,int count)throws IOException{byte[] bytes=new byte[count];in.readFully(bytes);return bytes;}
@@ -43,12 +43,12 @@ final class MicrophoneSession extends Thread {
                 out.write(MicrophoneProtocol.request(resource));tls.setSoTimeout(40000);header=read(in,24);MicrophoneProtocol.validateGrant(header,read(in,MicrophoneProtocol.payloadLength(header)),resource);
             }finally{admission.cancel();}
             if(cancelled)throw new IOException("Microphone sharing stopped");
-            capture=SharedCaptures.microphone(context,choice,()->muted);active=capture;
+            capture=SharedCaptures.microphone(context,choice,muteState::silent);active=capture;
             listener.status("Sharing "+choice.label()+" - 48 kHz mono microphone");
             long sequence=0;boolean reportedConnected=false;FanoutPackets.MicrophoneTimeline timeline=new FanoutPackets.MicrophoneTimeline();
             while(!cancelled){MicrophoneCapture.Packet packet=capture.next();if(packet==null)continue;
                 TimerTask deadline=new TimerTask(){public void run(){try{tls.close();}catch(IOException ignored){}}};watchdog.schedule(deadline,5000);
-                try{boolean silent;byte[] pcm;FanoutPackets.Position position;synchronized(muteLock){silent=muted||packet.muted();pcm=FanoutPackets.microphoneBytes(packet.pcm(),silent);position=timeline.next(packet.position(),muteGeneration);}out.write(MicrophoneProtocol.frameHeader(resource,generation,sequence++,position.sample(),silent,position.discontinuity()));out.write(pcm);if(!reportedConnected){reportedConnected=true;listener.connected();}}finally{deadline.cancel();watchdog.purge();}
+                try{boolean silent;byte[] pcm;FanoutPackets.Position position;synchronized(muteLock){silent=muteState.silent(packet.captureStarted())||packet.muted();pcm=FanoutPackets.microphoneBytes(packet.pcm(),silent);position=timeline.next(packet.position(),muteState.generation());}out.write(MicrophoneProtocol.frameHeader(resource,generation,sequence++,position.sample(),silent,position.discontinuity()));out.write(pcm);if(!reportedConnected){reportedConnected=true;listener.connected();}}finally{deadline.cancel();watchdog.purge();}
             }
         }catch(Exception error){if(!cancelled){Exception cause=captureFailure!=null?captureFailure:error;ending=cause.getMessage()==null?cause.getClass().getSimpleName():cause.getMessage();}}
         finally{

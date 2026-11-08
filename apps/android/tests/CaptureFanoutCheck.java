@@ -30,6 +30,19 @@ public final class CaptureFanoutCheck {
         CaptureFanout<Packet> damaged=new CaptureFanout<>(3,p->true);Producer broken=new Producer();broken.failClose=true;var bad=damaged.subscribe("broken","x",()->broken);require(broken.started.await(2,TimeUnit.SECONDS));rejected(bad::close);require(broken.closed.await(2,TimeUnit.SECONDS));rejected(()->damaged.subscribe("broken","x",()->broken));
         CaptureFanout<Packet> failurePool=new CaptureFanout<>(3,p->true);Producer failing=new Producer();var failedA=failurePool.subscribe("source","x",()->failing);var failedB=failurePool.subscribe("source","x",()->failing);failing.packets.put(new Packet(-1,false));rejected(()->take(failedA));rejected(()->take(failedB));require(failing.closed.await(2,TimeUnit.SECONDS));
         Producer restarted=new Producer();CaptureFanout<Packet>.Subscription replacement=null;for(int i=0;i<100&&replacement==null;i++){try{replacement=failurePool.subscribe("source","x",()->restarted);}catch(IOException cleanupPending){Thread.sleep(5);}}require(replacement!=null);rejected(failedA::close);rejected(failedB::close);restarted.packets.put(new Packet(9,true));require(take(replacement).value()==9);replacement.close();require(restarted.closed.await(2,TimeUnit.SECONDS));
+        require(FanoutPackets.microphoneCaptureStart(1_000_000_000L,4800,0,0,0,false)==890_000_000L);
+        require(FanoutPackets.microphoneCaptureStart(1_000_000_000L,4800,0,4800,900_000_000L,true)==800_000_000L);
+        require(FanoutPackets.microphoneCaptureStart(1_000_000_000L,4800,0,0,1_100_000_000L,true)==890_000_000L);
+        // Native producer backlog and a dequeued partial packet must remain
+        // silent after unmute; a different recipient must remain unaffected.
+        FanoutPackets.MicrophoneMute gate=new FanoutPackets.MicrophoneMute(),independent=new FanoutPackets.MicrophoneMute();
+        require(gate.set(true,100));require(gate.silent(150));require(gate.set(false,200));
+        require(gate.silent(150)&&gate.silent(200)&&!gate.silent(201)&&!independent.silent(150));
+        require(gate.set(true,300));require(gate.set(false,400));require(gate.silent(250)&&!gate.silent(401));
+        CaptureFanout<Packet> backlogPool=new CaptureFanout<>(8,p->true);Producer backlog=new Producer();CountDownLatch beforeFanout=new CountDownLatch(1),resumeFanout=new CountDownLatch(1);
+        CaptureFanout.Producer<Packet> pausedProducer=new CaptureFanout.Producer<>(){public void start(){beforeFanout.countDown();}public Packet next()throws Exception{resumeFanout.await();return backlog.next();}public void close(){}};
+        gate.set(true,500);var delayed=backlogPool.subscribe("backlog","pcm",()->pausedProducer,p->new Packet(p.value(),gate.silent(p.value())));
+        require(beforeFanout.await(2,TimeUnit.SECONDS));backlog.packets.put(new Packet(550,false));gate.set(false,600);delayed.clearQueue();resumeFanout.countDown();require(take(delayed).key());delayed.close();
         FanoutPackets.MicrophoneTimeline timeline=new FanoutPackets.MicrophoneTimeline();var initial=timeline.next(96000,0);require(initial.sample()==0&&initial.discontinuity());var continuous=timeline.next(96480,0);require(continuous.sample()==480&&!continuous.discontinuity());var dropped=timeline.next(97920,0);require(dropped.sample()==1920&&dropped.discontinuity());require(timeline.next(98400,1).discontinuity());require(!timeline.next(98880,1).discontinuity());
         byte[] pcm={1,2,3,4};byte[] muted=FanoutPackets.microphoneBytes(pcm,true),plain=FanoutPackets.microphoneBytes(pcm,false);require(muted[0]==0&&plain[0]==1&&pcm[0]==1);plain[0]=9;require(pcm[0]==1);
         require(CameraPackets.independent(new byte[]{0,0,0,1,0x67,1,0,0,1,0x68,1,0,0,1,0x65,1}));

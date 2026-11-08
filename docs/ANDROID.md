@@ -252,6 +252,13 @@ before transmission. Each destination rebases its sample positions to its own
 start; dropped backlog and mute transitions set the wire discontinuity flag.
 Shared source packets are never modified by a destination.
 
+Mute also covers audio waiting in the native capture queue. Each packet retains
+a conservative capture-start timestamp, and each destination rejects audio from
+before its last unmute transition. The freshness estimate includes AudioRecord's
+reported buffer duration plus one packet; a hardware timestamp can only make it
+older. This can briefly delay audible resumption after unmute. Vendor latency
+beyond the reported buffer remains a physical-device validation requirement.
+
 The final subscriber starts producer cleanup and waits up to six seconds on its
 connection worker, keeping foreground-service ownership until cleanup completes
 or an explicit pending-cleanup failure is reported. A new connection to that source

@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 /** AudioRecord owns its native microphone on one worker; no UI audio IPC. */
 final class MicrophoneCapture implements AutoCloseable {
     record Choice(int id,String label){public String toString(){return label;}}
-    record Packet(byte[] pcm,long position,boolean muted){}
+    record Packet(byte[] pcm,long position,boolean muted,long captureStarted){}
     interface Failure{void failed(Exception error);}
     static List<Choice> choices(Context context){
         List<Choice> result=new ArrayList<>();
@@ -25,7 +25,7 @@ final class MicrophoneCapture implements AutoCloseable {
     private volatile boolean stopped,muted;private volatile Exception error;private Thread worker;private DeviceCaptureLease sourceLease;
     MicrophoneCapture(Context context,Choice choice,Failure failure){this.context=context.getApplicationContext();this.choice=choice;this.failure=failure;}
     synchronized void start(){if(worker!=null||stopped)throw new IllegalStateException("Create a new microphone generation");sourceLease=DeviceCaptureLease.acquire("microphone:"+choice.id());worker=new Thread(this::capture,"ExtraPane microphone capture");try{worker.start();}catch(RuntimeException error){sourceLease.close();throw error;}}
-    synchronized void mute(boolean value){muted=value;if(value){List<Packet> old=new ArrayList<>();queue.drainTo(old);for(Packet p:old)queue.offer(new Packet(new byte[960],p.position(),true));}}
+    synchronized void mute(boolean value){muted=value;if(value){List<Packet> old=new ArrayList<>();queue.drainTo(old);for(Packet p:old)queue.offer(new Packet(new byte[960],p.position(),true,p.captureStarted()));}}
     Packet next()throws Exception{if(error!=null)throw error;Packet packet=queue.poll(100,TimeUnit.MILLISECONDS);if(error!=null)throw error;return packet;}
     private void capture(){AudioRecord recorder=null;
         try{
@@ -42,9 +42,12 @@ final class MicrophoneCapture implements AutoCloseable {
             if(recorder.getState()!=AudioRecord.STATE_INITIALIZED||recorder.getSampleRate()!=48000||!recorder.setPreferredDevice(selected))throw new IOException("Selected microphone cannot provide the requested format or route");
             if(stopped)return;recorder.startRecording();
             if(recorder.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING)throw new IOException("Microphone recording did not start");
-            short[] samples=new short[480];int filled=0;long position=0,last=System.nanoTime();
+            int nativeBufferFrames=recorder.getBufferSizeInFrames();AudioTimestamp hardwareTimestamp=new AudioTimestamp();
+            short[] samples=new short[480];int filled=0;long position=0,last=System.nanoTime(),captureStarted=last;
             while(!stopped){
                 if(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)throw new IOException("Microphone permission was withdrawn");
+                if(filled==0){long readStarted=System.nanoTime();boolean timestampAvailable=recorder.getTimestamp(hardwareTimestamp,AudioTimestamp.TIMEBASE_MONOTONIC)==AudioRecord.SUCCESS;
+                    captureStarted=FanoutPackets.microphoneCaptureStart(readStarted,nativeBufferFrames,position,hardwareTimestamp.framePosition,hardwareTimestamp.nanoTime,timestampAvailable);}
                 int read=recorder.read(samples,filled,samples.length-filled,AudioRecord.READ_NON_BLOCKING);
                 if(read<0)throw new IOException("Microphone capture failed (AudioRecord "+read+")");
                 if(read==0){if(System.nanoTime()-last>2_000_000_000L)throw new IOException("Microphone capture timed out");Thread.sleep(5);continue;}
@@ -55,7 +58,7 @@ final class MicrophoneCapture implements AutoCloseable {
                 if(configuration!=null&&configuration.isClientSilenced())throw new IOException("Android has silenced this microphone; check privacy controls and other recording apps");
                 if(filled==480){
                     synchronized(this){if(stopped)break;byte[] pcm=new byte[960];if(!muted)for(int i=0;i<480;++i){pcm[i*2]=(byte)samples[i];pcm[i*2+1]=(byte)(samples[i]>>8);}
-                        if(!queue.offer(new Packet(pcm,position,muted)))throw new IOException("Microphone connection is too slow; bounded queue filled");}
+                        if(!queue.offer(new Packet(pcm,position,muted,captureStarted)))throw new IOException("Microphone connection is too slow; bounded queue filled");}
                     position+=480;filled=0;
                 }
             }
