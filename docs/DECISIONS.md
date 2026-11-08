@@ -11,6 +11,9 @@ mode/fullscreen destination is an alternative, not a prerequisite.
 Global and per-resource-group Disconnect all buttons are hidden when their scope
 has no active or pending connection. They remain available during connection and
 teardown so users can cancel work; stopping one resource does not stop others.
+The final resource stopping, failing or being cancelled also releases its server
+admission connection. An idle client retains configuration but no server connection;
+retiring helper processes alone do not keep Disconnect all visible.
 
 The Windows shared client uses repeatable resource rows with independent source,
 destination and lifecycle state. Single server mode supplies one destination to

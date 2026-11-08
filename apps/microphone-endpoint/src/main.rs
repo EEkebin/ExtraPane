@@ -1,7 +1,7 @@
 mod pcm;
 mod backend;
 use std::sync::{Arc,mpsc};
-use std::time::Duration;
+use std::time::{Duration,Instant};
 use usbip_audio::{Server,MonotonicClock};
 use usbip_audio::uac2::{Uac2Config,Uac2Device};
 fn validate_slot(slot:u32)->Result<(),String>{if slot>0{Ok(())}else{Err("Microphone endpoint identity must be positive".into())}}
@@ -35,9 +35,17 @@ fn run(slot:u32)->Result<(),String>{
     // A stalled/malicious local producer cannot retain the endpoint: the owner
     // times out independently even if this process-lifetime reader is blocked.
     std::thread::spawn(move||{let input=std::io::stdin();let mut reader=input.lock();let mut seq=0;loop{let packet=pcm::read_packet(&mut reader,&mut seq).map_err(|e|e.to_string());let end=matches!(packet,Ok(pcm::Packet::Stop)|Err(_));if tx.send(packet).is_err()||end{return;}}});
+    let mut next_statistics=Instant::now()+Duration::from_secs(5);
     let result=loop{match rx.recv_timeout(Duration::from_secs(5)){
         Ok(Ok(pcm::Packet::Stop))=>break Ok(()),
-        Ok(Ok(packet))=>ring.accept(packet),
+        Ok(Ok(packet))=>{
+            ring.accept(packet);
+            if Instant::now()>=next_statistics {
+                let (underruns,dropped,queued,target,contention)=ring.statistics();
+                println!("MICROPHONE_BUFFER underruns={underruns} dropped_samples={dropped} queued_ms={queued} target_ms={target} contention_samples={contention}");
+                next_statistics=Instant::now()+Duration::from_secs(5);
+            }
+        },
         Ok(Err(e))=>break Err(format!("Microphone input ended: {e}")),
         Err(_)=>break Err("Microphone input timed out or closed".into()),
     }};

@@ -62,6 +62,16 @@ plugin. A bounded drop-old PCM queue handles periods with no consuming app.
 The receiver does not play microphone audio through speakers or change the
 default input; applications select the virtual input themselves.
 
+The current Linux queue bounds retained audio but is not an adaptive jitter
+buffer. Its sink consumes asynchronously, without a separate startup/refill
+reserve. The Windows receiver's jitter-buffer implementation does not change
+this Linux path. A Linux follow-up needs clock-paced delivery, bounded prefill
+and refill behavior, and invalidation of queued pre-mute audio. Merely setting
+GStreamer's `min-threshold-time` is insufficient: that property limits each
+queue read, and the existing pre-grant endpoint check only primes 10 ms of
+silence. Live PipeWire delivery under competing display traffic remains a
+validation gate.
+
 ## Remaining gates
 
 Device-list refresh runs in an isolated `ExtraPane --list-resource camera` or
@@ -93,6 +103,7 @@ camera nodes or the user's PipeWire graph.
 
 References: [PipeWire sink](https://github.com/PipeWire/pipewire/blob/master/src/gst/gstpipewiresink.c),
 [PipeWire properties](https://docs.pipewire.org/page_man_pipewire-props_7.html),
+[GStreamer queue thresholds](https://gstreamer.freedesktop.org/documentation/coreelements/queue.html),
 [V4L2 output](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-output.html).
 
 ## Portable diagnostics

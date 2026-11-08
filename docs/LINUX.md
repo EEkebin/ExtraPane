@@ -115,3 +115,9 @@ host with Qt6.8.3. Native Linux compilation, AppImage startup and actual media
 interoperability remain separate gates; these checks do not open devices.
 
 Native source and receiving endpoint prerequisites are detailed in [Linux resources](LINUX-RESOURCES.md).
+
+The Windows microphone receiver now has a jitter-buffer implementation for all
+source platforms. Linux microphone receiving still uses its bounded PipeWire
+queue; clock-paced jitter buffering with safe mute invalidation remains a
+separate implementation and live-validation gate. See the receiving microphone
+section of [Linux resources](LINUX-RESOURCES.md) for the current limits.

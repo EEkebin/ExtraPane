@@ -70,7 +70,7 @@ void WindowsConnectionRuntime::connectShared(QString code){
     // Validate a target without acquiring a resource or inventing a connection.
     ConnectionModel validator;const auto id=validator.addConnection("camera");validator.setEnabled(id,true);validator.setSource(id,"validation");
     if(!validator.setSharedTarget(model_.sharedTarget())||!validator.beginConnection(id)){status_="Enter a valid server IPv4 address, port and local interface.";emit changed();return;}
-    broker(model_.sharedTarget(),std::move(code));
+    code.fill(QChar(0));status_="Choose a resource to connect.";emit changed();
 }
 void WindowsConnectionRuntime::toggle(QString id,bool enabled,QString code,bool input){
     if(model_.connection(id).isEmpty())return;
@@ -147,10 +147,14 @@ void WindowsConnectionRuntime::disconnectAll(){
     for(auto& [key,b]:impl_->brokers)closeIfIdle(key);emit changed();
 }
 void WindowsConnectionRuntime::closeIfIdle(QString key){
-    auto found=impl_->brokers.find(key);if(found==impl_->brokers.end())return;auto& b=*found->second;if(!b.closing||!b.process)return;
+    auto found=impl_->brokers.find(key);if(found==impl_->brokers.end())return;auto& b=*found->second;if(!b.process)return;
+    // Control connections belong to resource rows, not to the client page. Keep
+    // admission while a row is queued/connecting, but retire the final lease
+    // after individual stops, failures and cancelled requests as well as Stop all.
+    for(const auto& [id,row]:impl_->rows)if(row->broker==key&&model_.connection(id)["connectionEnabled"].toBool())return;
     for(const auto& [id,row]:impl_->rows)if(row->broker==key&&(row->child.process||row->sharedActive))return;
     for(auto& [id,row]:impl_->rows)if(row->broker==key&&!row->child.process&&!row->sharedActive&&(model_.connection(id)["phase"]=="connecting"||model_.connection(id)["phase"]=="returning"))model_.setState(id,State::idle,model_.connection(id)["status"].toString());
-    auto* process=b.process;b.process=nullptr;b.queue.clear();b.inflight.clear();process->disconnect(this);process->write("Q\n");process->closeWriteChannel();connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),process,&QObject::deleteLater);QTimer::singleShot(2000,process,[process]{if(process->state()!=QProcess::NotRunning)process->kill();});emit changed();
+    auto* process=b.process;b.process=nullptr;b.ready=false;b.closing=true;b.queue.clear();b.inflight.clear();process->disconnect(this);process->write("Q\n");process->closeWriteChannel();connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),process,&QObject::deleteLater);QTimer::singleShot(2000,process,[process]{if(process->state()!=QProcess::NotRunning)process->kill();});bool connected=false;for(const auto& [otherKey,other]:impl_->brokers)if(other->process)connected=true;if(!connected)status_="Disconnected";emit changed();
 }
 void WindowsConnectionRuntime::lost(QString key,QString error){
     auto found=impl_->brokers.find(key);if(found==impl_->brokers.end())return;auto& b=*found->second;
@@ -200,6 +204,7 @@ void WindowsConnectionRuntime::poll(){
             if(row.returned)refreshDevices("usb");if(restart&&!row.recovery&&!b.closing&&b.process)toggle(id,true,{},row.input);emit changed();
         }
     }
+    for(const auto& [key,broker]:impl_->brokers)closeIfIdle(key);
     for(auto& [key,source]:impl_->sources){if(!source->child.process||source->closing)continue;bool used=false;for(const auto& [id,row]:impl_->rows)if(row->sharedSource==key&&row->sharedActive)used=true;if(!used){try{source->child.send_control("Q\n");source->closing=true;}catch(...){source->child.stop();}}}
 }
 void WindowsConnectionRuntime::setMirror(QString id,bool enabled){auto f=impl_->rows.find(id);if(f==impl_->rows.end()||f->second->kind!="camera"||!f->second->sharedActive)return;auto& source=*impl_->sources.at(f->second->sharedSource);try{source.child.send_control(enabled?"MIRROR\t1\n":"MIRROR\t0\n");source.mirror=enabled;emit changed();}catch(...){} }

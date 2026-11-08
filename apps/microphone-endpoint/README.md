@@ -12,12 +12,12 @@ Do not run upstream hardware tests as part of ordinary builds.
 ## Interface
 
 `ExtraPane.MicrophoneEndpoint.exe --run --slot N` creates one input endpoint,
-where N is 1..4. Only run after resource admission. It never captures a local
+where N is a positive 32-bit slot identifier. Only run after resource admission. It never captures a local
 microphone. Each slot has its own `ExtraPane Microphone N` product/capture name,
 descriptor serial, PCM ring, supervised process and owned USB/IP attachment.
 The unified listener assigns one slot to each concurrent incoming microphone;
-the dedicated diagnostic listener continues to reserve slot 1. Four receiving
-microphones are the current capacity, not an unlimited endpoint pool.
+the dedicated diagnostic listener continues to reserve slot 1. Allocation is dynamic,
+subject to Windows and hardware resources.
 `MICROPHONE_READY slot=N` means USB/IP attach completed, not that an
 application successfully recorded audio. `MICROPHONE_STOPPED` reports cleanup.
 Fatal errors use `error:` and exit code 1. Allow 30 seconds for startup and 12
@@ -54,18 +54,34 @@ wraparound is rejected. This is local subprocess framing, not a network protocol
   48,000 Hz (10 ms). Network capture packets must be accumulated/split upstream.
 - Type 2: one byte, 0 unmute or 1 mute. Either transition clears buffered audio.
 - Type 3: empty payload, stop and detach. EOF also stops, with an error status.
+- Type 4: empty payload, discard queued audio and refill after a source discontinuity.
 
-The ring holds at most 60 ms and drops the oldest samples on overflow. Capture
-callbacks never block on its lock; contention, underrun and mute produce silence.
-PCM16 is converted to left-aligned signed 24-in-32 samples preserving amplitude.
-There is no adaptive resampling or drift compensation yet; bounded drops/silence
-keep latency from growing, but long-session audio quality requires device tests.
+The receiver starts playback after accumulating 40 ms of audio. On starvation it
+fades to silence and refills rather than immediately playing each isolated late
+packet. Each underrun raises the reserve by 20 ms, up to 80 ms for that unmuted
+session. Mute/unmute clears queued samples and resets the reserve; stop discards
+all audio immediately. Two-millisecond transitions soften startup, underrun,
+refill and overflow discontinuities. The queue has a hard 120 ms limit; on
+overflow it discards oldest samples back to the current reserve rather than
+letting delay grow indefinitely. These are local buffer delays, not an end-to-end
+latency guarantee.
+
+Capture callbacks never block on the ring lock; lock contention still produces
+silence. PCM16 is converted to left-aligned signed 24-in-32 samples preserving
+amplitude. Every five seconds the helper emits `MICROPHONE_BUFFER` counters for
+underrun events, dropped samples, queued milliseconds, target milliseconds and
+samples silenced by callback lock contention;
+the receiving native session forwards them to its diagnostic output. There is
+no adaptive resampling or clock-drift correction yet. A jitter reserve cannot
+fix persistent bandwidth shortage or late USB/audio scheduling; multi-display
+hardware validation remains required.
 
 ## Isolated validation
 
 `cargo test --manifest-path apps/microphone-endpoint/Cargo.toml` tests only this
 crate's parser, sample conversion, mute, queue limits, distinct slot identities,
-independent PCM stop state and exact attachment ownership checks.
+independent PCM stop state, bursty arrival timing, startup/refill, overflow, mute
+reset and exact attachment ownership checks.
 `ExtraPane.MicrophoneEndpoint.exe --check` validates in memory without sockets,
 driver access, enumeration, capture or subprocesses. It does not prove deployment
 or audio delivery. Do not invoke `--run` during unattended builds.

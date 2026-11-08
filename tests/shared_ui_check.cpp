@@ -194,6 +194,11 @@ int main(int argc,char** argv){
         QQmlApplicationEngine repeatedEngine;watch(repeatedEngine);repeatedEngine.rootContext()->setContextProperty("receiver",&repeated);repeatedEngine.load(QUrl("qrc:/Main.qml"));require(!repeatedEngine.rootObjects().isEmpty());repeatedEngine.rootObjects().first()->setProperty("page",1);app.processEvents();require(!warnings);
         auto* repeatedRoot=repeatedEngine.rootObjects().first();auto* monitorControl=named(repeatedRoot,("displayMonitor_"+instanceDisplay).toUtf8().constData());require(!monitorControl->property("visible").toBool());
         for(auto* object:repeatedRoot->findChildren<QObject*>())require(object->property("text").toString()!="Connect to server");
+        auto* disconnectAllRow=named(repeatedRoot,"connectionDisconnectAllRow");
+        require(!disconnectAllRow->property("visible").toBool());
+        // A retiring helper/control process is not itself a resource connection.
+        runtime.insert("active",true);app.processEvents();require(!disconnectAllRow->property("visible").toBool());
+        runtime.insert("active",false);
         auto monitorMode=instances.connection(instanceDisplay)["displayMode"].toMap();monitorMode["mode"]="native";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();require(monitorControl->property("visible").toBool());
         monitorMode["mode"]="custom";require(instances.setDisplayMode(instanceDisplay,monitorMode));app.processEvents();require(!monitorControl->property("visible").toBool()&&!warnings);
         // Invalid attempts must mark all relevant fields without starting a runtime.
@@ -233,6 +238,7 @@ int main(int argc,char** argv){
         auto* collapse=named(repeatedRoot,"connectionGroupToggle_display");require(QMetaObject::invokeMethod(collapse,"clicked"));app.processEvents();
         require(!displayMode->property("visible").toBool()&&instances.connection(instanceDisplay)["phase"]=="active"&&runtime.requests.isEmpty());
         require(QMetaObject::invokeMethod(collapse,"clicked"));app.processEvents();require(displayMode==named(repeatedRoot,("displayModeChoice_"+instanceDisplay).toUtf8().constData())&&!displayMode->property("visible").toBool());
+        require(disconnectAllRow->property("visible").toBool());
         auto* camerasDisconnect=named(repeatedRoot,"connectionGroupDisconnect_camera");require(camerasDisconnect->property("enabled").toBool());require(QMetaObject::invokeMethod(camerasDisconnect,"clicked"));app.processEvents();
         require(runtime.requests==QStringList{instanceCamera,secondCamera}&&instances.connection(instanceDisplay)["phase"]=="active"&&instances.connection(instanceMic)["phase"]=="active"&&!instances.connection(instanceCamera)["connectionEnabled"].toBool()&&!instances.connection(secondCamera)["connectionEnabled"].toBool());
         auto* micDisconnect=named(repeatedRoot,("connectionDisconnect_"+instanceMic).toUtf8().constData());require(micDisconnect->property("destructive").toBool());

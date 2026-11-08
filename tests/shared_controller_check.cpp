@@ -106,7 +106,7 @@ int main(int argc,char** argv){
         // Actual instance runtime with fake native capture brokers and no sockets.
         auto* runtime=controller.connectionRuntime();auto* connections=runtime->connections();
         const QVariantMap firstTarget{{"address","192.0.2.1"},{"port",43824},{"localAddress","0.0.0.0"},{"interfaceIndex",0}};
-        require(connections->setSharedTarget(firstTarget));runtime->connectShared({});until([&]{return runtime->status().startsWith("Connected.");});require(controller.active());
+        require(connections->setSharedTarget(firstTarget));runtime->connectShared({});require(!runtime->active()&&!controller.active());
         const auto cam1=connections->addConnection("camera"),cam2=connections->addConnection("camera"),mic1=connections->addConnection("microphone");
         connections->setSource(cam1,"63616d");connections->setSource(cam2,"63616d");connections->setSource(mic1,"6d6963");
         runtime->toggle(cam1,true);runtime->toggle(cam2,true);runtime->toggle(mic1,true);
@@ -115,7 +115,14 @@ int main(int argc,char** argv){
         runtime->setMirror(cam2,true);until([&]{return runtime->mirrorStates()["63616d"].toBool();});
         connections->setSingleServer(false);const auto bad=connections->addConnection("camera");auto secondTarget=firstTarget;secondTarget["address"]="192.0.2.2";connections->setTarget(bad,secondTarget);connections->setSource(bad,"626164");runtime->toggle(bad,true);
         until([&]{return connections->connection(bad)["phase"]=="failed";});require(connections->connection(cam2)["phase"]=="active"&&connections->connection(mic1)["phase"]=="active");
-        runtime->disconnectAll();until([&]{return !runtime->active();});require(!controller.active());
+        // Individual final-row stops must release the admission connection too.
+        runtime->toggle(cam2,false);runtime->toggle(mic1,false);
+        until([&]{return !runtime->active();});require(!controller.active()&&runtime->status()=="Disconnected");
+        // Cancelling before admission completes cannot retain an empty broker.
+        runtime->toggle(cam1,true);runtime->toggle(cam1,false);
+        until([&]{return !runtime->active()&&connections->connection(cam1)["phase"]=="idle";});
+        // A failed sole connection must also release its control connection.
+        runtime->toggle(bad,true);until([&]{return connections->connection(bad)["phase"]=="failed"&&!runtime->active();});
         qputenv("EXTRAPANE_TEST_USB_BUSY","1");
         const auto storage=connections->addConnection("usb"),storage2=connections->addConnection("usb");connections->setSource(storage,"757362");connections->setSource(storage2,"757362");runtime->toggle(storage,true);
         until([&]{return connections->connection(storage)["phase"]=="active";});runtime->toggle(storage2,true);require(connections->connection(storage2)["phase"]!="active"&&connections->connection(storage2)["status"].toString().contains("reserved"));
@@ -138,7 +145,7 @@ int main(int argc,char** argv){
         const auto customDisplay=connections->addConnection("display");
         auto customMode=connections->connection(customDisplay)["displayMode"].toMap();customMode["monitorId"]="STALE_DISPLAY";
         require(connections->setDisplayMode(customDisplay,customMode));qputenv("EXTRAPANE_TEST_DISPLAY_MODE","custom");runtime->toggle(customDisplay,true);
-        until([&]{return connections->connection(customDisplay)["phase"]=="active";});runtime->disconnectAll();until([&]{return !runtime->active();});
+        until([&]{return connections->connection(customDisplay)["phase"]=="active";});runtime->toggle(customDisplay,false);until([&]{return !runtime->active();});
         auto nativeMode=customMode;nativeMode["mode"]="native";nativeMode["monitorId"]="FAKE_DISPLAY_1";require(connections->setDisplayMode(customDisplay,nativeMode));
         qputenv("EXTRAPANE_TEST_DISPLAY_MODE","native");runtime->toggle(customDisplay,true);until([&]{return connections->connection(customDisplay)["phase"]=="active";});runtime->disconnectAll();until([&]{return !runtime->active();});
         nativeMode["monitorId"]="";require(connections->setDisplayMode(customDisplay,nativeMode));runtime->toggle(customDisplay,true);require(!connections->connection(customDisplay)["connectionEnabled"].toBool()&&!runtime->active());

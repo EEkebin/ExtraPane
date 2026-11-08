@@ -51,7 +51,7 @@ struct Transport {
 wire::Message caps_message(const Capabilities& caps){auto bytes=wire::encode_capabilities(caps);return {{wire::Operation::capabilities,ResourceKind::display,0,static_cast<std::uint32_t>(bytes.size())},std::move(bytes)};}
 class Endpoint final:public Resource {
 public:
-    explicit Endpoint(std::atomic_bool& stop,unsigned slot):stop_(stop),slot_(slot){validate_endpoint_slot(slot_);}
+    explicit Endpoint(std::atomic_bool& stop,unsigned slot,Report report):stop_(stop),slot_(slot),report_(std::move(report)){validate_endpoint_slot(slot_);}
     ~Endpoint(){stop();}
     Availability prepare()override{
         std::wstring path(32768,L'\0');const auto length=GetModuleFileNameW(nullptr,path.data(),static_cast<DWORD>(path.size()));
@@ -63,6 +63,7 @@ public:
         try{launch();return {true,{}};}catch(const std::exception& e){stop();return {false,e.what()};}
     }
     void pcm(const microphone_wire::Frame& frame){
+        if(frame.discontinuity)command(4,{},false);
         if(frame.muted!=muted_){const std::array<std::uint8_t,1> value{static_cast<std::uint8_t>(frame.muted)};command(2,value,false);muted_=frame.muted;}
         command(1,frame.pcm,false);
     }
@@ -77,7 +78,7 @@ public:
         job_.reset();process_.reset();output_.reset();
     }
 private:
-    std::atomic_bool& stop_;unsigned slot_;std::wstring exe_;Handle input_,output_,process_,job_;std::uint32_t sequence_=0;
+    std::atomic_bool& stop_;unsigned slot_;Report report_;std::wstring exe_;Handle input_,output_,process_,job_;std::uint32_t sequence_=0;
     std::string outputText_;bool ready_=false,muted_=false;
     void drain(){
         DWORD available=0;if(!PeekNamedPipe(output_.h,nullptr,0,nullptr,&available,nullptr))return;
@@ -86,6 +87,7 @@ private:
             for(auto newline=outputText_.find('\n');newline!=std::string::npos;newline=outputText_.find('\n')){
                 auto line=outputText_.substr(0,newline);outputText_.erase(0,newline+1);if(!line.empty()&&line.back()=='\r')line.pop_back();
                 if(endpoint_ready(slot_,line))ready_=true;
+                else if(line.starts_with("MICROPHONE_BUFFER "))report_(line);
                 else if(line.starts_with("MICROPHONE_READY"))throw std::runtime_error("Microphone component reported a different endpoint slot");
                 // This detail stays on the receiving PC; negotiation sends a
                 // generic rejection to the peer, never local paths/identities.
@@ -145,7 +147,7 @@ void receive_payload(security::TlsStream& tls,std::atomic_bool& stop,const Repor
     Transport transport(tls,stop);microphone_wire::OfferBytes offer{};transport.read(offer);const auto binding=microphone_wire::decode_offer(offer);
     Server server(1);need(server.start(std::make_unique<Admitted>()).available&&server.admit(1).available,"Allocate microphone session failed");
     auto caps=unavailable_capabilities();caps[2].destination={true,{}};Endpoint* endpoint=nullptr;
-    Negotiation negotiation(server,1,caps,[&](ResourceKind kind)->std::unique_ptr<Resource>{if(kind!=ResourceKind::microphone)throw std::runtime_error("Microphone listener received another resource");auto result=std::make_unique<Endpoint>(stop,slot);endpoint=result.get();return result;});
+    Negotiation negotiation(server,1,caps,[&](ResourceKind kind)->std::unique_ptr<Resource>{if(kind!=ResourceKind::microphone)throw std::runtime_error("Microphone listener received another resource");auto result=std::make_unique<Endpoint>(stop,slot,report);endpoint=result.get();return result;});
     negotiation.serve_one(transport.control);auto request=transport.control.receive();
     need(request.header.operation==wire::Operation::request&&request.header.kind==ResourceKind::microphone&&request.header.resource_id==binding.resource,"Microphone request does not match offer");
     const auto result=negotiation.handle(request);transport.control.send(result);
