@@ -1058,3 +1058,9 @@ This replaces the earlier opt-in offer power behavior.
   may show duplicate device rows; each row currently disconnects its own link.
 - Previous pre.104.1 hosted Linux/Android jobs passed. Both macOS jobs exposed an
   Objective-C ivar initializer syntax error; source corrected here, CI recheck pending.
+
+### pre.105.1 redelivery requested
+
+- [x] Re-copied the verified installer to the current Windows Desktop; reinstalled the matching Android APK through ADB and confirmed versionName/code 10501.
+- [x] Re-copied the installer to the Surface Desktop at its new address, 10.0.20.143. Verified the SSH host key against the previously saved Surface identity and verified the remote installer SHA256. No Windows installation performed.
+
