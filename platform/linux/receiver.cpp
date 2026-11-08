@@ -23,9 +23,11 @@ void Receiver::run(){
         options_.code.fill(QChar(0));options_.code.clear();
         auto request=wire::request;
         request[9]=static_cast<std::uint8_t>(options_.scale);
-        const unsigned requested=options_.input?dm::input::all_caps:0;
+        const bool existing=options_.screen.mode==wire::DisplayMode::existing_screen;
+        if(existing&&options_.display.exact_mode)throw std::runtime_error("Existing screens use the host screen mode");
+        const unsigned requested=options_.input&&(!existing||options_.existingScreenInput)?dm::input::all_caps:0;
         request[7]=requested?1:0;request[8]=static_cast<std::uint8_t>(requested);
-        wire::set_client_display(request,options_.display);stream.write(request,deadline());
+        wire::set_screen_request(request,options_.screen);wire::set_client_display(request,existing?wire::ClientDisplay{}:options_.display);stream.write(request,deadline());
         wire::OfferBytes bytes{};stream.read(bytes,deadline(45));
         auto offer=wire::decode_offer(bytes);
         if(options_.display.exact_mode&&(offer.width!=options_.display.width||offer.height!=options_.display.height||offer.fps!=options_.display.hz))throw std::runtime_error("Server cannot provide the requested custom display mode; choose its supported resolution and frame rate");

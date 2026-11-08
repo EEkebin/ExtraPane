@@ -555,3 +555,18 @@ outgoing resource sessions. Automatic gateway dialing, reverse-flow relay covera
 transient reconnect, and Linux/Android/macOS workspace integration remain open.
 Native media startup is exercised with fake processes, not real devices. The new
 workspace remains opt-in until those integration and acceptance gates are complete.
+
+Cross-platform verification: draft PR #15 targets `feat/shared-resources`, not
+main. CI run 42457496119 compiled and passed the peer authentication, framing,
+store, transport, service and helper-plan checks on Windows, Ubuntu and macOS.
+The new Windows workspace remains opt-in; no physical acceptance is implied.
+
+Linux workspace source now wires selected display destinations, portal-selected
+existing screens, camera/microphone sources and the existing receiving endpoints
+through scoped loopback adapters. Its full AppImage compilation is the next gate.
+Android's opt-in foreground workspace publishes enabled display/camera/microphone/
+speaker offers using the same authenticated service; its debug APK compiles for
+arm64-v8a and x86_64 and the six host-side Java suites pass. Android backgrounding
+stops offers and capture. Android virtual-device consumption, USB and existing-screen
+capture are unavailable; Linux USB/speaker integration remains unavailable as in
+the previous platform baseline. Neither platform was connected to physical hardware.

@@ -58,8 +58,8 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
         status_="Select an available resource before connecting.";emit changed();return;
     }
     if(!port||port>65535||(!code.isEmpty()&&!dm::access::validCode(code.toStdString())&&!dm::access::channelCredential(code.toStdString()))){status_="Enter a valid port and six-digit access code";emit changed();return;}
-    const QHostAddress address(server.trimmed());
-    if(address.protocol()!=QAbstractSocket::IPv4Protocol || !address.toIPv4Address() || address.toIPv4Address()==0xffffffffu || address.isMulticast() || address.isLoopback()){
+    const QHostAddress address(server.trimmed().compare("localhost",Qt::CaseInsensitive)==0?QStringLiteral("127.0.0.1"):server.trimmed());
+    if(address.protocol()!=QAbstractSocket::IPv4Protocol || !address.toIPv4Address() || address.toIPv4Address()==0xffffffffu || address.isMulticast()){
         status_="Enter the server's LAN IPv4 address.";emit changed();return;
     }
     if(!availability_.isEmpty()){status_=availability_;emit changed();return;}
@@ -74,15 +74,15 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
         }
     }else if(local!="0.0.0.0") {status_="Select a connected local interface.";emit changed();return;}
     auto* screen=window_->screen();const auto size=screen->geometry().size()*screen->devicePixelRatio();
-    const unsigned hz=static_cast<unsigned>(std::clamp(std::lround(screen->refreshRate()),1L,60L));
+    const unsigned hz=static_cast<unsigned>(std::clamp(std::lround(screen->refreshRate()),1L,360L));
     dm::linux_client::Receiver::Options options{address.toString(),local,
         {static_cast<unsigned>(size.width()),static_cast<unsigned>(size.height()),hz},scale,input,interfaceIndex};
-    if(displayMode_.value("mode")=="custom"){
+    if(displayMode_.value("mode")=="custom"||displayMode_.value("mode")=="preset"){
         const auto width=displayMode_.value("width").toUInt(),height=displayMode_.value("height").toUInt(),fps=displayMode_.value("fps").toUInt();
         if(width<2||height<2||width>4096||height>4096||width%2||height%2||static_cast<uint64_t>(width)*height>8847360||fps<1||fps>360){status_="Invalid custom display mode";emit changed();return;}
-        options.display={width,height,fps,true};
+        options.display={width,height,fps,displayMode_.value("mode")=="custom"};
     }
-    options.port=port;options.code=code;
+    options.port=port;options.code=code;options.screen=screenRequest_;options.existingScreenInput=screenInput_;
     QSettings().setValue("serverAddress",options.server);
     releaseInput();input_.grant(0);media_.resetCounters();failed_=false;statistics_.clear();decoder_="Waiting for decoder";
     receiver_=new dm::linux_client::Receiver(options,input_,media_,this);
@@ -103,10 +103,12 @@ void Controller::connectTo(QString server,QString local,bool input,unsigned scal
 void Controller::disconnectFromServer(){releaseInput();if(runtime_)runtime_->disconnectAll();if(receiver_)receiver_->requestInterruption();}
 void Controller::releaseInput(){if(runtime_)runtime_->releaseInput();if(inputSurface_)inputSurface_->resetInput();else input_.reset();}
 void Controller::startHost(QString address,unsigned port,bool requireCode){
+    if(address.compare("localhost",Qt::CaseInsensitive)==0)address="127.0.0.1";
     if(!port||port>65535){hostStatus_="Enter a port from 1 to 65535";emit hostChanged();return;}
     if(host_)return;
     if(!hostAvailability_.isEmpty()){hostStatus_=hostAvailability_;emit hostChanged();return;}
-    bool valid=false;
+    if(address=="0.0.0.0"){address="127.0.0.1";for(const auto& entry:addresses_)if(entry.toMap().value("address").toString()!="0.0.0.0"){address=entry.toMap().value("address").toString();break;}}
+    bool valid=address=="127.0.0.1";
     for(const auto& entry:addresses_)if(entry.toMap().value("address").toString()==address && address!="0.0.0.0")valid=true;
     if(!valid){hostStatus_="Select a connected server IPv4 address";emit hostChanged();return;}
     accessGate_=requireCode?std::make_shared<dm::access::Gate>():nullptr;accessCode_.clear();if(accessGate_)generateAccessCode();

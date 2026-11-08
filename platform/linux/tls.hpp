@@ -21,7 +21,8 @@ public:
     Tls(const Tls&) = delete;
     Tls& operator=(const Tls&) = delete;
     bool openControl();
-    std::vector<access::ChannelCredential> controlChannels(unsigned kind);
+    std::vector<access::ChannelCredential> controlChannels(unsigned kind,std::optional<bool> input={});
+    std::optional<bool> authorizedDisplayInput()const;
     void requireResource(unsigned kind) const;
     void read(std::span<std::uint8_t> bytes, Deadline deadline);
     void write(std::span<const std::uint8_t> bytes, Deadline deadline);

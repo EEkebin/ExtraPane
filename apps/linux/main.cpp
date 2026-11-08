@@ -1,4 +1,6 @@
 #include "controller.hpp"
+#include "peer_runtime.hpp"
+#include "peer_controller.hpp"
 #include "resource_source.hpp"
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -96,6 +98,15 @@ int main(int argc,char** argv){
     Controller controller(unavailable);
     QQmlApplicationEngine engine;
     controller.setEngine(&engine);
+    std::unique_ptr<LinuxPeerRuntime> peerRuntime;
+    std::unique_ptr<PeerController> peers;
+    if(app.arguments().contains("--devices")){
+        try{peerRuntime=std::make_unique<LinuxPeerRuntime>(&engine,unavailable);peers=std::make_unique<PeerController>(peerRuntime->hooks(),QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/peers");
+            QObject::connect(peerRuntime.get(),&LinuxPeerRuntime::inventoryChanged,&app,[&]{try{peers->setLocalOffers(peerRuntime->offers());}catch(const std::exception& e){qWarning()<<e.what();}});
+            QObject::connect(peerRuntime.get(),&LinuxPeerRuntime::inventoryFailed,&app,[](const QString& reason){qWarning().noquote()<<reason;});
+            engine.rootContext()->setContextProperty("peers",peers.get());peerRuntime->refreshInventory();
+        }catch(const std::exception& e){qWarning()<<e.what();return 1;}
+    }
     engine.rootContext()->setContextProperty("receiver",&controller);
     engine.load(QUrl("qrc:/Main.qml"));
     if(engine.rootObjects().isEmpty())return 1;
@@ -108,19 +119,20 @@ int main(int argc,char** argv){
     auto restore=[&]{if(window->visibility()==QWindow::Minimized)window->showNormal();else window->show();window->raise();window->requestActivate();tray.hide();};
     QObject::connect(open,&QAction::triggered,&app,restore);
     QObject::connect(&tray,&QSystemTrayIcon::activated,&app,[&](QSystemTrayIcon::ActivationReason reason){if(reason==QSystemTrayIcon::DoubleClick)restore();});
-    QObject::connect(stop,&QAction::triggered,&controller,&Controller::stopHost);
-    QObject::connect(disconnect,&QAction::triggered,&controller,&Controller::disconnectFromServer);
+    QObject::connect(stop,&QAction::triggered,&app,[&]{if(peers)peers->stopSharing();else controller.stopHost();});
+    QObject::connect(disconnect,&QAction::triggered,&app,[&]{if(peers)peers->disconnectAll();else controller.disconnectFromServer();});
     QObject::connect(exit,&QAction::triggered,&app,&QCoreApplication::quit);
     QObject::connect(&app,&QGuiApplication::lastWindowClosed,&app,[&]{
-        if(controller.active()||controller.hosting()){
+        if(controller.active()||controller.hosting()||(peers&&peers->active())){
             if(QSystemTrayIcon::isSystemTrayAvailable())tray.show();else restore();
         }else app.quit();
     });
-    auto updateTray=[&]{stop->setEnabled(controller.hosting());disconnect->setEnabled(controller.active());if(!window->isVisible()&&!controller.hosting()&&!controller.active())app.quit();};
+    auto updateTray=[&]{stop->setEnabled(controller.hosting()||(peers&&peers->sharing()));disconnect->setEnabled(controller.active()||(peers&&!peers->connections().isEmpty()));if(!window->isVisible()&&!controller.hosting()&&!controller.active()&&(!peers||!peers->active()))app.quit();};
+    if(peers)QObject::connect(peers.get(),&PeerController::changed,&app,updateTray);
     QObject::connect(&controller,&Controller::changed,&app,updateTray);QObject::connect(&controller,&Controller::hostChanged,&app,updateTray);updateTray();
     QObject::connect(&controller,&Controller::hostChanged,&controller,[&controller]{qInfo().noquote()<<controller.hostStatus();});
     const auto hostOption=app.arguments().indexOf("--host");
     if(hostOption>=0 && hostOption+1<app.arguments().size())QTimer::singleShot(0,&controller,[&controller,&app,hostOption]{controller.startHost(app.arguments().at(hostOption+1));});
-    QObject::connect(&app,&QCoreApplication::aboutToQuit,&controller,&Controller::shutdown);
+    QObject::connect(&app,&QCoreApplication::aboutToQuit,&app,[&]{if(peers)peers->shutdown();if(peerRuntime)peerRuntime->shutdown();controller.shutdown();});
     return app.exec();
 }
