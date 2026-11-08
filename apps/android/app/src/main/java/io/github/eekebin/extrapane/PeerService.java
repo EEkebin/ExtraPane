@@ -21,6 +21,8 @@ final class PeerService implements AutoCloseable {
     synchronized void setPairingRequired(boolean value)throws IOException{nativePairing(alive(),value);}
     /** Going into background stops all sharing; no camera/mic starts behind UI. */
     synchronized void setForeground(boolean value)throws IOException{nativeForeground(alive(),value);}
+    synchronized void setAutoConnect(boolean value)throws IOException{nativeAutoConnect(alive(),value);}
+    synchronized void observeRoute(String peer,String observedAddress,int port)throws IOException{nativeObserveRoute(alive(),peer,observedAddress,port);}
     synchronized long connect(String address,int port,String local,String expectedHex,String code,boolean openMode)throws IOException{return nativeConnect(alive(),address,port,local,expectedHex,code,openMode);}
     synchronized long catalog(long connection)throws IOException{return nativeCatalog(alive(),connection);}
     synchronized long open(long connection,String owner,String resource,boolean input,int width,int height,int refresh)throws IOException{return nativeOpen(alive(),connection,owner,resource,input,width,height,refresh);}
@@ -53,6 +55,8 @@ final class PeerService implements AutoCloseable {
     private static native void nativeStop(long h)throws IOException;
     private static native void nativePairing(long h,boolean required)throws IOException;
     private static native void nativeForeground(long h,boolean foreground)throws IOException;
+    private static native void nativeAutoConnect(long h,boolean enabled)throws IOException;
+    private static native void nativeObserveRoute(long h,String peer,String address,int port)throws IOException;
     private static native long nativeConnect(long h,String address,int port,String local,String expected,String code,boolean open)throws IOException;
     private static native long nativeCatalog(long h,long connection)throws IOException;
     private static native long nativeOpen(long h,long connection,String owner,String resource,boolean input,int width,int height,int refresh)throws IOException;

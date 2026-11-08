@@ -19,6 +19,19 @@ Item {
         !peers.remembered.some(saved => saved.id===row.id) && !peers.devices.some(device => device.identity===row.id))
     property var collapsedDevices: ({})
     function toggleDevice(key) { const next=Object.assign({},collapsedDevices); if(next[key]) delete next[key]; else next[key]=true; collapsedDevices=next }
+    readonly property var managedDevices: {
+        const byIdentity={}
+        for(const row of peers.devices) {
+            const key=row.identity||String(row.connection)
+            if(!byIdentity[key] || row.incoming!==true) byIdentity[key]=row
+        }
+        return Object.values(byIdentity)
+    }
+    function disconnectManagedDevice(device) {
+        for(const row of peers.devices.slice())
+            if(device.identity ? row.identity===device.identity : row.connection===device.connection)
+                peers.disconnectDevice(row.connection)
+    }
     readonly property bool sharingBusy: peers.sharing || peers.sharingStarting
     readonly property bool hasSharedResources: peers.connections.some(row => row.incoming===true)
     property real expansion: collapsed ? 0 : 1
@@ -153,16 +166,16 @@ Item {
                     IconButton { objectName: "peerNavigationMenu"; x: 6; y: 56; symbol: "menu"; description: workspace.collapsed ? "Expand navigation" : "Collapse navigation"; onClicked: workspace.collapsed=!workspace.collapsed }
                 }
                 Repeater {
-                    model: [{name:"Devices", icon:"client"},{name:"Share", icon:"server"},{name:"Connections", icon:"settings"}]
+                    model: [{name:"Devices", icon:"client", page:0},{name:"Resources", icon:"settings", page:2}]
                     ToolButton {
                         id: nav
                         required property int index
                         required property var modelData
                         Layout.fillWidth: true; Layout.preferredHeight: 48; padding: 0
                         Accessible.name: modelData.name
-                        onClicked: workspace.page=index
+                        onClicked: workspace.page=modelData.page
                         ToolTip.visible: hovered && workspace.collapsed; ToolTip.text: modelData.name
-                        background: Rectangle { radius: 10; color: workspace.page===nav.index ? "#192e4b" : nav.hovered ? "#132136" : "transparent" }
+                        background: Rectangle { radius: 10; color: workspace.page===nav.modelData.page ? "#192e4b" : nav.hovered ? "#132136" : "transparent" }
                         contentItem: Item {
                             AppIcon { id: glyph; symbol: nav.modelData.icon; width: 22; height: 22; anchors.verticalCenter: parent.verticalCenter; x: 14*workspace.expansion+(parent.width-width)/2*(1-workspace.expansion) }
                             Label { textFormat: Text.PlainText; text: nav.modelData.name; anchors.left: glyph.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter; opacity: workspace.expansion }
@@ -191,8 +204,8 @@ Item {
             ColumnLayout {
                 objectName: "peerPageContent"
                 width: pageScroll.availableWidth; spacing: 18
-                Label { textFormat: Text.PlainText; text: ["Devices","Share","Connections","ExtraPane"][workspace.page]; font.pixelSize: 30; font.weight: Font.DemiBold }
-                Label { textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#aabbd3"; text: workspace.page===0 ? "Pair a new device or manage your saved devices. Search nearby or connect by address." : workspace.page===1 ? "Choose what other devices can use. Sharing a resource does not activate it until someone connects." : workspace.page===2 ? "Choose resources from your connected devices. Each power button connects or disconnects only that resource." : "Displays, cameras, microphones, speakers and USB devices across your computers." }
+                Label { textFormat: Text.PlainText; text: ["Devices","Devices","Resources","ExtraPane"][workspace.page]; font.pixelSize: 30; font.weight: Font.DemiBold }
+                Label { textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#aabbd3"; text: workspace.page===0 ? "Manage this device and your paired devices. Available paired devices connect automatically; search nearby to pair a new one." : workspace.page===1 ? "Choose what other devices can use. Sharing a resource does not activate it until someone connects." : workspace.page===2 ? "Choose resources from your connected devices. Each power button connects or disconnects only that resource." : "Displays, cameras, microphones, speakers and USB devices across your computers." }
                 ColumnLayout {
                     visible: workspace.page===0; Layout.fillWidth: true; spacing: 14
                     RowLayout {
@@ -284,7 +297,7 @@ Item {
                     }
                     Label { text: "Connected devices"; font.weight: Font.DemiBold; visible: peers.devices.length>0 }
                     Repeater {
-                        model: peers.devices
+                        model: workspace.managedDevices
                         delegate: Frame {
                             required property var modelData
                             Layout.fillWidth: true; padding: 12
@@ -296,13 +309,15 @@ Item {
                                     Label { text: modelData.verified ? "Connected - verified" : "Connected - unverified"; color: "#aabbd3" }
                                 }
                                 Action { text: "Resources"; visible: !modelData.incoming; onClicked: workspace.page=2 }
-                                Action { text: "Disconnect"; destructive: true; onClicked: peers.disconnectDevice(modelData.connection) }
+                                Action { text: "Disconnect"; destructive: true; onClicked: workspace.disconnectManagedDevice(modelData) }
                             }
                         }
                     }
                 }
                 ColumnLayout {
-                    visible: workspace.page===1; Layout.fillWidth: true; spacing: 14
+                    visible: workspace.page===0; Layout.fillWidth: true; spacing: 14
+                    Label { text: "This device"; font.pixelSize: 22; font.weight: Font.DemiBold; topPadding: 16 }
+                    Label { text: "Manage what other devices can use and your network settings."; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                     RowLayout {
                         Layout.fillWidth: true
                         Label { textFormat: Text.PlainText; text: peers.deviceName; font.pixelSize: 20; Layout.fillWidth: true }
@@ -360,7 +375,7 @@ Item {
                 }
                 ColumnLayout {
                     visible: workspace.page===2; Layout.fillWidth: true; spacing: 14
-                    Label { text: "Connect a device on the Devices page to see its resources here."; visible: !peers.devices.some(row => row.incoming!==true); wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#aabbd3" }
+                    Label { text: "Available paired devices appear here automatically. Pair a new device on the Devices page."; visible: !peers.devices.some(row => row.incoming!==true); wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#aabbd3" }
                     Repeater {
                         model: peers.devices
                         delegate: Frame {

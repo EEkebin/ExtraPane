@@ -20,6 +20,10 @@ public final class NearbyPeersCheck {
         require(peers.visible("self",Set.of("paired","connected"),6).size()==1,"New announcement restores hint");
         require(peers.visible("self",Set.of(),16000).isEmpty(),"Expired scan results disappear");
         require(new NearbyPeers().visible("self",Set.of(),0).isEmpty(),"Manual refresh starts from an empty result set");
+        java.util.Set<String> remembered=new java.util.HashSet<>(Set.of("paired"));
+        NearbyPeers known=new NearbyPeers(remembered);remembered.add("unknown");
+        known.accept(row("paired","1","15"),"10.0.0.2",0);known.accept(row("unknown","1","15"),"10.0.0.3",0);
+        require(known.visible("self",Set.of(),1).size()==1&&known.visible("self",Set.of(),1).get(0).id().equals("paired"),"Passive observation only retains immutable remembered identity allowlist");
         System.out.println("Android manual nearby search checks passed");
     }
 }

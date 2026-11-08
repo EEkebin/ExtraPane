@@ -38,7 +38,7 @@ Resources are grouped into Monitors, Cameras, Speakers, Microphones and USB.
 Click or tap a group header to expand or collapse it. Collapsing a group must
 retain its selections and active sessions. Within Monitors, extending a desktop
 and viewing an existing screen remain separate actions.
-On Share these appear under **Use as an extra monitor** and **Share an existing
+On Devices these appear under **Use as an extra monitor** and **Share an existing
 screen (view only)**. The first offers this device as a receiving screen: choose
 **Custom resolution** or a named monitor whose mode supplies the initial settings.
 The second sends an already-existing screen's picture. A monitor may appear once
@@ -46,13 +46,13 @@ in each section because these are different uses of the same hardware. Resource
 names use readable monitor labels rather than raw Windows display paths; the
 resource identities and saved sharing choices are unchanged.
 
-On Android, use the top-left menu for Devices, Share, Connections and About.
+On Android, use the top-left menu for Devices, Resources and About.
 Check portrait and landscape layouts: the toolbar and bottom controls must stay
 clear of system bars, and resource labels must wrap without hiding actions.
 Switch pages while multiple resources are active; navigation must not stop them.
-The phone's Devices page manages pairing and saved/connected peers. Connections
+The phone's Devices page manages pairing and saved/connected peers. Resources
 shows its available resources and active streams; request those resources from
-the other computer. Share retains provider permissions and availability settings. Android resource consumption remains limited to the
+the other computer. Devices also contains provider permissions and availability settings. Android resource consumption remains limited to the
 older workflow available through About's Legacy connections action.
 
 For Android audio, expect recognizable route names such as Loudspeaker, Earpiece,
@@ -63,7 +63,7 @@ selected headset must not redirect its session to the loudspeaker.
 
 ## First connection: extend the desktop
 
-1. On the laptop that will show the extra screen, open **Share**, check its
+1. On the laptop that will show the extra screen, open **Devices**, check its
    connected local network address. Supported resources are available automatically;
    no per-resource enable or separate Start sharing action is needed.
    Keep **Require pairing** enabled. Offering the destination alone must not create
@@ -71,7 +71,7 @@ selected headset must not redirect its session to the loudspeaker.
 2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or expand **Connect by address** and enter its
    IPv4 address and port. Enter the laptop's displayed six-digit code. Choose
    Automatic route, or the intended local interface on a multihomed computer.
-3. Connect, open **Connections**, and select the advertised display destination. Use its advertised mode
+3. Connect, open **Resources**, and select the advertised display destination. Use its advertised mode
    or enter a custom resolution and refresh target. The desktop creates the virtual
    monitor; the laptop opens the receiver window.
 4. Verify picture, supported input, fullscreen and monitor arrangement. Disconnect
@@ -148,11 +148,24 @@ or infer that TLS/network encryption itself failed from this message. An ordinar
 installer update is intended to preserve pairing data.
 
 
-### Devices / Connections navigation
+### Devices / Resources navigation
 
 - Devices: press Search nearby; no search starts at launch. After pairing, the
   peer disappears from Nearby and appears in the saved/connected device list.
 - A connected device has no Connect button. Disconnect restores that action.
-- Connections: expand a device card, then a resource group, and use its power
+- Resources: expand a device card, then a resource group, and use its power
   button. Moving pages or collapsing cards must preserve active resources.
 - About: Running version must match the installed package version.
+
+
+### Remembered peers and first camera startup
+
+- Restart the app with a paired peer available. Its control connection and catalog
+  should appear without pressing Connect; no camera or microphone should activate.
+- Open a camera as the first resource on a newly connected peer. Delayed setup or
+  a rejected camera must not remove the device or its other resources. A retry
+  should be possible without reconnecting/re-pairing the device.
+- Disconnect a device explicitly: it must stay disconnected until manual Connect
+  or a fresh app start. Forget must remove it from automatic reconnect candidates.
+- New-device Nearby search remains manual; automatic reconnect never pairs an
+  unknown device or bypasses a changed saved identity.

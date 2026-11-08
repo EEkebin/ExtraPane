@@ -41,6 +41,7 @@ int main(){
                 if(port&&!connection)connection=service.connect({"localhost",static_cast<std::uint16_t>(port),"",service.identity(),service.pairing_code(),false});
                 if(connected&&catalog&&!opened){service.open(connection,{service.identity(),"display",true,1920,1080,60});opened=true;}
                 if(grant&&ready==2&&!stopped){service.close(connection,grant);service.gateway(false);}
+                if(stopped==2&&!closed)service.disconnect(connection);
                 std::this_thread::sleep_for(2ms);
             }
             if(!service.remembered().empty())throw std::runtime_error("Self trust was persisted");

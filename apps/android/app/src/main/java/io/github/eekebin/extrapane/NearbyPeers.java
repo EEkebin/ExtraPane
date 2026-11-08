@@ -7,8 +7,11 @@ final class NearbyPeers {
     record Hint(String id,String name,String address,int port,boolean pairingRequired) {}
     private record Entry(Hint hint,String instance,long sequence,long expires) {}
     private final Map<String,Entry> entries=new LinkedHashMap<>();
+    private final Set<String> knownOnly;
+    NearbyPeers(){knownOnly=null;}
+    NearbyPeers(Set<String> known){knownOnly=known==null?null:Set.copyOf(known);}
     void accept(String[] row,String address,long now){
-        if(row.length<8)return;
+        if(row.length<8||knownOnly!=null&&!knownOnly.contains(row[0]))return;
         try{
             String id=row[0];long sequence=Long.parseUnsignedLong(row[2]);int lifetime=Integer.parseInt(row[5]);
             Entry old=entries.get(id);if(old!=null&&old.instance().equals(row[1])&&Long.compareUnsigned(sequence,old.sequence())<=0)return;

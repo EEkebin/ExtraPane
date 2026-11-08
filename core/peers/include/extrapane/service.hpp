@@ -47,6 +47,9 @@ public:
     void forget(DeviceId);
     void pairing_required(bool);
     void gateway(bool enabled);
+    // Catalog-only remembered device presence. Never opens a media resource.
+    void auto_connect(bool enabled);
+    void observe_route(DeviceId peer,std::string address,std::uint16_t port);
     std::vector<Event> poll();
 private:
     struct State;

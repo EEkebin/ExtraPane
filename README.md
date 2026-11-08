@@ -8,7 +8,7 @@ ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Window
 
 [Project website](https://eekebin.github.io/ExtraPane/) | [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
-The development app opens Devices, Share and Connections. A computer can offer its resources and use another device's resources at the same time. The older Server/Client interface remains available with `--legacy`; published releases may still use that interface. Windows servers allocate connections dynamically, subject to hardware and OS resources. See [Linux development status](docs/LINUX.md) for its native endpoint limits. Android offers resources but cannot create system-wide virtual camera/microphone endpoints. The macOS development preview supports hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
+The development app opens Devices and Resources. A computer can offer its resources and use another device's resources at the same time. The older Server/Client interface remains available with `--legacy`; published releases may still use that interface. Windows servers allocate connections dynamically, subject to hardware and OS resources. See [Linux development status](docs/LINUX.md) for its native endpoint limits. Android offers resources but cannot create system-wide virtual camera/microphone endpoints. The macOS development preview supports hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
 
 > This branch contains the device-sharing development build. Published releases
 > may have an older interface or fewer features. See the [current implementation
@@ -41,10 +41,13 @@ a published package contains this branch's preview.
 Devices are peers: a computer can offer its camera while using another device's
 speakers. Supported resources are available by default while ExtraPane is open.
 Discover a device, pair using its displayed code, then select a resource to use.
-Pairing alone does not activate a camera, microphone, monitor or USB device.
+Available paired devices reconnect automatically and load their resource catalogs.
+This does not activate a camera, microphone, monitor or USB device.
+Explicitly disconnecting a device pauses automatic connection to that peer until
+you connect manually or restart ExtraPane.
 OS permissions and receiving-device support still apply.
 
-On **Share**, resources show Available until another device requests them. Red
+Under **This device** on Devices, resources show Available until another device requests them. Red
 power indicates actual use of that exact resource and shows who is using it.
 Disconnecting one resource preserves the others; disconnecting all active shares
 leaves the device discoverable and ready for a new request.
@@ -54,15 +57,15 @@ short LAN search for new devices; paired devices are excluded. Expand **Connect 
 an IPv4 address or localhost, port, optional interface and pairing code. This also
 works on static-IP LANs and when multicast discovery is unavailable. Across networks,
 the address/port must already be reachable; discovery does not cross the internet.
-Open **Connections** to browse a connected device's grouped resources. Green power
+Open **Resources** to browse a connected device's grouped resources. Green power
 connects a resource; red power stops it without interrupting other resources.
 
-Each connected device has a bordered, collapsible card in Connections. Collapsing it hides
+Each connected device has a bordered, collapsible card in Resources. Collapsing it hides
 its resource controls without disconnecting or changing any active resource.
 
 Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**,
 **Microphones** and **USB** groups. Android uses a navigation drawer for Devices,
-Share, Connections and About. Its audio choices identify physical routes such as
+Resources and About. Its audio choices identify physical routes such as
 Loudspeaker, Earpiece and connected headsets instead of internal Android port
 numbers. Actual route availability depends on Android's audio policy.
 Remote resource rows use green power buttons to connect and red power buttons to
@@ -75,7 +78,7 @@ virtual-display support. Choose the destination's advertised monitor mode or a
 custom resolution/refresh rate. **Existing screen** instead captures an existing
 monitor; it does not create an extended desktop.
 
-On Share, these uses are separated under **Use as an extra monitor** and
+On Devices, these uses are separated under **Use as an extra monitor** and
 **Share an existing screen (view only)**. Choose **Custom resolution** or a named
 monitor for the extra-monitor mode. Named monitors supply the starting resolution
 and refresh rate; their current desktop picture is sent only by the existing-screen

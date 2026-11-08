@@ -24,7 +24,7 @@ struct Service::State {
         Token token;bool incoming;std::unique_ptr<AuthenticatedConnection> connection;
         std::optional<ConnectOptions> route;
         std::unique_ptr<MediaBridge> bridge;std::unique_ptr<SessionDispatcher> dispatcher;
-        std::map<Token,rpc::Open> pending;std::set<Token> catalogs,abandoned;
+        std::map<Token,rpc::Open> pending;std::set<Token> catalogs,automatic_catalogs,abandoned;
         std::vector<Catalog> catalog_cache;
         std::map<Token,Context> pending_contexts;
         std::map<Token,NativeCancel> pending_native;
@@ -34,7 +34,7 @@ struct Service::State {
         std::size_t deferred_bytes=0;
         std::map<Token,Clock::time_point> requests;
         std::map<Token,Resource> resources;Token current_request=0;
-        bool used_resources=false;
+        bool used_resources=false,request_cancel_supported=false,automatic_presence=false;
         Clock::time_point activity=Clock::now(),last_ping=Clock::now();
         Clock::time_point last_catalog=Clock::now()-std::chrono::seconds(11);
         Link(Token t,bool in,std::unique_ptr<AuthenticatedConnection> c):token(t),incoming(in),connection(std::move(c)){}
@@ -59,9 +59,11 @@ struct Service::State {
     std::atomic<std::uint64_t> listener_serial=1;
     std::vector<std::future<Result>> dialing;std::map<Token,std::unique_ptr<Link>> links;
     std::map<Token,RelayPending> relays;
-    struct GatewayRoute {RememberedDevice device;Reconnect retry{Kind::camera};Token pending=0;bool attempted=false,disabled=false;};
+    struct GatewayRoute {RememberedDevice device;Token pending=0;unsigned failures=0;Milliseconds due=0;bool attempted=false,disabled=false,identity_failed=false;};
     std::map<DeviceId,GatewayRoute> gateway_routes;
-    std::map<Token,DeviceId> gateway_dials;
+    std::map<Token,DeviceId> gateway_dials,dial_targets;
+    bool auto_connect_enabled=false;
+    std::set<DeviceId> suppressed_routes;
     Clock::time_point last_routes=Clock::now();
     State(Options o,Hooks h):options(std::move(o)),hooks(std::move(h)),store(options.private_directory),auth(store.identity(),options.pairing_required),policy(Catalog{store.identity(),static_cast<std::uint64_t>(now())+1,1,options.name,options.offers}){
         policy.pairing_required(options.pairing_required);for(const auto& d:store.devices())policy.remember(d.id);
@@ -156,6 +158,7 @@ struct Service::State {
             }
             if(remembered)options.expected_peer=*remembered;
         }
+        const auto target=options.expected_peer;
         dialing.push_back(std::async(std::launch::async,[this,token,generation,options=std::move(options)]{
             try{need(epoch==generation,"Connection cancelled");dm::peer_auth::ClientOptions proof;proof.local=store.identity();proof.expected_peer=options.expected_peer;proof.code=options.code;proof.mode=options.open_mode?dm::peer_auth::Mode::open:dm::peer_auth::Mode::pair;
                 if(!options.open_mode&&valid_id(options.expected_peer)){auto key=store.secret(options.expected_peer);if(key){proof.mode=dm::peer_auth::Mode::remembered;dm::peer_auth::Secret secret;secret.bytes=*key;proof.remembered=secret;}}
@@ -164,18 +167,30 @@ struct Service::State {
                 return Result{token,false,std::make_unique<AuthenticatedConnection>(std::move(connection)),{},generation,std::move(route)};
             }catch(const transport::Error& e){return Result{token,false,{},e.what(),generation,{},e.reason==transport::ErrorReason::network||e.reason==transport::ErrorReason::timeout};}
             catch(const std::exception& e){return Result{token,false,{},e.what(),generation};}
-        }));
+        }));dial_targets[token]=target;
+    }
+    void route_failed(GatewayRoute& route,bool network){
+        if(!network){route.identity_failed=true;return;}
+        constexpr Milliseconds delays[]{1000,2000,4000,8000,30000,60000};
+        const auto index=std::min<unsigned>(route.failures,5);if(route.failures<6)++route.failures;route.due=now()+delays[index];
+    }
+    void sync_routes(){
+        for(auto device:store.devices())if(device.id!=store.identity()&&!device.address_hint.empty()&&device.port_hint){
+            auto [entry,inserted]=gateway_routes.try_emplace(device.id);if(inserted)entry->second.device=std::move(device);entry->second.disabled=suppressed_routes.contains(entry->first);
+        }
     }
     void refresh_routes(){
-        if(!policy.gateway_enabled()||dialing.size()>=4)return;
+        if((!policy.gateway_enabled()&&!auto_connect_enabled)||dialing.size()>=4)return;
         for(auto& [id,route]:gateway_routes){
-            if(route.disabled||route.pending||!store.secret(id))continue;
+            if(route.disabled||route.identity_failed||route.pending||!store.secret(id))continue;
+            if(std::any_of(dial_targets.begin(),dial_targets.end(),[&](const auto& dial){return dial.second==id;}))continue;
+            if(std::any_of(retries.begin(),retries.end(),[&](const auto& retry){return retry.second.route.expected_peer==id;}))continue;
             bool connected=false;for(const auto& [token,link]:links)if(!link->incoming&&link->connection->identity().paired&&link->connection->remote_id()==id){connected=true;break;}
-            if(connected){route.retry.connected();route.attempted=false;continue;}
-            if(route.attempted&&!route.retry.ready(now()))continue;
+            if(connected){route.failures=0;route.due=0;route.attempted=false;continue;}
+            if(route.attempted&&now()<route.due)continue;
             const auto token=next();route.pending=token;route.attempted=true;gateway_dials[token]=id;
             try{launch_dial(token,{route.device.address_hint,route.device.port_hint,"",id,"",false},epoch.load());}
-            catch(...){gateway_dials.erase(token);route.pending=0;route.retry.failed(Failure::transport_lost,now());}
+            catch(...){gateway_dials.erase(token);route.pending=0;route_failed(route,true);}
             if(dialing.size()>=4)break;
         }
     }
@@ -253,6 +268,7 @@ struct Service::State {
     void end_pending(Link& l,Token request,const std::string& reason){
         if(!l.pending.contains(request))return;
         if(l.requests.contains(request)){need(l.abandoned.size()<256,"Cancelled request budget exhausted");l.abandoned.insert(request);}
+        if(l.request_cancel_supported&&!l.incoming)l.connection->queue({rpc::Operation::cancel_request,request,{}});
         cancel_request(l,request);retry_done(l.token,request,false);
         event({EventKind::stopped,{l.token,request},0,reason});
     }
@@ -261,6 +277,7 @@ struct Service::State {
     void granted(Link& l,Token grant,std::uint16_t port){const auto& resource=l.resources.at(grant);auto public_request=resource.request;public_request.native_credential.clear();Token previous=0;auto retry=retries.find(l.token);if(retry!=retries.end())for(const auto& saved:retry->second.resources)if(saved.restoring_request==resource.context.request)previous=saved.previous_grant;
         event({EventKind::granted,resource.context,port,{},{},l.connection->identity().paired,std::move(public_request),previous});retry_done(l.token,resource.context.request,true);}
     void add(Result result){
+        dial_targets.erase(result.token);
         auto retry=retries.find(result.token);
         if(retry!=retries.end()){
             retry->second.dialing=false;
@@ -270,23 +287,27 @@ struct Service::State {
                 else{retries.erase(retry);event({EventKind::disconnected,{result.token},0,result.error});}return;
             }
         }
-        const auto background=gateway_dials.find(result.token);
+        const auto background=gateway_dials.find(result.token);const bool automaticDial=background!=gateway_dials.end();
         if(background!=gateway_dials.end()){
             const auto id=background->second;gateway_dials.erase(background);auto route=gateway_routes.find(id);
             if(route!=gateway_routes.end()){route->second.pending=0;if(!result.connection){
                 // Retry network reachability only, never rejected identity/code proofs.
                 const bool network=result.transient;
-                route->second.retry.failed(network?Failure::transport_lost:Failure::identity_changed,now());
+                route_failed(route->second,network);
             }}
-            if(!policy.gateway_enabled()||route==gateway_routes.end()||route->second.disabled)return;
+            if((!policy.gateway_enabled()&&!auto_connect_enabled)||route==gateway_routes.end()||route->second.disabled){cancelled.erase(result.token);return;}
+            if(!result.connection){cancelled.erase(result.token);return;}
         }
-        if(result.epoch!=epoch||cancelled.erase(result.token)){event({EventKind::disconnected,{result.token},0,"Connection cancelled"});return;}if(!result.connection){event({EventKind::error,{result.token},0,result.error});return;}need(links.size()<64,"Peer service connection budget exhausted");auto object=std::make_unique<Link>(result.token,result.incoming,std::move(result.connection));auto& l=*object;l.route=std::move(result.route);const auto identity=l.connection->identity();if(identity.paired&&identity.device!=store.identity()){need(store.secret(identity.device).has_value(),"Device was forgotten during authentication");policy.remember(identity.device);}
+        if(!automaticDial&&result.connection){std::vector<Token> duplicates;for(const auto& [id,link]:links)if(link->automatic_presence&&!link->incoming&&link->resources.empty()&&link->pending.empty()&&link->connection->remote_id()==result.connection->remote_id())duplicates.push_back(id);for(auto id:duplicates)drop(id,"Replaced by explicit connection");}
+        if(automaticDial&&result.connection&&std::any_of(links.begin(),links.end(),[&](const auto& item){return !item.second->incoming&&item.second->connection->remote_id()==result.connection->remote_id();}))return;
+        if(result.epoch!=epoch||cancelled.erase(result.token)){event({EventKind::disconnected,{result.token},0,"Connection cancelled"});return;}if(!result.connection){event({EventKind::error,{result.token},0,result.error});return;}need(links.size()<64,"Peer service connection budget exhausted");auto object=std::make_unique<Link>(result.token,result.incoming,std::move(result.connection));auto& l=*object;l.automatic_presence=automaticDial;l.route=std::move(result.route);const auto identity=l.connection->identity();if(identity.paired&&identity.device!=store.identity()){need(store.secret(identity.device).has_value(),"Device was forgotten during authentication");policy.remember(identity.device);}
         l.bridge=std::make_unique<MediaBridge>(!l.incoming,[&l](Token grant){return l.resources.contains(grant);},[&l](const rpc::Message& m){l.connection->queue(m);});
         Adapter adapter;
         adapter.start=[this,&l](const Grant& grant,const rpc::Open& request,std::string& reason){if(!l.incoming||grant.delegated){reason="Delegated relay is not available";return false;}Resource r{{l.token,l.current_request,grant.id,l.connection->remote_id(),true,grant.kind},request};l.resources.emplace(grant.id,std::move(r));try{prepare(l,l.resources.at(grant.id));return true;}catch(const std::exception& e){reason=e.what();return false;}};
         adapter.stop=[this,&l](const Grant& g){stop_resource(l,g.id);};
         adapter.credential=[&l](const Grant& g){return l.resources.at(g.id).request.native_credential;};
-        l.dispatcher=std::make_unique<SessionDispatcher>(policy,*l.connection,std::move(adapter));Context c{l.token,0,0,identity.device,l.incoming};links.emplace(l.token,std::move(object));event({EventKind::connected,c,0,{},{},identity.paired});if(identity.paired)event({EventKind::trust_changed,c});
+        l.dispatcher=std::make_unique<SessionDispatcher>(policy,*l.connection,std::move(adapter));Context c{l.token,0,0,identity.device,l.incoming};links.emplace(l.token,std::move(object));l.connection->queue({rpc::Operation::ping,rpc::cancel_probe,{}});event({EventKind::connected,c,0,{},{},identity.paired});if(identity.paired){if(!l.incoming&&l.route)for(auto device:store.devices())if(device.id==identity.device){device.address_hint=l.route->address;device.port_hint=l.route->port;store.update_hint(device);auto route=gateway_routes.find(device.id);if(route!=gateway_routes.end())route->second.device=device;break;}sync_routes();event({EventKind::trust_changed,c});}
+        if(auto_connect_enabled&&!l.incoming&&identity.paired&&automaticDial){const auto request=next();l.catalogs.insert(request);l.requests[request]=Clock::now();l.connection->queue({rpc::Operation::catalog,request,{}});}
         auto restoring=retries.find(l.token);if(restoring!=retries.end()){const auto request=next();restoring->second.catalog_request=request;l.catalogs.insert(request);l.requests[request]=Clock::now();l.connection->queue({rpc::Operation::catalog,request,{}});}
     }
     void revoked(const std::vector<Grant>& grants){
@@ -329,13 +350,20 @@ struct Service::State {
     void message(Link& l,rpc::Message m){using O=rpc::Operation;l.activity=Clock::now();
         if(m.operation==O::catalog_reply||m.operation==O::granted||m.operation==O::rejected)l.requests.erase(m.id);
         if(m.operation>=O::stream_open&&m.operation<=O::stream_close){stream_message(l,m);return;}
-        if(m.operation==O::catalog_reply){need(l.catalogs.erase(m.id)>0,"Unsolicited catalog response");auto catalogs=rpc::decode_catalogs(m.payload);for(const auto& c:catalogs){need(c.device==l.connection->remote_id()||l.connection->identity().paired,"Unverified delegated catalog rejected");if(policy.gateway_enabled()&&!l.incoming&&l.connection->identity().paired&&c.device!=store.identity()&&c.device==l.connection->remote_id())revoked(policy.remote(l.connection->identity(),c,0,now()));}l.catalog_cache=catalogs;retry_catalog(l,m.id,catalogs);event({EventKind::catalog,{l.token,m.id,0,l.connection->remote_id(),l.incoming},0,{},std::move(catalogs)});return;}
+        if(m.operation==O::catalog_reply){need(l.catalogs.erase(m.id)>0,"Unsolicited catalog response");auto catalogs=rpc::decode_catalogs(m.payload);for(const auto& c:catalogs){need(c.device==l.connection->remote_id()||l.connection->identity().paired,"Unverified delegated catalog rejected");if(policy.gateway_enabled()&&!l.incoming&&l.connection->identity().paired&&c.device!=store.identity()&&c.device==l.connection->remote_id())revoked(policy.remote(l.connection->identity(),c,0,now()));}const bool unchanged=l.automatic_catalogs.erase(m.id)>0&&rpc::encode_catalogs(l.catalog_cache)==m.payload;l.catalog_cache=catalogs;retry_catalog(l,m.id,catalogs);if(unchanged)return;event({EventKind::catalog,{l.token,m.id,0,l.connection->remote_id(),l.incoming},0,{},std::move(catalogs)});return;}
         if(m.operation==O::granted&&l.abandoned.erase(m.id)){auto grant=rpc::decode_granted(m.payload);discard_deferred(l,grant.grant);l.connection->queue({O::close,grant.grant,{}});return;}
         if(m.operation==O::rejected&&l.abandoned.erase(m.id))return;
-        if(m.operation==O::granted){auto p=l.pending.find(m.id);need(!l.incoming&&p!=l.pending.end(),"Unsolicited resource grant");auto grant=rpc::decode_granted(m.payload);need(!l.resources.contains(grant.grant),"Duplicate resource grant");if(relay_granted(l,m.id,grant))return;auto context=l.pending_contexts.at(m.id);context.grant=grant.grant;Resource r{context,std::move(p->second)};auto native=l.pending_native.find(m.id);if(native!=l.pending_native.end()){r.native_cancel=native->second;l.pending_native.erase(native);}l.pending.erase(p);l.pending_contexts.erase(m.id);if(!grant.native_credential.empty())r.request.native_credential=grant.native_credential;l.resources.emplace(grant.grant,std::move(r));try{prepare(l,l.resources.at(grant.grant));}catch(...){stop_resource(l,grant.grant);l.connection->queue({O::close,grant.grant,{}});throw;}return;}
-        if(m.operation==O::rejected){cancel_request(l,m.id);retry_done(l.token,m.id,false);l.catalogs.erase(m.id);event({EventKind::error,{l.token,m.id,0,l.connection->remote_id(),l.incoming},0,rpc::detail(m.payload)});return;}
+        if(m.operation==O::granted){auto p=l.pending.find(m.id);need(!l.incoming&&p!=l.pending.end(),"Unsolicited resource grant");auto grant=rpc::decode_granted(m.payload);need(!l.resources.contains(grant.grant),"Duplicate resource grant");if(relay_granted(l,m.id,grant))return;auto context=l.pending_contexts.at(m.id);context.grant=grant.grant;Resource r{context,std::move(p->second)};auto native=l.pending_native.find(m.id);if(native!=l.pending_native.end()){r.native_cancel=native->second;l.pending_native.erase(native);}l.pending.erase(p);l.pending_contexts.erase(m.id);if(!grant.native_credential.empty())r.request.native_credential=grant.native_credential;l.resources.emplace(grant.grant,std::move(r));try{prepare(l,l.resources.at(grant.grant));}catch(const std::exception& e){native_failure(context,e.what());}return;}
+        if(m.operation==O::rejected){cancel_request(l,m.id);retry_done(l.token,m.id,false);l.catalogs.erase(m.id);l.automatic_catalogs.erase(m.id);event({EventKind::error,{l.token,m.id,0,l.connection->remote_id(),l.incoming},0,rpc::detail(m.payload)});return;}
         if(m.operation==O::stopped){stop_resource(l,m.id);return;}
-        if(m.operation==O::pong)return;
+        if(m.operation==O::ping){l.connection->queue({O::pong,m.id==rpc::cancel_probe?rpc::cancel_ack:m.id,{}});return;}
+        if(m.operation==O::pong){if(m.id==rpc::cancel_ack)l.request_cancel_supported=true;return;}
+        if(m.operation==O::cancel_request){
+            need(l.incoming,"Only the requester can cancel resource preparation");std::vector<Token> grants;
+            for(const auto& [id,resource]:l.resources)if(resource.context.request==m.id)grants.push_back(id);
+            if(grants.empty()){l.connection->queue({O::rejected,m.id,rpc::detail("Resource preparation cancelled")});return;}
+            for(auto grant:grants){auto found=l.resources.find(grant);if(found==l.resources.end())continue;if(found->second.relay){stop_resource(l,grant);continue;}l.connection->queue(l.dispatcher->handle({O::close,grant,{}},now()));}return;
+        }
         if(m.operation==O::open&&!l.incoming){l.connection->queue({O::rejected,m.id,rpc::detail("Open a separate connection to request this device's resources")});return;}
         if(m.operation==O::open){auto request=rpc::decode_open(m.payload);if(request.owner!=store.identity()){relay_open(l,m,request);return;}}
         if(m.operation==O::close&&l.incoming){auto resource=l.resources.find(m.id);if(resource!=l.resources.end()&&resource->second.relay){stop_resource(l,m.id);l.connection->queue({O::stopped,m.id,{}});return;}}
@@ -346,9 +374,9 @@ struct Service::State {
         std::deque<std::function<void()>> work;{std::lock_guard lock(mutex);work.swap(commands);}for(auto& fn:work)try{fn();}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}
         for(auto i=dialing.begin();i!=dialing.end();){if(i->wait_for(std::chrono::seconds(0))!=std::future_status::ready){++i;continue;}try{add(i->get());}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}i=dialing.erase(i);}
         std::vector<std::tuple<Token,std::string,bool>> dead;bool progress=false;
-        for(auto& [id,l]:links)try{for(const auto& [request,began]:l->requests)need(Clock::now()-began<std::chrono::seconds(l->pending.contains(request)?60:15),"Peer request timed out");for(unsigned turn=0;turn<16;++turn){bool moved=l->connection->pump(deadline());while(auto m=l->connection->next()){message(*l,std::move(*m));moved=true;}if(!l->connection->pending_output())moved=l->bridge->pump()||moved;progress=progress||moved;if(!moved)break;}if(l->used_resources&&!policy.gateway_enabled()&&l->resources.empty()&&l->pending.empty()&&!l->connection->pending_output()){dead.emplace_back(id,"All resources disconnected",false);continue;}if(Clock::now()-l->activity>std::chrono::seconds(30))throw transport::Error(transport::ErrorReason::timeout,"Device connection timed out");if(Clock::now()-l->last_ping>std::chrono::seconds(10)){l->connection->queue({rpc::Operation::ping,next(),{}});l->last_ping=Clock::now();}}catch(const transport::Error& e){dead.emplace_back(id,e.what(),e.reason==transport::ErrorReason::network||e.reason==transport::ErrorReason::timeout);}catch(const std::exception& e){dead.emplace_back(id,e.what(),false);}
+        for(auto& [id,l]:links)try{for(const auto& [request,began]:l->requests)need(Clock::now()-began<std::chrono::seconds(l->pending.contains(request)?60:15),"Peer request timed out");for(unsigned turn=0;turn<16;++turn){bool moved=l->connection->pump(deadline());while(auto m=l->connection->next()){message(*l,std::move(*m));moved=true;}if(!l->connection->pending_output())moved=l->bridge->pump()||moved;progress=progress||moved;if(!moved)break;}if(Clock::now()-l->activity>std::chrono::seconds(30))throw transport::Error(transport::ErrorReason::timeout,"Device connection timed out");if(Clock::now()-l->last_ping>std::chrono::seconds(10)){l->connection->queue({rpc::Operation::ping,next(),{}});l->last_ping=Clock::now();}}catch(const transport::Error& e){dead.emplace_back(id,e.what(),e.reason==transport::ErrorReason::network||e.reason==transport::ErrorReason::timeout);}catch(const std::exception& e){dead.emplace_back(id,e.what(),false);}
         for(auto& [id,reason,retry]:dead)drop(id,std::move(reason),retry);
-        try{revoked(policy.expire(now()));if(policy.gateway_enabled())for(auto& [id,l]:links)if(!l->incoming&&l->connection->identity().paired&&l->catalogs.empty()&&Clock::now()-l->last_catalog>std::chrono::seconds(10)){const auto request=next();l->catalogs.insert(request);l->requests[request]=Clock::now();l->connection->queue({rpc::Operation::catalog,request,{}});l->last_catalog=Clock::now();}}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}
+        try{revoked(policy.expire(now()));if(policy.gateway_enabled()||auto_connect_enabled)for(auto& [id,l]:links)if(!l->incoming&&l->connection->identity().paired&&l->catalogs.empty()&&Clock::now()-l->last_catalog>std::chrono::seconds(10)){const auto request=next();l->catalogs.insert(request);l->automatic_catalogs.insert(request);l->requests[request]=Clock::now();l->connection->queue({rpc::Operation::catalog,request,{}});l->last_catalog=Clock::now();}}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}
         if(Clock::now()-last_routes>=std::chrono::milliseconds(100)){last_routes=Clock::now();try{refresh_routes();refresh_retries();}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}}
         for(auto& [id,l]:links){std::vector<Context> timedout;for(const auto& [grant,r]:l->resources)if(!r.relay&&!r.native_ready&&Clock::now()-r.native_started>std::chrono::seconds(60))timedout.push_back(r.context);for(const auto& context:timedout)native_failure(context,"Native resource preparation timed out");}
         if(hooks.poll&&!native_poll_pending&&Clock::now()-last_poll>=std::chrono::milliseconds(50)){
@@ -387,7 +415,12 @@ Service::Token Service::start(std::string bind,std::uint16_t port){
     return serial;
 }
 void Service::stop(){auto& s=*state_;std::lock_guard lifecycle(s.lifecycle_mutex);s.stop_listener();s.post([&s]{s.revoked(s.policy.sharing(false));std::vector<Token> incoming;for(const auto& [id,link]:s.links)if(link->incoming)incoming.push_back(id);for(auto id:incoming)s.drop(id,"Sharing stopped");});}
-Service::Token Service::connect(ConnectOptions options){auto& s=*state_;const auto token=s.next();const auto generation=s.epoch.load();s.post([&s,token,generation,options=std::move(options)]()mutable{try{s.launch_dial(token,std::move(options),generation);}catch(const std::exception& e){s.event({EventKind::error,{token},0,e.what()});}});return token;}
+Service::Token Service::connect(ConnectOptions options){auto& s=*state_;const auto token=s.next();const auto generation=s.epoch.load();s.post([&s,token,generation,options=std::move(options)]()mutable{try{
+    const auto normalized=[](std::string value){for(auto& c:value)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return value=="localhost"?std::string("127.0.0.1"):value;};
+    for(const auto& device:s.store.devices())if((valid_id(options.expected_peer)&&device.id==options.expected_peer)||(!valid_id(options.expected_peer)&&(normalized(device.address_hint)==normalized(options.address))&&device.port_hint==options.port)){
+        s.suppressed_routes.erase(device.id);auto route=s.gateway_routes.find(device.id);if(route!=s.gateway_routes.end()){route->second.disabled=false;route->second.failures=0;route->second.due=0;route->second.identity_failed=false;route->second.attempted=false;}
+    }
+    s.launch_dial(token,std::move(options),generation);}catch(const std::exception& e){s.event({EventKind::error,{token},0,e.what()});}});return token;}
 Service::Token Service::catalog(Token connection){auto& s=*state_;auto request=s.next();s.post([&s,connection,request]{auto& l=s.link(connection);need(l.catalogs.size()<64,"Too many catalog requests");l.catalogs.insert(request);l.requests[request]=Clock::now();l.connection->queue({rpc::Operation::catalog,request,{}});});return request;}
 Service::Token Service::open(Token connection,rpc::Open request){auto& s=*state_;auto token=s.next();s.post([&s,connection,token,request=std::move(request)]()mutable{try{auto& l=s.link(connection);need(!l.incoming&&l.pending.size()+l.resources.size()<256,"Resource connection budget exhausted");need(request.owner==l.connection->remote_id()||l.connection->identity().paired,"A paired gateway is required for delegated resources");l.used_resources=true;const Offer* offer=nullptr;for(const auto& catalog:l.catalog_cache)if(catalog.device==request.owner)for(const auto& item:catalog.offers)if(item.id==request.resource)offer=&item;need(offer&&offer->available,"Refresh this device's available resources before connecting");need(!request.input||offer->input_allowed,"Remote input is not permitted");rpc::encode(request);Context context{connection,token,0,l.connection->remote_id(),false,offer->kind};s.prepare_request(l,context,std::move(request));}catch(const std::exception& e){s.event({EventKind::error,{connection,token},0,e.what()});}});return token;}
 void Service::close(Token connection,Token grant){auto& s=*state_;s.post([&s,connection,grant]{
@@ -413,14 +446,24 @@ void Service::cancel(Token connection,Token request){auto& s=*state_;s.post([&s,
     std::vector<Token> active;for(const auto& [id,resource]:l.resources)if(resource.context.request==request)active.push_back(id);
     for(auto grant:active){s.stop_resource(l,grant);l.connection->queue({rpc::Operation::close,grant,{}});}
 });}
-void Service::disconnect(Token connection){auto& s=*state_;s.post([&s,connection]{if(s.retries.erase(connection))s.event({EventKind::disconnected,{connection},0,"Reconnect cancelled"});auto live=s.links.find(connection);if(live!=s.links.end()){auto route=s.gateway_routes.find(live->second->connection->remote_id());if(route!=s.gateway_routes.end())route->second.disabled=true;}auto dialing=s.gateway_dials.find(connection);if(dialing!=s.gateway_dials.end()){auto route=s.gateway_routes.find(dialing->second);if(route!=s.gateway_routes.end())route->second.disabled=true;}
+void Service::disconnect(Token connection){auto& s=*state_;s.post([&s,connection]{
+    auto suppress=[&](const DeviceId& peer){if(!valid_id(peer))return;s.suppressed_routes.insert(peer);auto route=s.gateway_routes.find(peer);if(route!=s.gateway_routes.end())route->second.disabled=true;};
+    auto retry=s.retries.find(connection);if(retry!=s.retries.end())suppress(retry->second.route.expected_peer);
+    auto target=s.dial_targets.find(connection);if(target!=s.dial_targets.end())suppress(target->second);
+    if(s.retries.erase(connection))s.event({EventKind::disconnected,{connection},0,"Reconnect cancelled"});auto live=s.links.find(connection);if(live!=s.links.end()){s.suppressed_routes.insert(live->second->connection->remote_id());auto route=s.gateway_routes.find(live->second->connection->remote_id());if(route!=s.gateway_routes.end())route->second.disabled=true;}auto dialing=s.gateway_dials.find(connection);if(dialing!=s.gateway_dials.end()){s.suppressed_routes.insert(dialing->second);auto route=s.gateway_routes.find(dialing->second);if(route!=s.gateway_routes.end())route->second.disabled=true;}
     if(!s.links.contains(connection)){need(s.cancelled.size()<256,"Cancellation budget exhausted");s.cancelled.insert(connection);}s.drop(connection);});}
 void Service::offers(std::vector<Offer> offers){auto& s=*state_;s.post([&s,offers=std::move(offers)]()mutable{s.revoked(s.policy.offers(std::move(offers)));});}
-void Service::forget(DeviceId peer){auto& s=*state_;s.post([&s,peer]{{std::lock_guard lock(s.trust_mutex);++s.epoch;s.store.forget(peer);}s.gateway_routes.erase(peer);std::vector<Token> retrying;for(const auto& [token,plan]:s.retries)if(plan.route.expected_peer==peer)retrying.push_back(token);for(auto token:retrying){s.retries.erase(token);s.cancelled.insert(token);s.event({EventKind::disconnected,{token},0,"Device was forgotten"});}s.revoked(s.policy.forget(peer));std::vector<Token> ids;for(const auto& [id,l]:s.links)if(l->connection->remote_id()==peer)ids.push_back(id);for(auto id:ids)s.drop(id,"Device was forgotten");s.event({EventKind::trust_changed,{}});});}
+void Service::forget(DeviceId peer){auto& s=*state_;s.post([&s,peer]{{std::lock_guard lock(s.trust_mutex);++s.epoch;s.store.forget(peer);}s.gateway_routes.erase(peer);s.suppressed_routes.erase(peer);std::vector<Token> retrying;for(const auto& [token,plan]:s.retries)if(plan.route.expected_peer==peer)retrying.push_back(token);for(auto token:retrying){s.retries.erase(token);s.cancelled.insert(token);s.event({EventKind::disconnected,{token},0,"Device was forgotten"});}s.revoked(s.policy.forget(peer));std::vector<Token> ids;for(const auto& [id,l]:s.links)if(l->connection->remote_id()==peer)ids.push_back(id);for(auto id:ids)s.drop(id,"Device was forgotten");s.event({EventKind::trust_changed,{}});});}
 void Service::pairing_required(bool required){auto& s=*state_;s.post([&s,required]{s.auth.set_required(required);s.revoked(s.policy.pairing_required(required));if(required){std::vector<Token> ids;for(const auto& [id,l]:s.links)if(!l->connection->identity().paired)ids.push_back(id);for(auto id:ids)s.drop(id,"Pairing is now required");}});}
-void Service::gateway(bool enabled){auto& s=*state_;s.post([&s,enabled]{s.revoked(s.policy.gateway(enabled));
-    for(const auto& [token,id]:s.gateway_dials)s.cancelled.insert(token);s.gateway_dials.clear();s.gateway_routes.clear();
-    if(enabled)for(auto device:s.store.devices())if(device.id!=s.store.identity()&&!device.address_hint.empty()&&device.port_hint){State::GatewayRoute route;route.device=std::move(device);s.gateway_routes.emplace(route.device.id,std::move(route));}
+void Service::auto_connect(bool enabled){auto& s=*state_;s.post([&s,enabled]{s.auto_connect_enabled=enabled;s.sync_routes();if(!enabled&&!s.policy.gateway_enabled()){for(const auto& [token,id]:s.gateway_dials)s.cancelled.insert(token);} });}
+void Service::observe_route(DeviceId peer,std::string address,std::uint16_t port){auto& s=*state_;s.post([&s,peer,address=std::move(address),port]{
+    if(!valid_id(peer)||peer==s.store.identity()||address.empty()||!port||!s.store.secret(peer))return;
+    // Observed LAN source is merely a route candidate; identity remains pinned.
+    // Never persist it, clear explicit suppression or replenish the retry budget.
+    for(auto device:s.store.devices())if(device.id==peer){auto [entry,inserted]=s.gateway_routes.try_emplace(peer);device.address_hint=address;device.port_hint=port;entry->second.device=std::move(device);entry->second.disabled=s.suppressed_routes.contains(peer);break;}
+});}
+void Service::gateway(bool enabled){auto& s=*state_;s.post([&s,enabled]{s.revoked(s.policy.gateway(enabled));s.sync_routes();
+    if(!enabled&&!s.auto_connect_enabled)for(const auto& [token,id]:s.gateway_dials)s.cancelled.insert(token);
     if(enabled)for(auto& [id,l]:s.links)if(!l->incoming&&l->connection->identity().paired){l->last_catalog=Clock::now()-std::chrono::seconds(11);for(const auto& catalog:l->catalog_cache)if(catalog.device!=s.store.identity()&&catalog.device==l->connection->remote_id())s.revoked(s.policy.remote(l->connection->identity(),catalog,0,now()));}});}
 std::vector<Service::Event> Service::poll(){auto& s=*state_;std::lock_guard lock(s.mutex);std::vector<Event> result;while(!s.events.empty()){result.push_back(std::move(s.events.front()));s.events.pop_front();}return result;}
 }

@@ -103,7 +103,10 @@ void DeviceDirectory::observeMessage(const QByteArray& raw,const QString& sender
     const std::span bytes(reinterpret_cast<const std::uint8_t*>(raw.constData()),static_cast<std::size_t>(raw.size()));
     try{
         auto value=extrapane::peers::decode_announcement(bytes);
-        if(!scanning()||(announcement_&&value.device==announcement_->device))return;
+        if(announcement_&&value.device==announcement_->device)return;
+        const auto id=QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(value.device.data()),value.device.size()).toHex());
+        const auto now=clock_.elapsed();if(knownDevices_.contains(id)&&now>=nextHint_.value(id,0)){nextHint_[id]=now+5000;emit knownRoute(id,sender,value.port);}
+        if(!scanning())return;
         table_.observe(value,sender.toStdString(),nic,clock_.elapsed());
     }catch(const std::exception&){
         // Withdrawals and normal expiry may remove an earlier search result

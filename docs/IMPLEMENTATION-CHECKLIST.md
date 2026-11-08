@@ -1022,3 +1022,26 @@ This replaces the earlier opt-in offer power behavior.
   still running; Linux/macOS results remain pending.
 - [ ] Linux/macOS hosted compile and physical acceptance pending; no new media
   connection, driver installation or device test performed.
+
+
+### Persistent paired resources and camera startup lifecycle (2026-11-08)
+
+- [x] Shared desktop navigation now combines Share into Devices and names the
+  resource/catalog page Resources. Android and native macOS follow the same pages.
+- [x] Isolated desktop page/routing checks passed after the navigation change.
+- Investigation: Service's old used-resources/empty-session rule closed a device
+  link after a resource failed or stopped. This could force reconnecting the
+  device before retrying its first camera. Native device acceptance is still needed
+  to establish whether any separate camera startup failure remains.
+- [x] Persistent catalog lifecycle and authenticated remembered-peer automatic
+  connection implemented. Targeted regressions cover slow first preparation,
+  cancellation/failure isolation, catalog-only reconnection, incoming-only saved
+  identity route hints, explicit suppression and older-peer cancellation fallback.
+  Five targeted core regressions passed (service, presence, asynchronous native
+  setup, reconnect and self-connection); shared Qt lifecycle/UI checks passed and
+  Windows app rebuilt. Resource cancellation negotiation is covered by an
+  older-peer echo/no-new-opcode/late-grant-close regression. Unchanged periodic
+  catalogs do not reset the resource UI.
+- [ ] Matching Windows/Android packages, delivery and physical acceptance pending.
+- Previous pre.104.1 hosted Linux/Android jobs passed. Both macOS jobs exposed an
+  Objective-C ivar initializer syntax error; source corrected here, CI recheck pending.

@@ -8,11 +8,14 @@ import java.util.Arrays;
 /** One explicitly requested, ten-second metadata scan; never dials or opens media. */
 final class NearbyPeerSearch implements AutoCloseable {
     interface Listener {void finished(NearbyPeers result,String error);}
+    private final java.util.Set<String> knownOnly;
+    NearbyPeerSearch(){knownOnly=null;}
+    NearbyPeerSearch(java.util.Set<String> known){knownOnly=java.util.Set.copyOf(known);}
     private volatile boolean closed;
     private MulticastSocket socket;
     void start(Context context,String local,Listener listener){new Thread(()->run(context.getApplicationContext(),local,listener),"ExtraPane device search").start();}
     private void run(Context context,String local,Listener listener){
-        NearbyPeers result=new NearbyPeers();String error=null;WifiManager.MulticastLock lock=null;
+        NearbyPeers result=new NearbyPeers(knownOnly);String error=null;WifiManager.MulticastLock lock=null;
         try{
             InetAddress address=InetAddress.getByName(local);NetworkInterface nic=NetworkInterface.getByInetAddress(address);
             if(!(address instanceof Inet4Address)||address.isLoopbackAddress()||nic==null||!nic.isUp())throw new java.io.IOException("Select a connected LAN interface to search nearby devices");
@@ -24,7 +27,8 @@ final class NearbyPeerSearch implements AutoCloseable {
                 while(!closed&&android.os.SystemClock.elapsedRealtime()<deadline){
                     byte[] bytes=new byte[2049];DatagramPacket packet=new DatagramPacket(bytes,bytes.length);
                     try{receiver.receive(packet);if(packet.getLength()>2048||!(packet.getAddress() instanceof Inet4Address)||packet.getAddress().isLoopbackAddress()||packet.getAddress().isMulticastAddress())continue;
-                        result.accept(PeerService.decodeAnnouncement(Arrays.copyOf(bytes,packet.getLength())),packet.getAddress().getHostAddress(),android.os.SystemClock.elapsedRealtime());
+                        String[] decoded=PeerService.decodeAnnouncement(Arrays.copyOf(bytes,packet.getLength()));
+                        result.accept(decoded,packet.getAddress().getHostAddress(),android.os.SystemClock.elapsedRealtime());
                     }catch(SocketTimeoutException ignored){}catch(java.io.IOException malformed){if(receiver.isClosed())break;}
                 }
             }

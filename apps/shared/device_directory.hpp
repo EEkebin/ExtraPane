@@ -1,6 +1,8 @@
 #pragma once
 #include <QObject>
 #include <QVariantList>
+#include <QSet>
+#include <QHash>
 #include <QNetworkInterface>
 #include <QNetworkDatagram>
 #include <QUdpSocket>
@@ -24,6 +26,7 @@ public:
     // Announce only after the actual resource-control listener is ready.
     void advertise(extrapane::peers::Announcement announcement);
     void withdraw();
+    void knownDevices(QSet<QString> ids){knownDevices_=std::move(ids);}
     // Transport supports advertisements independently of user-requested browsing.
     bool start(unsigned interfaceIndex=0);
     Q_INVOKABLE bool search(unsigned interfaceIndex=0);
@@ -31,6 +34,7 @@ public:
     Q_INVOKABLE void refresh();
 signals:
     void changed();
+    void knownRoute(QString identity,QString observedAddress,unsigned port);
 private:
     friend struct DeviceDirectoryCheck;
     QUdpSocket socket_;
@@ -40,6 +44,8 @@ private:
     extrapane::peers::DiscoveryTable table_;
     std::optional<extrapane::peers::Announcement> announcement_;
     QVariantList devices_;
+    QSet<QString> knownDevices_;
+    QHash<QString,qint64> nextHint_;
     QString status_="Refresh to find nearby devices";
     void beginSearch();
     void finishSearch();

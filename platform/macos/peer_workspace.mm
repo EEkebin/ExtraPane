@@ -43,6 +43,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
     dm::mac::PeerDiscovery searchDiscovery;
     std::vector<Route> nearbyRoutes;
     std::vector<std::string> nearbySignature;
+    std::map<std::pair<DeviceId,std::string>,std::chrono::steady_clock::time_point> observedRoutes;
     std::chrono::steady_clock::time_point searchUntil;
     std::vector<Offer> inventory;
     std::set<std::string> enabled;
@@ -57,7 +58,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
     std::uint64_t instance,sequence;
     DeviceId expected;
     bool sharing,sharingStarting,gatewayEnabled,loopbackSharing,scanning,refreshing,terminating;
-    Service::Token sharingGeneration=0;
+    Service::Token sharingGeneration;
     unsigned listeningPort;
     std::string listeningAddress;
 }
@@ -111,6 +112,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
 -(void)renderDevices;
 -(void)renderCatalogs;
 -(void)renderNearby;
+-(void)observeRoutes:(const std::vector<Route>&)routes;
 -(void)connectAddress:(std::string)address port:(unsigned)port expected:(DeviceId)identity code:(std::string)code open:(BOOL)open;
 -(void)error:(NSString*)message;
 -(void)showWindow:(id)sender;
@@ -124,7 +126,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
     auto* tab=[[NSTabViewItem alloc] initWithIdentifier:name];tab.label=name;tab.view=scroll;[self.pages addTabViewItem:tab];return content;
 }
 -(void)applicationDidFinishLaunching:(NSNotification*)notification{
-    (void)notification;
+    (void)notification;sharingGeneration=0;
     try{
         runtime=std::make_shared<dm::mac::peer::MacPeerRuntime>();
         NSString* support=[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,NSUserDomainMask,YES) firstObject];NSString* parent=[support stringByAppendingPathComponent:@"ExtraPane"];
@@ -140,7 +142,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         self.pages=[NSTabView new];self.pages.tabViewType=NSNoTabsNoBorder;self.pages.translatesAutoresizingMaskIntoConstraints=NO;
         [shell addArrangedSubview:navigation];[shell addArrangedSubview:self.pages];[self.pages.heightAnchor constraintEqualToAnchor:shell.heightAnchor constant:-24].active=YES;
         __weak ExtraPanePeerApp* weak=self;
-        for(NSString* name in @[@"Devices",@"Share",@"Connections",@"About"]){[navigation addArrangedSubview:button(name,^{[weak.pages selectTabViewItemWithIdentifier:name];})];}
+        for(NSString* name in @[@"Devices",@"Resources",@"About"]){[navigation addArrangedSubview:button(name,^{[weak.pages selectTabViewItemWithIdentifier:name];})];}
         self.status=label(@"Ready");[navigation addArrangedSubview:self.status];
         auto* devices=[self page:@"Devices"];[devices addArrangedSubview:label(@"Choose a nearby device, or connect by address.")];
         auto* nearbyHeader=stack(YES);[nearbyHeader addArrangedSubview:label(@"Nearby devices",18)];self.searchButton=button(@"Search nearby",^{[weak startDiscovery];});[nearbyHeader addArrangedSubview:self.searchButton];[devices addArrangedSubview:nearbyHeader];self.searchStatus=label(@"Search to find devices on your local network.");[devices addArrangedSubview:self.searchStatus];self.nearby=stack();[devices addArrangedSubview:self.nearby];
@@ -152,7 +154,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         auto* auth=stack(YES);self.code=[NSSecureTextField textFieldWithString:@""];self.code.placeholderString=@"Pairing code";[auth addArrangedSubview:self.code];self.manualConnectButton=button(@"Connect",^{ExtraPanePeerApp* strong=weak;if(!strong)return;[weak connectAddress:str(weak.address.stringValue) port:portValue(weak.port.stringValue) expected:strong->expected code:str(weak.code.stringValue) open:weak.openConnection.state==NSControlStateValueOn];});[auth addArrangedSubview:self.manualConnectButton];[self.manualFields addArrangedSubview:auth];
         self.openConnection=button(@"Connect without pairing",^{});[self.openConnection setButtonType:NSButtonTypeSwitch];[self.manualFields addArrangedSubview:self.openConnection];
         [devices addArrangedSubview:label(@"Connected devices",18)];self.linkedDevices=stack();[devices addArrangedSubview:self.linkedDevices];[self.linkedDevices.widthAnchor constraintEqualToAnchor:devices.widthAnchor constant:-48].active=YES;
-        auto* share=[self page:@"Share"];[share addArrangedSubview:label(@"Available resources are discoverable automatically. Capture begins only when an authorized device connects.")];
+        auto* share=devices;[share addArrangedSubview:label(@"This device",22)];[share addArrangedSubview:label(@"Available resources are discoverable automatically. Capture begins only when an authorized device connects.")];
         auto* local=stack(YES);self.bindAddress=[NSTextField textFieldWithString:@""];self.bindAddress.placeholderString=@"Local IPv4 address";[self.bindAddress.widthAnchor constraintGreaterThanOrEqualToConstant:240].active=YES;auto addresses=dm::mac::localAddresses();if(!addresses.empty())self.bindAddress.stringValue=text(addresses.front().address);self.listenPort=[NSTextField textFieldWithString:@"43824"];[self.listenPort.widthAnchor constraintEqualToConstant:85].active=YES;[local addArrangedSubview:self.bindAddress];[local addArrangedSubview:self.listenPort];[share addArrangedSubview:local];
         for(const auto& entry:addresses){const auto address=entry.address;[share addArrangedSubview:button(text(entry.interface+" ? "+address),^{ExtraPanePeerApp* strong=weak;if(!strong)return;if(![strong hasIncomingUses]&&!strong->sharingStarting)weak.bindAddress.stringValue=text(address);})];}
         self.applyNetworkButton=button(@"Apply network settings",^{[weak applyNetworkSettings];});[share addArrangedSubview:self.applyNetworkButton];
@@ -162,23 +164,31 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         auto* permissions=stack(YES);[permissions addArrangedSubview:button(@"Camera permission",^{dm::mac::resource::requestPermission(dm::mac::resource::Kind::Camera,[weak](bool,std::string message){dispatch_async(dispatch_get_main_queue(),^{if(weak){[weak error:text(message)];[weak refreshInventory];}});});})];[permissions addArrangedSubview:button(@"Microphone permission",^{dm::mac::resource::requestPermission(dm::mac::resource::Kind::Microphone,[weak](bool,std::string message){dispatch_async(dispatch_get_main_queue(),^{if(weak){[weak error:text(message)];[weak refreshInventory];}});});})];[share addArrangedSubview:permissions];
         auto* desktopPermissions=stack(YES);[desktopPermissions addArrangedSubview:button(@"Screen recording permission",^{const bool allowed=CGRequestScreenCaptureAccess();[weak error:allowed?@"Screen recording is allowed":@"Enable ExtraPane in System Settings ? Privacy & Security ? Screen Recording, then restart ExtraPane if requested."];[weak refreshInventory];})];[desktopPermissions addArrangedSubview:button(@"Input permission",^{const bool allowed=AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)@{(__bridge NSString*)kAXTrustedCheckOptionPrompt:@YES});[weak error:allowed?@"Accessibility input is allowed":@"Enable ExtraPane in System Settings ? Privacy & Security ? Accessibility."];})];[share addArrangedSubview:desktopPermissions];
         self.stopSharingButton=button(@"Stop sharing all",^{[weak stopSharing];},YES);self.stopSharingButton.hidden=YES;[share addArrangedSubview:self.stopSharingButton];
-        auto* connections=[self page:@"Connections"];self.remoteResources=stack();[connections addArrangedSubview:self.remoteResources];[self.remoteResources.widthAnchor constraintEqualToAnchor:connections.widthAnchor constant:-48].active=YES;[connections addArrangedSubview:label(@"Active resources",18)];self.disconnectButton=button(@"Disconnect all",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{std::vector<Service::Token> ids;for(const auto& [id,e]:strong->links)ids.push_back(id);for(auto id:ids)strong->service->disconnect(id);}catch(const std::exception& e){[weak error:text(e.what())];}},YES);self.disconnectButton.hidden=YES;[connections addArrangedSubview:self.disconnectButton];self.connectedResources=stack();[connections addArrangedSubview:self.connectedResources];
+        auto* connections=[self page:@"Resources"];self.remoteResources=stack();[connections addArrangedSubview:self.remoteResources];[self.remoteResources.widthAnchor constraintEqualToAnchor:connections.widthAnchor constant:-48].active=YES;[connections addArrangedSubview:label(@"Active resources",18)];self.disconnectButton=button(@"Disconnect all",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{std::vector<Service::Token> ids;for(const auto& [id,e]:strong->links)ids.push_back(id);for(auto id:ids)strong->service->disconnect(id);}catch(const std::exception& e){[weak error:text(e.what())];}},YES);self.disconnectButton.hidden=YES;[connections addArrangedSubview:self.disconnectButton];self.connectedResources=stack();[connections addArrangedSubview:self.connectedResources];
         auto* about=[self page:@"About"];auto* icon=[NSImageView imageViewWithImage:NSApp.applicationIconImage];[icon.widthAnchor constraintEqualToConstant:96].active=YES;[icon.heightAnchor constraintEqualToConstant:96].active=YES;[about addArrangedSubview:icon];[about addArrangedSubview:label(@"Share devices and extend your desktop.",18)];[about addArrangedSubview:label(text(std::string("Running version: ")+EXTRAPANE_MAC_VERSION))];
         for(NSArray* item in @[@[@"Read the documentation",@"https://github.com/EEkebin/ExtraPane#readme"],@[@"Releases and changelog",@"https://github.com/EEkebin/ExtraPane/releases"],@[@"GitHub repository",@"https://github.com/EEkebin/ExtraPane"]]){[about addArrangedSubview:button(item[0],^{[[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:item[1]]];})];}
         auto* menu=[NSMenu new];auto* appItem=[NSMenuItem new];[menu addItem:appItem];auto* appMenu=[NSMenu new];[appMenu addItemWithTitle:@"Quit ExtraPane" action:@selector(terminate:) keyEquivalent:@"q"];appItem.submenu=appMenu;NSApp.mainMenu=menu;
         self.tray=[[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];self.tray.button.image=[NSImage imageWithSystemSymbolName:@"rectangle.on.rectangle" accessibilityDescription:@"ExtraPane"];self.tray.button.target=self;self.tray.button.action=@selector(showWindow:);
-        self.timer=[NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer* timer){(void)timer;[weak poll];}];[self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];[self refreshInventory];[self renderDevices];try{[self beginSharing];}catch(const std::exception& e){[self error:text(e.what())];}
+        self.timer=[NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer* timer){(void)timer;[weak poll];}];[self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];[self refreshInventory];[self renderDevices];service->auto_connect(true);try{[self beginSharing];}catch(const std::exception& e){[self error:text(e.what())];}
     }catch(const std::exception& e){NSAlert* alert=[NSAlert new];alert.messageText=@"ExtraPane could not start";alert.informativeText=text(e.what());[alert runModal];[NSApp terminate:nil];}
 }
 -(void)showManual{[self updateManualConnect];self.manualFields.hidden=NO;self.manualButton.image=[NSImage imageWithSystemSymbolName:@"chevron.down" accessibilityDescription:nil];}
 -(void)updateManualConnect{
     const auto address=normalizedAddress(str(self.address.stringValue));const auto port=portValue(self.port.stringValue);bool connected=false,pendingConnect=false;
-    for(const auto& [id,event]:links){if(event.context.incoming)continue;const auto endpoint=destinations.find(id);if((valid_id(expected)&&event.context.peer==expected)||(endpoint!=destinations.end()&&endpoint->second.address==address&&endpoint->second.port==port)){connected=true;break;}}
+    const auto remembered=service->remembered();for(const auto& [id,event]:links){if(event.context.incoming)continue;const auto endpoint=destinations.find(id);const bool rememberedAddress=std::any_of(remembered.begin(),remembered.end(),[&](const auto& device){return device.id==event.context.peer&&normalizedAddress(device.address_hint)==address&&device.port_hint==port;});if((valid_id(expected)&&event.context.peer==expected)||(endpoint!=destinations.end()&&endpoint->second.address==address&&endpoint->second.port==port)||rememberedAddress){connected=true;break;}}
     for(const auto& id:connectingLinks){const auto endpoint=destinations.find(id);if(endpoint!=destinations.end()&&endpoint->second.address==address&&endpoint->second.port==port){pendingConnect=true;break;}}
     self.manualConnectButton.hidden=connected;self.manualConnectButton.enabled=!pendingConnect;
 }
 -(void)startDiscovery{
     try{searchDiscovery.start();scanning=true;searchUntil=std::chrono::steady_clock::now()+std::chrono::seconds(10);nearbyRoutes.clear();nearbySignature.clear();self.searchButton.enabled=NO;self.searchStatus.stringValue=@"Searching nearby...";[self renderNearby];}catch(const std::exception& e){scanning=false;searchDiscovery.stop();self.searchButton.enabled=YES;self.searchStatus.stringValue=@"Search unavailable. You can still connect by address.";[self error:text(e.what())];}
+}
+-(void)observeRoutes:(const std::vector<Route>&)routes{
+    const auto remembered=service->remembered();const auto now=std::chrono::steady_clock::now();std::erase_if(observedRoutes,[&](const auto& entry){return now-entry.second>std::chrono::seconds(60);});
+    for(const auto& route:routes){const auto identity=route.announcement.device;if(identity==service->identity()||std::none_of(remembered.begin(),remembered.end(),[&](const auto& saved){return saved.id==identity;}))continue;
+        // The validated LAN sender address is a candidate only; Service still pins the saved identity.
+        const auto signature=route.observed_ipv4+":"+std::to_string(route.announcement.port);const auto key=std::make_pair(identity,signature);const auto previous=observedRoutes.find(key);if(previous!=observedRoutes.end()&&now-previous->second<std::chrono::seconds(30))continue;
+        try{service->observe_route(identity,route.observed_ipv4,route.announcement.port);observedRoutes[key]=now;}catch(const std::exception& e){[self error:text(e.what())];}
+    }
 }
 -(void)renderNearby{
     clear(self.nearby);const auto saved=service->remembered();__weak ExtraPanePeerApp* weak=self;unsigned count=0;
@@ -266,7 +276,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         [row addArrangedSubview:button(@"Forget",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{strong->service->forget(item.id);}catch(const std::exception& e){[weak error:text(e.what())];}},YES)];[self.saved addArrangedSubview:row];
     }
     for(const auto& [connection,event]:links){auto* row=stack(YES);row.edgeInsets=NSEdgeInsetsMake(12,12,12,12);row.wantsLayer=YES;row.layer.borderWidth=1;row.layer.borderColor=NSColor.separatorColor.CGColor;row.layer.cornerRadius=10;std::string name="Device "+hex(event.context.peer).substr(0,12);for(const auto& saved:remembered)if(saved.id==event.context.peer&&!saved.name.empty())name=saved.name;for(const auto& catalog:catalogs[connection])if(catalog.device==event.context.peer&&!catalog.name.empty())name=catalog.name;[row addArrangedSubview:label(text(name+(event.verified?" (verified)":" (unverified)")))];
-        if(!event.context.incoming)[row addArrangedSubview:button(@"Resources",^{[weak.pages selectTabViewItemWithIdentifier:@"Connections"];})];const auto connectionId=connection;[row addArrangedSubview:button(@"Disconnect",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{strong->service->disconnect(connectionId);}catch(const std::exception& e){[weak error:text(e.what())];}},YES)];[self.linkedDevices addArrangedSubview:row];
+        if(!event.context.incoming)[row addArrangedSubview:button(@"Resources",^{[weak.pages selectTabViewItemWithIdentifier:@"Resources"];})];const auto connectionId=connection;[row addArrangedSubview:button(@"Disconnect",^{ExtraPanePeerApp* strong=weak;if(!strong)return;try{strong->service->disconnect(connectionId);}catch(const std::exception& e){[weak error:text(e.what())];}},YES)];[self.linkedDevices addArrangedSubview:row];
     }
     [self updateManualConnect];[self renderNearby];[self renderCatalogs];
 }
@@ -313,11 +323,11 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         case Service::EventKind::stopped:{const auto key=std::make_pair(id,event.context.grant);if(!retrying.contains(key)||!event.detail.empty()){retrying.erase(key);resources.erase(key);}connectionsChanged=true;break;}
         case Service::EventKind::disconnected:connectingLinks.erase(id);destinations.erase(id);std::erase_if(pending,[&](const auto& entry){return entry.first.first==id;});std::erase_if(retrying,[&](const auto& key){return key.first==id;});links.erase(id);catalogs.erase(id);std::erase_if(collapsedDevices,[&](const auto& key){return key.second==id;});for(auto i=resources.begin();i!=resources.end();)if(i->second.context.connection==id)i=resources.erase(i);else ++i;devicesChanged=connectionsChanged=true;break;
         case Service::EventKind::error:connectingLinks.erase(id);if(!links.contains(id))destinations.erase(id);[self updateManualConnect];if(event.sharing_generation){if(event.sharing_generation!=sharingGeneration)break;[self stopListener];}if(pending.erase({id,event.context.request}))connectionsChanged=true;[self error:text(event.detail)];break;
-        case Service::EventKind::trust_changed:devicesChanged=true;break;
+        case Service::EventKind::trust_changed:observedRoutes.clear();devicesChanged=true;break;
     }}
     if(devicesChanged||connectionsChanged)[self renderDevices];if(connectionsChanged)[self renderConnections];if(devicesChanged||connectionsChanged)[self renderOffers];
-    if(sharing)discovery.poll(); // Maintains advertisements; does not populate Nearby.
-    if(scanning){auto routes=searchDiscovery.poll();std::vector<std::string> signature;for(const auto& route:routes)signature.push_back(hex(route.announcement.device)+route.observed_ipv4+std::to_string(route.announcement.port)+route.announcement.name);if(signature!=nearbySignature){nearbySignature=std::move(signature);nearbyRoutes=std::move(routes);[self renderNearby];}if(std::chrono::steady_clock::now()>=searchUntil){scanning=false;searchDiscovery.stop();self.searchButton.enabled=YES;self.searchStatus.stringValue=@"Search complete. Search again to refresh nearby devices.";[self renderNearby];}}
+    if(sharing)[self observeRoutes:discovery.poll()]; // Maintains advertisements/known routes; never populates Nearby.
+    if(scanning){auto routes=searchDiscovery.poll();[self observeRoutes:routes];std::vector<std::string> signature;for(const auto& route:routes)signature.push_back(hex(route.announcement.device)+route.observed_ipv4+std::to_string(route.announcement.port)+route.announcement.name);if(signature!=nearbySignature){nearbySignature=std::move(signature);nearbyRoutes=std::move(routes);[self renderNearby];}if(std::chrono::steady_clock::now()>=searchUntil){scanning=false;searchDiscovery.stop();self.searchButton.enabled=YES;self.searchStatus.stringValue=@"Search complete. Search again to refresh nearby devices.";[self renderNearby];}}
 
 }
 -(void)showWindow:(id)sender{(void)sender;[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];}

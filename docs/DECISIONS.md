@@ -557,3 +557,30 @@ Connections contains each connected peer's bordered, collapsible resource
 catalog, with independent green/red power controls and active-session controls.
 Connecting or pairing a peer never starts a media resource. A device's Connect
 action disappears once connected. About displays the running build version.
+
+
+## Persistent paired catalogs and Resources navigation (2026-11-08)
+
+Devices now combines pairing/device management with this device's sharing and
+network settings. Resources replaces Connections and contains remote resource
+catalogs, power controls and active streams. This supersedes the separate Share
+page above.
+
+Available remembered peers connect automatically using saved identity proofs;
+these are control/catalog connections only. New-device discovery/pairing remains
+user initiated. Explicit device disconnect suppresses automatic reconnection
+until manual Connect or process restart. A resource stopping, failing or being
+cancelled must not close the device's catalog connection or unrelated resources.
+Existing bounded recovery of an already-active non-USB resource after transport
+loss remains independent of initial catalog auto-connection.
+
+Known-peer LAN announcements may supply an observed source-address route hint;
+they do not authenticate a device or overwrite a trusted saved route until the
+connection proves the saved identity. Unknown-device announcements never cause
+automatic pairing. Network failures retry with a capped backoff; rejected identity
+proofs stop automatic attempts until explicit action.
+
+Pending request cancellation is negotiated using a backwards-compatible control
+probe. New peers can cancel the exact pending provider request. Older peers use
+the existing close-after-late-grant fallback; they do not receive an unknown
+cancellation operation. Update both endpoints for precise pending cancellation.
