@@ -10,6 +10,11 @@
   for Devices/Resources instead of the legacy Server/Client workflow.
 - [x] Fix wildcard-listener regression expectations and cross-platform crypto
   dependency declarations found by the final CI audit.
+- [x] Fix POSIX listener restart after active TLS closure; retain exact-binding
+  exclusivity and account for BSD wildcard/specific binding semantics in tests.
+- [x] Add hash-verified public release-asset download fallbacks for MbedTLS,
+  USB/IP and Gradle; explicitly pin the AppImage runtime. Actual API downloads,
+  checksums, fresh CMake configuration and fallback/corruption checks passed.
 - [ ] Verify final CI, merge the stacked branches into main, and publish the
   stable release with Windows, Linux, Android and Universal macOS packages.
 

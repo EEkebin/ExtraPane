@@ -4,5 +4,6 @@
     "linuxdeploy": { "path": "/absolute/path/to/linuxdeploy-x86_64.AppImage", "sha256": "REPLACE_WITH_REVIEWED_TOOL_SHA256" },
     "linuxdeploy-plugin-qt": { "path": "/absolute/path/to/linuxdeploy-plugin-qt-x86_64.AppImage", "sha256": "REPLACE_WITH_REVIEWED_TOOL_SHA256" },
     "linuxdeploy-plugin-gstreamer.sh": { "path": "/absolute/path/to/linuxdeploy-plugin-gstreamer.sh", "sha256": "REPLACE_WITH_REVIEWED_TOOL_SHA256" }
-  }
+  },
+  "runtime": { "path": "/absolute/path/to/runtime-x86_64", "sha256": "REPLACE_WITH_REVIEWED_RUNTIME_SHA256" }
 }

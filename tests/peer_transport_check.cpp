@@ -15,7 +15,11 @@ int main(){try{
     {
         Listener wildcard("0.0.0.0",0);require(wildcard.port()!=0,"wildcard ephemeral port missing");
         rejects([&]{Listener duplicate("0.0.0.0",wildcard.port());});
+#ifndef __APPLE__
+        // BSD SO_REUSEADDR permits wildcard/specific address overlap. It still
+        // rejects the exact same listening binding (checked above).
         rejects([&]{Listener intercept("127.0.0.1",wildcard.port());});
+#endif
         rejects([&]{Stream::connect("0.0.0.0",wildcard.port(),"127.0.0.1",deadline());});
         rejects([&]{Stream::connect("127.0.0.1",wildcard.port(),"0.0.0.0",deadline());});
         auto accepted=std::async(std::launch::async,[&]{return wildcard.accept(deadline());});
@@ -36,7 +40,11 @@ int main(){try{
 #endif
     Listener listener("localhost",0);require(listener.port()!=0,"ephemeral port missing");
     rejects([&]{Listener duplicate("127.0.0.1",listener.port());});
+#ifndef __APPLE__
+    // Linux/Windows additionally reserve wildcard/specific overlap; macOS uses
+    // BSD address semantics while retaining exact-binding exclusivity.
     rejects([&]{Listener intercept("0.0.0.0",listener.port());});
+#endif
     std::array<std::uint8_t,32> previous{};
     for(int round=0;round<2;++round){
         auto accepted=std::async(std::launch::async,[&]{return listener.accept(deadline());});

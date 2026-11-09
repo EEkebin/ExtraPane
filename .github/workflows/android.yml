@@ -57,6 +57,8 @@ jobs:
           java -cp out/android-host-checks io.github.eekebin.extrapane.PageHistoryCheck
           java -cp out/android-host-checks io.github.eekebin.extrapane.SharingLifecycleCheck
           java -cp out/android-host-checks io.github.eekebin.extrapane.AudioRouteCatalogCheck
+      - name: Cache verified Gradle distribution
+        run: python3 scripts/prepare_android_gradle.py
       - name: Build and lint
         working-directory: apps/android
         run: bash gradlew assembleDebug assembleDebugAndroidTest lintDebug assembleRelease --no-daemon --console=plain
