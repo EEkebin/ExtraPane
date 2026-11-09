@@ -63,6 +63,10 @@ struct Service::State {
     std::map<DeviceId,GatewayRoute> gateway_routes;
     std::map<Token,DeviceId> gateway_dials,dial_targets;
     bool auto_connect_enabled=false;
+    struct ForgetAttempt {DeviceId peer;Milliseconds due=0;std::future<bool> job;};
+    std::map<DeviceId,ForgetAttempt> forget_attempts;
+    Milliseconds last_forget_poll=0;
+    std::map<DeviceId,std::pair<std::string,std::uint16_t>> forget_routes;
     std::set<DeviceId> suppressed_routes;
     Clock::time_point last_routes=Clock::now();
     State(Options o,Hooks h):options(std::move(o)),hooks(std::move(h)),store(options.private_directory),auth(store.identity(),options.pairing_required),policy(Catalog{store.identity(),static_cast<std::uint64_t>(now())+1,1,options.name,options.offers}){
@@ -146,6 +150,39 @@ struct Service::State {
     void post(std::function<void()> fn){std::lock_guard lock(mutex);need(!ending&&commands.size()<256,"Peer service command queue full or stopped");commands.push_back(std::move(fn));wake.notify_one();}
     void event(Event e){std::lock_guard lock(mutex);if(events.size()>=1024){ending=true;wake.notify_all();return;}events.push_back(std::move(e));}
     dm::peer_auth::Lookup lookup(){return [this](const DeviceId& id)->std::optional<dm::peer_auth::Secret>{auto key=store.secret(id);if(!key)return {};dm::peer_auth::Secret result;result.bytes=*key;return result;};}
+    dm::peer_auth::Lookup revocation_lookup(){return [this](const DeviceId& id)->std::optional<dm::peer_auth::Secret>{auto key=store.secret(id);if(!key)key=store.revocation_secret(id);if(!key)return {};dm::peer_auth::Secret result;result.bytes=*key;return result;};}
+    void revoke_local(const DeviceId& peer){
+        gateway_routes.erase(peer);suppressed_routes.erase(peer);
+        std::vector<Token> retrying;for(const auto& [token,plan]:retries)if(plan.route.expected_peer==peer)retrying.push_back(token);
+        for(auto token:retrying){retries.erase(token);cancelled.insert(token);event({EventKind::disconnected,{token},0,"Device was forgotten"});}
+        revoked(policy.forget(peer));std::vector<Token> ids;for(const auto& [id,l]:links)if(l->connection->remote_id()==peer)ids.push_back(id);for(auto id:ids)drop(id,"Device was forgotten");event({EventKind::trust_changed,{}});
+    }
+    void refresh_forgets(){
+        if(now()<last_forget_poll+250)return;last_forget_poll=now();
+        unsigned running=0;
+        for(auto& [id,attempt]:forget_attempts)if(attempt.job.valid()){
+            if(attempt.job.wait_for(std::chrono::seconds(0))!=std::future_status::ready){++running;continue;}
+            const bool complete=attempt.job.get();attempt.due=now()+60000;
+            if(complete)event({EventKind::trust_changed,{},0,"Device forgotten on both computers"});
+        }
+        const auto pending=store.pending_forgets();
+        const auto isPending=[&](const DeviceId& id){return std::any_of(pending.begin(),pending.end(),[&](const auto& item){return item.id==id;});};
+        std::erase_if(forget_attempts,[&](const auto& item){return !item.second.job.valid()&&!isPending(item.first);});
+        std::erase_if(forget_routes,[&](const auto& item){return !isPending(item.first);});
+        for(const auto& peer:pending){
+            auto& attempt=forget_attempts[peer.id];if(attempt.job.valid()||now()<attempt.due||running>=2)continue;
+            auto route=forget_routes.find(peer.id);const auto address=route==forget_routes.end()?peer.address_hint:route->second.first;const auto port=route==forget_routes.end()?peer.port_hint:route->second.second;
+            if(address.empty()||!port)continue;
+            auto key=store.revocation_secret(peer.id);if(!key)continue;++running;attempt.peer=peer.id;
+            attempt.job=std::async(std::launch::async,[this,id=peer.id,address,port,key=*key]{try{
+                dm::peer_auth::ClientOptions proof;proof.local=store.identity();proof.expected_peer=id;proof.mode=dm::peer_auth::Mode::revocation;dm::peer_auth::Secret secret;secret.bytes=key;proof.remembered=secret;
+                auto connection=AuthenticatedConnection::client(transport::Stream::connect(address,port,{},deadline()),proof,{},deadline());
+                const auto request=next();connection.send({rpc::Operation::forget,request,{}},deadline());const auto response=connection.receive(deadline());
+                need(response.operation==rpc::Operation::forget_ack&&response.id==request&&response.payload.empty(),"Invalid forget acknowledgement");
+                return store.acknowledge_forget(id,key);
+            }catch(...){return false;}});
+        }
+    }
     dm::peer_auth::Remember remember(std::string address={},std::uint16_t port=0,std::uint64_t generation=0){if(!generation)generation=epoch.load();return [this,address=std::move(address),port,generation](const DeviceId& id,const dm::peer_auth::Secret& key){std::lock_guard lock(trust_mutex);need(epoch==generation,"Pairing was cancelled");store.remember({id,"Paired device",address,port},key.bytes);};}
     void launch_dial(Token token,ConnectOptions options,std::uint64_t generation){
         need(dialing.size()<4,"Too many pending peer connections");
@@ -170,7 +207,7 @@ struct Service::State {
         }));dial_targets[token]=target;
     }
     void route_failed(GatewayRoute& route,bool network){
-        if(!network){route.identity_failed=true;return;}
+        if(!network){route.identity_failed=true;route.due=now()+60000;return;}
         constexpr Milliseconds delays[]{1000,2000,4000,8000,30000,60000};
         const auto index=std::min<unsigned>(route.failures,5);if(route.failures<6)++route.failures;route.due=now()+delays[index];
     }
@@ -300,7 +337,7 @@ struct Service::State {
         }
         if(!automaticDial&&result.connection){std::vector<Token> duplicates;for(const auto& [id,link]:links)if(link->automatic_presence&&!link->incoming&&link->resources.empty()&&link->pending.empty()&&link->connection->remote_id()==result.connection->remote_id())duplicates.push_back(id);for(auto id:duplicates)drop(id,"Replaced by explicit connection");}
         if(automaticDial&&result.connection&&std::any_of(links.begin(),links.end(),[&](const auto& item){return !item.second->incoming&&item.second->connection->remote_id()==result.connection->remote_id();}))return;
-        if(result.epoch!=epoch||cancelled.erase(result.token)){event({EventKind::disconnected,{result.token},0,"Connection cancelled"});return;}if(!result.connection){event({EventKind::error,{result.token},0,result.error});return;}need(links.size()<64,"Peer service connection budget exhausted");auto object=std::make_unique<Link>(result.token,result.incoming,std::move(result.connection));auto& l=*object;l.automatic_presence=automaticDial;l.route=std::move(result.route);const auto identity=l.connection->identity();if(identity.paired&&identity.device!=store.identity()){need(store.secret(identity.device).has_value(),"Device was forgotten during authentication");policy.remember(identity.device);}
+        if(result.epoch!=epoch||cancelled.erase(result.token)){event({EventKind::disconnected,{result.token},0,"Connection cancelled"});return;}if(!result.connection){event({EventKind::error,{result.token},0,result.error});return;}need(!result.connection->revocation_only(),"Revocation connections cannot access resources");need(links.size()<64,"Peer service connection budget exhausted");auto object=std::make_unique<Link>(result.token,result.incoming,std::move(result.connection));auto& l=*object;l.automatic_presence=automaticDial;l.route=std::move(result.route);const auto identity=l.connection->identity();if(identity.paired&&identity.device!=store.identity()){need(store.secret(identity.device).has_value(),"Device was forgotten during authentication");policy.remember(identity.device);if(l.incoming){auto route=gateway_routes.find(identity.device);if(route!=gateway_routes.end()){route->second.identity_failed=false;route->second.failures=0;route->second.due=0;}}}
         l.bridge=std::make_unique<MediaBridge>(!l.incoming,[&l](Token grant){return l.resources.contains(grant);},[&l](const rpc::Message& m){l.connection->queue(m);});
         Adapter adapter;
         adapter.start=[this,&l](const Grant& grant,const rpc::Open& request,std::string& reason){if(!l.incoming||grant.delegated){reason="Delegated relay is not available";return false;}Resource r{{l.token,l.current_request,grant.id,l.connection->remote_id(),true,grant.kind},request};l.resources.emplace(grant.id,std::move(r));try{prepare(l,l.resources.at(grant.id));return true;}catch(const std::exception& e){reason=e.what();return false;}};
@@ -376,17 +413,17 @@ struct Service::State {
         std::vector<std::tuple<Token,std::string,bool>> dead;bool progress=false;
         for(auto& [id,l]:links)try{for(const auto& [request,began]:l->requests)need(Clock::now()-began<std::chrono::seconds(l->pending.contains(request)?60:15),"Peer request timed out");for(unsigned turn=0;turn<16;++turn){bool moved=l->connection->pump(deadline());while(auto m=l->connection->next()){message(*l,std::move(*m));moved=true;}if(!l->connection->pending_output())moved=l->bridge->pump()||moved;progress=progress||moved;if(!moved)break;}if(Clock::now()-l->activity>std::chrono::seconds(30))throw transport::Error(transport::ErrorReason::timeout,"Device connection timed out");if(Clock::now()-l->last_ping>std::chrono::seconds(10)){l->connection->queue({rpc::Operation::ping,next(),{}});l->last_ping=Clock::now();}}catch(const transport::Error& e){dead.emplace_back(id,e.what(),e.reason==transport::ErrorReason::network||e.reason==transport::ErrorReason::timeout);}catch(const std::exception& e){dead.emplace_back(id,e.what(),false);}
         for(auto& [id,reason,retry]:dead)drop(id,std::move(reason),retry);
-        try{revoked(policy.expire(now()));if(policy.gateway_enabled()||auto_connect_enabled)for(auto& [id,l]:links)if(!l->incoming&&l->connection->identity().paired&&l->catalogs.empty()&&Clock::now()-l->last_catalog>std::chrono::seconds(10)){const auto request=next();l->catalogs.insert(request);l->automatic_catalogs.insert(request);l->requests[request]=Clock::now();l->connection->queue({rpc::Operation::catalog,request,{}});l->last_catalog=Clock::now();}}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}
+        try{refresh_forgets();revoked(policy.expire(now()));if(policy.gateway_enabled()||auto_connect_enabled)for(auto& [id,l]:links)if(!l->incoming&&l->connection->identity().paired&&l->catalogs.empty()&&Clock::now()-l->last_catalog>std::chrono::seconds(10)){const auto request=next();l->catalogs.insert(request);l->automatic_catalogs.insert(request);l->requests[request]=Clock::now();l->connection->queue({rpc::Operation::catalog,request,{}});l->last_catalog=Clock::now();}}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}
         if(Clock::now()-last_routes>=std::chrono::milliseconds(100)){last_routes=Clock::now();try{refresh_routes();refresh_retries();}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}}
         for(auto& [id,l]:links){std::vector<Context> timedout;for(const auto& [grant,r]:l->resources)if(!r.relay&&!r.native_ready&&Clock::now()-r.native_started>std::chrono::seconds(60))timedout.push_back(r.context);for(const auto& context:timedout)native_failure(context,"Native resource preparation timed out");}
         if(hooks.poll&&!native_poll_pending&&Clock::now()-last_poll>=std::chrono::milliseconds(50)){
             last_poll=Clock::now();native_poll_pending=true;
             try{native_post([this]{std::vector<Context> ended;std::string failure;try{ended=hooks.poll();}catch(const std::exception& e){failure=e.what();}catch(...){failure="Native resource status failed";}
-                complete([this,ended=std::move(ended),failure=std::move(failure)]{native_poll_pending=false;if(!failure.empty()){event({EventKind::error,{},0,failure});return;}for(const auto& context:ended){auto f=links.find(context.connection);if(f==links.end())continue;auto& l=*f->second;if(!context.grant){end_pending(l,context.request,"Native preparation ended");continue;}if(!l.resources.contains(context.grant))continue;if(l.incoming)l.connection->queue(l.dispatcher->handle({rpc::Operation::close,context.grant,{}},now()));else{stop_resource(l,context.grant);l.connection->queue({rpc::Operation::close,context.grant,{}});}}});
+                complete([this,ended=std::move(ended),failure=std::move(failure)]{native_poll_pending=false;if(!failure.empty()){event({EventKind::error,{},0,failure});return;}for(const auto& context:ended){auto f=links.find(context.connection);if(f==links.end())continue;auto& l=*f->second;if(!context.grant){end_pending(l,context.request,"Native preparation ended");continue;}if(!l.resources.contains(context.grant))continue;if(!context.failure_detail.empty())event({EventKind::error,context,0,context.failure_detail});if(l.incoming)l.connection->queue(l.dispatcher->handle({rpc::Operation::close,context.grant,{}},now()));else{stop_resource(l,context.grant);l.connection->queue({rpc::Operation::close,context.grant,{}});}}});
             });}catch(const std::exception& e){native_poll_pending=false;event({EventKind::error,{},0,e.what()});}
         }
         if(progress)std::this_thread::yield();else {std::unique_lock lock(mutex);wake.wait_for(lock,std::chrono::milliseconds(2),[this]{return ending||!commands.empty();});}
-    }while(!links.empty())drop(links.begin()->first);retries.clear();for(auto& task:dialing)task.wait();dialing.clear();}
+    }while(!links.empty())drop(links.begin()->first);retries.clear();for(auto& task:dialing)task.wait();dialing.clear();for(auto& [id,attempt]:forget_attempts)if(attempt.job.valid())attempt.job.wait();}
     void reap_listeners(){for(auto i=retired.begin();i!=retired.end();)if(*i->done){i->thread.join();i=retired.erase(i);}else ++i;}
     void stop_listener(){accepting=false;++listener_serial;auto current=listener;if(current)current->cancel();if(acceptor.joinable())retired.push_back({std::move(acceptor),std::move(acceptor_done)});listener.reset();reap_listeners();}
 };
@@ -395,6 +432,7 @@ Service::~Service(){auto& s=*state_;s.stop_listener();s.auth.stop();s.ending=tru
 DeviceId Service::identity()const{return state_->store.identity();}
 std::string Service::pairing_code()const{return state_->auth.code();}
 std::vector<RememberedDevice> Service::remembered()const{return state_->store.devices();}
+std::vector<RememberedDevice> Service::pending_forgets()const{return state_->store.pending_forgets();}
 Service::Token Service::start(std::string bind,std::uint16_t port){
     auto& s=*state_;std::lock_guard lifecycle(s.lifecycle_mutex);
     need(!s.listener,"Sharing listener is already running");s.reap_listeners();need(s.retired.size()<16,"Previous sharing listeners are still stopping");
@@ -406,7 +444,16 @@ Service::Token Service::start(std::string bind,std::uint16_t port){
         while(s.accepting&&s.listener_serial==serial){
             try{
                 auto stream=listener->accept(deadline());const auto generation=s.epoch.load();
-                auto connection=std::make_shared<std::unique_ptr<AuthenticatedConnection>>(std::make_unique<AuthenticatedConnection>(AuthenticatedConnection::server(std::move(stream),s.auth,s.lookup(),s.remember({},0,generation),deadline())));
+                auto connection=std::make_shared<std::unique_ptr<AuthenticatedConnection>>(std::make_unique<AuthenticatedConnection>(AuthenticatedConnection::server(std::move(stream),s.auth,s.lookup(),s.remember({},0,generation),deadline(),s.revocation_lookup())));
+                if((*connection)->revocation_only()){
+                    auto& revocation=**connection;const auto peer=revocation.remote_id();const auto request=revocation.receive(deadline());
+                    need(request.operation==rpc::Operation::forget&&request.id&&request.payload.empty()&&revocation.revocation_secret().has_value(),"Revocation connection only accepts Forget");
+                    const auto key=revocation.revocation_secret()->bytes;
+                    auto completed=std::make_shared<std::promise<bool>>();auto completion=completed->get_future();
+                    s.post([&s,peer,key,completed]{try{std::lock_guard lock(s.trust_mutex);const bool wasTrusted=s.store.secret(peer).has_value();const auto pending=s.store.pending_forgets();const bool wasPending=std::any_of(pending.begin(),pending.end(),[&](const auto& item){return item.id==peer;});need(s.store.receive_forget(peer,key),"Revocation credential changed");if(wasTrusted){++s.epoch;s.revoke_local(peer);}else if(wasPending)s.event({EventKind::trust_changed,{}});completed->set_value(true);}catch(...){completed->set_value(false);}});
+                    need(completion.wait_until(deadline())==std::future_status::ready&&completion.get(),"Revocation did not complete");
+                    revocation.send({rpc::Operation::forget_ack,request.id,{}},deadline());continue;
+                }
                 auto token=s.next();s.post([&s,connection,token,generation,serial]{if(s.accepting&&s.listener_serial==serial)s.add({token,true,std::move(*connection),{},generation});});
             }catch(const std::exception&){/* Timeout/rejected handshake never enters application state. */}
         }
@@ -422,7 +469,13 @@ Service::Token Service::connect(ConnectOptions options){auto& s=*state_;const au
     }
     s.launch_dial(token,std::move(options),generation);}catch(const std::exception& e){s.event({EventKind::error,{token},0,e.what()});}});return token;}
 Service::Token Service::catalog(Token connection){auto& s=*state_;auto request=s.next();s.post([&s,connection,request]{auto& l=s.link(connection);need(l.catalogs.size()<64,"Too many catalog requests");l.catalogs.insert(request);l.requests[request]=Clock::now();l.connection->queue({rpc::Operation::catalog,request,{}});});return request;}
-Service::Token Service::open(Token connection,rpc::Open request){auto& s=*state_;auto token=s.next();s.post([&s,connection,token,request=std::move(request)]()mutable{try{auto& l=s.link(connection);need(!l.incoming&&l.pending.size()+l.resources.size()<256,"Resource connection budget exhausted");need(request.owner==l.connection->remote_id()||l.connection->identity().paired,"A paired gateway is required for delegated resources");l.used_resources=true;const Offer* offer=nullptr;for(const auto& catalog:l.catalog_cache)if(catalog.device==request.owner)for(const auto& item:catalog.offers)if(item.id==request.resource)offer=&item;need(offer&&offer->available,"Refresh this device's available resources before connecting");need(!request.input||offer->input_allowed,"Remote input is not permitted");rpc::encode(request);Context context{connection,token,0,l.connection->remote_id(),false,offer->kind};s.prepare_request(l,context,std::move(request));}catch(const std::exception& e){s.event({EventKind::error,{connection,token},0,e.what()});}});return token;}
+Service::Token Service::open(Token connection,rpc::Open request){auto& s=*state_;auto token=s.next();s.post([&s,connection,token,request=std::move(request)]()mutable{try{auto& l=s.link(connection);need(!l.incoming&&l.pending.size()+l.resources.size()<256,"Resource connection budget exhausted");need(request.owner==l.connection->remote_id()||l.connection->identity().paired,"A paired gateway is required for delegated resources");l.used_resources=true;const Offer* offer=nullptr;for(const auto& catalog:l.catalog_cache)if(catalog.device==request.owner)for(const auto& item:catalog.offers)if(item.id==request.resource)offer=&item;need(offer&&offer->available,"Refresh this device's available resources before connecting");need(!request.input||offer->input_allowed,"Remote input is not permitted");
+    if(offer->kind==Kind::existing_screen){
+        const auto same=[&](const rpc::Open& other){return other.owner==request.owner&&other.resource==request.resource;};
+        for(const auto& [id,peer]:s.links)if(!peer->incoming){for(const auto& [pending,other]:peer->pending)need(s.relays.contains(pending)||!same(other),"This screen is already opening on this device");for(const auto& [grant,other]:peer->resources)need(other.relay||!same(other.request),"This screen is already open on this device");}
+        for(const auto& [id,retry]:s.retries)for(const auto& saved:retry.resources)need(!same(saved.request),"This screen is reconnecting on this device");
+    }
+    rpc::encode(request);Context context{connection,token,0,l.connection->remote_id(),false,offer->kind};s.prepare_request(l,context,std::move(request));}catch(const std::exception& e){s.event({EventKind::error,{connection,token},0,e.what()});}});return token;}
 void Service::close(Token connection,Token grant){auto& s=*state_;s.post([&s,connection,grant]{
     auto retry=s.retries.find(connection);
     if(retry!=s.retries.end()){
@@ -453,14 +506,20 @@ void Service::disconnect(Token connection){auto& s=*state_;s.post([&s,connection
     if(s.retries.erase(connection))s.event({EventKind::disconnected,{connection},0,"Reconnect cancelled"});auto live=s.links.find(connection);if(live!=s.links.end()){s.suppressed_routes.insert(live->second->connection->remote_id());auto route=s.gateway_routes.find(live->second->connection->remote_id());if(route!=s.gateway_routes.end())route->second.disabled=true;}auto dialing=s.gateway_dials.find(connection);if(dialing!=s.gateway_dials.end()){s.suppressed_routes.insert(dialing->second);auto route=s.gateway_routes.find(dialing->second);if(route!=s.gateway_routes.end())route->second.disabled=true;}
     if(!s.links.contains(connection)){need(s.cancelled.size()<256,"Cancellation budget exhausted");s.cancelled.insert(connection);}s.drop(connection);});}
 void Service::offers(std::vector<Offer> offers){auto& s=*state_;s.post([&s,offers=std::move(offers)]()mutable{s.revoked(s.policy.offers(std::move(offers)));});}
-void Service::forget(DeviceId peer){auto& s=*state_;s.post([&s,peer]{{std::lock_guard lock(s.trust_mutex);++s.epoch;s.store.forget(peer);}s.gateway_routes.erase(peer);s.suppressed_routes.erase(peer);std::vector<Token> retrying;for(const auto& [token,plan]:s.retries)if(plan.route.expected_peer==peer)retrying.push_back(token);for(auto token:retrying){s.retries.erase(token);s.cancelled.insert(token);s.event({EventKind::disconnected,{token},0,"Device was forgotten"});}s.revoked(s.policy.forget(peer));std::vector<Token> ids;for(const auto& [id,l]:s.links)if(l->connection->remote_id()==peer)ids.push_back(id);for(auto id:ids)s.drop(id,"Device was forgotten");s.event({EventKind::trust_changed,{}});});}
+void Service::forget(DeviceId peer){auto& s=*state_;s.post([&s,peer]{
+    {std::lock_guard lock(s.trust_mutex);++s.epoch;s.store.begin_forget(peer);}
+    s.revoke_local(peer);s.refresh_forgets();
+});}
+void Service::dismiss_forget(DeviceId peer){auto& s=*state_;s.post([&s,peer]{std::lock_guard lock(s.trust_mutex);s.store.dismiss_forget(peer);s.event({EventKind::trust_changed,{},0,"Local removal cleared; remote removal was not confirmed"});});}
 void Service::pairing_required(bool required){auto& s=*state_;s.post([&s,required]{s.auth.set_required(required);s.revoked(s.policy.pairing_required(required));if(required){std::vector<Token> ids;for(const auto& [id,l]:s.links)if(!l->connection->identity().paired)ids.push_back(id);for(auto id:ids)s.drop(id,"Pairing is now required");}});}
 void Service::auto_connect(bool enabled){auto& s=*state_;s.post([&s,enabled]{s.auto_connect_enabled=enabled;s.sync_routes();if(!enabled&&!s.policy.gateway_enabled()){for(const auto& [token,id]:s.gateway_dials)s.cancelled.insert(token);} });}
 void Service::observe_route(DeviceId peer,std::string address,std::uint16_t port){auto& s=*state_;s.post([&s,peer,address=std::move(address),port]{
-    if(!valid_id(peer)||peer==s.store.identity()||address.empty()||!port||!s.store.secret(peer))return;
+    if(!valid_id(peer)||peer==s.store.identity()||address.empty()||!port)return;
+    for(const auto& pending:s.store.pending_forgets())if(pending.id==peer){const bool firstRoute=pending.address_hint.empty()&&!s.forget_routes.contains(peer);s.forget_routes[peer]={address,port};if(firstRoute)s.forget_attempts[peer].due=0;return;}
+    if(!s.store.secret(peer))return;
     // Observed LAN source is merely a route candidate; identity remains pinned.
     // Never persist it, clear explicit suppression or replenish the retry budget.
-    for(auto device:s.store.devices())if(device.id==peer){auto [entry,inserted]=s.gateway_routes.try_emplace(peer);device.address_hint=address;device.port_hint=port;entry->second.device=std::move(device);entry->second.disabled=s.suppressed_routes.contains(peer);break;}
+    for(auto device:s.store.devices())if(device.id==peer){auto [entry,inserted]=s.gateway_routes.try_emplace(peer);const bool changed=entry->second.device.address_hint!=address||entry->second.device.port_hint!=port;if(changed)entry->second.identity_failed=false;device.address_hint=address;device.port_hint=port;entry->second.device=std::move(device);entry->second.disabled=s.suppressed_routes.contains(peer);break;}
 });}
 void Service::gateway(bool enabled){auto& s=*state_;s.post([&s,enabled]{s.revoked(s.policy.gateway(enabled));s.sync_routes();
     if(!enabled&&!s.auto_connect_enabled)for(const auto& [token,id]:s.gateway_dials)s.cancelled.insert(token);

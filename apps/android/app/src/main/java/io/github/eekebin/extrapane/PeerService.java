@@ -13,6 +13,8 @@ final class PeerService implements AutoCloseable {
     private long alive()throws IOException {if(handle==0)throw new IOException("Device sharing has stopped");return handle;}
     synchronized String identity()throws IOException{return nativeIdentity(alive());}
     synchronized String[][] remembered()throws IOException{return nativeRemembered(alive());}
+    synchronized String[][] pendingForgets()throws IOException{return nativePendingForgets(alive());}
+    synchronized void dismissForget(String device)throws IOException{nativeDismissForget(alive(),device);}
     synchronized String pairingCode()throws IOException{return nativeCode(alive());}
     /** Offer rows: id,label,kind,available,inputAllowed,width,height,refresh,reason. */
     synchronized void offers(String[][] rows)throws IOException{nativeOffers(alive(),rows);}
@@ -49,6 +51,8 @@ final class PeerService implements AutoCloseable {
     private static native long nativeCreate(String path,String name)throws IOException;
     private static native String nativeIdentity(long h)throws IOException;
     private static native String[][] nativeRemembered(long h)throws IOException;
+    private static native String[][] nativePendingForgets(long h)throws IOException;
+    private static native void nativeDismissForget(long h,String peer)throws IOException;
     private static native String nativeCode(long h)throws IOException;
     private static native void nativeOffers(long h,String[][] rows)throws IOException;
     private static native long nativeStart(long h,String address,int port)throws IOException;

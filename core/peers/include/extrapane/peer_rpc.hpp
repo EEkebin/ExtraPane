@@ -8,7 +8,7 @@ namespace extrapane::peers::rpc {
 // exists in a tunnel request: the authorized grant selects a local media adapter.
 enum class Operation:std::uint8_t { catalog=1, catalog_reply=2, open=3, granted=4,
     rejected=5, close=6, stopped=7, stream_open=8, stream_data=9,
-    stream_credit=10, stream_close=11, ping=12, pong=13, cancel_request=14 };
+    stream_credit=10, stream_close=11, ping=12, pong=13, cancel_request=14, forget=15, forget_ack=16 };
 // Existing peers echo the probe; only upgraded peers return the distinct ack.
 inline constexpr std::uint64_t cancel_probe=0x455043414e43454cULL, cancel_ack=0x455043414e41434bULL;
 inline constexpr std::size_t header_size=24, max_payload=65536, data_chunk=16384;

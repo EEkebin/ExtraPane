@@ -13,11 +13,15 @@ using Lookup=std::function<std::optional<Secret>(const DeviceId&)>;
 // Persist securely before returning, or throw. A failed two-sided commit may
 // require explicit Forget/re-pair; no automatic fallback weakens remembered trust.
 using Remember=std::function<void(const DeviceId&,const Secret&)>;
-enum class Mode:std::uint8_t {open=0,pair=1,remembered=2};
+// Revocation proves the old pairing only for bilateral removal. It must never
+// authorize catalog access or resource use; its lookup is separate from trust.
+enum class Mode:std::uint8_t {open=0,pair=1,remembered=2,revocation=3};
 struct Identity {
     DeviceId claimed_peer{}; // Untrusted in open mode.
     std::optional<DeviceId> verified_peer; // Only set after PAKE and commit succeed.
     std::optional<Secret> pair_secret;
+    bool revocation_only=false;
+    std::optional<Secret> revocation_secret;
     bool newly_paired=false; // Self sessions authenticate without persistent trust.
 };
 // One instance per sharing-process lifetime. Codes never rotate on connection or pairing.
@@ -60,7 +64,7 @@ class Channel {
 public:
     Channel(access::Read read,access::Write write);
     Identity client(ClientOptions options,const Remember& remember);
-    Identity server(Policy&,const Lookup&,const Remember&,bool outer_encrypted,const DeviceId& binding);
+    Identity server(Policy&,const Lookup&,const Remember&,bool outer_encrypted,const DeviceId& binding,const Lookup& revocation_lookup={});
     void read(std::span<std::uint8_t>);
     void write(std::span<const std::uint8_t>);
 };

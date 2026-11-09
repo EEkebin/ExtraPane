@@ -3,6 +3,7 @@
 #include <cstring>
 #include <cstdio>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #ifdef _WIN32
 #define NOMINMAX
@@ -24,7 +25,7 @@ namespace extrapane::peers {
 namespace {
 constexpr std::size_t limit=1024*1024,max_peers=256;
 struct Entry {RememberedDevice device;PairSecret secret;};
-struct State {DeviceId identity;std::map<DeviceId,Entry> peers;};
+struct State {DeviceId identity;std::map<DeviceId,Entry> peers,pending,tombstones;};
 void need(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
 void clear(Bytes& value)noexcept{volatile std::uint8_t* p=value.data();for(std::size_t i=0;i<value.size();++i)p[i]=0;}
 struct Sensitive {Bytes value;~Sensitive(){clear(value);}};
@@ -91,13 +92,27 @@ void atomic_file(const std::filesystem::path& path,const Bytes& bytes){
 void put(Bytes& out,std::uint64_t n,unsigned size){for(unsigned i=size;i;--i)out.push_back(static_cast<std::uint8_t>(n>>((i-1)*8)));}
 void put(Bytes& out,const std::string& s){put(out,s.size(),2);out.insert(out.end(),s.begin(),s.end());}
 struct Reader {std::span<const std::uint8_t> in;std::uint64_t number(unsigned n){need(in.size()>=n,"Truncated trust store");std::uint64_t v=0;for(unsigned i=0;i<n;++i)v=(v<<8)|in[i];in=in.subspan(n);return v;}PairSecret key(){need(in.size()>=32,"Truncated trust key");PairSecret s{};std::copy_n(in.begin(),32,s.begin());in=in.subspan(32);return s;}std::string text(unsigned limit){auto size=number(2);need(size<=limit&&size<=in.size(),"Invalid trust text length");std::string s(reinterpret_cast<const char*>(in.data()),size);in=in.subspan(size);return s;}};
+void encode_entries(Bytes& bytes,const std::map<DeviceId,Entry>& entries,const DeviceId& identity){
+    need(entries.size()<=max_peers,"Trust record count exceeds limit");put(bytes,entries.size(),2);
+    for(const auto& [id,e]:entries){need(id==e.device.id,"Trust entry identity mismatch");valid(e.device,e.secret,identity);bytes.insert(bytes.end(),id.begin(),id.end());bytes.insert(bytes.end(),e.secret.begin(),e.secret.end());put(bytes,e.device.name);put(bytes,e.device.address_hint);put(bytes,e.device.port_hint,2);}
+}
 Bytes encode(const State& state){
-    need(valid_id(state.identity)&&state.peers.size()<=max_peers,"Invalid trust store identity or count");Bytes bytes{'E','P','T','S',0,1,0,0};bytes.insert(bytes.end(),state.identity.begin(),state.identity.end());put(bytes,state.peers.size(),2);
-    for(const auto& [id,e]:state.peers){valid(e.device,e.secret,state.identity);bytes.insert(bytes.end(),id.begin(),id.end());bytes.insert(bytes.end(),e.secret.begin(),e.secret.end());put(bytes,e.device.name);put(bytes,e.device.address_hint);put(bytes,e.device.port_hint,2);}auto sum=digest(bytes);bytes.insert(bytes.end(),sum.begin(),sum.end());need(bytes.size()<=limit,"Trust store exceeds limit");return protect(std::move(bytes));
+    need(valid_id(state.identity),"Invalid trust store identity");Bytes bytes{'E','P','T','S',0,2,0,0};bytes.insert(bytes.end(),state.identity.begin(),state.identity.end());
+    encode_entries(bytes,state.peers,state.identity);encode_entries(bytes,state.pending,state.identity);encode_entries(bytes,state.tombstones,state.identity);
+    auto sum=digest(bytes);bytes.insert(bytes.end(),sum.begin(),sum.end());need(bytes.size()<=limit,"Trust store exceeds limit");return protect(std::move(bytes));
+}
+void decode_entries(Reader& in,std::map<DeviceId,Entry>& entries,const DeviceId& identity,std::set<DeviceId>& seen){
+    const auto count=in.number(2);need(count<=max_peers,"Trust record count exceeds limit");
+    for(unsigned i=0;i<count;++i){Entry e;e.device.id=in.key();e.secret=in.key();e.device.name=in.text(128);e.device.address_hint=in.text(255);e.device.port_hint=static_cast<std::uint16_t>(in.number(2));valid(e.device,e.secret,identity);need(seen.insert(e.device.id).second,"Duplicate trusted identity");entries.emplace(e.device.id,std::move(e));}
 }
 State decode(Bytes bytes){
-    Sensitive plain{unprotect(std::move(bytes))};need(plain.value.size()>=74&&plain.value.size()<=limit,"Invalid trust store size");const auto all=std::span(plain.value);const auto payload=all.first(all.size()-32);auto sum=digest(payload);need(std::equal(sum.begin(),sum.end(),all.end()-32),"Trust store integrity check failed");Reader in{payload};need(in.number(4)==0x45505453&&in.number(2)==1&&in.number(2)==0,"Unknown trust store format");State state;state.identity=in.key();need(valid_id(state.identity),"Invalid stored device identity");const auto count=in.number(2);need(count<=max_peers,"Trust record count exceeds limit");
-    for(unsigned i=0;i<count;++i){Entry e;e.device.id=in.key();e.secret=in.key();e.device.name=in.text(128);e.device.address_hint=in.text(255);e.device.port_hint=static_cast<std::uint16_t>(in.number(2));valid(e.device,e.secret,state.identity);need(state.peers.emplace(e.device.id,e).second,"Duplicate trusted identity");}need(in.in.empty(),"Trailing trust data");return state;
+    Sensitive plain{unprotect(std::move(bytes))};need(plain.value.size()>=74&&plain.value.size()<=limit,"Invalid trust store size");const auto all=std::span(plain.value);const auto payload=all.first(all.size()-32);auto sum=digest(payload);need(std::equal(sum.begin(),sum.end(),all.end()-32),"Trust store integrity check failed");Reader in{payload};need(in.number(4)==0x45505453,"Unknown trust store format");const auto version=in.number(2);need((version==1||version==2)&&in.number(2)==0,"Unknown trust store format");State state;state.identity=in.key();need(valid_id(state.identity),"Invalid stored device identity");std::set<DeviceId> seen;
+    decode_entries(in,state.peers,state.identity,seen);if(version==2){decode_entries(in,state.pending,state.identity,seen);decode_entries(in,state.tombstones,state.identity,seen);}need(in.in.empty(),"Trailing trust data");return state;
+}
+void tombstone(State& state,Entry entry){
+    // A deterministic bounded replay cache. Eviction never restores normal trust.
+    if(!state.tombstones.contains(entry.device.id)&&state.tombstones.size()>=max_peers)state.tombstones.erase(state.tombstones.begin());
+    const auto id=entry.device.id;state.tombstones[id]=std::move(entry);
 }
 State load(const std::filesystem::path& directory,const DeviceId& expected){auto bytes=read_file(directory/"trust-v1.bin");need(bytes.has_value(),"Trust store disappeared; refusing to reset identity");auto state=decode(std::move(*bytes));need(state.identity==expected,"Local device identity changed; reopen explicitly");return state;}
 }
@@ -108,7 +123,19 @@ TrustStore::TrustStore(std::filesystem::path path):directory_(std::filesystem::a
 }
 std::vector<RememberedDevice> TrustStore::devices()const{directory(directory_);Lock lock(directory_);const auto state=load(directory_,identity_);std::vector<RememberedDevice> result;for(const auto& [id,e]:state.peers)result.push_back(e.device);return result;}
 std::optional<PairSecret> TrustStore::secret(const DeviceId& id)const{directory(directory_);Lock lock(directory_);const auto state=load(directory_,identity_);auto found=state.peers.find(id);return found==state.peers.end()?std::optional<PairSecret>{}:found->second.secret;}
-void TrustStore::remember(RememberedDevice peer,const PairSecret& secret){valid(peer,secret,identity_);directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);need(!state.peers.contains(peer.id),"Device is already remembered; forget it before pairing again");need(state.peers.size()<max_peers,"Remembered device limit reached");state.peers[peer.id]={std::move(peer),secret};atomic_file(directory_/"trust-v1.bin",encode(state));}
+void TrustStore::remember(RememberedDevice peer,const PairSecret& secret){valid(peer,secret,identity_);directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);need(!state.peers.contains(peer.id),"Device is already remembered; forget it before pairing again");need(!state.pending.contains(peer.id),"Device revocation is pending; finish forgetting before pairing again");need(state.peers.size()<max_peers,"Remembered device limit reached");state.tombstones.erase(peer.id);state.peers[peer.id]={std::move(peer),secret};atomic_file(directory_/"trust-v1.bin",encode(state));}
 void TrustStore::update_hint(RememberedDevice peer){directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);auto old=state.peers.find(peer.id);need(old!=state.peers.end(),"Cannot update an unknown device");valid(peer,old->second.secret,identity_);old->second.device=std::move(peer);atomic_file(directory_/"trust-v1.bin",encode(state));}
 bool TrustStore::forget(const DeviceId& id){directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);if(!state.peers.erase(id))return false;atomic_file(directory_/"trust-v1.bin",encode(state));return true;}
+bool TrustStore::begin_forget(const DeviceId& id){directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);if(state.pending.contains(id))return true;auto found=state.peers.find(id);if(found==state.peers.end())return false;need(state.pending.size()<max_peers,"Pending revocation limit reached");state.pending.emplace(id,found->second);state.peers.erase(found);atomic_file(directory_/"trust-v1.bin",encode(state));return true;}
+bool TrustStore::dismiss_forget(const DeviceId& id){directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);auto found=state.pending.find(id);if(found==state.pending.end())return false;tombstone(state,found->second);state.pending.erase(found);atomic_file(directory_/"trust-v1.bin",encode(state));return true;}
+std::vector<RememberedDevice> TrustStore::pending_forgets()const{directory(directory_);Lock lock(directory_);const auto state=load(directory_,identity_);std::vector<RememberedDevice> result;for(const auto& [id,e]:state.pending)result.push_back(e.device);return result;}
+std::optional<PairSecret> TrustStore::revocation_secret(const DeviceId& id)const{directory(directory_);Lock lock(directory_);const auto state=load(directory_,identity_);if(auto found=state.pending.find(id);found!=state.pending.end())return found->second.secret;if(auto found=state.tombstones.find(id);found!=state.tombstones.end())return found->second.secret;return {};}
+bool TrustStore::acknowledge_forget(const DeviceId& id,const PairSecret& expected){directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);auto found=state.pending.find(id);if(found==state.pending.end()){auto old=state.tombstones.find(id);return old!=state.tombstones.end()&&old->second.secret==expected;}if(found->second.secret!=expected)return false;tombstone(state,found->second);state.pending.erase(found);atomic_file(directory_/"trust-v1.bin",encode(state));return true;}
+bool TrustStore::receive_forget(const DeviceId& id,const PairSecret& expected){directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);
+    if(auto found=state.peers.find(id);found!=state.peers.end()){if(found->second.secret!=expected)return false;tombstone(state,found->second);state.peers.erase(found);}
+    else if(auto found=state.pending.find(id);found!=state.pending.end()){if(found->second.secret!=expected)return false;tombstone(state,found->second);state.pending.erase(found);}
+    else{auto old=state.tombstones.find(id);return old!=state.tombstones.end()&&old->second.secret==expected;}
+    atomic_file(directory_/"trust-v1.bin",encode(state));return true;
+}
+
 }

@@ -11,7 +11,7 @@ std::uint64_t get(std::span<const std::uint8_t> in){std::uint64_t n=0;for(auto b
 void valid(const Message& m,std::size_t size){
     require(m.id&&size<=max_payload);
     switch(m.operation){
-    case Operation::cancel_request:case Operation::catalog:case Operation::close:case Operation::stopped:case Operation::stream_close:case Operation::ping:case Operation::pong:require(!size);break;
+    case Operation::forget:case Operation::forget_ack:case Operation::cancel_request:case Operation::catalog:case Operation::close:case Operation::stopped:case Operation::stream_close:case Operation::ping:case Operation::pong:require(!size);break;
     case Operation::granted:require(size>=10&&size<=115);break;
     case Operation::stream_open:case Operation::stream_credit:require(size==8);break;
     case Operation::stream_data:require(size&&size<=data_chunk);break;

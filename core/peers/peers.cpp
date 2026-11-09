@@ -139,6 +139,7 @@ Decision SharingPolicy::open(const ConnectionIdentity& visitor,const DeviceId& o
     if(pairing_required_&&!paired)return {{},"Pair this device first"};const Catalog* catalog=&local_;const bool delegated=owner!=local_.device;
     if(delegated){if(!gateway_||!paired||!trusted_.contains(owner)||owner==visitor.device||visitor.device==local_.device)return {{},"Gateway access is unavailable"};auto remote=remotes_.find(owner);if(remote==remotes_.end()||remote->second.expires<=now)return {{},"Paired destination is offline"};catalog=&remote->second.catalog;}
     const auto* o=find(*catalog,resource);if(!o)return {{},"Resource is not offered"};if(!o->available)return {{},o->unavailable_reason};if(input&&!o->input_allowed)return {{},"Remote input is not enabled for this resource"};
+    if(o->kind==Kind::existing_screen)for(const auto& [id,g]:grants_)if(g.owner==owner&&g.resource==resource&&g.visitor==visitor.device)return {{},"This screen is already in use by this device"};
     if(o->kind==Kind::usb)for(const auto& [id,g]:grants_)if(g.owner==owner&&g.resource==resource)return {{},"USB storage is already in use"};
     if(next_grant_==UINT64_MAX)return {{},"Session identity exhausted"};Grant grant{++next_grant_,visitor.device,owner,resource,o->kind,input,delegated,paired};grants_.emplace(grant.id,grant);return {grant,{}};
 }

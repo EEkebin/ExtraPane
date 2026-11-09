@@ -1,5 +1,27 @@
 # Decisions, assumptions, and evidence
 
+## Paired devices, monitor rows and bilateral Forget (2026-11-08)
+
+The Devices workspace manages pairing and availability. Saved devices reconnect
+in the background; resource power buttons start and stop media independently.
+There are no manual Connect/Disconnect controls for a saved peer. Initial pairing
+by discovery or direct address remains explicit.
+
+Monitors use repeatable rows. Each virtual-monitor row chooses Custom or a named
+monitor preset, and has its own dimensions, refresh target and session. Both Custom
+and named presets may be reused: a preset configures a new virtual monitor and is
+not an exclusive claim on the physical screen. Only duplicate existing-screen
+views of the same owner/resource on one receiving computer are rejected, including
+pending starts. Existing-screen input is capability-gated and opt-in.
+
+Forget must end local trust immediately and request authenticated removal on the
+other device. Offline remote removal stays visibly pending and retries; it must
+never restore normal access merely to send the removal. A retained revocation
+credential can authorize only removal/acknowledgement, not catalogs or media.
+Acknowledgements and retries are bound to the old pairing key so delayed work
+cannot remove a newer explicit pairing. Older peers that cannot handle bilateral
+Forget require manual removal on that peer; pending is not success.
+
 ## Multiple client connections and tray lifetime (2026-11-07)
 
 Latest client interaction: each resource has a green power button to connect and

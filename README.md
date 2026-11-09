@@ -43,8 +43,9 @@ speakers. Supported resources are available by default while ExtraPane is open.
 Discover a device, pair using its displayed code, then select a resource to use.
 Available paired devices reconnect automatically and load their resource catalogs.
 This does not activate a camera, microphone, monitor or USB device.
-Explicitly disconnecting a device pauses automatic connection to that peer until
-you connect manually or restart ExtraPane.
+Use resource power buttons to stop individual streams; saved devices manage their
+availability automatically. Forget removes trust locally and requests removal on
+the other device; offline remote removal is shown as pending.
 OS permissions and receiving-device support still apply.
 
 Under **This device** on Devices, resources show Available until another device requests them. Red
@@ -53,7 +54,7 @@ Disconnecting one resource preserves the others; disconnecting all active shares
 leaves the device discoverable and ready for a new request.
 
 **Devices** manages pairing and saved devices. Press **Search nearby** to run a
-short LAN search for new devices; paired devices are excluded. Expand **Connect by address** for
+short LAN search for new devices; paired devices are excluded. Expand **Pair by address** for
 an IPv4 address or localhost, port, optional interface and pairing code. This also
 works on static-IP LANs and when multicast discovery is unavailable. Across networks,
 the address/port must already be reachable; discovery does not cross the internet.
@@ -78,11 +79,12 @@ virtual-display support. Choose the destination's advertised monitor mode or a
 custom resolution/refresh rate. **Existing screen** instead captures an existing
 monitor; it does not create an extended desktop.
 
-On Devices, these uses are separated under **Use as an extra monitor** and
-**Share an existing screen (view only)**. Choose **Custom resolution** or a named
-monitor for the extra-monitor mode. Named monitors supply the starting resolution
-and refresh rate; their current desktop picture is sent only by the existing-screen
-option.
+In Resources, add monitor rows and choose **Virtual monitor** with **Custom** or
+a named monitor preset. Both Custom and named presets can be reused for separate
+virtual monitors. Each row has its own power control. **Existing screen** views the
+selected physical screen instead; a second simultaneous view of that same screen
+on the same receiving computer is blocked. Windows existing-screen input is opt-in
+through **Allow input**, where the provider advertises support.
 
 Pairing is enabled by default. Enter the other device's six-digit code on the
 first connection; remembered devices subsequently prove their saved secret.

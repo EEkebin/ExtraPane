@@ -48,7 +48,7 @@ std::vector<Source> monitors(){
         const auto identity=utf8(target.monitorDevicePath);const auto label=target.monitorFriendlyDeviceName[0]?utf8(target.monitorFriendlyDeviceName):"Monitor "+std::to_string(i+1);
         DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};source.header.type=DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;source.header.size=sizeof(source);source.header.adapterId=path.sourceInfo.adapterId;source.header.id=path.sourceInfo.id;
         if(DisplayConfigGetDeviceInfo(&source.header)==ERROR_SUCCESS){const auto destinationId=opaque(Kind::display_destination,utf8(source.viewGdiDeviceName));for(auto& item:result)if(item.offer.id==destinationId){item.offer.label=short_label(label);break;}}
-        result.push_back({{opaque(Kind::existing_screen,identity),short_label(label),Kind::existing_screen,true,false,""},identity});
+        result.push_back({{opaque(Kind::existing_screen,identity),short_label(label),Kind::existing_screen,true,true,""},identity});
     }
     return result;
 }
@@ -97,7 +97,7 @@ Service::Hooks WindowsPeerRuntime::hooks()const{
     };
     hooks.stopped=[state](const Service::Context& c){std::lock_guard lock(state->mutex);state->stop(c);};hooks.cancel_request=hooks.stopped;
     hooks.poll=[state]{std::lock_guard lock(state->mutex);std::vector<Service::Context> ended;const auto events=state->provider.poll();const auto lost=state->receiver.poll();
-        for(const auto& [key,use]:state->uses){bool failed=std::find(lost.begin(),lost.end(),use.lease)!=lost.end();if(use.screenHost&&!use.screenHost->running())failed=true;if(use.screenClient&&!use.screenClient->running())failed=true;if(use.context.incoming)for(const auto& event:events)if(event.ended&&event.grant==use.context.grant)failed=true;if(failed)ended.push_back(use.context);}return ended;
+        for(const auto& [key,use]:state->uses){bool failed=std::find(lost.begin(),lost.end(),use.lease)!=lost.end();if(use.screenHost&&!use.screenHost->running())failed=true;if(use.screenClient&&!use.screenClient->running())failed=true;if(use.context.incoming)for(const auto& event:events)if(event.ended&&event.grant==use.context.grant)failed=true;if(failed){auto context=use.context;if(use.screenHost)context.failure_detail=use.screenHost->failure();if(use.screenClient)context.failure_detail=use.screenClient->failure();ended.push_back(std::move(context));}}return ended;
     };return hooks;
 }
 }

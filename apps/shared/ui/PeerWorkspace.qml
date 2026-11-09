@@ -82,6 +82,102 @@ Item {
         if(enabled && !sharingConfigurationValid()) return
         peers.setGatewaySharing(enabled,bind.selectedAddress,Number(listenPort.text))
     }
+    Dialog {
+        id: pendingRemovalDialog
+        property string deviceId: ""
+        title: "Clear pending removal?"
+        modal: true; anchors.centerIn: parent; width: Math.min(parent.width-40,460); height: 230
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        contentItem: Label { text: "Removal on the other device has not been confirmed. Forget this computer on that device manually before pairing again."; wrapMode: Text.WordWrap }
+        onAccepted: peers.dismissPendingForget(deviceId)
+    }
+    property var monitorDrafts: []
+    property int nextMonitorRow: 0
+    function customMonitor(item) { return item.kindId===0 && ((!item.width&&!item.height) || /custom/i.test(item.label||"")) }
+    function preferredMonitor(items) {
+        return items.find(item => customMonitor(item)) || items.find(item => item.kindId===0) || items[0]
+    }
+    function addMonitorRow(connection,items) {
+        const item=preferredMonitor(items); if(!item) return
+        monitorDrafts=monitorDrafts.concat([{uid:String(++nextMonitorRow),connection:String(connection),owner:item.owner,resource:item.id,kindId:item.kindId,width:String(item.width||1920),height:String(item.height||1080),refresh:String(Math.min(item.refresh||60,360)),input:!!item.inputAllowed&&item.kindId===0,request:""}])
+    }
+    function ensureMonitorRow(connection,items) {
+        if(!items.length) return
+        const target=String(connection)
+        let changed=false
+        const next=monitorDrafts.map(row => {
+            if(row.connection===target || !items.some(item=>item.owner===row.owner)) return row
+            const active=peers.connections.some(session=>session.incoming!==true&&String(session.connection)===row.connection&&String(session.request)===row.request)
+            const oldLink=peers.devices.some(device=>String(device.connection)===row.connection)
+            if(active||oldLink) return row
+            changed=true; return Object.assign({},row,{connection:target,request:""})
+        })
+        if(changed)monitorDrafts=next
+        if(!monitorDrafts.some(row => row.connection===target)) addMonitorRow(connection,items)
+    }
+    function updateMonitorRow(uid,changes) {
+        monitorDrafts=monitorDrafts.map(row => row.uid===uid ? Object.assign({},row,changes) : row)
+    }
+    function saveMonitorDraft(uid,changes) {
+        const row=monitorDrafts.find(row=>row.uid===uid); if(row)Object.assign(row,changes)
+    }
+    function selectMonitor(uid,item) {
+        if(!item) return
+        updateMonitorRow(uid,{owner:item.owner,resource:item.id,kindId:item.kindId,width:String(item.width||1920),height:String(item.height||1080),refresh:String(Math.min(item.refresh||60,360)),input:!!item.inputAllowed&&item.kindId===0})
+    }
+    component MonitorRows: ColumnLayout {
+        id: monitorList
+        required property string connectionId
+        required property var items
+        Layout.fillWidth: true; spacing: 12
+        Component.onCompleted: workspace.ensureMonitorRow(connectionId,items)
+        onItemsChanged: Qt.callLater(function(){workspace.ensureMonitorRow(monitorList.connectionId,monitorList.items)})
+        Action { objectName: monitorList.items.length ? "peerAddMonitor_"+monitorList.connectionId : ""; text: "+ Add monitor"; Layout.alignment: Qt.AlignRight; onClicked: workspace.addMonitorRow(monitorList.connectionId,monitorList.items) }
+        Repeater {
+            model: monitorList.items.length ? workspace.monitorDrafts.filter(row => row.connection===monitorList.connectionId) : []
+            delegate: Frame {
+                id: monitorRow
+                required property var modelData
+                readonly property var selected: monitorList.items.find(item => item.owner===modelData.owner && item.id===modelData.resource) || {id:modelData.resource,owner:modelData.owner,kindId:modelData.kindId,label:"Unavailable monitor",available:false,inputAllowed:false,reason:"This monitor is no longer available"}
+                readonly property var choices: monitorList.items.filter(item=>item.kindId===modelData.kindId).map((item,index)=>Object.assign({},item,{choiceName:workspace.customMonitor(item) ? "Custom" : "Monitor "+(monitorList.items.filter(candidate=>candidate.kindId===modelData.kindId&&!workspace.customMonitor(candidate)).findIndex(candidate=>candidate.id===item.id&&candidate.owner===item.owner)+1)+" - "+item.label}))
+                readonly property var sessions: peers.connections.filter(row => row.incoming!==true && String(row.connection)===monitorList.connectionId && modelData.request && String(row.request)===modelData.request)
+                readonly property bool active: sessions.length>0
+                readonly property bool occupied: modelData.kindId===5 && !active && peers.connections.some(row=>row.incoming!==true&&row.kindId===5&&row.owner===selected.owner&&row.resource===selected.id)
+                Layout.fillWidth: true; padding: 12
+                background: Rectangle { radius: 10; color: "#16283e"; border.color: "#344d68" }
+                contentItem: ColumnLayout {
+                    spacing: 10
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ComboBox { objectName: "peerMonitorMode_"+monitorRow.modelData.uid; model:["Virtual monitor","View existing screen"]; currentIndex:monitorRow.modelData.kindId===5?1:0; enabled:!monitorRow.active; Layout.preferredWidth:180; onActivated:{const kind=index===1?5:0;const selected=monitorList.items.find(item=>item.kindId===kind);if(selected)workspace.selectMonitor(monitorRow.modelData.uid,selected);else{notification.text="This device has no monitors in that mode.";notification.open();currentIndex=monitorRow.modelData.kindId===5?1:0}} }
+                        ComboBox { objectName: "peerMonitorChoice_"+monitorRow.modelData.uid; Layout.fillWidth:true; textRole:"choiceName"; model:monitorRow.choices; currentIndex:monitorRow.choices.findIndex(item=>item.owner===monitorRow.selected.owner&&item.id===monitorRow.selected.id); enabled:!monitorRow.active; onActivated:workspace.selectMonitor(monitorRow.modelData.uid,monitorRow.choices[index]) }
+                    }
+                    Label { visible:!monitorRow.selected.available||monitorRow.occupied; text:monitorRow.occupied?"This screen is already being viewed.":(monitorRow.selected.reason||"Unavailable"); color:"#f0c66e"; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+                    RowLayout {
+                        visible:monitorRow.modelData.kindId===0; Layout.fillWidth:true
+                        Field { id: monitorWidth; objectName:"peerMonitorWidth_"+monitorRow.modelData.uid; Layout.fillWidth:true; placeholderText:"Width"; text:monitorRow.modelData.width; enabled:!monitorRow.active; validator:IntValidator{bottom:64;top:4096} onTextEdited:workspace.saveMonitorDraft(monitorRow.modelData.uid,{width:text}) }
+                        Field { id: monitorHeight; objectName:"peerMonitorHeight_"+monitorRow.modelData.uid; Layout.fillWidth:true; placeholderText:"Height"; text:monitorRow.modelData.height; enabled:!monitorRow.active; validator:IntValidator{bottom:64;top:4096} onTextEdited:workspace.saveMonitorDraft(monitorRow.modelData.uid,{height:text}) }
+                        Field { id: monitorRefresh; objectName:"peerMonitorRefresh_"+monitorRow.modelData.uid; Layout.preferredWidth:110; placeholderText:"Hz / FPS"; text:monitorRow.modelData.refresh; enabled:!monitorRow.active; validator:IntValidator{bottom:1;top:360} onTextEdited:workspace.saveMonitorDraft(monitorRow.modelData.uid,{refresh:text}) }
+                    }
+                    RowLayout {
+                        Layout.fillWidth:true
+                        CheckBox { id: monitorInput; objectName:"peerMonitorInput_"+monitorRow.modelData.uid; text:"Allow input"; visible:monitorRow.selected.inputAllowed; enabled:!monitorRow.active; checked:monitorRow.modelData.input; onToggled:workspace.saveMonitorDraft(monitorRow.modelData.uid,{input:checked}) }
+                        Item { Layout.fillWidth:true }
+                        Action { objectName:"peerRemoveMonitor_"+monitorRow.modelData.uid; text:"Remove"; enabled:!monitorRow.active; onClicked:workspace.monitorDrafts=workspace.monitorDrafts.filter(row=>row.uid!==monitorRow.modelData.uid) }
+                        PowerButton {
+                            objectName:"peerMonitorPower_"+monitorRow.modelData.uid; destructive:monitorRow.active; description:(destructive?"Disconnect ":"Connect ")+monitorRow.selected.label; enabled:monitorRow.active||(monitorRow.selected.available&&!monitorRow.occupied)
+                            onClicked:{
+                                const active=monitorRow.sessions.slice();if(active.length){for(const session of active){if(session.phase==="connecting")peers.cancelResource(session.connection,session.request);else peers.stopResource(session.connection,session.grant)}return}
+                                if(monitorRow.modelData.kindId===0&&!workspace.checkFields([monitorWidth,monitorHeight,monitorRefresh]))return
+                                const request=peers.useResource(monitorList.connectionId,monitorRow.selected.owner,monitorRow.selected.id,!!monitorRow.selected.inputAllowed&&monitorInput.checked,monitorRow.modelData.kindId===0?Number(monitorWidth.text):0,monitorRow.modelData.kindId===0?Number(monitorHeight.text):0,monitorRow.modelData.kindId===0?Number(monitorRefresh.text):0)
+                                if(request)workspace.updateMonitorRow(monitorRow.modelData.uid,{request:String(request),width:monitorWidth.text,height:monitorHeight.text,refresh:monitorRefresh.text})
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     component SectionHeading: ColumnLayout {
         property string title: ""
         Layout.fillWidth: true; spacing: 12
@@ -150,11 +246,11 @@ Item {
     component MonitorSection: Label {
         property int kind: 0
         property bool receiving: false
-        text: receiving ? (kind===0 ? "Extend this desktop" : "View an existing screen (view only)") : (kind===0 ? "Use as an extra monitor" : "Share an existing screen (view only)")
+        text: receiving ? (kind===0 ? "Extend this desktop" : "View an existing screen") : (kind===0 ? "Use as an extra monitor" : "Share an existing screen")
         textFormat: Text.PlainText; font.weight: Font.DemiBold; color: "#aabbd3"
         Layout.fillWidth: true; wrapMode: Text.WordWrap; topPadding: 8; bottomPadding: 4
     }
-    component ResourceGroup: ColumnLayout {
+    component ResourceGroup: Frame {
         id: group
         property string title: ""
         property string symbol: ""
@@ -162,8 +258,11 @@ Item {
         property bool expanded: true
         property string groupKey: ""
         default property alias rows: groupBody.data
-        Layout.fillWidth: true; spacing: expanded ? 10 : 0
-        data: [ToolButton {
+        Layout.fillWidth: true; padding: 12
+        background: Rectangle { radius: 14; color: "#101e30"; border.color: "#405773"; border.width: 1 }
+        contentItem: ColumnLayout {
+        spacing: group.expanded ? 10 : 0
+        ToolButton {
             id: groupHeader
             objectName: group.groupKey+"Header"
             Layout.fillWidth: true; Layout.preferredHeight: 54; padding: 14
@@ -175,11 +274,13 @@ Item {
                 Label { text: group.title+" ("+group.count+")"; font.weight: Font.DemiBold; anchors.centerIn: parent; width: Math.max(0,parent.width-68); horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight }
                 AppIcon { symbol: "chevron"; width: 18; height: 18; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; rotation: group.expanded ? 90 : 0; Behavior on rotation { NumberAnimation { duration: 160 } } }
             }
-        }, ColumnLayout {
+        }
+        ColumnLayout {
             id: groupBody
             objectName: group.groupKey+"Body"
             visible: group.expanded; Layout.fillWidth: true; spacing: 10
-        }]
+        }
+        }
     }
     RowLayout {
         anchors.fill: parent; spacing: 0
@@ -312,10 +413,11 @@ Item {
                                 Label { textFormat: Text.PlainText; text: pairedCard.modelData.name; Layout.fillWidth: true; elide: Text.ElideRight }
                                 Label { textFormat: Text.PlainText; text: pairedCard.modelData.address ? pairedCard.modelData.address+":"+pairedCard.modelData.port : "Choose this device from discovery or enter its address"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
-                            Action { objectName: "peerRemembered_"+pairedCard.modelData.id; text: "Connect"; visible: !workspace.connectedDevice(pairedCard.modelData.id); enabled: !!pairedCard.modelData.address && pairedCard.modelData.port>0; onClicked: peers.connectDevice(pairedCard.modelData.address,pairedCard.modelData.port,"",pairedCard.modelData.id,outgoingNic.selectedAddress,false) }
-                            Label { text: "Connected"; color: "#aabbd3"; visible: workspace.connectedDevice(pairedCard.modelData.id) }
-                            Action { text: "Resources"; visible: workspace.connectedDevice(pairedCard.modelData.id); onClicked: workspace.page=2 }
-                            Action { objectName: "peerForget_"+pairedCard.modelData.id; text: "Forget"; destructive: true; onClicked: peers.forgetDevice(pairedCard.modelData.id) }
+                            Label { text: "Connected"; color: "#aabbd3"; visible: !pairedCard.modelData.pendingForget && workspace.connectedDevice(pairedCard.modelData.id) }
+                            Action { text: "Resources"; visible: !pairedCard.modelData.pendingForget && workspace.connectedDevice(pairedCard.modelData.id); onClicked: workspace.page=2 }
+                            Label { text: "Removing pairing when the other device is reachable..."; visible: modelData.pendingForget===true; color: "#f0c66e"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            Action { objectName: "peerClearPending_"+pairedCard.modelData.id; text: "Clear pending removal"; visible: pairedCard.modelData.pendingForget===true; onClicked: {pendingRemovalDialog.deviceId=pairedCard.modelData.id;pendingRemovalDialog.open()} }
+                            Action { objectName: "peerForget_"+pairedCard.modelData.id; text: "Forget"; visible: !pairedCard.modelData.pendingForget; destructive: true; onClicked: { workspace.monitorDrafts=workspace.monitorDrafts.filter(row=>row.owner!==pairedCard.modelData.id); peers.forgetDevice(pairedCard.modelData.id) } }
                             }
                         }
                     }
@@ -343,7 +445,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; placeholderText: "Pairing code (first connection)"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly }
-                            Action { objectName: "peerConnect"; text: "Connect"; visible: !workspace.manualConnected; onClicked: {
+                            Action { objectName: "peerConnect"; text: "Pair"; visible: !workspace.manualConnected; onClicked: {
                                 const numeric=workspace.checkFields([port]); host.invalid=!workspace.validAddress(host.text)
                                 let remembered=false; let matches=0
                                 for(const device of peers.remembered) {
@@ -389,7 +491,6 @@ Item {
                                     Label { text: modelData.verified ? "Connected - verified" : "Connected - unverified"; color: "#aabbd3" }
                                 }
                                 Action { text: "Resources"; visible: !modelData.incoming; onClicked: workspace.page=2 }
-                                Action { text: "Disconnect"; destructive: true; onClicked: workspace.disconnectManagedDevice(modelData) }
                             }
                         }
                     }
@@ -493,7 +594,6 @@ Item {
                                         }
                                     }
                                 }
-                                Action { objectName: "peerDeviceDisconnect_"+peerDevice.modelData.connection; text: "Disconnect"; destructive: true; onClicked: peers.disconnectDevice(peerDevice.modelData.connection) }
                             }
                             ColumnLayout {
                                 objectName: "peerDeviceBody_"+peerDevice.modelData.connection
@@ -504,11 +604,12 @@ Item {
                                     id: catalogGroup
                                     required property var modelData
                                     property var items: workspace.groupedRows(peerDevice.modelData.resources, modelData)
-                                    title: modelData.title; symbol: modelData.icon; count: items.length
+                                    title: modelData.title; symbol: modelData.icon; count: modelData.key==="monitors"?workspace.monitorDrafts.filter(row=>row.connection===String(peerDevice.modelData.connection)).length:items.length
                                     groupKey: "peerCatalog_"+peerDevice.modelData.connection+"_"+modelData.key
-                                    visible: count>0
+                                    visible: items.length>0
+                                    MonitorRows { connectionId:String(peerDevice.modelData.connection); items:catalogGroup.modelData.key==="monitors"?catalogGroup.items:[]; visible:catalogGroup.modelData.key==="monitors" }
                                     Repeater {
-                                        model: catalogGroup.items
+                                        model: catalogGroup.modelData.key==="monitors" ? [] : catalogGroup.items
                                         delegate: ColumnLayout {
                                             id: catalogRow
                                             required property var modelData
@@ -527,7 +628,7 @@ Item {
                                                 Label { textFormat: Text.PlainText; text: resourceCard.modelData.label; font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                                 Label { textFormat: Text.PlainText; visible: resourceCard.modelData.delegated===true; text: "Via gateway ? "+(resourceCard.modelData.ownerName||""); color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                                 Label { textFormat: Text.PlainText; visible: !resourceCard.modelData.available; text: resourceCard.modelData.reason; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                                                CheckBox { id: input; visible: resourceCard.modelData.inputAllowed; checked: resourceCard.modelData.inputAllowed&&resourceCard.modelData.kindId===0; text: "Allow input" }
+
                                                 RowLayout {
                                                     visible: resourceCard.modelData.kindId===0
                                                     Field { id: modeWidth; objectName: "peerWidth_"+resourceCard.modelData.id; text: String(resourceCard.modelData.width||1920); placeholderText: "Width"; Layout.fillWidth: true; validator: IntValidator { bottom:64; top:4096 } }
@@ -536,6 +637,7 @@ Item {
                                                 }
                                                 RowLayout {
                                                     Layout.fillWidth: true
+                                                    CheckBox { id: input; visible: resourceCard.modelData.inputAllowed; checked: resourceCard.modelData.inputAllowed&&resourceCard.modelData.kindId===0; text: "Allow input" }
                                                     Item { Layout.fillWidth: true }
                                                     PowerButton {
                                                         objectName: "peerUse_"+resourceCard.modelData.id

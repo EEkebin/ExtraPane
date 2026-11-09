@@ -45,7 +45,8 @@ int main(){try{
     auto camera=policy.open(friendPeer,id(1),"camera-1",false,0);check(camera.grant.has_value());
     check(!policy.close(stranger,camera.grant->id));check(!policy.close({friendPeer.device,false},camera.grant->id));
     check(!policy.open(friendPeer,id(1),"screen-1",true,0).grant);check(policy.open(friendPeer,id(1),"screen-1",false,0).grant.has_value());
-    check(policy.open(friendPeer,id(1),"display-1",true,0).grant.has_value());check(!policy.open(friendPeer,id(1),"not-offered",false,0).grant);
+    check(!policy.open(friendPeer,id(1),"screen-1",false,0).grant);
+    check(policy.open(friendPeer,id(1),"display-1",true,0).grant.has_value());check(policy.open(friendPeer,id(1),"display-1",true,0).grant.has_value());check(!policy.open(friendPeer,id(1),"not-offered",false,0).grant);
     check(policy.open(friendPeer,id(1),"usb-1",false,0).grant.has_value());check(!policy.open(friendPeer,id(1),"usb-1",false,0).grant);
     auto withdrawn=local.offers;withdrawn.erase(withdrawn.begin());auto canceled=policy.offers(withdrawn);check(canceled.size()==1&&canceled[0].id==camera.grant->id);
     check(!policy.open(friendPeer,id(1),"camera-1",false,0).grant);policy.offers(local.offers);

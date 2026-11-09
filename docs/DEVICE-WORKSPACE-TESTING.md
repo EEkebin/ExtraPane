@@ -39,7 +39,7 @@ Click or tap a group header to expand or collapse it. Collapsing a group must
 retain its selections and active sessions. Within Monitors, extending a desktop
 and viewing an existing screen remain separate actions.
 On Devices these appear under **Use as an extra monitor** and **Share an existing
-screen (view only)**. The first offers this device as a receiving screen: choose
+screen**. The first offers this device as a receiving screen: choose
 **Custom resolution** or a named monitor whose mode supplies the initial settings.
 The second sends an already-existing screen's picture. A monitor may appear once
 in each section because these are different uses of the same hardware. Resource
@@ -68,11 +68,11 @@ selected headset must not redirect its session to the loudspeaker.
    no per-resource enable or separate Start sharing action is needed.
    Keep **Require pairing** enabled. Offering the destination alone must not create
    a virtual monitor or start a stream.
-2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or expand **Connect by address** and enter its
+2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or expand **Pair by address** and enter its
    IPv4 address and port. Enter the laptop's displayed six-digit code. Choose
    Automatic route, or the intended local interface on a multihomed computer.
-3. Connect, open **Resources**, and select the advertised display destination. Use its advertised mode
-   or enter a custom resolution and refresh target. The desktop creates the virtual
+3. Pair, open **Resources**, and add a monitor row. Choose Virtual monitor, then
+   Custom or a named monitor preset; set its resolution and refresh target. The desktop creates the virtual
    monitor; the laptop opens the receiver window.
 4. Verify picture, supported input, fullscreen and monitor arrangement. Disconnect
    only that resource. Its window and virtual monitor should close, while unrelated
@@ -80,14 +80,16 @@ selected headset must not redirect its session to the loudspeaker.
 
 Refresh targets up to 360 FPS are requests, not guaranteed throughput. Native OS,
 driver, encoder and display limits still apply. **Existing screen** is a separate,
-currently view-only offer; it must not create a virtual monitor.
+screen-capture offer; it must not create a virtual monitor. Input appears only
+where the provider advertises support and requires Allow input to be selected.
 
 ## Device cards
 
 Click a connected device header to collapse or expand its resource groups. Collapse
 one device while another stays expanded; refresh its catalog and confirm the
 collapsed state stays with the same device. Active video/audio/camera/USB sessions
-must continue unchanged. The header's Disconnect action remains distinct. Android
+must continue unchanged. Paired devices manage availability automatically; use
+resource power buttons to stop media, or Forget to remove trust. Android
 paired-device cards also collapse their details without forgetting or disconnecting
 the peer.
 
@@ -113,11 +115,14 @@ the peer.
 
 ## Pairing and network behavior
 
-- Reconnect through the saved-device entry without a code. A uniquely matching saved
-  address/port also selects the expected identity; an identity mismatch must fail.
+- Restart with a saved peer available and verify automatic availability without a
+  code. A uniquely matching saved address/port pins the expected identity; an
+  identity mismatch must fail.
 - Stop/start sharing within the same app process: the code stays unchanged. Restart
   the app: the code changes, while remembered-device trust remains.
-- Forget a peer: its current access ends and its saved trust is removed.
+- Forget an online peer: its current access ends and both saved entries are removed.
+  Repeat with the other peer offline: local access ends immediately, remote removal
+  shows pending, and completes when that peer returns. Do not report pending as success.
 - Test `localhost` or `127.0.0.1` separately for self-extension. Pairing still applies;
   the same computer needs the actual virtual-display integration.
 - A brief network interruption may restore authenticated non-USB resources, bounded
@@ -138,21 +143,40 @@ exact error and whether other resources continued. Track results in
 [IMPLEMENTATION-CHECKLIST.md](IMPLEMENTATION-CHECKLIST.md).
 
 
-## One-sided saved pairing
+## Pairing updates and compatibility
 
-If one device forgets a pairing while the other still remembers it, a new-code
-pairing can currently fail with a generic TLS closure. Confirm the two identities
-and remove the stale pairing on the device that still remembers it, then pair
-again using the current code. Do not disable pairing, clear every device's trust,
-or infer that TLS/network encryption itself failed from this message. An ordinary
-installer update is intended to preserve pairing data.
+An ordinary installer Update or signed Android replacement install should preserve
+pairing identity and trust. Uninstalling or clearing application data does not.
+Do not disable identity checks or silently replace a saved key when connection fails.
 
+Bilateral Forget uses a revocation-only authentication mode. Both peers need a
+supporting build; an older peer rejects it and remote removal remains pending.
+Manually forget on that older peer if it cannot be updated. Clear pending removal
+locally only after reviewing the warning: this does not confirm remote removal,
+and is useful when the remote app was removed or its trust data was reset. The private trust store
+migrates to version 2 while preserving existing pairs; older application builds
+cannot read that upgraded store. Do not downgrade over it or delete it to hide an
+upgrade error. Windows uses DPAPI encryption; POSIX permissions protect the store
+but are not OS-keychain encryption.
+
+### Repeatable monitor acceptance
+
+- Add two Custom virtual monitors and two rows using the same named preset. Each
+  must start and stop independently, with its own receiving window.
+- Change a preset while idle; its advertised dimensions/refresh should populate.
+  Refresh the catalog and collapse/reopen the group without losing row selections.
+- View one existing screen, then try it again in another row. The duplicate must
+  be rejected while the first is pending or active; after stopping it, retry succeeds.
+- Where Allow input is supported, leave it off first, then enable it for a new
+  session. Verify coordinates on the selected screen and release of owned input
+  on focus loss/disconnect. Never infer input support from video alone.
 
 ### Devices / Resources navigation
 
 - Devices: press Search nearby; no search starts at launch. After pairing, the
   peer disappears from Nearby and appears in the saved/connected device list.
-- A connected device has no Connect button. Disconnect restores that action.
+- Saved peers have availability status and Forget, not Connect/Disconnect buttons.
+  Resource power controls remain on Resources.
 - Resources: expand a device card, then a resource group, and use its power
   button. Moving pages or collapsing cards must preserve active resources.
 - About: Running version must match the installed package version.
@@ -165,8 +189,8 @@ installer update is intended to preserve pairing data.
 - Open a camera as the first resource on a newly connected peer. Delayed setup or
   a rejected camera must not remove the device or its other resources. A retry
   should be possible without reconnecting/re-pairing the device.
-- Disconnect a device explicitly: it must stay disconnected until manual Connect
-  or a fresh app start. Forget must remove it from automatic reconnect candidates.
+- Forget must remove the peer from automatic reconnect candidates immediately,
+  even while remote unpairing is pending. Pending credentials must not open resources.
 - New-device Nearby search remains manual; automatic reconnect never pairs an
   unknown device or bypasses a changed saved identity.
 

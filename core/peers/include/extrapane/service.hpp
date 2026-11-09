@@ -9,7 +9,7 @@ public:
     using Token=std::uint64_t;
     struct Options {std::filesystem::path private_directory;std::string name;std::vector<Offer> offers;bool pairing_required=true;};
     struct ConnectOptions {std::string address;std::uint16_t port=0;std::string local;DeviceId expected_peer{};std::string code;bool open_mode=false;};
-    struct Context {Token connection=0,request=0,grant=0;DeviceId peer{};bool incoming=false;Kind kind=Kind::display_destination;};
+    struct Context {Token connection=0,request=0,grant=0;DeviceId peer{};bool incoming=false;Kind kind=Kind::display_destination;std::string failure_detail;};
     enum class Role {listen_local,connect_local};
     struct Endpoint {Role role=Role::listen_local;std::uint16_t port=0;};
     struct Hooks {
@@ -31,6 +31,7 @@ public:
     DeviceId identity()const;
     std::string pairing_code()const;
     std::vector<RememberedDevice> remembered()const;
+    std::vector<RememberedDevice> pending_forgets()const;
     // Start/stop sharing preserves process-lifetime pairing code. stop withdraws
     // local offers/incoming use; independent outgoing resources remain active.
     // Methods enqueue bounded commands; poll drains UI events.
@@ -44,7 +45,11 @@ public:
     void cancel(Token connection,Token request);
     void disconnect(Token connection);
     void offers(std::vector<Offer>);
+    // Immediately remove ordinary local trust; retain a protected revocation-only
+    // outbox until the other device durably acknowledges removal. Older/offline
+    // peers remain pending. Dismiss is explicit local cleanup, not a remote ACK.
     void forget(DeviceId);
+    void dismiss_forget(DeviceId);
     void pairing_required(bool);
     void gateway(bool enabled);
     // Catalog-only remembered device presence. Never opens a media resource.

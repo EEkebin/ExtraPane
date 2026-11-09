@@ -1,10 +1,34 @@
 # Connection security
 
+## Devices workspace (development branch)
+
+The current workspace defaults to pairing. Its six-digit code lasts for the app
+process, and a password-authenticated exchange bound to the TLS channel establishes
+a random remembered key. Later sessions prove that key and pin the peer identity.
+Discovery supplies route candidates, not trusted identities. Pairing grants access
+to advertised resources; capture starts only on a resource request. Optional
+unpaired mode remains explicitly unverified.
+
+Forget removes ordinary trust and access immediately. A durable revocation outbox
+asks the other device to remove the same pairing. Its separate authentication mode
+accepts only Forget and acknowledgement, never catalogs, resource requests or media.
+The retained key is bound to that old pairing; delayed requests cannot delete a
+new pairing. Offline/unsupported peers remain pending rather than falsely reported
+as removed. A bounded receipt cache permits acknowledgement retries after a restart.
+
+The version-2 private trust store preserves version-1 pairs when migrated. Windows
+uses user-scoped DPAPI encryption; POSIX uses private directory/file permissions,
+not keychain encryption. Older app builds cannot read the upgraded store. Normal
+Update preserves trust; uninstall or clearing app data does not.
+
+The sections below describe the older Server/Client and diagnostic workflows.
+Their code lifetimes and credential storage are distinct from Devices pairing.
+
 ## Optional access-code mode
 
 The access-code build supports short-lived, one-use six-digit admission codes on Windows, Linux and macOS hosts and all four clients. A password-authenticated exchange verifies code possession and derives session-specific encryption keys before monitor creation or input grants. See [setup, protocol and limits](ACCESS-CODES.md). This is separate from the legacy diagnostic PSK mode below. Do not substitute a numeric code directly for a TLS PSK.
 
-## Automatic LAN mode (no code)
+## Legacy Server/Client automatic LAN mode (no code)
 
 The product app uses `dm-view --lan`: TLS 1.3 with a fresh ECDSA server certificate and ephemeral key exchange, with no pairing, password or approval prompt. The client does not verify server identity and the server does not authenticate clients. Encryption protects against passive observation, but this mode does not resist an active intermediary. While Start Driver is running, any client that can reach the scoped listener can receive its own desktop monitor and use input when the Server input checkbox is enabled. Use this on a trusted LAN. No application-wide static key is embedded.
 

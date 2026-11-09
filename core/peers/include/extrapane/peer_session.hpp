@@ -10,6 +10,8 @@ namespace extrapane::peers {
 class AuthenticatedConnection {
     transport::Stream stream_;
     ConnectionIdentity identity_;
+    bool revocation_only_=false;
+    std::optional<dm::peer_auth::Secret> revocation_secret_;
     rpc::Decoder decoder_;
     std::unique_ptr<std::array<std::uint8_t,rpc::data_chunk>> read_buffer_=
         std::make_unique<std::array<std::uint8_t,rpc::data_chunk>>();
@@ -22,9 +24,11 @@ public:
     static AuthenticatedConnection client(transport::Stream,dm::peer_auth::ClientOptions,
         const dm::peer_auth::Remember&,transport::Deadline);
     static AuthenticatedConnection server(transport::Stream,dm::peer_auth::Policy&,
-        const dm::peer_auth::Lookup&,const dm::peer_auth::Remember&,transport::Deadline);
+        const dm::peer_auth::Lookup&,const dm::peer_auth::Remember&,transport::Deadline,const dm::peer_auth::Lookup& revocation_lookup={});
     AuthenticatedConnection(AuthenticatedConnection&&) noexcept=default;
     AuthenticatedConnection& operator=(AuthenticatedConnection&&) noexcept=default;
+    const std::optional<dm::peer_auth::Secret>& revocation_secret()const noexcept{return revocation_secret_;}
+    bool revocation_only()const noexcept{return revocation_only_;}
     const ConnectionIdentity& identity()const noexcept{return identity_;}
     const DeviceId& remote_id()const noexcept{return identity_.device;}
     void queue(const rpc::Message&);
@@ -50,6 +54,8 @@ struct Adapter {
 class SessionDispatcher {
     SharingPolicy& policy_;
     ConnectionIdentity identity_;
+    bool revocation_only_=false;
+    std::optional<dm::peer_auth::Secret> revocation_secret_;
     Adapter adapter_;
     std::map<std::uint64_t,Grant> owned_;
     bool closed_=false;

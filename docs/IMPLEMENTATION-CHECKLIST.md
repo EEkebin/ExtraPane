@@ -17,7 +17,7 @@ mean every device combination has been validated.
 - [x] Windows server accepts concurrent display, camera, microphone and USB resources on one listener.
 - [x] Repeatable resource rows and single-server/per-resource destinations on the shared desktop interface.
 - [x] Green/red power actions; idle Disconnect all hidden; last-resource admission cleanup.
-- [x] Collapsible resource groups and animated desktop sidebar with rotating arrow.
+- [x] Collapsible resource groups and hamburger navigation; Android uses a sliding drawer.
 - [x] ExtraPane display-window/monitor branding; stable legacy upgrade identities preserved.
 - [x] Windows camera and microphone source/virtual receiving components.
 - [x] Android camera/microphone sources; Linux sources, fanout and receiving integrations; macOS sources.
@@ -25,11 +25,12 @@ mean every device combination has been validated.
 - [x] Windows USB forwarding and bounded ownership return implementation.
 - [x] Surface orphaned-driver uninstall helper repaired; removal precheck passes.
 - [x] Unified Windows installer and portable package; Linux AppImage, Android APK, macOS Universal ZIP/DMG builds.
-- [x] Matching pre.81.1 Windows installers delivered to both desktops; Android APK installed and version verified.
+- [x] Matching pre.106.1 Windows installers delivered to both desktops; Android APK installed and version verified.
 
 ### Current validation and remaining work
 
-- [ ] Complete newest package CI and deliver the build containing jitter, idle-disconnect, branding and sidebar fixes. pre.81.1 does not contain these fixes.
+- [x] pre.106.1 hosted build passed Windows, Linux AppImage, Android and both macOS architectures; release publication was skipped.
+- [ ] Complete the active monitor-row/bilateral-Forget increment and deliver its matching packages; pre.106.1 does not contain these changes.
 - [ ] Retest phone microphone while three Surface display streams are active; confirm application recording quality.
 - [ ] Verify successful Surface uninstall with the repaired helper (precheck alone is not a completed uninstall).
 - [ ] Make the microSD USB reader enumerate and transfer reliably on the receiving PC; verify eject, return, reconnect and uninstall.
@@ -1097,4 +1098,52 @@ This replaces the earlier opt-in offer power behavior.
   APK SHA256:
   `d8845252965b09dc4d682288db551b8c10e368c98913e486f18e5ce1610777f0`.
 - [ ] User visual acceptance after Windows installation pending. No Windows
-  installer or media connection was run. Hosted run `42538425580` remains active.
+  installer or media connection was run. Hosted run `42538425580` passed all
+  Windows/Linux/Android/macOS architecture jobs; publication was skipped.
+
+
+## Active increment: monitor rows and bilateral Forget (2026-11-08)
+
+- [x] Repeatable virtual-monitor rows using Custom or reusable named presets;
+  independent per-row cancellation and stop, including catalog refresh/reconnect.
+- [x] Reject duplicate existing-screen views on one consumer, including pending starts.
+- [ ] Existing-screen viewer startup repair and capability-gated input; investigate
+  reported window opening then closing without claiming a confirmed cause yet.
+- [x] Bordered resource types, input beside power, automatic saved-device availability.
+- [x] Authenticated bilateral Forget with durable offline pending state, idempotent
+  acknowledgement retry and no catalog/media access using a revocation credential.
+- [x] Review upgrade/trust preservation and safe background availability retries.
+- [ ] Isolated regression checks, matching Windows/Android packages and delivery.
+- [ ] Physical verification remains pending; no capture/input test is implied by builds.
+
+Verification so far: Qt offscreen checks passed after final monitor numbering;
+rendered Resources layout reviewed. Checks cover repeated Custom/named presets,
+independent stop/cancel, existing-screen duplicate rejection and input default,
+pending Forget controls, and keeping drafts when reconnect creates a new link.
+Android compile/lint and its host checks passed. Core loopback checks cover
+bilateral removal, offline/lost-ACK restart, forbidden ordinary use of revocation
+credentials, duplicate pending screen views, and changed-route identity-pinned
+recovery after a real 60-second backoff. Trust-store tests cover v1 migration,
+key-bound tombstones, capacity and explicit pending dismissal. Native macOS has
+static review only until the hosted build. Ordinary installer Update and signed
+Android replacement preserve trust; no evidence that Update itself erased it.
+
+Windows existing-screen input tickets now carry the exact requested permission;
+backend subprocess failures drain their final output and surface a bounded,
+credential-redacted error for the affected resource. Synthetic adapter/runtime
+checks pass. The reported Surface-to-desktop early exit is still being diagnosed;
+these fixes alone are not evidence that the live failure is resolved.
+
+
+Approved live existing-screen diagnostic reproduced the reported failure on the
+installed Surface and desktop builds: Surface physical DISPLAY1 captures at
+3000x2000; Intel Quick Sync H.264 encoder returns HRESULT `0xc00d6d61`, the SDK's
+`MF_E_TRANSFORM_STREAM_CHANGE`. The encoder output loop treats this renegotiation
+as fatal. Desktop receives the video offer then reports an incomplete TLS message
+because the provider exited. No display layout, driver, firewall or saved pairing
+was changed. Encoder repair and repeat verification are pending.
+
+Independent revocation review also identified repeated tombstone-only Forget
+requests unnecessarily bumping the global authentication epoch. The handler now
+acknowledges an already-completed removal without repeating unrelated connection
+invalidation; regression verification is included before packaging.

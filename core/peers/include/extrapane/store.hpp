@@ -27,5 +27,16 @@ public:
     void remember(RememberedDevice, const PairSecret&);
     void update_hint(RememberedDevice);
     bool forget(const DeviceId&);
+    // Durable revocation outbox. Removed immediately from ordinary trust; the
+    // old key is usable only by the dedicated authenticated revocation protocol.
+    bool begin_forget(const DeviceId&);
+    // Explicit local dismissal: remote removal is not confirmed; no trust returns.
+    bool dismiss_forget(const DeviceId&);
+    std::vector<RememberedDevice> pending_forgets()const;
+    std::optional<PairSecret> revocation_secret(const DeviceId&)const;
+    // Key binding rejects delayed requests/ACKs from an older pairing after a
+    // new explicit pairing. Tombstones permit idempotent lost-ACK retries.
+    bool acknowledge_forget(const DeviceId&,const PairSecret& expected);
+    bool receive_forget(const DeviceId&,const PairSecret& expected);
 };
 }

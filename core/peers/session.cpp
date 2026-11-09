@@ -8,7 +8,7 @@ namespace {
 rpc::Message rejected(std::uint64_t id,const std::string& reason){return {rpc::Operation::rejected,id,rpc::detail(reason)};}
 }
 AuthenticatedConnection::AuthenticatedConnection(transport::Stream stream,dm::peer_auth::Identity auth)
-    :stream_(std::move(stream)),identity_{auth.verified_peer.value_or(auth.claimed_peer),auth.verified_peer.has_value()}{
+    :stream_(std::move(stream)),identity_{auth.verified_peer.value_or(auth.claimed_peer),auth.verified_peer.has_value()},revocation_only_(auth.revocation_only),revocation_secret_(std::move(auth.revocation_secret)){
     if(!valid_id(identity_.device))fail("Authentication returned no peer identity");
 }
 AuthenticatedConnection AuthenticatedConnection::client(transport::Stream stream,dm::peer_auth::ClientOptions options,const dm::peer_auth::Remember& remember,transport::Deadline deadline){
@@ -16,9 +16,9 @@ AuthenticatedConnection AuthenticatedConnection::client(transport::Stream stream
     dm::peer_auth::Channel auth([&](auto b){stream.read(b,deadline);},[&](auto b){stream.write(b,deadline);});
     auto identity=auth.client(std::move(options),remember);return AuthenticatedConnection(std::move(stream),std::move(identity));
 }
-AuthenticatedConnection AuthenticatedConnection::server(transport::Stream stream,dm::peer_auth::Policy& policy,const dm::peer_auth::Lookup& lookup,const dm::peer_auth::Remember& remember,transport::Deadline deadline){
+AuthenticatedConnection AuthenticatedConnection::server(transport::Stream stream,dm::peer_auth::Policy& policy,const dm::peer_auth::Lookup& lookup,const dm::peer_auth::Remember& remember,transport::Deadline deadline,const dm::peer_auth::Lookup& revocation_lookup){
     dm::peer_auth::Channel auth([&](auto b){stream.read(b,deadline);},[&](auto b){stream.write(b,deadline);});
-    auto identity=auth.server(policy,lookup,remember,true,stream.binding());return AuthenticatedConnection(std::move(stream),std::move(identity));
+    auto identity=auth.server(policy,lookup,remember,true,stream.binding(),revocation_lookup);return AuthenticatedConnection(std::move(stream),std::move(identity));
 }
 void AuthenticatedConnection::queue(const rpc::Message& message){
     auto bytes=rpc::encode(message);
@@ -57,7 +57,7 @@ void AuthenticatedConnection::wait(transport::Deadline deadline){stream_.wait_io
 void AuthenticatedConnection::send(const rpc::Message& message,transport::Deadline deadline){queue(message);while(pending_output())if(!pump(deadline))wait(deadline);}
 rpc::Message AuthenticatedConnection::receive(transport::Deadline deadline){for(;;){if(auto message=next())return std::move(*message);if(!pump(deadline))wait(deadline);}}
 SessionDispatcher::SessionDispatcher(SharingPolicy& policy,const AuthenticatedConnection& connection,Adapter adapter)
-    :policy_(policy),identity_(connection.identity()),adapter_(std::move(adapter)){}
+    :policy_(policy),identity_(connection.identity()),adapter_(std::move(adapter)){if(connection.revocation_only())fail("Revocation connection cannot access resources");}
 SessionDispatcher::~SessionDispatcher(){close();}
 void SessionDispatcher::stop(const Grant& grant)noexcept{try{if(adapter_.stop)adapter_.stop(grant);}catch(...){/* Stop all remaining resources even if an adapter cleanup fails. */}}
 bool SessionDispatcher::owns(std::uint64_t grant)const noexcept{return !closed_&&owned_.contains(grant);}
