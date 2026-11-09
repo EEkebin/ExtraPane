@@ -1,5 +1,19 @@
 # Decisions, assumptions, and evidence
 
+## Pairing-code dialog (2026-11-08)
+
+Connect requests a six-digit code in a modal only for a new pairing. Nearby
+advertisements supply the pairing-required hint. An advertisement with pairing
+disabled is visibly unverified; it does not override a remembered identity.
+Saved devices prove their existing key without asking for the code again.
+
+Direct-address connections cannot know the remote policy from discovery. They
+request pairing by default, with the explicit Connect without pairing option for
+an unpaired endpoint. The dialog pins the selected address, port, identity and
+interface while open. Cancel sends no request and clears the code; invalid input
+stays in the dialog without using an authentication attempt. Pending removal must
+be resolved or explicitly dismissed before a new pairing is attempted.
+
 ## Paired devices, monitor rows and bilateral Forget (2026-11-08)
 
 The Devices workspace manages pairing and availability. Saved devices reconnect

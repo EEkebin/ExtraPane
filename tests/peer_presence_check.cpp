@@ -25,6 +25,33 @@ void legacy_cancel(const std::filesystem::path& path){
   if(catalog&&!request)request=client.open(connection,{identity,"camera"});if(opened&&!cancelled)client.cancel(connection,request);std::this_thread::sleep_for(2ms);
  }remote.get();require(echoed&&cancelled&&closed,"Legacy peer fallback not exercised");
 }
+void open_admission_race(const std::filesystem::path& path){
+ for(unsigned scenario=0;scenario<3;++scenario){
+  const auto directory=path/("open-race-"+std::to_string(scenario));TrustStore store(directory);const auto remoteId=dm::peer_auth::random_identity();transport::Listener listener("127.0.0.1",0);std::atomic<bool> entered=false,release=false;
+  auto deadline=[] {return std::chrono::steady_clock::now()+5s;};
+  auto server=std::async(std::launch::async,[&]{auto stream=listener.accept(deadline());std::array<std::uint8_t,72> request{};stream.read(request,deadline());require(request[5]==0,"Race did not begin as open handshake");entered=true;const auto until=deadline();while(!release){require(std::chrono::steady_clock::now()<until,"Race gate timeout");std::this_thread::sleep_for(1ms);}auto response=request;response[3]='S';std::copy(remoteId.begin(),remoteId.end(),response.begin()+8);std::copy(store.identity().begin(),store.identity().end(),response.begin()+40);stream.write(response,deadline());const std::array<std::uint8_t,1> ack{1};stream.write(ack,deadline());std::this_thread::sleep_for(100ms);});
+  Service client({directory,"Race client",{},true},{});const auto connection=client.connect({"127.0.0.1",listener.port(),{},remoteId,{},true});const auto until=deadline();while(!entered){require(std::chrono::steady_clock::now()<until,"Race server not entered");std::this_thread::sleep_for(1ms);}
+  PairSecret secret{};secret[0]=94;const auto pairedId=scenario==2?dm::peer_auth::random_identity():remoteId;store.remember({pairedId,"Concurrent pairing","127.0.0.1",listener.port()},secret);if(scenario==1)store.begin_forget(pairedId);release=true;
+  bool rejected=false;while(!rejected){require(std::chrono::steady_clock::now()<until,"Unpaired admission was not rejected");for(const auto& event:client.poll())if(event.context.connection==connection){require(event.kind!=Service::EventKind::connected,"In-flight open handshake bypassed new trust");if(event.kind==Service::EventKind::error)rejected=true;}std::this_thread::sleep_for(1ms);}server.get();
+ }
+}
+void no_pairing_downgrade(const std::filesystem::path& path){
+ const auto a=path/"downgrade-a",b=path/"downgrade-b";DeviceId aid,bid;PairSecret key{};key[0]=89;
+ {TrustStore left(a),right(b);aid=left.identity();bid=right.identity();left.remember({bid,"B"},key);right.remember({aid,"A"},key);}
+ auto wait=[](auto predicate){const auto until=std::chrono::steady_clock::now()+5s;while(!predicate()){require(std::chrono::steady_clock::now()<until,"Pairing downgrade deadline");std::this_thread::sleep_for(2ms);}};
+ Service provider({b,"B",{},true},{});provider.start("127.0.0.1",0);std::uint16_t port=0;wait([&]{for(const auto& e:provider.poll())if(e.kind==Service::EventKind::listening)port=e.port;return port!=0;});
+ {TrustStore left(a);left.update_hint({bid,"B","127.0.0.1",port});}
+ Service client({a,"A",{},true},{});
+ auto dial=[&](DeviceId identity,bool shouldConnect,const char* address="127.0.0.1"){
+  const auto token=client.connect({address,port,{},identity,{},true});bool complete=false;wait([&]{for(const auto& e:client.poll())if(e.context.connection==token){if(e.kind==Service::EventKind::connected){require(shouldConnect&&e.verified,"Saved device downgraded to open access");complete=true;}if(e.kind==Service::EventKind::error){require(!shouldConnect,"Saved proof unexpectedly failed");complete=true;}}return complete;});
+ };
+ dial(bid,true);dial({},true,"LOCALHOST");
+ const auto unrelated=dm::peer_auth::random_identity();{TrustStore left(a);PairSecret other{};other[0]=90;left.remember({unrelated,"Other","127.0.0.1",port},other);}
+ dial({},false);dial(bid,true);
+ {TrustStore left(a);left.begin_forget(bid);}dial(bid,false);dial({},false);
+ provider.pairing_required(false);Service unknown({path/"downgrade-unknown","Unknown",{},true},{});const auto token=unknown.connect({"127.0.0.1",port,{},bid,{},true});bool open=false;
+ wait([&]{for(const auto& e:unknown.poll())if(e.context.connection==token){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::connected){require(!e.verified,"Unknown open connection unexpectedly paired");open=true;}}return open;});
+}
 void changed_paired_route(const std::filesystem::path& path){
  const auto a=path/"route-a",b=path/"route-b";DeviceId aid,bid;PairSecret key{};key[0]=71;
  {TrustStore left(a),right(b);aid=left.identity();bid=right.identity();left.remember({bid,"B"},key);right.remember({aid,"A"},key);}
@@ -85,7 +112,7 @@ int main(int argc,char** argv){auto path=std::filesystem::temp_directory_path()/
 std::atomic<bool> release=false,entered=false;std::atomic<unsigned> preparations=0;
 try{
  if(argc>1&&std::string(argv[1])=="--changed-route"){changed_paired_route(path);std::filesystem::remove_all(path);return 0;}
- legacy_cancel(path);bilateral_forget(path);duplicate_screens(path);
+ legacy_cancel(path);bilateral_forget(path);duplicate_screens(path);no_pairing_downgrade(path);open_admission_race(path);
  auto wait=[](auto predicate){const auto deadline=std::chrono::steady_clock::now()+5s;while(!predicate()){require(std::chrono::steady_clock::now()<deadline,"Presence check timed out");std::this_thread::sleep_for(2ms);}};
  Service::Hooks providerHooks;providerHooks.prepare=[&](const auto&,auto&)->Service::Endpoint{++preparations;throw std::runtime_error("Synthetic camera setup failure");};
  providerHooks.ready=[](const auto&,const auto&,auto){};

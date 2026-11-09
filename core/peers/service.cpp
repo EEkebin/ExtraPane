@@ -184,21 +184,25 @@ struct Service::State {
         }
     }
     dm::peer_auth::Remember remember(std::string address={},std::uint16_t port=0,std::uint64_t generation=0){if(!generation)generation=epoch.load();return [this,address=std::move(address),port,generation](const DeviceId& id,const dm::peer_auth::Secret& key){std::lock_guard lock(trust_mutex);need(epoch==generation,"Pairing was cancelled");store.remember({id,"Paired device",address,port},key.bytes);};}
+    void resolve_target(ConnectOptions& options){
+        const auto normalized=[](std::string address){for(auto& c:address)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return address=="localhost"?std::string("127.0.0.1"):address;};
+        const auto matches=[&](const RememberedDevice& device){return device.port_hint==options.port&&!device.address_hint.empty()&&normalized(device.address_hint)==normalized(options.address);};
+        for(const auto& device:store.pending_forgets())need(device.id!=options.expected_peer&&!matches(device),"This device has a pending removal; finish or explicitly clear it before connecting");
+        if(valid_id(options.expected_peer)&&store.secret(options.expected_peer)){options.open_mode=false;return;}
+        std::optional<DeviceId> remembered;
+        for(const auto& device:store.devices())if(matches(device)){
+            need(!remembered||*remembered==device.id,"Several remembered devices use this address; select a saved device explicitly");remembered=device.id;
+        }
+        if(remembered){need(!valid_id(options.expected_peer)||options.expected_peer==*remembered,"This address belongs to a different remembered device");options.expected_peer=*remembered;options.open_mode=false;}
+    }
     void launch_dial(Token token,ConnectOptions options,std::uint64_t generation){
         need(dialing.size()<4,"Too many pending peer connections");
-        if(!options.open_mode&&!valid_id(options.expected_peer)){
-            const auto normalized=[](std::string address){for(auto& c:address)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return address=="localhost"?std::string("127.0.0.1"):address;};
-            std::optional<DeviceId> remembered;
-            for(const auto& device:store.devices())if(device.port_hint==options.port&&!device.address_hint.empty()&&normalized(device.address_hint)==normalized(options.address)){
-                need(!remembered||*remembered==device.id,"Several remembered devices use this address; select a saved device explicitly");
-                remembered=device.id;
-            }
-            if(remembered)options.expected_peer=*remembered;
-        }
+        {std::lock_guard lock(trust_mutex);resolve_target(options);}
         const auto target=options.expected_peer;
-        dialing.push_back(std::async(std::launch::async,[this,token,generation,options=std::move(options)]{
-            try{need(epoch==generation,"Connection cancelled");dm::peer_auth::ClientOptions proof;proof.local=store.identity();proof.expected_peer=options.expected_peer;proof.code=options.code;proof.mode=options.open_mode?dm::peer_auth::Mode::open:dm::peer_auth::Mode::pair;
-                if(!options.open_mode&&valid_id(options.expected_peer)){auto key=store.secret(options.expected_peer);if(key){proof.mode=dm::peer_auth::Mode::remembered;dm::peer_auth::Secret secret;secret.bytes=*key;proof.remembered=secret;}}
+        dialing.push_back(std::async(std::launch::async,[this,token,generation,options=std::move(options)]()mutable{
+            try{dm::peer_auth::ClientOptions proof;
+                {std::lock_guard lock(trust_mutex);need(epoch==generation,"Connection cancelled");resolve_target(options);proof.local=store.identity();proof.expected_peer=options.expected_peer;proof.code=options.code;proof.mode=options.open_mode?dm::peer_auth::Mode::open:dm::peer_auth::Mode::pair;
+                if(valid_id(options.expected_peer)){auto key=store.secret(options.expected_peer);if(key){proof.mode=dm::peer_auth::Mode::remembered;dm::peer_auth::Secret secret;secret.bytes=*key;proof.remembered=secret;}}}
                 auto connection=AuthenticatedConnection::client(transport::Stream::connect(options.address,options.port,options.local,deadline()),proof,remember(options.address,options.port,generation),deadline());
                 ConnectOptions route{options.address,options.port,options.local,connection.remote_id(),{},false};
                 return Result{token,false,std::make_unique<AuthenticatedConnection>(std::move(connection)),{},generation,std::move(route)};
@@ -335,6 +339,14 @@ struct Service::State {
             if((!policy.gateway_enabled()&&!auto_connect_enabled)||route==gateway_routes.end()||route->second.disabled){cancelled.erase(result.token);return;}
             if(!result.connection){cancelled.erase(result.token);return;}
         }
+        // Commit admission against current trust, after the network handshake.
+        // A new pairing may have completed while an open handshake was in flight.
+        std::lock_guard admission(trust_mutex);
+        if(result.connection&&!result.incoming&&!result.connection->identity().paired){try{
+            need(!store.secret(result.connection->remote_id()),"Device became paired during connection; reconnect using remembered authentication");
+            if(result.route){auto route=*result.route;route.open_mode=true;resolve_target(route);need(route.open_mode,"Device became paired during connection; reconnect using remembered authentication");}
+            for(const auto& peer:store.pending_forgets())need(peer.id!=result.connection->remote_id(),"Device removal is pending");
+        }catch(const std::exception& e){event({EventKind::error,{result.token},0,e.what()});return;}}
         if(!automaticDial&&result.connection){std::vector<Token> duplicates;for(const auto& [id,link]:links)if(link->automatic_presence&&!link->incoming&&link->resources.empty()&&link->pending.empty()&&link->connection->remote_id()==result.connection->remote_id())duplicates.push_back(id);for(auto id:duplicates)drop(id,"Replaced by explicit connection");}
         if(automaticDial&&result.connection&&std::any_of(links.begin(),links.end(),[&](const auto& item){return !item.second->incoming&&item.second->connection->remote_id()==result.connection->remote_id();}))return;
         if(result.epoch!=epoch||cancelled.erase(result.token)){event({EventKind::disconnected,{result.token},0,"Connection cancelled"});return;}if(!result.connection){event({EventKind::error,{result.token},0,result.error});return;}need(!result.connection->revocation_only(),"Revocation connections cannot access resources");need(links.size()<64,"Peer service connection budget exhausted");auto object=std::make_unique<Link>(result.token,result.incoming,std::move(result.connection));auto& l=*object;l.automatic_presence=automaticDial;l.route=std::move(result.route);const auto identity=l.connection->identity();if(identity.paired&&identity.device!=store.identity()){need(store.secret(identity.device).has_value(),"Device was forgotten during authentication");policy.remember(identity.device);if(l.incoming){auto route=gateway_routes.find(identity.device);if(route!=gateway_routes.end()){route->second.identity_failed=false;route->second.failures=0;route->second.due=0;}}}

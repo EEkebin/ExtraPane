@@ -55,7 +55,8 @@ leaves the device discoverable and ready for a new request.
 
 **Devices** manages pairing and saved devices. Press **Search nearby** to run a
 short LAN search for new devices; paired devices are excluded. Expand **Pair by address** for
-an IPv4 address or localhost, port, optional interface and pairing code. This also
+an IPv4 address or localhost, port and optional interface. **Connect** opens a
+pairing-code dialog when needed; the code is no longer entered on the Devices page. This also
 works on static-IP LANs and when multicast discovery is unavailable. Across networks,
 the address/port must already be reachable; discovery does not cross the internet.
 Open **Resources** to browse a connected device's grouped resources. Green power
@@ -87,7 +88,10 @@ on the same receiving computer is blocked. Windows existing-screen input is opt-
 through **Allow input**, where the provider advertises support.
 
 Pairing is enabled by default. Enter the other device's six-digit code on the
-first connection; remembered devices subsequently prove their saved secret.
+first connection using the Connect dialog; remembered devices subsequently prove
+their saved secret without prompting again. Nearby devices with pairing disabled
+are labeled unverified and connect without a code dialog. A manual address defaults
+to pairing unless Connect without pairing is explicitly selected.
 Codes stay fixed for the app/service process lifetime, including sharing restarts.
 Disabling pairing requires an explicit unverified connection. Discovery is only a
 hint, never proof of identity. Direct IPv4, `localhost` and `127.0.0.1` work without

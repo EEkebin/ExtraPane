@@ -91,6 +91,54 @@ Item {
         contentItem: Label { text: "Removal on the other device has not been confirmed. Forget this computer on that device manually before pairing again."; wrapMode: Text.WordWrap }
         onAccepted: peers.dismissPendingForget(deviceId)
     }
+    function beginConnection(address,targetPort,identity,openMode) {
+        if(pairingDialog.visible) return
+        const normalized=address.trim().toLowerCase()==="localhost" ? "127.0.0.1" : address.trim()
+        if(peers.remembered.some(device=>device.pendingForget&&(identity?device.id===identity:device.address===normalized&&Number(device.port)===Number(targetPort)))) { notification.text="Finish or clear the pending pairing removal before pairing again."; notification.open(); return }
+        const matches=peers.remembered.filter(device=>!device.pendingForget && (identity ? device.id===identity : device.address===normalized&&Number(device.port)===Number(targetPort)))
+        if(matches.length>1) { notification.text="This address matches several paired devices. Use the device's current address."; notification.open(); return }
+        const known=matches.length===1
+        const route=outgoingNic.selectedAddress
+        if(route&&!peers.networkAddresses.some(item=>item.address===route)){notification.text="Choose an available local network interface.";notification.open();return}
+        const snapshot={address:address.trim(),port:Number(targetPort),identity:known?matches[0].id:identity,route:route,open:known?false:openMode}
+        if(known||snapshot.open){peers.connectDevice(snapshot.address,snapshot.port,"",snapshot.identity,snapshot.route,snapshot.open);return}
+        pairingDialog.target=snapshot; pairingDialog.submitted=false; code.clear();code.invalid=false;pairingDialog.open()
+    }
+    Dialog {
+        id: pairingDialog; objectName: "peerPairingDialog"
+        property var target: ({})
+        property bool submitted: false
+        title: target.address ? "Pair with "+target.address : "Pair device"; modal: true; anchors.centerIn: parent
+        Material.theme: Material.Dark; Material.accent: "#80b8ff"
+        padding: 24
+        background: Rectangle { color: "#14243a"; radius: 16; border.color: "#48617e" }
+        Overlay.modal: Rectangle { color: "#99050910" }
+        header: Label { text: pairingDialog.title; color: "#eef4ff"; font.pixelSize: 22; leftPadding: 24; rightPadding:24; topPadding: 22; bottomPadding: 14; elide: Text.ElideRight }
+        width: Math.min(workspace.width-40,440); height: 320
+        closePolicy: Popup.CloseOnEscape
+        onOpened: code.forceActiveFocus()
+        onClosed: { code.clear();code.invalid=false;target=({});submitted=false }
+        function submit() {
+            if(submitted||!visible||!target.address)return
+            code.invalid=!/^\d{6}$/.test(code.text)
+            if(code.invalid){code.forceActiveFocus();return}
+            submitted=true
+            const frozen=target
+            peers.connectDevice(frozen.address,frozen.port,code.text,frozen.identity,frozen.route,false)
+            close()
+        }
+        contentItem: ColumnLayout {
+            spacing: 14
+            Label { color: "#eef4ff"; text: "Enter the six-digit code shown on the other device."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            Label { text: pairingDialog.target.address ? pairingDialog.target.address+":"+pairingDialog.target.port : ""; color: "#aabbd3"; Layout.fillWidth: true }
+            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; Accessible.name: "Six-digit pairing code"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: pairingDialog.submit() }
+            Label { text: "Enter exactly six digits."; color: "#ff6978"; visible: code.invalid }
+            RowLayout { Layout.alignment: Qt.AlignRight
+                Action { objectName:"peerPairingCancel"; text:"Cancel"; onClicked:pairingDialog.close() }
+                Action { objectName:"peerPairingSubmit"; text:"Pair"; enabled:!pairingDialog.submitted; onClicked:pairingDialog.submit() }
+            }
+        }
+    }
     property var monitorDrafts: []
     property int nextMonitorRow: 0
     function customMonitor(item) { return item.kindId===0 && ((!item.width&&!item.height) || /custom/i.test(item.label||"")) }
@@ -388,12 +436,12 @@ Item {
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 6
                                     Label { textFormat: Text.PlainText; text: nearbyCard.modelData.name; font.pixelSize: 17; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
-                                    Label { text: nearbyCard.modelData.address+":"+nearbyCard.modelData.port; color: "#aabbd3"; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    Label { text: nearbyCard.modelData.address+":"+nearbyCard.modelData.port+(nearbyCard.modelData.pairingRequired===false ? " ? Unverified connection" : ""); color: "#aabbd3"; Layout.fillWidth: true; elide: Text.ElideRight }
                                 }
-                                Label { text: "Pair"; color: "#9ac4ff" }
+                                Label { text: "Connect"; color: "#9ac4ff" }
                                 AppIcon { symbol: "chevron"; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
                             }
-                            onClicked: { workspace.manualExpanded=true; host.text=modelData.address; port.text=String(modelData.port); workspace.expectedDeviceId=modelData.id; code.clear(); openConnection.checked=false; code.forceActiveFocus() }
+                            onClicked: workspace.beginConnection(modelData.address,modelData.port,modelData.id,modelData.pairingRequired===false)
                         }
                     }
                     SectionHeading { title: "Paired devices"; Layout.topMargin: 16 }
@@ -444,21 +492,13 @@ Item {
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; placeholderText: "Pairing code (first connection)"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly }
-                            Action { objectName: "peerConnect"; text: "Pair"; visible: !workspace.manualConnected; onClicked: {
-                                const numeric=workspace.checkFields([port]); host.invalid=!workspace.validAddress(host.text)
-                                let remembered=false; let matches=0
-                                for(const device of peers.remembered) {
-                                    if(workspace.expectedDeviceId && device.id===workspace.expectedDeviceId) remembered=true
-                                    if(device.address===(host.text.trim().toLowerCase()==="localhost" ? "127.0.0.1" : host.text.trim()) && Number(device.port)===Number(port.text)) matches++
-                                }
-                                if(!workspace.expectedDeviceId && matches>1 && !openConnection.checked) { notification.text="Choose a paired device below; this address matches more than one device."; notification.open(); return }
-                                if(!workspace.expectedDeviceId && matches===1) remembered=true
-                                code.invalid=!openConnection.checked && (!remembered || code.text.length>0) && !/^\d{6}$/.test(code.text)
-                                if(!numeric||host.invalid||code.invalid) { notification.text="Check the highlighted information."; notification.open(); return }
-                                peers.connectDevice(host.text,Number(port.text),code.text,workspace.expectedDeviceId,outgoingNic.selectedAddress,openConnection.checked); code.clear()
+                            Action { objectName: "peerConnect"; text: "Connect"; visible: !workspace.manualConnected; onClicked: {
+                                const numeric=workspace.checkFields([port]);host.invalid=!workspace.validAddress(host.text)
+                                if(!numeric||host.invalid){notification.text="Check the highlighted information.";notification.open();return}
+                                workspace.beginConnection(host.text,Number(port.text),workspace.expectedDeviceId,openConnection.checked)
                             } }
                         }
+
                         ComboBox {
                             id: outgoingNic; objectName: "peerOutgoingNic"; Layout.fillWidth: true
                             textRole: "label"; valueRole: "address"

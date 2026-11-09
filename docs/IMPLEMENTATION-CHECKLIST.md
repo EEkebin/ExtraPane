@@ -1185,3 +1185,26 @@ logic but was not physically retested. Native host SHA256:
 - Limit: bilateral Forget needs a reachable remote listener. One-way forwarded
   routes may leave remote removal pending even after local access is revoked;
   explicit pending dismissal never claims remote acknowledgement.
+
+
+## Active increment: pairing-code modal (2026-11-08)
+
+- [x] Shared Qt, Android and native macOS prompt for new pairing in a modal on
+  Connect, replacing inline code fields.
+- [x] Saved trust skips the code prompt and cannot be downgraded by discovery or
+  the unpaired option. Unpaired nearby devices are visibly unverified.
+- [x] Cancel clears code without a connection; invalid codes remain local;
+  submission uses the frozen target/interface; pending removals block re-pairing.
+- [ ] Isolated UI/Android checks and matching Windows/Android package delivery.
+
+
+Pairing-modal verification: shared Qt offscreen checks pass for required/open
+Nearby flows, cancelled/invalid/single submission, captured target/interface and
+saved/pending identity behavior. Normal and error dialog renders reviewed; the
+code field uses an external instruction and accessible name so the error border
+does not cross a floating label. Android's 13 host suites and build/lint pass.
+Native macOS is statically reviewed; hosted compilation remains pending.
+Core admission also rechecks saved trust when an open handshake completes, so a
+pairing created while the modal/handshake was in flight cannot be downgraded.
+Deterministic concurrent-trust tests and five related loopback checks passed.
+No physical media or input tests were run for this UI increment.

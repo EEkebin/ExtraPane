@@ -69,8 +69,9 @@ selected headset must not redirect its session to the loudspeaker.
    Keep **Require pairing** enabled. Offering the destination alone must not create
    a virtual monitor or start a stream.
 2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or expand **Pair by address** and enter its
-   IPv4 address and port. Enter the laptop's displayed six-digit code. Choose
-   Automatic route, or the intended local interface on a multihomed computer.
+   IPv4 address and port. Choose Automatic route, or the intended local interface
+   on a multihomed computer. Click Connect, then enter the laptop's displayed
+   six-digit code in the pairing dialog.
 3. Pair, open **Resources**, and add a monitor row. Choose Virtual monitor, then
    Custom or a named monitor preset; set its resolution and refresh target. The desktop creates the virtual
    monitor; the laptop opens the receiver window.
@@ -206,3 +207,20 @@ but are not OS-keychain encryption.
 - About shows the current version, a smoothly scaled logo, product information
   and project links. Resize the window and check wrapping/scrolling. Device
   connection status should not appear as About content.
+
+
+### Pairing-code modal
+
+- Connect to a new Nearby device requiring pairing: a modal shows the selected
+  device and accepts six digits. There is no inline code field on Devices.
+- Cancel or close the dialog: no connection is started and the code is cleared.
+  Reopen it and confirm the old value is absent. Invalid text cannot submit.
+- Change the discovery list while a dialog is open: submission must retain its
+  selected identity, address, port and interface, not whichever card appears next.
+- Connect to a Nearby device advertising pairing disabled: its card clearly says
+  unverified, and Connect proceeds without a code dialog. Manual unpaired access
+  likewise uses the explicitly selected Connect without pairing option.
+- Saved identities never downgrade to unverified access because a discovery flag
+  or checkbox changed. Pending pairing removal blocks new pairing until resolved.
+- Check Android rotation/background/dismissal: no duplicate request or retained
+  code; cancelling the modal does not close the app or stop other resources.
