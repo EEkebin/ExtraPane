@@ -152,6 +152,7 @@ struct H264Encoder::State {
     ComPtr<IMFMediaEventGenerator> events;
     unsigned width, height, fps;
     unsigned input_ready = 0, output_ready = 0;
+    ComPtr<IMFMediaType> configured_output;
     std::string name;
     State(unsigned w, unsigned h, unsigned f,ID3D11Device* gpu_device,unsigned requested_bitrate) :device(gpu_device), width(w), height(h), fps(f) {
         dimensions(w,h,f);
@@ -194,6 +195,7 @@ struct H264Encoder::State {
                 check(output->SetUINT32(MF_MT_AVG_BITRATE,bitrate), "H264 bitrate");
                 check(output->SetUINT32(MF_MT_MPEG2_PROFILE,eAVEncH264VProfile_Main), "H264 main profile");
                 check(transform->SetOutputType(0,output.Get(),0), "Set encoder H264 output");
+                configured_output=output;
                 const auto input=media_type(MFVideoFormat_NV12,width,height,fps);
                 check(transform->SetInputType(0,input.Get(),0), "Set encoder NV12 input");
                 check(transform.As(&events), "Encoder event generator");
@@ -207,6 +209,52 @@ struct H264Encoder::State {
         throw std::runtime_error("No usable hardware H264 encoder (software fallback disabled): " + failures);
     }
     ~State() { shutdown(transform.Get()); }
+    void renegotiate_output() {
+        // Drivers can publish codec configuration only after the first input.
+        // Keep their updated attributes (including the sequence header), without
+        // changing the size, rate, profile or bitrate agreed with the receiver.
+        for (DWORD index=0; index<64; ++index) {
+            ComPtr<IMFMediaType> offered;
+            const auto result=transform->GetOutputAvailableType(0,index,&offered);
+            if(result==MF_E_NO_MORE_TYPES) break;
+            check(result,"Enumerate updated H264 output types");
+            GUID major{},subtype{};
+            if(FAILED(offered->GetGUID(MF_MT_MAJOR_TYPE,&major)) || major!=MFMediaType_Video ||
+               FAILED(offered->GetGUID(MF_MT_SUBTYPE,&subtype)) || subtype!=MFVideoFormat_H264) continue;
+            UINT32 w=0,h=0,numerator=0,denominator=0;
+            if(SUCCEEDED(MFGetAttributeSize(offered.Get(),MF_MT_FRAME_SIZE,&w,&h)) && (w!=width || h!=height)) continue;
+            if(SUCCEEDED(MFGetAttributeRatio(offered.Get(),MF_MT_FRAME_RATE,&numerator,&denominator)) &&
+               (!denominator || static_cast<std::uint64_t>(fps)*denominator!=numerator)) continue;
+            ComPtr<IMFMediaType> selected;
+            check(MFCreateMediaType(&selected),"Create updated H264 output type");
+            check(configured_output->CopyAllItems(selected.Get()),"Copy H264 output configuration");
+            check(offered->CopyAllItems(selected.Get()),"Copy updated H264 output attributes");
+            check(MFSetAttributeSize(selected.Get(),MF_MT_FRAME_SIZE,width,height),"Preserve H264 output dimensions");
+            check(MFSetAttributeRatio(selected.Get(),MF_MT_FRAME_RATE,fps,1),"Preserve H264 output rate");
+            for(const auto& attribute:{MF_MT_AVG_BITRATE,MF_MT_MPEG2_PROFILE}) {
+                UINT32 value=0;
+                check(configured_output->GetUINT32(attribute,&value),"Read H264 output configuration");
+                check(selected->SetUINT32(attribute,value),"Preserve H264 output configuration");
+            }
+            if(SUCCEEDED(transform->SetOutputType(0,selected.Get(),0))) return;
+        }
+        throw std::runtime_error("Hardware H264 encoder offered no compatible updated output type");
+    }
+    std::vector<std::uint8_t> read_output() {
+        for(unsigned changes=0;changes<8;++changes) {
+            // Async MFTs permit one ProcessOutput call per HaveOutput event,
+            // including a format-change notification. Wait for the next event
+            // after renegotiating, then re-query the allocation requirements.
+            wait_for(true);
+            Output output(transform.Get()); DWORD status=0;
+            const auto result=transform->ProcessOutput(0,1,&output.data,&status);
+            --output_ready;
+            if(result==MF_E_TRANSFORM_STREAM_CHANGE) { renegotiate_output(); continue; }
+            check(result,"Read hardware H264 sample");
+            return sample_bytes(output.data.pSample);
+        }
+        throw std::runtime_error("Hardware H264 encoder repeatedly changed its output type");
+    }
     void wait_for(bool output) {
         const auto deadline=Clock::now()+std::chrono::seconds(5);
         while ((output ? output_ready : input_ready) == 0) {
@@ -231,10 +279,7 @@ std::vector<std::uint8_t> H264Encoder::encode_nv12(std::span<const std::uint8_t>
     const auto sample=memory_sample(pixels,static_cast<LONGLONG>(sequence)*10000000/s.fps,10000000/s.fps);
     s.wait_for(false);
     check(s.transform->ProcessInput(0,sample.Get(),0),"Submit camera NV12 encode sample");--s.input_ready;
-    s.wait_for(true);
-    Output output(s.transform.Get());DWORD status=0;
-    check(s.transform->ProcessOutput(0,1,&output.data,&status),"Read camera H264 sample");--s.output_ready;
-    return sample_bytes(output.data.pSample);
+    return s.read_output();
 }
 std::string H264Encoder::description() const { return state_->name + " hardware-MFT low-latency "+(state_->device ? "D3D11-NV12-surface-input" : "CPU-NV12-input"); }
 std::vector<std::uint8_t> H264Encoder::encode(const Frame& frame,std::uint64_t sequence) {
@@ -263,10 +308,7 @@ std::vector<std::uint8_t> H264Encoder::encode(const Frame& frame,std::uint64_t s
     }
     s.wait_for(false);
     check(s.transform->ProcessInput(0,sample.Get(),0),"Submit hardware encode sample"); --s.input_ready;
-    s.wait_for(true);
-    Output output(s.transform.Get()); DWORD status=0;
-    check(s.transform->ProcessOutput(0,1,&output.data,&status),"Read hardware H264 sample"); --s.output_ready;
-    return sample_bytes(output.data.pSample);
+    return s.read_output();
 }
 
 struct H264Decoder::State {

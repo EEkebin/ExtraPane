@@ -1107,8 +1107,8 @@ This replaces the earlier opt-in offer power behavior.
 - [x] Repeatable virtual-monitor rows using Custom or reusable named presets;
   independent per-row cancellation and stop, including catalog refresh/reconnect.
 - [x] Reject duplicate existing-screen views on one consumer, including pending starts.
-- [ ] Existing-screen viewer startup repair and capability-gated input; investigate
-  reported window opening then closing without claiming a confirmed cause yet.
+- [x] Existing-screen viewer startup repair and capability-gated Windows input;
+  native Surface-to-desktop video verified, physical input verification pending.
 - [x] Bordered resource types, input beside power, automatic saved-device availability.
 - [x] Authenticated bilateral Forget with durable offline pending state, idempotent
   acknowledgement retry and no catalog/media access using a revocation credential.
@@ -1147,3 +1147,14 @@ Independent revocation review also identified repeated tombstone-only Forget
 requests unnecessarily bumping the global authentication epoch. The handler now
 acknowledges an already-completed removal without repeating unrelated connection
 invalidation; regression verification is included before packaging.
+
+
+Encoder repair verified with an approved 25-second Surface-to-desktop test:
+3000x2000 video decoded and presented continuously, with no encoder/sample failures.
+The temporary receiver was deliberately stopped at the end; the subsequent remote
+socket-close message is expected teardown. Diagnostic SSH-forward throughput was
+roughly 30 FPS after startup, with about 3.6?3.9 ms decode time and three skipped
+frames total. This proves native-resolution continuity, not 60 FPS normal-LAN
+performance. No input was injected. CPU camera encoding shares the repaired output
+logic but was not physically retested. Native host SHA256:
+`68710ee5876bd3486ae1c389c01e3dfca2401eff6a993d099de6d760a09928ce`.
