@@ -13,8 +13,10 @@ public final class NearbyPeersCheck {
         peers.accept(row("connected","1","15"),"10.0.0.3",0);
         peers.accept(row("new","1","15"),"10.0.0.4",0);
         require(peers.visible("self",Set.of("paired","connected"),1).size()==1,"Self, paired and connected identities are excluded");
+        NearbyPeers progressive=peers.snapshot();
         peers.accept(row("new","3","0"),"10.0.0.4",2);
         peers.accept(row("new","2","15"),"10.0.0.4",3);
+        require(progressive.visible("self",Set.of("paired","connected"),4).size()==1,"Progressive UI snapshot is isolated from worker updates");
         require(peers.visible("self",Set.of("paired","connected"),4).isEmpty(),"Withdrawal suppresses replayed older announcement");
         peers.accept(row("new","4","15"),"10.0.0.4",5);
         require(peers.visible("self",Set.of("paired","connected"),6).size()==1,"New announcement restores hint");

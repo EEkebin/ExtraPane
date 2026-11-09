@@ -1064,3 +1064,27 @@ This replaces the earlier opt-in offer power behavior.
 - [x] Re-copied the verified installer to the current Windows Desktop; reinstalled the matching Android APK through ADB and confirmed versionName/code 10501.
 - [x] Re-copied the installer to the Surface Desktop at its new address, 10.0.20.143. Verified the SSH host key against the previously saved Surface identity and verified the remote installer SHA256. No Windows installation performed.
 
+
+
+### Discovery cards and About presentation (2026-11-08)
+
+- [x] Manual Nearby search uses an icon refresh control, spinning during search,
+  with three sequential bouncing dots. Nearby results appear as named, bordered
+  cards as they arrive; Android publishes bounded immutable progress snapshots.
+- [x] Nearby/Paired/Connected/This device headings are larger with separators;
+  shared desktop paired cards use the same spacing and borders. Existing dark
+  blue theme and accent colors remain consistent.
+- [x] About navigation is simply About. Redesigned product/description/version
+  card, high-resolution original logo with smooth/mipmapped Qt downsampling,
+  aligned project links and license status. Connection status is hidden on About.
+- [x] Android and native macOS have equivalent search/About presentation;
+  their search animations respect the platform disabled/reduced-motion setting.
+- Device-type limit: discovery metadata does not identify platform/type. Cards
+  use neutral computer icons; no Android/phone logo is guessed from names.
+- Verification: offscreen Qt UI checks cover spinner lifecycle/no duplicate scans
+  and existing routing; rendered Devices/About screenshots reviewed. All 12
+  Android host suites and final build/lint passed. Native macOS static review only
+  for this increment; hosted build/visual acceptance still pending.
+- Previous pre.105.1 hosted run `42476646478` passed Windows, Linux, Android and
+  both macOS architecture jobs. No new physical media tests performed.
+- [ ] Matching updated packages and delivery pending.

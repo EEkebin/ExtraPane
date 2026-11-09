@@ -7,7 +7,7 @@ import java.util.Arrays;
 
 /** One explicitly requested, ten-second metadata scan; never dials or opens media. */
 final class NearbyPeerSearch implements AutoCloseable {
-    interface Listener {void finished(NearbyPeers result,String error);}
+    interface Listener {void finished(NearbyPeers result,String error);default void progress(NearbyPeers result){}}
     private final java.util.Set<String> knownOnly;
     NearbyPeerSearch(){knownOnly=null;}
     NearbyPeerSearch(java.util.Set<String> known){knownOnly=java.util.Set.copyOf(known);}
@@ -23,13 +23,14 @@ final class NearbyPeerSearch implements AutoCloseable {
             try(MulticastSocket receiver=new MulticastSocket(null)){
                 synchronized(this){if(closed)return;socket=receiver;}
                 receiver.setReuseAddress(true);receiver.bind(new InetSocketAddress(43825));receiver.setNetworkInterface(nic);receiver.joinGroup(new InetSocketAddress("239.255.43.24",43825),nic);receiver.setSoTimeout(500);
-                long deadline=android.os.SystemClock.elapsedRealtime()+10000;
+                long deadline=android.os.SystemClock.elapsedRealtime()+10000,lastProgress=0;boolean changed=false;
                 while(!closed&&android.os.SystemClock.elapsedRealtime()<deadline){
                     byte[] bytes=new byte[2049];DatagramPacket packet=new DatagramPacket(bytes,bytes.length);
                     try{receiver.receive(packet);if(packet.getLength()>2048||!(packet.getAddress() instanceof Inet4Address)||packet.getAddress().isLoopbackAddress()||packet.getAddress().isMulticastAddress())continue;
                         String[] decoded=PeerService.decodeAnnouncement(Arrays.copyOf(bytes,packet.getLength()));
-                        result.accept(decoded,packet.getAddress().getHostAddress(),android.os.SystemClock.elapsedRealtime());
+                        changed=result.accept(decoded,packet.getAddress().getHostAddress(),android.os.SystemClock.elapsedRealtime())||changed;
                     }catch(SocketTimeoutException ignored){}catch(java.io.IOException malformed){if(receiver.isClosed())break;}
+                    long now=android.os.SystemClock.elapsedRealtime();if(changed&&!closed&&now-lastProgress>=150){listener.progress(result.snapshot());changed=false;lastProgress=now;}
                 }
             }
         }catch(Exception e){if(!closed)error=e.getMessage()==null?"Nearby search failed":e.getMessage();}

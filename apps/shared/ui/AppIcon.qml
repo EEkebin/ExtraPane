@@ -19,6 +19,9 @@ Canvas {
         function circle(x,y,r) { c.beginPath(); c.arc(x,y,r,0,Math.PI*2); c.stroke() }
         if (symbol === "server") { box(4,3,16,7); box(4,14,16,7); line(7,6.5,8,6.5); line(7,17.5,8,17.5); line(15,6.5,17,6.5); line(15,17.5,17,17.5) }
         else if (symbol === "client" || symbol === "display") { box(3,4,18,13); line(12,17,12,21); line(8,21,16,21) }
+        else if (symbol === "refresh") { c.beginPath(); c.arc(12,12,8,0.4,Math.PI*1.8); c.stroke(); line(19,3,19,8); line(19,8,14,8) }
+        else if (symbol === "book") { box(5,3,14,18); line(8,3,8,21); line(11,8,16,8); line(11,12,16,12) }
+        else if (symbol === "link") { line(8,16,16,8); line(11,5,19,5); line(19,5,19,13); line(14,19,5,19); line(5,19,5,10) }
         else if (symbol === "settings") { line(4,6,20,6); line(4,12,20,12); line(4,18,20,18); c.fillStyle="#111d30"; c.fillRect(7,3,4,6); c.fillRect(14,9,4,6); c.fillRect(7,15,4,6); circle(9,6,2); circle(16,12,2); circle(9,18,2) }
         else if (symbol === "about") { circle(12,12,9); line(12,11,12,17); circle(12,7.5,0.6) }
         else if (symbol === "add") { line(12,5,12,19); line(5,12,19,12) }

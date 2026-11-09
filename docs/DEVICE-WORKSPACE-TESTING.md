@@ -169,3 +169,16 @@ installer update is intended to preserve pairing data.
   or a fresh app start. Forget must remove it from automatic reconnect candidates.
 - New-device Nearby search remains manual; automatic reconnect never pairs an
   unknown device or bypasses a changed saved identity.
+
+
+### Discovery and About presentation
+
+- Press the refresh icon next to Nearby devices. It spins with three bouncing
+  dots during the explicit search. Cards should appear as results arrive, not
+  only when the scan completes. Repeated clicks must not create duplicate scans.
+- Search completion/failure stops the animation. Paired peers stay out of Nearby.
+- Cards use a neutral computer glyph because current discovery metadata does not
+  identify the OS or device class. Names are displayed as plain text.
+- About shows the current version, a smoothly scaled logo, product information
+  and project links. Resize the window and check wrapping/scrolling. Device
+  connection status should not appear as About content.

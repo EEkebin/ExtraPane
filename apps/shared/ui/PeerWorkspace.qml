@@ -6,6 +6,7 @@ import QtQuick.Layouts
 Item {
     id: workspace
     property int page: 0
+    onPageChanged: if(pageScroll.contentItem) pageScroll.contentItem.contentY=0
     property bool collapsed: false
     property string expectedDeviceId: ""
     property bool manualExpanded: false
@@ -39,6 +40,7 @@ Item {
     Connections { target: peers; function onToast(message) { notification.text = message; notification.open() } }
     Popup {
         id: notification
+        objectName: "peerNotification"
         property string text: ""
         x: Math.max(12, (workspace.width-width)/2); y: workspace.height-height-24
         width: Math.min(480, workspace.width-24); padding: 16
@@ -79,6 +81,32 @@ Item {
     function setGatewaySharing(enabled) {
         if(enabled && !sharingConfigurationValid()) return
         peers.setGatewaySharing(enabled,bind.selectedAddress,Number(listenPort.text))
+    }
+    component SectionHeading: ColumnLayout {
+        property string title: ""
+        Layout.fillWidth: true; spacing: 12
+        Label { text: parent.title; font.pixelSize: 22; font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#2b3c51" }
+    }
+    component InfoLink: ItemDelegate {
+        id: infoLink
+        property string title: ""
+        property string subtitle: ""
+        property string destination: ""
+        property string symbol: "link"
+        Layout.fillWidth: true; implicitHeight: Math.max(78, contentItem.implicitHeight+32); padding: 16
+        Accessible.name: title
+        onClicked: Qt.openUrlExternally(destination)
+        background: Rectangle { radius: 12; color: parent.hovered ? "#1c3048" : "#132237"; border.color: parent.activeFocus ? "#79b2ff" : "#30445f" }
+        contentItem: RowLayout {
+            spacing: 14
+            AppIcon { symbol: infoLink.symbol; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
+            ColumnLayout { Layout.fillWidth: true; spacing: 4
+                Label { text: infoLink.title; font.pixelSize: 16; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+                Label { text: infoLink.subtitle; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            }
+            AppIcon { symbol: "link"; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+        }
     }
     component Field: TextField {
         id: field
@@ -185,12 +213,12 @@ Item {
                 Item { Layout.fillHeight: true }
                 ToolButton {
                     id: aboutNavigation; Layout.fillWidth: true; Layout.preferredHeight: 48; padding: 0
-                    Accessible.name: "About ExtraPane"; onClicked: workspace.page=3
-                    ToolTip.visible: hovered && workspace.collapsed; ToolTip.text: "About ExtraPane"
+                    Accessible.name: "About"; onClicked: workspace.page=3
+                    ToolTip.visible: hovered && workspace.collapsed; ToolTip.text: "About"
                     background: Rectangle { radius: 10; color: workspace.page===3 ? "#192e4b" : aboutNavigation.hovered ? "#132136" : "transparent" }
                     contentItem: Item {
                         AppIcon { id: aboutGlyph; symbol: "about"; width: 22; height: 22; anchors.verticalCenter: parent.verticalCenter; x: 14*workspace.expansion+(parent.width-width)/2*(1-workspace.expansion) }
-                        Label { textFormat: Text.PlainText; text: "About ExtraPane"; anchors.left: aboutGlyph.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter; opacity: workspace.expansion }
+                        Label { textFormat: Text.PlainText; text: "About"; anchors.left: aboutGlyph.right; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter; opacity: workspace.expansion }
                     }
                 }
             }
@@ -204,41 +232,91 @@ Item {
             ColumnLayout {
                 objectName: "peerPageContent"
                 width: pageScroll.availableWidth; spacing: 18
-                Label { textFormat: Text.PlainText; text: ["Devices","Devices","Resources","ExtraPane"][workspace.page]; font.pixelSize: 30; font.weight: Font.DemiBold }
-                Label { textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#aabbd3"; text: workspace.page===0 ? "Manage this device and your paired devices. Available paired devices connect automatically; search nearby to pair a new one." : workspace.page===1 ? "Choose what other devices can use. Sharing a resource does not activate it until someone connects." : workspace.page===2 ? "Choose resources from your connected devices. Each power button connects or disconnects only that resource." : "Displays, cameras, microphones, speakers and USB devices across your computers." }
+                Label { textFormat: Text.PlainText; text: ["Devices","Devices","Resources","About"][workspace.page]; font.pixelSize: 30; font.weight: Font.DemiBold }
+                Label { textFormat: Text.PlainText; visible: workspace.page!==3; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#aabbd3"; text: workspace.page===0 ? "Manage this device and your paired devices. Available paired devices connect automatically; search nearby to pair a new one." : workspace.page===1 ? "Choose what other devices can use. Sharing a resource does not activate it until someone connects." : workspace.page===2 ? "Choose resources from your connected devices. Each power button connects or disconnects only that resource." : "Displays, cameras, microphones, speakers and USB devices across your computers." }
                 ColumnLayout {
                     visible: workspace.page===0; Layout.fillWidth: true; spacing: 14
                     RowLayout {
-                        Label { textFormat: Text.PlainText; text: "Nearby devices"; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                        Button { objectName: "peerRefreshDiscovery"; text: peers.directory.scanning ? "Searching..." : "Search nearby"; enabled: !peers.directory.scanning; onClicked: peers.startDiscovery() }
+                        Label { textFormat: Text.PlainText; text: "Nearby devices"; font.pixelSize: 22; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                        IconButton {
+                            id: searchButton; objectName: "peerRefreshDiscovery"; symbol: "refresh"
+                            implicitWidth: 44; implicitHeight: 44; padding: 10
+                            description: peers.directory.scanning ? "Searching nearby devices" : "Search nearby devices"
+                            onClicked: if(!peers.directory.scanning) peers.startDiscovery()
+                            NumberAnimation on iconRotation { from: 0; to: 360; duration: 1000; loops: Animation.Infinite; running: peers.directory.scanning && searchButton.visible; onStopped: searchButton.iconRotation=0 }
+                        }
                     }
-                    Label { textFormat: Text.PlainText; text: peers.directory.status; visible: text.length>0; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#2b3c51" }
+                    RowLayout {
+                        visible: peers.directory.scanning; spacing: 10
+                        Label { text: "Searching nearby"; color: "#aabbd3" }
+                        Row {
+                            spacing: 6; Layout.preferredWidth: 30; Layout.preferredHeight: 18
+                            Repeater {
+                                model: 3
+                                delegate: Item {
+                                    required property int index
+                                    width: 6; height: 18
+                                    Rectangle {
+                                        id: searchDot; width: 6; height: 6; radius: 3; y: 9; color: "#80b8ff"
+                                        SequentialAnimation on y {
+                                            running: peers.directory.scanning && searchDot.visible; loops: Animation.Infinite; onStopped: searchDot.y=9
+                                            PauseAnimation { duration: searchDot.parent.index*200 }
+                                            NumberAnimation { to: 2; duration: 100; easing.type: Easing.OutQuad }
+                                            NumberAnimation { to: 9; duration: 100; easing.type: Easing.InQuad }
+                                            PauseAnimation { duration: (2-searchDot.parent.index)*200 }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Label { textFormat: Text.PlainText; text: peers.directory.status; visible: text.length>0 && !peers.directory.scanning; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     Repeater {
                         model: workspace.newNearbyDevices
                         delegate: ItemDelegate {
                             required property var modelData
                             objectName: "peerNearby_"+modelData.id
-                            Layout.fillWidth: true
-                            text: modelData.name+" - "+modelData.address+":"+modelData.port
-                            contentItem: Label { textFormat: Text.PlainText; text: parent.text; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter }
+                            id: nearbyCard
+                            Layout.fillWidth: true; implicitHeight: 88; padding: 18
+                            Accessible.name: "Pair with "+modelData.name
+                            background: Rectangle { radius: 14; color: nearbyCard.hovered ? "#20354f" : "#14243a"; border.color: nearbyCard.activeFocus ? "#80b8ff" : "#354b66" }
+                            contentItem: RowLayout {
+                                spacing: 16
+                                AppIcon { symbol: "client"; stroke: "#9ac4ff"; Layout.preferredWidth: 30; Layout.preferredHeight: 30 }
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 6
+                                    Label { textFormat: Text.PlainText; text: nearbyCard.modelData.name; font.pixelSize: 17; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    Label { text: nearbyCard.modelData.address+":"+nearbyCard.modelData.port; color: "#aabbd3"; Layout.fillWidth: true; elide: Text.ElideRight }
+                                }
+                                Label { text: "Pair"; color: "#9ac4ff" }
+                                AppIcon { symbol: "chevron"; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                            }
                             onClicked: { workspace.manualExpanded=true; host.text=modelData.address; port.text=String(modelData.port); workspace.expectedDeviceId=modelData.id; code.clear(); openConnection.checked=false; code.forceActiveFocus() }
                         }
                     }
-                    Label { textFormat: Text.PlainText; visible: peers.remembered.length>0; text: "Paired devices"; font.weight: Font.DemiBold }
+                    SectionHeading { title: "Paired devices"; Layout.topMargin: 16 }
+                    Label { visible: peers.remembered.length===0; text: "No paired devices yet. Search nearby or connect by address to add one."; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                     Repeater {
                         model: peers.remembered
-                        delegate: RowLayout {
+                        delegate: Frame {
+                            id: pairedCard
                             required property var modelData
-                            Layout.fillWidth: true
+                            Layout.fillWidth: true; padding: 16
+                            background: Rectangle { radius: 14; color: "#132237"; border.color: "#30445f" }
+                            contentItem: RowLayout {
+                            spacing: 12
+                            AppIcon { symbol: "client"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; stroke: "#9ac4ff" }
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                Label { textFormat: Text.PlainText; text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight }
-                                Label { textFormat: Text.PlainText; text: modelData.address ? modelData.address+":"+modelData.port : "Choose this device from discovery or enter its address"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Label { textFormat: Text.PlainText; text: pairedCard.modelData.name; Layout.fillWidth: true; elide: Text.ElideRight }
+                                Label { textFormat: Text.PlainText; text: pairedCard.modelData.address ? pairedCard.modelData.address+":"+pairedCard.modelData.port : "Choose this device from discovery or enter its address"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
-                            Action { objectName: "peerRemembered_"+modelData.id; text: "Connect"; visible: !workspace.connectedDevice(modelData.id); enabled: !!modelData.address && modelData.port>0; onClicked: peers.connectDevice(modelData.address,modelData.port,"",modelData.id,outgoingNic.selectedAddress,false) }
-                            Label { text: "Connected"; color: "#aabbd3"; visible: workspace.connectedDevice(modelData.id) }
-                            Action { text: "Resources"; visible: workspace.connectedDevice(modelData.id); onClicked: workspace.page=2 }
-                            Action { objectName: "peerForget_"+modelData.id; text: "Forget"; destructive: true; onClicked: peers.forgetDevice(modelData.id) }
+                            Action { objectName: "peerRemembered_"+pairedCard.modelData.id; text: "Connect"; visible: !workspace.connectedDevice(pairedCard.modelData.id); enabled: !!pairedCard.modelData.address && pairedCard.modelData.port>0; onClicked: peers.connectDevice(pairedCard.modelData.address,pairedCard.modelData.port,"",pairedCard.modelData.id,outgoingNic.selectedAddress,false) }
+                            Label { text: "Connected"; color: "#aabbd3"; visible: workspace.connectedDevice(pairedCard.modelData.id) }
+                            Action { text: "Resources"; visible: workspace.connectedDevice(pairedCard.modelData.id); onClicked: workspace.page=2 }
+                            Action { objectName: "peerForget_"+pairedCard.modelData.id; text: "Forget"; destructive: true; onClicked: peers.forgetDevice(pairedCard.modelData.id) }
+                            }
                         }
                     }
                     ToolButton {
@@ -295,7 +373,7 @@ Item {
                         CheckBox { id: openConnection; text: "Connect without pairing"; checked: false }
                         Label { textFormat: Text.PlainText; visible: openConnection.checked; text: "The other device must also have pairing disabled. Its identity will not be verified."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
-                    Label { text: "Connected devices"; font.weight: Font.DemiBold; visible: peers.devices.length>0 }
+                    SectionHeading { title: "Connected devices"; visible: peers.devices.length>0; Layout.topMargin: 16 }
                     Repeater {
                         model: workspace.managedDevices
                         delegate: Frame {
@@ -303,6 +381,8 @@ Item {
                             Layout.fillWidth: true; padding: 12
                             background: Rectangle { radius: 12; color: "#111f32"; border.color: "#48617e" }
                             contentItem: RowLayout {
+                                spacing: 12
+                                AppIcon { symbol: "client"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; stroke: "#9ac4ff" }
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     Label { text: modelData.name; textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideRight }
@@ -316,7 +396,7 @@ Item {
                 }
                 ColumnLayout {
                     visible: workspace.page===0; Layout.fillWidth: true; spacing: 14
-                    Label { text: "This device"; font.pixelSize: 22; font.weight: Font.DemiBold; topPadding: 16 }
+                    SectionHeading { title: "This device"; Layout.topMargin: 16 }
                     Label { text: "Manage what other devices can use and your network settings."; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                     RowLayout {
                         Layout.fillWidth: true
@@ -507,14 +587,34 @@ Item {
                     }
                 }
                 ColumnLayout {
-                    visible: workspace.page===3; Layout.fillWidth: true; spacing: 18
-                    Image { source: "qrc:/extrapane.png"; Layout.preferredWidth: 96; Layout.preferredHeight: 96; Layout.alignment: Qt.AlignRight }
-                    Label { textFormat: Text.PlainText; objectName: "peerRunningVersion"; text: "Running version: "+(typeof receiver!=="undefined" ? receiver.version : Qt.application.version); color: "#aabbd3" }
-                    Button { text: "Read the documentation"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane#readme") }
-                    Button { text: "Releases and changelog"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane/releases") }
-                    Button { text: "GitHub repository"; onClicked: Qt.openUrlExternally("https://github.com/EEkebin/ExtraPane") }
+                    visible: workspace.page===3; Layout.fillWidth: true; spacing: 24
+                    Frame {
+                        objectName: "peerAboutCard"; Layout.fillWidth: true; padding: workspace.width<700 ? 20 : 28
+                        background: Rectangle { radius: 18; color: "#14243a"; border.color: "#334b68" }
+                        contentItem: ColumnLayout {
+                            spacing: 20
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 24
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 10
+                                    Label { text: "ExtraPane"; font.pixelSize: workspace.width<700 ? 24 : 32; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                    Label { text: "Your devices, working together."; color: "#c0d0e6"; font.pixelSize: 17; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                }
+                                Image { objectName: "peerAboutLogo"; source: "qrc:/extrapane.png"; Layout.preferredWidth: workspace.width<700 ? 64 : 112; Layout.preferredHeight: width; fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true }
+                            }
+                            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#334b68" }
+                            Label { text: "Use another device as an extra monitor, or share cameras, microphones, speakers and USB devices across your network."; font.pixelSize: 16; color: "#d8e4f4"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            Label { text: "Pair your devices once, then choose what to use in Resources. Devices manages your paired computers and phones, network settings and what this device makes available. Features depend on each device's operating system, hardware and permissions."; color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            Label { textFormat: Text.PlainText; objectName: "peerRunningVersion"; text: "Running version: "+(typeof receiver!=="undefined" ? receiver.version : Qt.application.version); color: "#9ac4ff"; font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    SectionHeading { title: "Project & support" }
+                    InfoLink { title: "Documentation"; subtitle: "Setup, supported features and troubleshooting"; symbol: "book"; destination: "https://github.com/EEkebin/ExtraPane#readme" }
+                    InfoLink { title: "Releases & changelog"; subtitle: "Downloads and what changed"; symbol: "refresh"; destination: "https://github.com/EEkebin/ExtraPane/releases" }
+                    InfoLink { title: "GitHub repository"; subtitle: "Source code, issues and contributions"; destination: "https://github.com/EEkebin/ExtraPane" }
+                    Label { text: "Third-party components retain their respective licenses. A project-wide license has not yet been selected."; color: "#91a6c0"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
-                Label { textFormat: Text.PlainText; Layout.fillWidth: true; text: peers.status; wrapMode: Text.WordWrap; color: "#aabbd3" }
+                Label { textFormat: Text.PlainText; Layout.fillWidth: true; visible: workspace.page!==3; text: peers.status; wrapMode: Text.WordWrap; color: "#aabbd3" }
             }
         }
     }
