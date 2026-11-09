@@ -12,6 +12,9 @@ enum class Operation:std::uint8_t { catalog=1, catalog_reply=2, open=3, granted=
 // Existing peers echo the probe; only upgraded peers return the distinct ack.
 inline constexpr std::uint64_t cancel_probe=0x455043414e43454cULL, cancel_ack=0x455043414e41434bULL;
 inline constexpr std::uint64_t endpoint_probe=0x4550454e44505242ULL, endpoint_ack=0x4550454e4441434bULL;
+// Authenticated inventory-change hint, carried as a ping for compatibility.
+// Old peers echo it harmlessly; new consumers request a fresh catalog.
+inline constexpr std::uint64_t catalog_changed=0x4550434154434847ULL;
 inline constexpr std::size_t header_size=24, max_payload=65536, data_chunk=16384;
 struct Message {Operation operation;std::uint64_t id=0;Bytes payload;};
 using Header=std::array<std::uint8_t,header_size>;

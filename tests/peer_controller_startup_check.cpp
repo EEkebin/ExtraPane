@@ -95,6 +95,10 @@ struct PeerControllerEventCheck {
         Service::Event event{};event.kind=Service::EventKind::granted;event.context.incoming=true;event.context.connection=21;event.context.grant=1;event.context.kind=Kind::camera;event.resource=rpc::Open{controller.service_->identity(),"front"};controller.applyEvent(event);
         event.context.connection=22;event.context.grant=2;controller.applyEvent(event);
         require(offer("front").value("sessionCount")==2&&!offer("rear").value("inUse").toBool(),"Fanout or same-kind exact resource activity incorrect");
+        controller.setLocalOffers({{"rear","Rear camera",Kind::camera,true},{"plugged","New microphone",Kind::microphone,true}});
+        require(offer("front").value("enabled").toBool()&&offer("front").value("sessionCount")==2&&offer("plugged").value("enabled").toBool(),"Hotplug revoked in-use resource or failed to add sibling");
+        controller.enableOffer("front",false);require(!offer("front").value("enabled").toBool(),"Active snapshot bypassed explicit permission withdrawal");
+        controller.enableOffer("front",true);
         event.context.incoming=false;event.context.connection=23;event.context.grant=3;controller.applyEvent(event);require(offer("front").value("sessionCount")==2,"Outgoing use incorrectly counted as incoming");
         const auto generation=controller.sharingGeneration_;controller.disconnectIncomingAll();require(controller.sharingGeneration_==generation&&controller.sharing(),"Disconnect incoming all withdrew availability");
         controller.connections_.clear();controller.devices_.clear();controller.pending_.clear();
@@ -133,7 +137,7 @@ struct PeerControllerEventCheck {
     }
 };
 
-int main(int argc,char** argv){QCoreApplication app(argc,argv);app.setOrganizationName("ExtraPaneIsolatedChecks");app.setApplicationName("PeerControllerStartup");QTemporaryDir temporary;if(!temporary.isValid())return 1;
+int main(int argc,char** argv){auto require=[](bool good,const char* why){if(!good)throw std::runtime_error(why);};QCoreApplication app(argc,argv);app.setOrganizationName("ExtraPaneIsolatedChecks");app.setApplicationName("PeerControllerStartup");QTemporaryDir temporary;if(!temporary.isValid())return 1;
     QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,temporary.path());
     const auto path=temporary.path()+"/app/peers";
     try{
@@ -157,6 +161,8 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);app.setOrganizati
         {PeerController controller({},path);controller.setLocalOffers({{"new","Saved disabled camera",extrapane::peers::Kind::camera,true},{"added","New microphone",extrapane::peers::Kind::microphone,true}});
         QTcpServer reservation;if(!reservation.listen(QHostAddress::LocalHost,0))throw std::runtime_error("Port reservation failed");auto port=reservation.serverPort();reservation.close();controller.startAvailableSharing("localhost",port);
         for(const auto& value:controller.offers()){auto row=value.toMap();if(row.value("enabled").toBool()!=(row.value("id")=="added"))throw std::runtime_error("Restart lost restriction or disabled new resource");}}
+        {PeerController controller({},path+"-pairing");require(controller.setPairingPassword("custom pass phrase!"),"Custom pairing secret rejected");require(controller.pairingCustom()&&controller.pairingCode().isEmpty()&&controller.pairingSeconds()==0,"Custom pairing secret leaked in presentation");}
+        {PeerController controller({},path+"-pairing");require(controller.pairingCustom()&&controller.pairingCode().isEmpty(),"Custom mode did not survive restart");require(controller.setPairingPassword(""),"Could not restore rotating pairing");require(!controller.pairingCustom()&&controller.pairingCode().size()==6&&controller.pairingSeconds()>0,"Rotating pairing presentation missing");}
         std::cout<<"Qt peer startup and resource sharing lifecycle pass with isolated loopback listeners, no media\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

@@ -64,8 +64,8 @@ $manifest = [ordered]@{
     sdk = '10.0.403'
     patchSha256 = (Get-FileHash -LiteralPath $patch -Algorithm SHA256).Hash.ToLowerInvariant()
     sourceSha256 = (Get-FileHash -LiteralPath (Join-Path $bundle 'usbipd-upstream.tar') -Algorithm SHA256).Hash.ToLowerInvariant()
-    changes = 'IPv4 loopback; local bus + instance allowlist; guarded exact-instance bind; private registry; no auto-bind or global attachment cleanup; upstream singleton mutex retained.'
-    limitations = 'Development build only. No signed-driver setup, authenticated local socket, volume lock/eject lifecycle, or deployment integration.'
+    changes = 'IPv4 loopback; local bus + instance allowlist; guarded exact-instance bind with optional preallocated ownership GUID; private registry; no auto-bind or global attachment cleanup; upstream singleton mutex retained.'
+    limitations = 'Development backend process only; native ownership/admission and platform drivers are provided separately by ExtraPane. No physical USB compatibility test is performed by this build.'
 }
 $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $bundle 'BUILD.json') -Encoding UTF8
 if (-not ($Build -or $Publish)) { Write-Output "Prepared pinned USB backend source: $source"; return }

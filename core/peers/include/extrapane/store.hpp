@@ -20,6 +20,8 @@ class TrustStore {
 public:
     explicit TrustStore(std::filesystem::path private_directory);
     const DeviceId& identity()const noexcept{return identity_;}
+    std::string pairing_password()const;
+    void set_pairing_password(const std::string&); // Empty selects generated PINs.
     std::vector<RememberedDevice> devices()const;
     std::optional<PairSecret> secret(const DeviceId&)const;
     // Insert-only, including when the same key already exists. Forget/re-pair

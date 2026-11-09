@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -13,6 +14,14 @@ struct Frame {std::uint64_t sequence=0;std::uint32_t credit=0;bool stop=false;st
 using Header=std::array<std::uint8_t,header_size>;
 Header encode(const Frame& frame);
 Frame decode(const Header& header); // Returns validated metadata; caller reads length bytes into payload.
+// Turn-based transport avoids concurrent calls on the TLS/PAKE stream. Throttle
+// only fully idle exchanges; an incoming-only response burst is still active.
+class IdleBackoff final {
+public:
+    std::chrono::milliseconds next(bool sent_idle,bool received_idle);
+private:
+    unsigned milliseconds_=0;
+};
 class Pump final {
 public:
     // exporter_bus gates the first raw USB/IP operation. Empty is only for the

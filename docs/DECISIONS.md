@@ -1,5 +1,65 @@
 # Decisions, assumptions, and evidence
 
+## Rotating pairing credentials and mutual resources (2026-11-09)
+
+The user replaced the earlier process-lifetime code policy: generated pairing
+codes rotate every 20 seconds, with a visible circular countdown. A custom PIN
+or password is an optional fixed alternative until explicitly changed. Both use
+the same masked, neutral "PIN or password" prompt; discovery does not reveal
+credential mode or length. Input is not restricted to digits or six characters;
+a 1024-byte UTF-8 ceiling bounds processing. Custom secrets use protected local
+storage, not ordinary UI preferences, and are never displayed after saving.
+Rotation must preserve remembered trust and active resource sessions. Wrong
+credential confirmation reports a pairing error; genuine transport failures
+remain distinct. Pairing must expose resources in both directions through the
+authenticated connection, without requiring reverse LAN discovery or another PIN.
+
+## Hardware updates and listener controls (2026-11-09)
+
+Resource inventories refresh automatically on device changes, with bounded
+reconciliation for missed events. A changed catalog is sent to paired peers;
+unchanged snapshots do not rebuild the interface. Inventory refresh must not end
+an active resource merely because capture or exclusive USB forwarding hides its
+local device. Native session termination and explicit sharing/OS permission
+withdrawal remain authoritative. Remove manual resource-refresh buttons.
+
+The default listener is all IPv4 addresses (`0.0.0.0`) on port `43824`. The address
+menu lists All addresses, each active adapter/address pair, and Custom address.
+Multiple IPv4 addresses on one adapter are separate labeled choices. The port
+menu offers Default (43824) and Custom port. Presets apply immediately; custom
+choices reveal editable fields and an Apply action. Rebinding replaces only the
+listener, preserving existing peer connections and resource sessions. A failed
+bind restores the previous listener where possible and reports the actual state.
+This does not change firewall rules, enable UPnP, or alter outbound destination
+validation. Pairing remains enabled by default.
+
+Composite HID/audio USB devices may be admitted only after validating all
+configuration, interface and alternate-setting descriptors on both endpoints.
+Storage, Bluetooth, hubs and unknown functions remain outside this generic path.
+
+## Generic USB forwarding (2026-11-08)
+
+Extend ExtraPane's USB resources to actual Windows USB mice, keyboards and audio
+devices, using the maintained pinned USB/IP backends through the existing
+authenticated encrypted transport. This is ExtraPane integration, not a new
+proprietary USB driver. A physical device is exclusively assigned to one receiver
+while in use. Composite devices move together; only fully classified supported
+functions may enter the non-storage path. Hubs, controllers, unknown functions,
+foreign-owned bindings and devices containing storage are excluded from that path.
+
+Keep media camera/microphone/speaker sharing separate: those features do not
+deliberately detach the physical device. Keep storage's volume locking and recovery
+separate from HID/audio ownership. Generic forwarding must use durable exact-device
+binding ownership, close its exporter on termination, and clean up only its own
+binding, including when the device is absent. Never force-replace a local device
+driver or clear an unrelated application's binding to make sharing succeed.
+
+The first implementation is Windows-to-Windows. Upstream support for interrupt
+and isochronous transfers is evidence for feasibility, not proof of headset
+compatibility or latency. Physical transfer, return, unplug and interrupted-session
+tests remain acceptance gates. Other platforms must not advertise raw USB support
+merely because their existing media-sharing paths work.
+
 ## Pairing dialog presentation (2026-11-08)
 
 Show Pair with NAME, followed by the selected address and port in smaller text,

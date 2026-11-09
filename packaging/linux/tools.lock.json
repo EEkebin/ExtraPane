@@ -13,5 +13,10 @@
       "url": "https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gstreamer/432af639725bc8b99df12351e86bb2e8a6b3585f/linuxdeploy-plugin-gstreamer.sh",
       "sha256": "d1cf90701047aa9583c274bb66dd82db352255374fbfb8f3c4c89a05fe23bce0"
     }
+  },
+  "runtime": {
+    "url": "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64",
+    "fallback_url": "https://api.github.com/repos/AppImage/type2-runtime/releases/assets/657374641",
+    "sha256": "617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46"
   }
 }

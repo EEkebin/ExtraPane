@@ -71,7 +71,7 @@ selected headset must not redirect its session to the loudspeaker.
 2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or use manual address entry and enter its
    IPv4 address and port. Choose Automatic route, or the intended local interface
    on a multihomed computer. Click Connect, then enter the laptop's displayed
-   six-digit code in the pairing dialog.
+   PIN or password in the masked pairing dialog.
 3. Pair, open **Resources**, and add a monitor row. Choose Virtual monitor, then
    Custom or a named monitor preset; set its resolution and refresh target. The desktop creates the virtual
    monitor; the laptop opens the receiver window.
@@ -220,7 +220,16 @@ but are not OS-keychain encryption.
 ### Pairing-code modal
 
 - Connect to a new Nearby device requiring pairing: a modal shows the selected
-  device and accepts six digits. There is no inline code field on Devices.
+  device and accepts a masked PIN or password with a neutral placeholder. There
+  is no inline credential field on Devices. Test a wrong credential: it should
+  report incorrect/expired credentials, while network failure remains distinct.
+- Watch the local code/countdown for 20 seconds: the generated code changes and the
+  circle resets. Already-paired devices and active resources must stay available.
+- Save a custom password with spaces and Unicode, restart, and verify it still
+  pairs. It must not reappear in the local field or PIN label. Switch back to
+  generated codes and confirm the countdown resumes.
+- Pair once with reverse discovery unavailable: both resource catalogs should
+  appear without asking for the other device's PIN or exposing a second port.
 - Cancel or close the dialog: no connection is started and the code is cleared.
   Reopen it and confirm the old value is absent. Invalid text cannot submit.
 - Change the discovery list while a dialog is open: submission must retain its

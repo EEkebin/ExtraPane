@@ -20,6 +20,17 @@ if(EXTRAPANE_PEERS_TESTS)
   add_test(NAME peers-wire-policy COMMAND extrapane-peers-check)
   add_executable(extrapane-peers-store-check ../../tests/peers_store_check.cpp)
   target_link_libraries(extrapane-peers-store-check PRIVATE extrapane_peers)
+  # The legacy-format fixture hashes its own bytes. Link its crypto dependency
+  # explicitly: PRIVATE library dependencies do not export header usage rules,
+  # and the embedded BoringSSL build also needs its symbol-prefix definition.
+  if(WIN32)
+    target_link_libraries(extrapane-peers-store-check PRIVATE bcrypt crypt32)
+  elseif(TARGET crypto)
+    target_compile_definitions(extrapane-peers-store-check PRIVATE BORINGSSL_PREFIX=EXTRAPANE)
+    target_link_libraries(extrapane-peers-store-check PRIVATE crypto)
+  else()
+    target_link_libraries(extrapane-peers-store-check PRIVATE OpenSSL::Crypto)
+  endif()
   add_test(NAME peers-private-store COMMAND extrapane-peers-store-check)
   add_executable(extrapane-peer-rpc-check ../../tests/peer_rpc_check.cpp)
   target_link_libraries(extrapane-peer-rpc-check PRIVATE extrapane_peers)

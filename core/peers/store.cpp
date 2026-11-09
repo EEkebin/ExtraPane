@@ -121,6 +121,18 @@ TrustStore::TrustStore(std::filesystem::path path):directory_(std::filesystem::a
     if(bytes){identity_=decode(std::move(*bytes)).identity;return;}
     State state{random(),{}};atomic_file(directory_/"trust-v1.bin",encode(state));identity_=state.identity;
 }
+std::string TrustStore::pairing_password()const{
+    directory(directory_);Lock lock(directory_);(void)load(directory_,identity_);
+    auto bytes=read_file(directory_/"pairing-v1.bin");if(!bytes)return {};
+    Sensitive plain{unprotect(std::move(*bytes))};need(plain.value.size()>=70&&plain.value.size()<=1094,"Invalid pairing configuration size");
+    const auto all=std::span(plain.value),payload=all.first(all.size()-32);const auto sum=digest(payload);need(std::equal(sum.begin(),sum.end(),all.end()-32),"Pairing configuration integrity check failed");
+    Reader in{payload};need(in.number(4)==0x45505031&&in.key()==identity_,"Pairing configuration identity changed");auto value=in.text(1024);need(in.in.empty(),"Trailing pairing configuration data");return value;
+}
+void TrustStore::set_pairing_password(const std::string& value){
+    need(value.size()<=1024,"Pairing password exceeds 1024 bytes");directory(directory_);Lock lock(directory_);(void)load(directory_,identity_);
+    Sensitive plain{Bytes{'E','P','P','1'}};plain.value.insert(plain.value.end(),identity_.begin(),identity_.end());put(plain.value,value);auto sum=digest(plain.value);plain.value.insert(plain.value.end(),sum.begin(),sum.end());
+    atomic_file(directory_/"pairing-v1.bin",protect(std::move(plain.value)));
+}
 std::vector<RememberedDevice> TrustStore::devices()const{directory(directory_);Lock lock(directory_);const auto state=load(directory_,identity_);std::vector<RememberedDevice> result;for(const auto& [id,e]:state.peers)result.push_back(e.device);return result;}
 std::optional<PairSecret> TrustStore::secret(const DeviceId& id)const{directory(directory_);Lock lock(directory_);const auto state=load(directory_,identity_);auto found=state.peers.find(id);return found==state.peers.end()?std::optional<PairSecret>{}:found->second.secret;}
 void TrustStore::remember(RememberedDevice peer,const PairSecret& secret){valid(peer,secret,identity_);directory(directory_);Lock lock(directory_);auto state=load(directory_,identity_);need(!state.peers.contains(peer.id),"Device is already remembered; forget it before pairing again");need(!state.pending.contains(peer.id),"Device revocation is pending; finish forgetting before pairing again");need(state.peers.size()<max_peers,"Remembered device limit reached");state.tombstones.erase(peer.id);state.peers[peer.id]={std::move(peer),secret};atomic_file(directory_/"trust-v1.bin",encode(state));}

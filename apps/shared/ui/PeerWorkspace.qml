@@ -65,25 +65,22 @@ Item {
         return !bad
     }
     function sharingConfigurationValid() {
-        if(!sharingBusy) {
-            const valid=checkFields([listenPort])
-            bind.invalid=!validAddress(bind.selectedAddress)
-            if(bind.invalid) bindInvalidTimer.restart()
-            if(!valid || bind.invalid) {
-                notification.text="Check the highlighted information."
-                notification.open()
-                return false
-            }
+        const valid=portMode.currentIndex===0 || checkFields([listenPort])
+        customBind.invalid=!(bind.selectedAddress==="0.0.0.0" || validAddress(bind.selectedAddress))
+        if(!valid || customBind.invalid) {
+            notification.text="Check the highlighted information."; notification.open(); return false
         }
         return true
     }
+    function listeningPort() { return portMode.currentIndex===0 ? 43824 : Number(listenPort.text) }
+    function applyListening() { if(sharingConfigurationValid()) peers.startAvailableSharing(bind.selectedAddress,listeningPort()) }
     function setOfferSharing(id, enabled) {
         if(enabled && !sharingConfigurationValid()) return
-        peers.setOfferSharing(id,enabled,bind.selectedAddress,Number(listenPort.text))
+        peers.setOfferSharing(id,enabled,bind.selectedAddress,listeningPort())
     }
     function setGatewaySharing(enabled) {
         if(enabled && !sharingConfigurationValid()) return
-        peers.setGatewaySharing(enabled,bind.selectedAddress,Number(listenPort.text))
+        peers.setGatewaySharing(enabled,bind.selectedAddress,listeningPort())
     }
     Dialog {
         id: pendingRemovalDialog
@@ -124,6 +121,9 @@ Item {
             devices[item.owner]={identity:item.owner,name:item.ownerName||"Device"}
         return Object.values(devices)
     }
+    function validPairingSecret(value) {
+        try { return value.length>0&&value.indexOf("\u0000")<0&&encodeURIComponent(value).replace(/%[A-F\d]{2}/gi,"x").length<=1024 } catch(error) { return false }
+    }
     Dialog {
         id: pairingDialog; objectName: "peerPairingDialog"
         property var target: ({})
@@ -143,7 +143,7 @@ Item {
         onClosed: { code.clear();code.invalid=false;target=({});submitted=false }
         function submit() {
             if(submitted||!visible||(!target.address&&!target.gateway))return
-            code.invalid=!/^\d{6}$/.test(code.text)
+            code.invalid=!workspace.validPairingSecret(code.text)
             if(code.invalid){code.forceActiveFocus();return}
             submitted=true
             const frozen=target
@@ -153,13 +153,13 @@ Item {
         }
         contentItem: ColumnLayout {
             spacing: 14
-            Label { text:"Pairing Code";color:"#eef4ff";Layout.fillWidth:true }
-            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; Layout.preferredHeight:52; Accessible.name: "Pairing Code"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: pairingDialog.submit()
+            Label { text:"PIN or password";color:"#eef4ff";Layout.fillWidth:true }
+            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; Layout.preferredHeight:52; Accessible.name: "PIN or password"; maximumLength: 1024; echoMode: TextInput.Password; inputMethodHints: Qt.ImhHiddenText | Qt.ImhNoPredictiveText; onAccepted: pairingDialog.submit()
                 leftPadding:14;rightPadding:14;topPadding:10;bottomPadding:10
                 background:Rectangle { color:"#111f32";radius:6;border.width:code.activeFocus||code.invalid?2:1;border.color:code.invalid?"#ff6978":code.activeFocus?"#80b8ff":"#48617e" }
-                Text { text:"XXXXXX";visible:code.text.length===0;color:"#9eacc2";anchors.left:parent.left;anchors.leftMargin:14;anchors.verticalCenter:parent.verticalCenter;font:code.font }
+                Text { text:"Enter PIN or password";visible:code.text.length===0;color:"#9eacc2";anchors.left:parent.left;anchors.leftMargin:14;anchors.verticalCenter:parent.verticalCenter;font:code.font }
             }
-            Label { text: "Enter exactly six digits."; color: "#ff6978"; visible: code.invalid }
+            Label { text: "Enter a PIN or password (up to 1024 UTF-8 bytes)."; color: "#ff6978"; visible: code.invalid }
             RowLayout { Layout.alignment: Qt.AlignRight
                 Action { objectName:"peerPairingCancel"; text:"Cancel"; onClicked:pairingDialog.close() }
                 Action { objectName:"peerPairingSubmit"; text:"Pair"; enabled:!pairingDialog.submitted; onClicked:pairingDialog.submit() }
@@ -423,28 +423,57 @@ Item {
                                 contentItem:RowLayout { spacing:12
                                     AppIcon { symbol:"chevron";rotation:workspace.localExpanded?90:0;Layout.preferredWidth:18;Layout.preferredHeight:18 }
                                     Label { text:peers.deviceName;textFormat:Text.PlainText;font.pixelSize:18;Layout.fillWidth:true;elide:Text.ElideRight }
-                                    Label { objectName:"peerLocalPairingCode"; text:peers.pairingRequired?"Pairing code: "+peers.pairingCode:"Pairing disabled";font.pixelSize:18 }
+                                    Label { objectName:"peerLocalPairingCode"; text:!peers.pairingRequired?"Pairing disabled":peers.pairingCustom?"Custom PIN or password":"Pairing code: "+peers.pairingCode;font.pixelSize:18 }
+                                    Canvas {
+                                        objectName:"peerPairingCountdown"; Layout.preferredWidth:36;Layout.preferredHeight:36
+                                        visible:peers.pairingRequired&&!peers.pairingCustom
+                                        property real progress: (peers.pairingSeconds||0)/20
+                                        Behavior on progress { enabled: (peers.pairingSeconds||0)<19; NumberAnimation {duration:850} }
+                                        onProgressChanged:requestPaint()
+                                        onPaint: { const ctx=getContext("2d");ctx.clearRect(0,0,width,height);ctx.lineWidth=3;ctx.strokeStyle="#334a65";ctx.beginPath();ctx.arc(width/2,height/2,15,0,2*Math.PI);ctx.stroke();ctx.strokeStyle="#80b8ff";ctx.lineCap="round";ctx.beginPath();ctx.arc(width/2,height/2,15,-Math.PI/2,-Math.PI/2+2*Math.PI*progress);ctx.stroke() }
+                                        Label { anchors.centerIn:parent;text:String(peers.pairingSeconds||0);font.pixelSize:11;color:"#b8d7ff" }
+                                        Accessible.name:"Pairing code refreshes in "+(peers.pairingSeconds||0)+" seconds"
+                                    }
                                 }
                             }
                             ColumnLayout { objectName:"peerLocalBody";Layout.fillWidth:true;visible:workspace.localExpanded;spacing:14
                     RowLayout {
                         Layout.fillWidth: true
                         Label { textFormat: Text.PlainText; text: peers.deviceName; font.pixelSize: 20; Layout.fillWidth: true }
-                        Button { objectName: "peerRefreshOffers"; text: "Refresh resources"; onClicked: peers.refreshOffers() }
                     }
-                    RowLayout {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        ComboBox { id: bind; objectName: "peerBindNic"; property bool invalid: false; Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: bind.invalid } Timer { id: bindInvalidTimer; interval: 4500; onTriggered: bind.invalid=false } Layout.fillWidth: true; editable: true; model: peers.networkAddresses; textRole: "label"; valueRole: "address"; enabled: peers.connections.length===0; property string selectedAddress: ""
-                            onActivated: selectedAddress=currentValue
-                            onModelChanged: Qt.callLater(function() { if(!bind.selectedAddress&&bind.count) bind.selectedAddress=bind.valueAt(0); bind.currentIndex=bind.indexOfValue(bind.selectedAddress); bind.editText=bind.selectedAddress })
-                            Connections { target: bind.contentItem; function onTextEdited() { bind.selectedAddress=bind.contentItem.text } }
-                         }
-                        Field { id: listenPort; objectName: "peerListenPort"; text: "43824"; Layout.preferredWidth: 100; placeholderText: "Port"; enabled: peers.connections.length===0; validator: IntValidator { bottom:1; top:65535 } }
+                        Label { text: "Listen on" }
+                        Label { visible:peers.sharing; text:"Listening: "+(peers.listeningAddress||"0.0.0.0")+":"+(peers.listeningPort||43824);color:"#9eacc2" }
+                        ComboBox {
+                            id: bind; objectName: "peerBindNic"; Layout.fillWidth: true
+                            editable: false; textRole: "label"; valueRole: "address"
+                            property string selectedAddress: currentValue==="custom" ? customBind.text.trim() : (currentValue||"0.0.0.0")
+                            property string selectedPreset: "0.0.0.0"
+                            model: [{label:"All addresses",address:"0.0.0.0"}].concat(peers.networkAddresses).concat([{label:"Custom address",address:"custom"}])
+                            onActivated: { selectedPreset=currentValue; if(currentValue!=="custom")workspace.applyListening() }
+                            onModelChanged: Qt.callLater(function(){let found=bind.indexOfValue(bind.selectedPreset);if(found<0){customBind.text=bind.selectedPreset;bind.selectedPreset="custom";found=bind.indexOfValue("custom")}bind.currentIndex=found})
+                        }
+                        Field { id: customBind; objectName: "peerCustomBind"; visible: bind.currentValue==="custom"; Layout.fillWidth: true; placeholderText: "Local IPv4 address"; text:"127.0.0.1" }
+                        ComboBox { id: portMode; objectName:"peerPortMode"; Layout.fillWidth:true; model:["Default ? 43824","Custom port"]; onActivated:if(currentIndex===0)workspace.applyListening() }
+                        Field { id: listenPort; objectName: "peerListenPort"; visible:portMode.currentIndex===1; text: "43824"; Layout.fillWidth:true; placeholderText: "Port"; validator: IntValidator { bottom:1; top:65535 } }
+                        Action { objectName:"peerApplyListening"; text:"Apply"; visible:bind.currentValue==="custom"||portMode.currentIndex===1; onClicked:workspace.applyListening() }
                     }
-                    Action { text: workspace.sharingBusy ? "Apply address" : "Retry availability"; enabled: peers.connections.length===0; onClicked: { if(workspace.sharingConfigurationValid()) peers.startAvailableSharing(bind.selectedAddress,Number(listenPort.text)) } }
                     Label { text: "Share makes a resource available to paired devices. The red power button stops its current streams."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     CheckBox { text: "Require pairing"; checked: peers.pairingRequired; onToggled: peers.pairingRequired=checked }
-                    Label { textFormat: Text.PlainText; visible: peers.pairingRequired; text: "The code stays the same until ExtraPane restarts. Previously paired devices use their saved identity."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    ColumnLayout {
+                        visible:peers.pairingRequired;Layout.fillWidth:true;spacing:10
+                        ComboBox { id:pairingMode;objectName:"peerPairingMode";Layout.fillWidth:true;model:["Rotating code","Custom PIN or password"];currentIndex:peers.pairingCustom?1:0
+                            onActivated: { customPairing.clear();if(currentIndex===0&&!peers.setPairingPassword(""))currentIndex=peers.pairingCustom?1:0 }
+                        }
+                        RowLayout { visible:pairingMode.currentIndex===1;Layout.fillWidth:true
+                            Field { id:customPairing;objectName:"peerCustomPairingPassword";Layout.fillWidth:true;placeholderText:peers.pairingCustom?"Enter a replacement PIN or password":"Enter PIN or password";echoMode:TextInput.Password;maximumLength:1024;inputMethodHints:Qt.ImhHiddenText|Qt.ImhNoPredictiveText
+                                onAccepted: if(text.length&&peers.setPairingPassword(text))clear()
+                            }
+                            Action { objectName:"peerSavePairingPassword";text:"Save";enabled:customPairing.text.length>0;onClicked:if(peers.setPairingPassword(customPairing.text))customPairing.clear() }
+                        }
+                        Label { text:peers.pairingCustom?"Your custom PIN or password stays in effect until you change it. Previously paired devices keep their access.":"The code refreshes every 20 seconds. Previously paired devices and active resources stay connected.";color:"#9eacc2";wrapMode:Text.WordWrap;Layout.fillWidth:true }
+                    }
                     Repeater {
                         model: workspace.resourceGroups
                         delegate: ResourceGroup {
@@ -453,6 +482,7 @@ Item {
                             property var items: workspace.groupedRows(peers.offers, modelData)
                             title: modelData.title; symbol: modelData.icon; count: items.length
                             groupKey: "peerOffers_"+modelData.key; visible: count>0
+                            Label { visible: offerGroup.modelData.key==="usb"; text: "USB forwarding is exclusive: the physical device moves to the other computer until disconnected. Use Camera or Microphone sharing to keep those devices local."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
                             Repeater {
                                 model: offerGroup.items
                                 delegate: ColumnLayout {
@@ -673,9 +703,8 @@ Item {
                                         AppIcon { symbol: "chevron"; Layout.preferredWidth: 18; Layout.preferredHeight: 18; rotation: peerDevice.expanded ? 90 : 0 }
                                         ColumnLayout {
                                             Layout.fillWidth: true; spacing: 3
-                                            Label { textFormat: Text.PlainText; text: peerDevice.modelData.name+(peerDevice.modelData.verified ? " (verified)" : " (unverified)"); font.pixelSize: 18; Layout.fillWidth: true; elide: Text.ElideRight }
+                                            Label { textFormat: Text.PlainText; text: peerDevice.modelData.name+(peerDevice.modelData.verified ? "" : " (unverified)"); font.pixelSize: 18; Layout.fillWidth: true; elide: Text.ElideRight }
                                             Label { text: peerDevice.modelData.resources.length+" resources"+(peerDevice.activeCount ? " - "+peerDevice.activeCount+" active" : ""); color: "#9eacc2"; Layout.fillWidth: true; elide: Text.ElideRight }
-                                            Label { visible: !!peerDevice.modelData.viaConnection; text: "Via gateway - paired directly with this device"; color: "#9eacc2"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                         }
                                     }
                                 }
@@ -688,7 +717,7 @@ Item {
                                 delegate: RowLayout {
                                     required property var modelData
                                     Layout.fillWidth:true
-                                    Label { text: modelData.name+" (via gateway)"; textFormat:Text.PlainText; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+                                    Label { text: modelData.name; textFormat:Text.PlainText; Layout.fillWidth:true; wrapMode:Text.WordWrap }
                                     Action { objectName:"peerGatewayPair_"+modelData.identity; text:"Pair device"; onClicked:workspace.beginGatewayPairing(peerDevice.modelData.connection,modelData.identity,modelData.name) }
                                 }
                             }
@@ -702,6 +731,7 @@ Item {
                                     groupKey: "peerCatalog_"+peerDevice.modelData.connection+"_"+modelData.key
                                     stateKey: "catalog_"+peerDevice.deviceKey+"_"+modelData.key
                                     visible: items.length>0
+                                    Label { visible: catalogGroup.modelData.key==="usb"; text: "USB forwarding takes exclusive control on the other computer. Device drivers and compatibility still apply."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
                                     MonitorRows { connectionId:String(peerDevice.modelData.connection); items:catalogGroup.modelData.key==="monitors"?catalogGroup.items:[]; visible:catalogGroup.modelData.key==="monitors" }
                                     Repeater {
                                         model: catalogGroup.modelData.key==="monitors" ? [] : catalogGroup.items
@@ -721,7 +751,6 @@ Item {
                                             ColumnLayout {
                                                 id: resourceContent; anchors.fill: parent; anchors.margins: 14; spacing: 10
                                                 Label { textFormat: Text.PlainText; text: resourceCard.modelData.label; font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                                                Label { textFormat: Text.PlainText; visible: resourceCard.modelData.delegated===true; text: "Via gateway ? "+(resourceCard.modelData.ownerName||""); color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                                 Label { textFormat: Text.PlainText; visible: !resourceCard.modelData.available; text: resourceCard.modelData.reason; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
 
                                                 RowLayout {

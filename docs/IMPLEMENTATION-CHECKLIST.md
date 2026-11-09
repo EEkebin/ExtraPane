@@ -1,5 +1,220 @@
 # Resource-sharing implementation checklist
 
+## Release preparation: 2026.11.09
+
+- [x] Remove verified suffixes and gateway-route description lines from device and
+  resource cards. Mutual pairing remains authenticated in both directions.
+- [x] Shorten generated PIN rotation/countdowns to 20 seconds on every UI.
+  Keep the independent five-attempt-per-minute limit; changing PIN does not reset it.
+- [x] Update README, security/acceptance docs and generated release instructions
+  for Devices/Resources instead of the legacy Server/Client workflow.
+- [x] Fix wildcard-listener regression expectations and cross-platform crypto
+  dependency declarations found by the final CI audit.
+- [x] Fix POSIX listener restart after active TLS closure; retain exact-binding
+  exclusivity and account for BSD wildcard/specific binding semantics in tests.
+- [x] Add hash-verified public release-asset download fallbacks for MbedTLS,
+  USB/IP and Gradle; explicitly pin the AppImage runtime. Actual API downloads,
+  checksums, fresh CMake configuration and fallback/corruption checks passed.
+- [ ] Verify final CI, merge the stacked branches into main, and publish the
+  stable release with Windows, Linux, Android and Universal macOS packages.
+
+Targeted Qt layout/routing, native auth/rotation/rate-limit, listener and private
+store checks pass. Android UI compilation/lint and host checks pass. Full final
+CI remains pending. The preceding pre.116.1 platform build passed all four
+platforms; its separate core CI failures are addressed in this increment.
+
+## Active increment: pairing credentials and mutual resource availability
+
+- [x] Rotate generated codes every minute without interrupting paired devices.
+- [x] Add protected fixed custom PIN/password settings and neutral masked prompts.
+- [x] Display circular countdowns on desktop, Android and macOS.
+- [x] Distinguish incorrect credential confirmation from transport errors.
+- [x] Make one pairing provide resource availability in both directions, including
+  when a reverse direct/discovery route is absent.
+- [x] Verify authentication boundaries and UI transitions.
+- [x] Build and deliver matching Windows/Android packages.
+- [ ] Complete all-platform CI and physical acceptance for this revision.
+
+The user clarified that the pairing field should hide entered characters, not
+that typing freezes. Custom secrets remain fixed; generated credentials rotate.
+No further physical connections or driver changes are part of isolated checks.
+
+Verification: auth checks cover generated-code rotation at 59.999/60 seconds,
+wrong/custom/Unicode passwords, expiry during confirmation, strict UTF-8 and size
+limits, rate-limit reset and settings-change non-bypass. Store checks cover
+private persistence, corruption rejection and Windows DPAPI plaintext absence.
+Service checks retain active grants across credential changes. Mutual-resource
+and existing gateway regressions pass without reverse discovery/address hints.
+Qt app, offscreen prompt/countdown/masking and controller persistence/reset checks
+pass. Android's 16 host suites, both native ABIs, Java compilation and lint pass.
+macOS controls are implemented; full platform compilation remains for CI.
+
+Delivery: **2026.11.09-pre.116.1**, clean source
+`f06fbfdacc3e812ea05cba3f9a7064c1b44cc27c`. Windows installer/portable extraction,
+isolated UI and embedded component checks pass. Matching installer copied and
+SHA-256 verified on this Desktop and Surface Desktop (`10.0.20.143`), without
+running either installer. Android release build/lint, host checks, both ABIs,
+pinned signer and alignment checks pass; stream installation succeeded.
+
+- Windows installer SHA-256:
+  `ce892c335558265c6a76b2d790c54be5242fbc9f9d8b5a6f7efa402d049b17af`
+- Android APK SHA-256:
+  `5f6d37d5da79f0bdfbdf17ae3b8f078a865d88dcc5495185eda907ea4c787c0c`
+- [All-platform CI run](https://github.com/EEkebin/ExtraPane/actions/runs/42564669305)
+  remains in progress at delivery. User acceptance of new pairing and mutual
+  resources awaits both Windows installations being updated.
+
+## Active increment: USB routing through the installed peer workspace
+
+- [x] Update unified receiver routing to recognize the current kind-bound USB
+  protocol for both storage and generic devices.
+- [x] Surface native failure details instead of silently returning the power
+  button to green after a premature connection toast.
+- [x] Verify actual protocol greetings through the shared routing check.
+- [x] Build and deliver matching Windows/Android packages.
+
+User acceptance of pre.114.1 found that USB connects briefly in the peer workspace
+then ends before the mouse leaves the Surface. The shared receiver still matched
+the version-3 USB prefix, while the native helper sends version 4 with a device
+kind. The previous direct-helper physical test bypassed that router. Read-only
+inspection confirms both installed services are pre.114.1 and the Surface mouse
+and HID interfaces remain healthy. This is an integration defect, not successful
+installed-app USB acceptance.
+
+Regression evidence: actual storage/generic greeting definitions pass through
+session-prefix routing; malformed kinds, old/future versions, reserved bytes and
+reply frames are rejected. The updated standalone routing check passes.
+The previous all-platform run also found an Objective-C++ ivar initializer syntax
+error on macOS; the declaration is corrected and an isolated syntax check passes.
+Full macOS verification is queued for the next source build.
+Native runtime, authenticated loopback failure propagation/redaction, Qt startup
+and UI checks pass. Provider errors reach the requesting peer through the existing
+rejection message; native credentials are withheld from diagnostics. The initial
+toast says "Resource connection requested" rather than claiming device readiness.
+
+Delivery: **2026.11.09-pre.115.1**, clean source
+`d135fb4749960197786407be25d54ea0e2e369a9`. Windows installer/portable extraction,
+UI startup and embedded component checks pass. Installer copied and SHA-256
+verified on both this Desktop and Surface Desktop (`10.0.20.143`); neither was
+executed. Android's 16 host checks, release build/lint, both ABIs, pinned signer
+and alignment checks pass. APK stream-installed; version/code `11501` confirmed.
+
+- Windows installer SHA-256:
+  `07ea3decbd92fbe303e38fa1e6fdc499def9dbd5d055fc0fa778c999c9d97157`
+- Android APK SHA-256:
+  `665565dbee20be54fec18a1eb34765f0d04dcfe7f8703f093dbbb2eab8121b11`
+- [All-platform CI](https://github.com/EEkebin/ExtraPane/actions/runs/42563269836)
+  completed successfully on Windows, Linux, Android and both macOS architectures.
+  The prior macOS syntax failure is resolved. Installed-app USB
+  acceptance awaits the user's retry on both updated Windows installations.
+
+## Active increment: automatic hardware updates and composite USB
+
+- [x] Refresh local resources on hardware changes and notify paired devices.
+- [x] Preserve unrelated and actively owned sessions across inventory refreshes.
+- [x] Remove manual resource refresh controls.
+- [x] Validate complete USB configuration/interface descriptors for composite
+  HID/audio devices; report Bluetooth and unsupported functions clearly.
+- [x] Add all-address listener and preset/custom address/port controls, preserving
+  active resources during rebind and reporting actual state after failed rollback.
+- [x] Verify isolated transitions and the authorized Surface USB mouse return.
+- [x] Build and deliver matching Windows/Android packages.
+- [ ] Complete all-platform CI for this source revision.
+
+Windows uses debounced device notifications and periodic reconciliation; Linux
+and macOS reconcile periodically, and Android uses hardware callbacks plus a
+fallback timer. Catalog changes notify paired peers; older peers retain their
+polling fallback. Busy active sources keep their advertised identity until native
+session termination or explicit sharing/permission withdrawal.
+
+Isolated evidence: native USB descriptor/ownership/return checks, Qt startup and
+offscreen UI checks, and TLS catalog-change/rebind tests pass. Rebind tests retain
+live resource bytes through address changes and verify occupied-port rollback.
+Android's 16 host suites, Java compilation, lint and native builds for both ABIs
+pass. Changing a listener can briefly pause Android controls (up to about four
+seconds while an existing handshake ends); active streams continue. Physical media hotplug
+and other operating systems' hardware behavior remain pending.
+
+The first authorized Surface mouse test exposed premature exporter shutdown:
+destination eject succeeded but source restart was interrupted, leaving the exact
+VBox stub at Problem 21. Restarting that verified stub restored the mouse, and the
+user confirmed local operation. The fix waits for normal source return and keeps
+an exact, durable ownership record for interrupted cleanup.
+
+The repeat test with VID 3151/PID 3020 passed import, destination eject and automatic
+source return. The original composite device and HID interfaces were present and
+healthy afterward, with no remaining owned binding, stub or recovery lease. No
+manual repair was needed. This verifies one mouse's transfer/return lifecycle;
+headset compatibility, application input behavior and physical crash/unplug
+recovery are not broadly validated. Bluetooth forwarding is deferred at the
+user's request. No Windows installer or new driver was run during this test.
+
+Delivery: **2026.11.09-pre.114.1**, built from clean source
+`dd9f0e20c1af0f6129a5af82bab8be75f5b3229b`. Windows installer and portable
+extraction checks passed, including embedded components and isolated Qt startup.
+The installer was copied to this Desktop and the Surface Desktop at
+`10.0.20.143`; both copies were verified. Neither installer was executed.
+Android release build/lint, signer, both native ABIs and alignment checks passed.
+The APK was stream-installed on the authorized Pixel, and installed version
+`2026.11.09-pre.114.1` / code `11401` was confirmed.
+
+- Windows installer SHA-256:
+  `e9e2ca20712768660d3f4b04fd7e3a2a76e1288cd54f2a4d2ce5fea3b0812247`
+- Android APK SHA-256:
+  `298aa43fe80141cd36a2db1890ae3c0adbd11a7d7d3d33ad213dce4c98117337`
+- [All-platform CI run](https://github.com/EEkebin/ExtraPane/actions/runs/42562223287)
+  was still running at delivery. Full installed-UI hardware acceptance remains
+  pending; the successful mouse lifecycle test used the updated native helper.
+
+## Active increment: generic USB device forwarding
+
+- [x] Audit pinned USB/IP transfer support and separate non-storage ownership from
+  storage quarantine; preserve prior work on `feat/device-discovery` and develop
+  this increment on `feat/usb-device-forwarding`.
+- [x] Add conservative physical HID/audio inventory and explicit unavailable reasons.
+- [x] Implement exact owned non-storage export, import, return and abandoned-binding
+  cleanup without disk recovery requirements or forced driver replacement.
+- [x] Integrate USB resource selection and versioned kind negotiation; reject unsafe
+  storage/generic fallback and incompatible native helpers.
+- [x] Verify synthetic lifecycle, protocol, ownership and isolated builds; update docs.
+- [x] Build and deliver matching Windows/Android packages after verification.
+- [ ] With user permission, verify actual USB mouse/keyboard and headset transfer,
+  release, disconnect, unplug and crash recovery on physical devices.
+
+Initial pre.113 implementation evidence: pinned backends implement interrupt and
+isochronous transfers, but that alone was not physical compatibility evidence.
+No USB device was bound, detached or imported before that delivery; the follow-up
+mouse result is recorded above. Raw USB on other platforms remains
+unsupported. Existing storage safety rules remain separate and unchanged.
+
+Initial isolated evidence: native USB helper and Qt app compile; Qt offscreen
+checks pass. Offer tests cover legacy-version rejection, malformed kind/reserved
+fields and receipt identity. Generic policy/lifecycle checks exercise selection
+changes, binding/start/release failures and exact import-port parsing. Tunnel
+checks cover bidirectional flow and idle pacing. Patched pinned exporter AOT
+compilation succeeded without running it. Guarded installer migration compiled
+and policy checks passed: only the exact previous payload can upgrade, unchanged
+drivers and inactive ownership records are preserved, active exporters block
+replacement, and a verified interrupted replacement can resume. Android's 14 host
+checks, Java compilation and lint passed. Final package verification is pending.
+Generic receiver uses exact virtual-port to
+PnP driver-key mapping rather than the pinned driver's broken serial override;
+the physical mapping remains an acceptance gate. Composite devices are excluded.
+
+Delivered **2026.11.09-pre.113.1** from clean source
+`a84ba5b357ee1b7d77d439519942ae8e91c43332` on `feat/usb-device-forwarding`
+(draft PR 16 into `feat/device-discovery`; neither branch merged to main).
+Windows installer copied to this Desktop and the Surface Desktop with matching
+SHA256 `db830ecd478c10a816c7e626bc9509c0210bbfa530f30a35601b77389a795798`;
+saved Surface SSH identity verified. Extracted UI, component checks, exact versions,
+clean metadata and updated USB backend/corresponding-source hashes passed.
+Android streamed install succeeded and versionCode 11301/versionName confirmed;
+APK SHA256 `399e0ffd9798fc3b387d854364fbf14e27c16021d6e3cf0a87639b847dc017ce`.
+Signing identity, release flags, both ABIs and 16-KB alignment were verified.
+Hosted all-platform run `42553036819` is still in progress. No Windows installer
+was executed, and no physical USB forwarding test was performed. Android raw USB
+support remains unavailable; its package is the matching-version companion build.
+
 ## Active increment: pairing dialog labels
 
 - [x] Show the selected device name in Pair with NAME; smaller address/port below.
@@ -1335,7 +1550,7 @@ No transport/media lifecycle was changed and no physical stream test was run.
 - [x] Build and deliver matching Windows/Android packages. Physical verification
   remains a separate gate; no driver installation is authorized by compilation.
 
-### Unified full Windows installation — 2026-11-08
+### Unified full Windows installation â€” 2026-11-08
 
 - [x] Removed the installer role chooser and all role-dependent component branches. One ExtraPane installation prepares the managed display, camera, audio/USB receiving and USB source components; it does not activate resources or export storage.
 - [x] Kept explicit development-certificate consent through **I agree - Next**, unified uninstall ownership and existing Update/Restore/Uninstall maintenance behavior. Previously limited installations receive the full component set when updated.

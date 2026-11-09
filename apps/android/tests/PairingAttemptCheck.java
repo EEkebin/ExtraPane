@@ -4,10 +4,14 @@ public final class PairingAttemptCheck {
     public static void main(String[] args){
         PairingAttempt fresh=new PairingAttempt("10.0.0.1",43825,"10.0.0.2","peer",false,false);
         require(fresh.codeRequired&&!fresh.open);
-        for(String invalid:new String[]{"","12345","1234567","abcdef","??????"}){
+        for(String invalid:new String[]{"","a".repeat(1025),"\u0000","\ud800","\udc00","\u00e9".repeat(513)}){
             boolean rejected=false;try{fresh.submit(invalid);}catch(IllegalArgumentException expected){rejected=true;}require(rejected);
         }
         require(fresh.submit("012345"));require(!fresh.submit("012345"));
+        for(String valid:new String[]{"12345","1234567","a PIN with spaces","\u00e9".repeat(512),"\ud83d\udd10".repeat(256)}){
+            PairingAttempt password=new PairingAttempt("10.0.0.1",43824,"","peer",false,false);
+            require(password.submit(valid));
+        }
         PairingAttempt cancelled=new PairingAttempt("10.0.0.1",43825,"10.0.0.2","peer",false,false);
         cancelled.cancel();require(!cancelled.submit("123456"));
         PairingAttempt saved=new PairingAttempt("10.0.0.3",1234,"10.0.0.2","saved-id",true,true);

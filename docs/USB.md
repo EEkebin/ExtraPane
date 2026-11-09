@@ -4,11 +4,34 @@ USB sharing means transferring exclusive access to an actual USB device. It is
 separate from camera and microphone media forwarding, which do not deliberately
 detach the source device. The Windows development app includes USB storage sharing; physical compatibility and recovery remain hardware validation gates.
 
+The `feat/usb-device-forwarding` increment adds non-storage USB forwarding for
+Windows HID and audio devices, including fully validated HID/audio composites.
+Generic import avoids the pinned receiving driver's known serial-override
+defect by mapping the owned import port through the unique USB/IP controller's
+root hub to its exact device driver key. A Surface USB mouse (`3151:3020`) has
+passed import, safe receiving-PC eject and automatic source-driver return in a
+repeat hardware test after fixing an exporter shutdown race. Its original HID
+nodes were healthy afterward, with no remaining binding or generic lease. Other
+hardware, raw USB audio and crash recovery still require physical testing. See the
+[implementation checklist](IMPLEMENTATION-CHECKLIST.md) for the current gate.
+Android, Linux and macOS do not gain generic USB forwarding from this Windows
+implementation. Existing microphone, camera and speaker streaming stays separate.
+
+The installer can migrate the exact reviewed previous ExtraPane USB host payload
+to the new ownership-aware executable without replacing the shared driver files.
+It preserves inactive bindings and recovery records; you do not need to reconnect
+a missing device for this executable-only update. Active exporters must stop first.
+Unknown or modified payloads are preserved rather than overwritten. An interrupted
+executable/manifest replacement can be completed by retrying the same installer.
+
 ## Windows inventory
 
 See [USB-INVENTORY.md](USB-INVENTORY.md) for the native read-only candidate
 inventory and its conservative protection rules. Unknown ownership, incomplete
-volume information, protected disks, and composite devices remain unavailable.
+volume information and protected disks remain unavailable. The generic path
+validates every configuration, interface and alternate setting before accepting
+a composite; storage-containing composites, hubs, unknown functions and Bluetooth
+remain excluded. Bluetooth forwarding is deferred.
 
 ## Pinned host backend preparation
 
@@ -37,7 +60,8 @@ exclusive locking. They are not client-selected IDs. The patch does not perform
 volume locking, establish that ExtraPane owns an existing binding, authenticate
 loopback clients, or prevent another local process from reaching the selected
 device. Loopback binding is network exposure reduction, not authentication.
-Do not deploy or launch this preparatory backend until those layers exist.
+The integrated storage path supplies admission, volume locking and recovery
+ownership. Running the backend directly bypasses those ExtraPane safeguards.
 
 Prepare source without building:
 
@@ -321,10 +345,12 @@ separate crash guardian: forcibly killing the USB helper itself, kernel failure,
 or power loss can leave a journal requiring recovery. These cases are not
 reported as successful automatic return.
 
-The bounded EPUT/EPUS v3 protocol carries readiness, return requests and distinct
+The bounded EPUT v3 tunnel and EPUS v4 session protocol carry readiness, return requests and distinct
 return-failure responses separately from USB/IP payload. Both endpoints require
 matching builds. A transfer is not reported shared until the receiver confirms
-the exact imported disk. A missing device, identity mismatch or flush failure
+the exact imported disk or supported non-storage device. EPUS v4 binds the
+storage/generic kind to the offer and eject receipt; older helpers are rejected
+before export rather than silently falling back. A missing device, identity mismatch or flush failure
 must not be described as an open-file veto.
 
 Windows retains bounded USB diagnostics in
@@ -345,6 +371,36 @@ removal; a missing card with exact inactive owned state is no longer an automati
 uninstall blocker.
 
 ## Concurrent Windows receiving sessions
+
+Generic USB uses a separate administrator-protected binding lease. The owned GUID
+is saved before the guarded bind operation, so an interrupted bind can be cleaned
+without a disk journal. `ExtraPane.UsbRecovery --restore-returned` performs explicit
+generic lease cleanup; uninstall preparation invokes it too. An absent device is
+not by itself a cleanup failure. Changed or foreign bindings are preserved. Read-only
+inventory never releases bindings. Normal non-storage shutdown closes the local
+stream and waits up to five seconds for the original physical node to be started
+without a problem and the transient export stub to disappear before terminating
+the exporter. This avoids interrupting the backend's asynchronous driver restart.
+Unbind success alone is not evidence that the physical driver returned.
+
+New protected leases also record the original parent and port. If an exporter
+crashes, cleanup may restart only the exact matching VBox stub with its original
+parent, port, driver and still-owned private binding. Cleanup verifies that the
+original node is healthy or that the device is physically absent before retiring
+the lease. Unknown ownership is preserved. Older leases remain readable but cannot
+authorize this scoped stub restart. An unplugged device does not require a restart
+or reconnection merely to remove its exact inactive bookkeeping.
+
+The first composite-mouse hardware test imported and ejected successfully but
+exposed the shutdown race: the source mouse did not return. An exact stub restart
+restored it. The subsequent test with the native shutdown fix completed import,
+eject and automatic return successfully. This is evidence for that mouse and
+normal shutdown, not a completed crash-recovery or general compatibility matrix.
+
+Active incoming USB responses no longer incur the old unconditional 5-ms polling
+delay. Fully idle traffic uses a bounded 1–5-ms backoff. The transport still
+alternates framed turns, so network round-trip latency remains significant,
+especially for USB audio. Raw USB transfers do not use the media jitter buffer.
 
 Windows receiving sessions allocate independent import ports, loopback listeners,
 identifiers and eject signals. There is no fixed one-session receiver cap.

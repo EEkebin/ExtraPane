@@ -247,12 +247,21 @@ mono PCM16 over the encrypted connection; Opus and sample-rate conversion remain
 future work. Camera and microphone capture do not detach the physical source,
 although applications and drivers may impose their own simultaneous-use limits.
 
-Windows USB sharing is restricted to eligible, uniquely identified removable
-storage. The source requires the managed USB host component; the recipient uses
+The delivered Windows USB implementation targets eligible, uniquely identified
+removable storage. The `feat/usb-device-forwarding` increment separately adds
+non-storage HID/audio forwarding. It does not use disk offline/quarantine state
+for non-storage devices. Composite HID/audio devices are accepted only after
+complete configuration-descriptor validation across all interfaces and alternate
+settings. Bluetooth, hubs, unknown functions and storage-containing composites
+remain excluded. A Surface USB mouse passed import, safe eject and automatic
+source-driver return in a repeat test after fixing a shutdown race; its original
+HID nodes were healthy and its binding/lease were removed. Other hardware and
+crash recovery still need physical testing.
+The source requires the managed USB host component; the recipient uses
 the managed USB/IP client component also used by the microphone endpoint. These
 are internal components of the same app package. USB controls request explicit
 administrator permission; ordinary camera/microphone capture does not.
-Use **Eject USB** on the recipient, stop the source session, then use **Refresh
+For storage recovery, use **Eject USB** on the recipient, stop the source session, then use **Refresh
 recovery ? Restore selected disk** on the source. The restore helper verifies the
 recorded disk, binding release and durable eject evidence. Busy eject keeps the
 transfer running. Interrupted transfers remain offline and may require manual
@@ -260,8 +269,8 @@ administrator investigation; there is no force-online button. See [USB](USB.md).
 
 The isolated checks validate compilation, bounded protocols, synthetic lifecycle
 and offscreen startup. They do not prove real camera delivery, audio recording,
-USB device import or driver installation. Physical testing is deferred until this
-implementation milestone is complete. Linux/macOS resource adapters and Android
+USB device import or driver installation. Physical evidence must be recorded
+separately, including the composite-mouse test above. Linux/macOS resource adapters and Android
 USB remain outside this Windows-to-Windows milestone.
 
 ## Unified Windows server

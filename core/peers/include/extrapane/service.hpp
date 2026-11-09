@@ -30,13 +30,20 @@ public:
     Service(const Service&)=delete;
     DeviceId identity()const;
     std::string pairing_code()const;
+    struct PairingStatus {std::string code;bool custom=false;unsigned remaining_seconds=0;};
+    PairingStatus pairing_status()const;
+    void set_pairing_password(std::string); // Empty resets to a new generated PIN.
     std::vector<RememberedDevice> remembered()const;
     std::vector<RememberedDevice> pending_forgets()const;
-    // Start/stop sharing preserves process-lifetime pairing code. stop withdraws
+    // Start/stop sharing preserves the pairing configuration. stop withdraws
     // local offers/incoming use; independent outgoing resources remain active.
     // Methods enqueue bounded commands; poll drains UI events.
     // Returned generation identifies the matching asynchronous listening event.
     Token start(std::string bind,std::uint16_t port);
+    struct ListenerChange {Token generation=0;std::string address;std::uint16_t port=0;std::string error;};
+    // Replace only the acceptor, preserving paired links and active resources.
+    // On failure report the actual restored endpoint (port zero if unavailable).
+    ListenerChange rebind(std::string bind,std::uint16_t port);
     void stop();
     Token connect(ConnectOptions);
     // End-to-end endpoint authentication through one paired gateway. No media starts.

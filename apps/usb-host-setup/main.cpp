@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <winioctl.h>
+#include <tlhelp32.h>
 #include "monitor_policy.hpp"
 #include "uninstall_policy.hpp"
 #include "install_policy.hpp"
@@ -119,9 +120,9 @@ std::span<const unsigned char> payload(const setup::File& item){
     const auto size=SizeofResource(nullptr,resource);const auto bytes=static_cast<const unsigned char*>(LockResource(LoadResource(nullptr,resource)));
     check(bytes&&size&&size<=64*1024*1024,"USB host package component exceeds bounds");std::span<const unsigned char> result{bytes,size};check(sha256(result)==item.digest,"USB host package component hash mismatch");return result;
 }
-std::vector<unsigned char> manifest(){
+std::vector<unsigned char> manifest(bool previous=false){
     std::string text="ExtraPane UsbHost v1\nsource=";for(auto c:std::wstring(setup::source))text+=static_cast<char>(c);text+='\n';
-    for(const auto& file:setup::files){for(auto c:std::wstring(file.digest))text+=static_cast<char>(c);text+=' ';for(auto c:std::wstring(file.name))text+=static_cast<char>(c);text+='\n';}return {text.begin(),text.end()};
+    std::size_t index=0;for(const auto& file:setup::files){for(auto c:previous?setup::previous_payload[index]:std::wstring_view(file.digest))text+=static_cast<char>(c);++index;text+=' ';for(auto c:std::wstring(file.name))text+=static_cast<char>(c);text+='\n';}return {text.begin(),text.end()};
 }
 void validate_tree(const fs::path& root,bool complete){
     verify_security(root);std::vector<fs::path> expected;for(const auto& file:setup::files)expected.emplace_back(file.name);expected.emplace_back(manifest_name);
@@ -158,11 +159,14 @@ void registration_preflight(const fs::path& root){
     for(const auto name:{L"Devices",L"Policy"}){Key child;const auto opened=RegOpenKeyExW(host.value,name,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&child.value);if(opened==ERROR_FILE_NOT_FOUND)continue;check(opened==ERROR_SUCCESS,"Cannot inspect private USB ownership");trusted_registry(child.value);DWORD count=0;check(RegQueryInfoKeyW(child.value,nullptr,nullptr,nullptr,&count,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr)==ERROR_SUCCESS&&!count,"USB bindings or policies remain; eject/recover before setup");}
 }
 void no_pending_recovery(){
-    Key recovery;const auto status=RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE\\ExtraPane\\Components\\UsbRecovery",REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&recovery.value);
-    if(status==ERROR_FILE_NOT_FOUND||status==ERROR_PATH_NOT_FOUND)return;
-    check(status==ERROR_SUCCESS,"Cannot inspect pending USB recovery journals");trusted_registry(recovery.value);DWORD count=0;
-    check(RegQueryInfoKeyW(recovery.value,nullptr,nullptr,nullptr,&count,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr)==ERROR_SUCCESS&&!count,"Pending USB quarantine/recovery journal exists; recover storage before removing its backend");
+    for(const auto path:{L"SOFTWARE\\ExtraPane\\Components\\UsbRecovery",L"SOFTWARE\\ExtraPane\\Components\\UsbGenericLeases"}){
+        Key recovery;const auto status=RegOpenKeyExW(HKEY_LOCAL_MACHINE,path,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&recovery.value);
+        if(status==ERROR_FILE_NOT_FOUND||status==ERROR_PATH_NOT_FOUND)continue;
+        check(status==ERROR_SUCCESS,"Cannot inspect pending USB ownership records");trusted_registry(recovery.value);DWORD count=0,values=0;
+        check(RegQueryInfoKeyW(recovery.value,nullptr,nullptr,nullptr,&count,nullptr,nullptr,&values,nullptr,nullptr,nullptr,nullptr)==ERROR_SUCCESS&&!count&&(!std::wstring_view(path).ends_with(L"UsbGenericLeases")||!values),"Pending USB ownership records exist; return devices before changing their backend");
+    }
 }
+
 std::wstring string_value(HKEY key,const wchar_t* name){
     DWORD type=0,bytes=0;const auto status=RegQueryValueExW(key,name,nullptr,&type,nullptr,&bytes);if(status==ERROR_FILE_NOT_FOUND)return {};
     check(status==ERROR_SUCCESS&&type==REG_SZ&&bytes>=2&&bytes<=32768&&bytes%2==0,"Invalid USB host ownership value");std::wstring result(bytes/2,L'\0');check(RegQueryValueExW(key,name,nullptr,&type,reinterpret_cast<BYTE*>(result.data()),&bytes)==ERROR_SUCCESS&&type==REG_SZ&&result.back()==L'\0',"Read USB host ownership value failed");result.pop_back();check(result.find(L'\0')==std::wstring::npos,"Embedded NUL in USB host ownership value");return result;
@@ -450,11 +454,70 @@ bool reuse_exact_installation(const fs::path& root){
     std::cout<<"USB_HOST_REUSED exact compatible backend retained; existing bindings and recovery records were not changed\n";
     return true;
 }
+bool migrate_previous_installation(const fs::path& root){
+    if(!fs::exists(root/manifest_name))return false;
+    verify_security(root);verify_security(root/manifest_name);
+    const auto installed_manifest=read_file(root/manifest_name);
+    const auto exe_stage=root/L"usbipd.exe.upgrade";const auto marker_stage=root/L"extrapane-usbhost-v1.txt.upgrade";
+    if(installed_manifest==manifest())return false;
+    check(installed_manifest==manifest(true),"USB host manifest is not a reviewed migration source; preserved");
+    struct Migration {
+        const fs::path& root;const fs::path& exe_stage;const fs::path& marker_stage;
+        void payload(){
+            std::vector<fs::path> expected{manifest_name,exe_stage.filename(),marker_stage.filename()};for(const auto& item:setup::files)expected.emplace_back(item.name);
+            for(const auto& entry:fs::recursive_directory_iterator(root)){
+                no_reparse(entry.path());const auto relative=entry.path().lexically_relative(root);verify_security(entry.path());
+                if(entry.is_directory()){check(relative==L"Drivers","Unknown USB migration directory; preserved");continue;}
+                check(entry.is_regular_file()&&std::find(expected.begin(),expected.end(),relative)!=expected.end(),"Unknown USB migration file; preserved");
+            }
+            std::array<std::wstring,8> hashes;std::array<std::wstring_view,8> installed,current;
+            for(std::size_t i=0;i<setup::files.size();++i){const auto path=root/setup::files[i].name;verify_security(path);hashes[i]=sha256(read_file(path));installed[i]=hashes[i];current[i]=setup::files[i].digest;}
+            check(setup::reviewed_migration_payload(installed,current,read_file(root/manifest_name)==manifest(true)),"USB host payload is not a reviewed migration source; preserved");
+            if(fs::exists(exe_stage))check(read_file(exe_stage)==std::vector<unsigned char>(::payload(setup::files[0]).begin(),::payload(setup::files[0]).end()),"USB executable upgrade stage changed; preserved");
+            if(fs::exists(marker_stage))check(read_file(marker_stage)==manifest(),"USB manifest upgrade stage changed; preserved");
+        }
+        void ownership(){
+            Key key;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,setup_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&key.value)==ERROR_SUCCESS,"USB migration requires installed ownership");trusted_registry(key.value);
+            known_registry_contents(key.value,{}, {L"Source",L"State",L"StagedInf",L"CreatedInf",L"CreatedMonitor"});
+            check(string_value(key.value,L"Source")==setup::source&&string_value(key.value,L"State")==L"installed","USB migration ownership changed; preserved");
+            Key host;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,host_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&host.value)==ERROR_SUCCESS,"USB migration registration missing");trusted_registry(host.value);
+            known_registry_contents(host.value,{L"Devices",L"Policy"},{L"APPLICATIONFOLDER"});
+            check(fs::path(string_value(host.value,L"APPLICATIONFOLDER"))==root,"USB migration registration points elsewhere; preserved");
+        }
+        void idle(){
+            // This changes only the private executable and manifest. Inactive
+            // storage journals and owned bindings are retained exactly as-is.
+            // Driver removal still uses the separate empty-state checks.
+            Key host;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,host_key,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&host.value)==ERROR_SUCCESS,"USB migration registration missing");
+            for(const auto name:{L"Devices",L"Policy"}){Key child;check(RegOpenKeyExW(host.value,name,REG_OPTION_OPEN_LINK,KEY_READ|READ_CONTROL|KEY_WOW64_64KEY,&child.value)==ERROR_SUCCESS,"USB migration private registration incomplete");trusted_registry(child.value);}
+            monitor(root,false);
+            Handle processes(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0));check(processes.value!=INVALID_HANDLE_VALUE,"Cannot inspect active USB exporters");
+            PROCESSENTRY32W process{sizeof(process)};check(Process32FirstW(processes.value,&process),"Cannot enumerate active USB exporters");
+            do{if(_wcsicmp(process.szExeFile,L"usbipd.exe")!=0)continue;
+                Handle opened(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,process.th32ProcessID));check(opened.value,"Cannot prove USB exporter is inactive");
+                std::wstring path(32768,L'\0');DWORD length=static_cast<DWORD>(path.size());check(QueryFullProcessImageNameW(opened.value,0,path.data(),&length),"Cannot inspect USB exporter executable");path.resize(length);
+                check(_wcsicmp(path.c_str(),(root/setup::files[0].name).c_str())!=0,"Stop USB forwarding before updating its private backend");
+            }while(Process32NextW(processes.value,&process));check(GetLastError()==ERROR_NO_MORE_FILES,"USB exporter enumeration failed");
+            Handle executable(CreateFileW((root/setup::files[0].name).c_str(),GENERIC_READ|DELETE,0,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+            check(executable.value!=INVALID_HANDLE_VALUE,"Stop USB host sessions before updating their backend");
+        }
+        void replace(){
+            // Same-volume atomic replacement; interruption between these two
+            // commits is recognized only as old-manifest + exact new executable.
+            write_payload(exe_stage,::payload(setup::files[0]));write_payload(marker_stage,manifest());
+            verify_security(exe_stage);verify_security(marker_stage);payload();ownership();idle();
+            check(MoveFileExW(exe_stage.c_str(),(root/setup::files[0].name).c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH),"USB executable upgrade failed; exact staged files retained for retry");
+            check(MoveFileExW(marker_stage.c_str(),(root/manifest_name).c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH),"USB manifest upgrade interrupted; retry the installer to complete it");
+            validate_tree(root,true);
+        }
+    } migration{root,exe_stage,marker_stage};
+    setup::migrate_reviewed_backend(migration);std::cout<<"USB_HOST_UPDATED reviewed private backend updated; shared driver files unchanged\n";return true;
+}
 int modify(bool install){
     check(IsUserAnAdmin(),"USB host setup requires administrator permission");SYSTEM_INFO system{};GetNativeSystemInfo(&system);check(system.wProcessorArchitecture==PROCESSOR_ARCHITECTURE_AMD64,"USB host setup requires native x64 Windows");
     Handle lock(CreateMutexW(nullptr,FALSE,L"Global\\ExtraPane.UsbHostSetup"));check(lock.value&&lock.value!=INVALID_HANDLE_VALUE,"USB host setup mutex unavailable");const auto acquired=WaitForSingleObject(lock.value,0);check(acquired==WAIT_OBJECT_0||acquired==WAIT_ABANDONED,"USB host setup is already running");struct Unlock{HANDLE h;~Unlock(){ReleaseMutex(h);}}unlock{lock.value};
     const auto root=component_root();for(const auto& item:setup::files)payload(item);
-    if(install&&reuse_exact_installation(root))return 0;
+    if(install){migrate_previous_installation(root);if(reuse_exact_installation(root))return 0;}
     if(fs::exists(legacy_root()))validate_tree(legacy_root(),false);
     registration_preflight(root);
     Key software,app,ownership;check(RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE",0,KEY_READ|KEY_WRITE|KEY_WOW64_64KEY,&software.value)==ERROR_SUCCESS,"Administrator registry access required");protected_key(software.value,L"ExtraPane",app);protected_key(app.value,L"UsbHostSetup",ownership);

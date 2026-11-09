@@ -9,6 +9,14 @@ void rejects(const std::function<void()>& f){bool rejected=false;try{f();}catch(
 Frame wire(Frame f){auto parsed=decode(encode(f));check(parsed.payload.size()==f.payload.size());parsed.payload=std::move(f.payload);return parsed;}
 std::vector<std::uint8_t> import(std::string bus){std::vector<std::uint8_t> out(40);out[0]=1;out[1]=0x11;out[2]=0x80;out[3]=3;std::copy(bus.begin(),bus.end(),out.begin()+8);return out;}
 int main(){
+    // Incoming-only interrupt/ISO response bursts must not inherit the old 5 ms
+    // outgoing-idle delay. Fully idle polling remains bounded rather than spins.
+    {IdleBackoff pacing;for(auto expected:{1,2,4,5,5})check(pacing.next(true,true).count()==expected);
+        for(unsigned packet=0;packet<100;++packet)check(pacing.next(true,false).count()==0);
+        check(pacing.next(true,true).count()==1);check(pacing.next(false,true).count()==0);
+        check(pacing.next(true,true).count()==1);check(pacing.next(false,false).count()==0);
+    }
+
     {Pump sender,receiver("1-2");auto bytes=import("1-2");receiver.accept(wire(sender.next(std::span(bytes).first(10))));check(receiver.pending().empty());sender.accept(wire(receiver.next()));receiver.accept(wire(sender.next(std::span(bytes).subspan(10))));check(std::ranges::equal(receiver.pending(),bytes));receiver.consume(40);check(receiver.pending().empty());}
     for(auto bus:{"1-3",""}){Pump sender,receiver("1-2");auto bytes=import(bus);rejects([&]{receiver.accept(wire(sender.next(bytes)));});}
     {Pump sender,receiver("1-2");auto bytes=import("1-2");bytes[3]=5;rejects([&]{receiver.accept(sender.next(bytes));});}

@@ -10,7 +10,11 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <stdexcept>
 namespace dm::access {
+class PeerConfirmationError : public std::runtime_error {
+public: PeerConfirmationError():std::runtime_error("Incorrect PIN or password, or code expired"){}
+};
 using Bytes=std::vector<uint8_t>;
 using Read=std::function<void(std::span<uint8_t>)>;
 using Write=std::function<void(std::span<const uint8_t>)>;
@@ -57,7 +61,7 @@ public:
     // Peer control uses its own protocol domain and authenticated transcript.
     // Secret is a six-digit pairing code or a 64-hex remembered random key.
     void peer_client(const std::string& secret,std::span<const uint8_t> transcript);
-    void peer_server(const std::string& secret,std::span<const uint8_t> transcript);
+    void peer_server(const std::string& secret,std::span<const uint8_t> transcript,const std::function<void()>& before_confirmation={});
     std::optional<unsigned> authorized_kind()const;
     std::optional<bool> authorized_display_input()const;
     std::vector<ChannelCredential> issue_channels(Gate& gate,unsigned mask);

@@ -61,7 +61,7 @@ private:
 };
 class Listener {
 public:
-    // Explicit local unicast IPv4 or localhost only; no wildcard or DNS lookup.
+    // Local IPv4, localhost or 0.0.0.0 (all local IPv4); no DNS lookup.
     // port=0 allocates an ephemeral port (available through port()).
     Listener(const std::string& bind, std::uint16_t port,
              std::shared_ptr<ServerIdentity> identity = {});

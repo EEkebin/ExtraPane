@@ -53,16 +53,36 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private Runnable updateConnectDialog;
     private android.app.AlertDialog pairingDialog;
     private final SharingLifecycle sharingLifecycle=new SharingLifecycle();
-    private String sharingAddress="";
+    private String sharingAddress="",listenerNotice="";
     private LinearLayout page,offerRows,connections,videoArea,trustedRows,toolbar,drawer;
     private FrameLayout root,drawerLayer;
     private ScrollView scroll;
     private TextView status,code,pageTitle,connectionEmpty;
     private ImageButton menuButton;
-    private Spinner interfaces;
+    private Spinner interfaces,portMode;
+    private EditText customAddress;
+    private TextView customAddressLabel,customPortLabel;
+    private final ArrayList<String> interfaceValues=new ArrayList<>(),interfaceLabels=new ArrayList<>();
+    private String addressSelection="0.0.0.0";
+    private boolean configuringNetwork;
+    private int listeningPort;
     private EditText port;
-    private Button sharing,refreshResources,applyNetwork;
+    private Button sharing,applyNetwork;
     private CheckBox pairing;
+    private Spinner pairingMode;
+    private EditText pairingPassword;
+    private Button savePairingPassword;
+    private TextView pairingModeStatus;
+    private PairingCountdown pairingCountdown;
+    private boolean pairingSettingsInitialized;
+    private long nextPairingStatus;
+    private final class PairingCountdown extends View {
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private int remaining;
+        PairingCountdown(){super(PeerActivity.this);setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);}
+        void update(int seconds){remaining=Math.max(0,Math.min(20,seconds));invalidate();}
+        @Override protected void onDraw(Canvas canvas){super.onDraw(canvas);float inset=dp(3);RectF bounds=new RectF(inset,inset,getWidth()-inset,getHeight()-inset);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(3));paint.setColor(BORDER);canvas.drawOval(bounds,paint);paint.setColor(ACCENT);paint.setStrokeCap(Paint.Cap.ROUND);canvas.drawArc(bounds,-90,360f*remaining/20,false,paint);}
+    }
     private PowerButton inputAllowed;
     private SurfaceView surface;
     private Button fullscreenButton;
@@ -174,8 +194,8 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         for(String name:new String[]{"Devices","Resources","About"}){LinearLayout section=column();pages.put(name,section);page.addView(section,full());}
         android.content.SharedPreferences sharingPreferences=getSharedPreferences("resource-sharing",MODE_PRIVATE);sharePolicy=new ResourceSharing(new ResourceSharing.Store(){public boolean enabled(String id){return sharingPreferences.getBoolean(id,true);}public void save(String id,boolean enabled){sharingPreferences.edit().putBoolean(id,enabled).apply();}});
         buildDevices();buildResources();buildSharingSettings();buildAbout();buildDrawer();selectPage("Devices");
-        safely(()->{peers=new PeerService(new File(getNoBackupFilesDir(),"peer-trust"),android.os.Build.MODEL);code.setText(peers.pairingCode());refreshInterfaces();refreshOffers();refreshTrusted();});
-        pairing.setOnCheckedChangeListener((v,checked)->{if(peers!=null)safely(()->peers.setPairingRequired(checked));code.setVisibility(checked?View.VISIBLE:View.GONE);});inputAllowed.setOnCheckedChangeListener(checked->{inputAllowed.setContentDescription(checked?"Block input":"Allow input");inputAllowed.setTooltipText(checked?"Block input":"Allow input");inputAllowed.setStateDescription(checked?"Input allowed":"Input blocked");input.enable(checked&&videoActive&&displayEvent!=null&&(displayEvent[14].equals("true")||displayEvent[14].equals("1")));publish();});
+        safely(()->{peers=new PeerService(new File(getNoBackupFilesDir(),"peer-trust"),android.os.Build.MODEL);refreshPairingStatus();refreshInterfaces();refreshOffers();refreshTrusted();});
+        pairing.setOnCheckedChangeListener((v,checked)->{if(peers!=null)safely(()->peers.setPairingRequired(checked));safely(this::refreshPairingStatus);});inputAllowed.setOnCheckedChangeListener(checked->{inputAllowed.setContentDescription(checked?"Block input":"Allow input");inputAllowed.setTooltipText(checked?"Block input":"Allow input");inputAllowed.setStateDescription(checked?"Input allowed":"Input blocked");input.enable(checked&&videoActive&&displayEvent!=null&&(displayEvent[14].equals("true")||displayEvent[14].equals("1")));publish();});
     }
     private boolean containsPoint(View view,float x,float y){android.graphics.Rect bounds=new android.graphics.Rect();return view.getGlobalVisibleRect(bounds)&&bounds.contains((int)x,(int)y);}
     private boolean interactiveAt(View view,float x,float y){
@@ -223,12 +243,25 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         sectionHeading(content,"This device");LinearLayout localCard=column();localCard.setBackground(rounded(PANEL,BORDER));content.addView(localCard,full());
         LinearLayout localHeader=new LinearLayout(this);localHeader.setGravity(Gravity.CENTER_VERTICAL);localHeader.setPadding(dp(14),dp(12),dp(14),dp(12));localHeader.setMinimumHeight(dp(64));localHeader.setClickable(true);localHeader.setFocusable(true);
         TextView localName=label(android.os.Build.MODEL,19);localName.setTypeface(null,Typeface.BOLD);localHeader.addView(localName,new LinearLayout.LayoutParams(0,-2,1));
-        code=label("",19);code.setLetterSpacing(.1f);code.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);code.setContentDescription("Pairing code");code.setTextIsSelectable(true);code.setPadding(dp(8),0,dp(12),0);localHeader.addView(code);
+        code=label("",19);code.setLetterSpacing(.1f);code.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);code.setContentDescription("Pairing code");code.setTextIsSelectable(true);code.setPadding(dp(8),0,dp(12),0);localHeader.addView(code);pairingCountdown=new PairingCountdown();localHeader.addView(pairingCountdown,new LinearLayout.LayoutParams(dp(24),dp(24)));
         ImageView localArrow=new ImageView(this);localArrow.setImageDrawable(new LineIcon("chevron"));localHeader.addView(localArrow,new LinearLayout.LayoutParams(dp(24),dp(24)));localCard.addView(localHeader,full());
         localDeviceBody=column();localDeviceBody.setPadding(dp(16),dp(8),dp(16),dp(12));localDeviceBody.setVisibility(View.GONE);localCard.addView(localDeviceBody,full());
         localHeader.setContentDescription(android.os.Build.MODEL+", device settings");localHeader.setStateDescription("Collapsed");localHeader.setOnClickListener(view->{boolean expanded=localDeviceBody.getVisibility()!=View.VISIBLE;localDeviceBody.setVisibility(expanded?View.VISIBLE:View.GONE);localArrow.animate().rotation(expanded?90:0).setDuration(160).start();localHeader.setStateDescription(expanded?"Expanded":"Collapsed");});
-        LinearLayout setup=localDeviceBody;setup.addView(note("Network address"));interfaces=new Spinner(this);interfaces.setMinimumHeight(dp(48));interfaces.setBackgroundTintList(ColorStateList.valueOf(ACCENT));interfaces.setPopupBackgroundDrawable(rounded(PANEL,BORDER));setup.addView(interfaces,full());setup.addView(note("Listening port"));port=new EditText(this);port.setSingleLine(true);port.setInputType(2);port.setText("43825");port.setTextColor(TEXT);port.setTextSize(16);port.setPadding(dp(12),dp(12),dp(12),dp(12));port.setBackground(rounded(BG,BORDER));port.setMinimumHeight(dp(48));setup.addView(port,full());applyNetwork=button("Apply network settings",this::applyNetworkSettings);setup.addView(applyNetwork);
-        pairing=check("Require pairing code");pairing.setChecked(true);setup.addView(pairing,full());
+        LinearLayout setup=localDeviceBody;setup.addView(note("Network address"));
+        interfaces=networkSpinner();setup.addView(interfaces,full());
+        customAddressLabel=note("Custom local address");customAddress=networkField("0.0.0.0",false);setup.addView(customAddressLabel);setup.addView(customAddress,full());
+        setup.addView(note("Listening port"));portMode=networkSpinner();portMode.setAdapter(networkAdapter(List.of("Default (43824)","Custom port")));setup.addView(portMode,full());
+        customPortLabel=note("Custom port");port=networkField("43824",true);setup.addView(customPortLabel);setup.addView(port,full());
+        applyNetwork=button("Apply network settings",this::applyNetworkSettings);setup.addView(applyNetwork);
+        interfaces.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){if(position>=interfaceValues.size())return;String value=interfaceValues.get(position);boolean changed=!value.equals(addressSelection);addressSelection=value;updateNetworkFields();if(changed&&!configuringNetwork&&!value.equals("custom"))applyNetworkSettings();}});
+        portMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){updateNetworkFields();if(position==0&&!configuringNetwork)applyNetworkSettings();}});
+        updateNetworkFields();
+        pairing=check("Require pairing");pairing.setChecked(true);setup.addView(pairing,full());
+        setup.addView(note("Pairing credential"));pairingMode=networkSpinner();pairingMode.setAdapter(networkAdapter(List.of("Generated code","Custom PIN or password")));setup.addView(pairingMode,full());
+        pairingPassword=deviceField("Enter new PIN or password","",false);configureSecretField(pairingPassword);setup.addView(pairingPassword,full());
+        savePairingPassword=button("Use generated code",this::savePairingCredential);setup.addView(savePairingPassword);
+        pairingModeStatus=note("Generated codes change every 20 seconds.");setup.addView(pairingModeStatus,full());
+        pairingMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){pairingPassword.setVisibility(position==1?View.VISIBLE:View.GONE);savePairingPassword.setText(position==1?"Save PIN or password":"Use generated code");if(position==0)pairingPassword.setText("");}});
         content.addView(button("Pair by address",()->connectDialog("","","",false)));
         sectionHeading(content,"Paired devices");trustedRows=column();content.addView(trustedRows,full());
         unpairedSection=column();sectionHeading(unpairedSection,"Unpaired devices");unpairedRows=column();unpairedSection.addView(unpairedRows,full());unpairedSection.setVisibility(View.GONE);content.addView(unpairedSection,full());
@@ -237,10 +270,10 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     }
     private void buildResources(){connections=pages.get("Resources");connections.addView(label("Resources",25));connections.addView(note("Start a resource using its power button on the receiving device. Pairing alone does not start it. Choose what this phone shares under Devices ? This device. Active streams appear here with red power buttons to stop them."));
         sharing=button("Disconnect all",this::disconnectAll);sharing.setBackground(rounded(RED,0));sharing.setVisibility(View.GONE);connections.addView(sharing);
-        refreshResources=button("Refresh available resources",()->safely(this::refreshOffers));offerRows=column();localDeviceBody.addView(offerRows,full());inputAllowed=new PowerButton("Allow input");inputAllowed.setChecked(true);inputAllowed.setContentDescription("Block input");inputAllowed.setTooltipText("Block input");inputAllowed.setStateDescription("Input allowed");
+        offerRows=column();localDeviceBody.addView(offerRows,full());inputAllowed=new PowerButton("Allow input");inputAllowed.setChecked(true);inputAllowed.setContentDescription("Block input");inputAllowed.setTooltipText("Block input");inputAllowed.setStateDescription("Input allowed");
         connections.addView(label("Active streams",19));connectionEmpty=note("No resources are connected. Request this phone's available resources from your other device.");connections.addView(connectionEmpty,full());for(int kind:new int[]{0,1,4,2,3}){ResourceGroup group=new ResourceGroup(groupName(kind),connections);group.box.setVisibility(View.GONE);activeGroups.put(kind,group);}
     }
-    private void buildSharingSettings(){localDeviceBody.addView(note("Share controls availability. Turning Share off also stops that resource. Turning it on never starts capture by itself."));localDeviceBody.addView(refreshResources);}
+    private void buildSharingSettings(){localDeviceBody.addView(note("Share controls availability. Turning Share off also stops that resource. Turning it on never starts capture by itself."));}
     private void openProjectLink(String path){startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(path)));}
     private void buildAbout(){
         LinearLayout content=pages.get("About"),hero=column();hero.setPadding(dp(20),dp(20),dp(20),dp(20));hero.setBackground(rounded(PANEL,BORDER));content.addView(hero,full());
@@ -272,7 +305,23 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         animation.addListener(new android.animation.AnimatorListenerAdapter(){@Override public void onAnimationEnd(android.animation.Animator value){if(drawerAnimator==animation){drawerAnimator=null;setDrawerProgress(open?1:0);}}});animation.start();
     }
     private String groupName(int kind){return switch(kind){case 0,5->"Monitors";case 1->"Cameras";case 2->"Microphones";case 3->"USB";case 4->"Speakers";default->"Resources";};}
-    private void refreshInterfaces(){List<String> before=new ArrayList<>(addresses);String previous=interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString();addresses.clear();try{for(NetworkInterface nic:Collections.list(NetworkInterface.getNetworkInterfaces()))if(nic.isUp()&&!nic.isLoopback())for(InetAddress address:Collections.list(nic.getInetAddresses()))if(address instanceof Inet4Address&&!address.isLoopbackAddress()&&!address.isLinkLocalAddress())addresses.add(address.getHostAddress());}catch(Exception e){status("Network addresses could not be read");}if(addresses.isEmpty())addresses.add("127.0.0.1");if(before.equals(addresses))return;ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,addresses){@Override public View getView(int position,View recycled,ViewGroup parent){TextView v=(TextView)super.getView(position,recycled,parent);v.setTextColor(TEXT);v.setTextSize(16);v.setPadding(dp(12),dp(10),dp(12),dp(10));return v;}@Override public View getDropDownView(int position,View recycled,ViewGroup parent){TextView v=(TextView)super.getDropDownView(position,recycled,parent);v.setTextColor(TEXT);v.setBackgroundColor(PANEL);v.setMinHeight(dp(48));return v;}};interfaces.setAdapter(adapter);int preserved=addresses.indexOf(previous);if(preserved>=0)interfaces.setSelection(preserved);}
+    private Spinner networkSpinner(){Spinner spinner=new Spinner(this);spinner.setMinimumHeight(dp(48));spinner.setBackgroundTintList(ColorStateList.valueOf(ACCENT));spinner.setPopupBackgroundDrawable(rounded(PANEL,BORDER));return spinner;}
+    private EditText networkField(String value,boolean number){EditText field=new EditText(this);field.setSingleLine(true);field.setInputType(number?2:android.text.InputType.TYPE_CLASS_TEXT);field.setText(value);field.setTextColor(TEXT);field.setTextSize(16);field.setPadding(dp(12),dp(12),dp(12),dp(12));field.setBackground(rounded(BG,BORDER));field.setMinimumHeight(dp(48));return field;}
+    private ArrayAdapter<String> networkAdapter(List<String> labels){return new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels){@Override public View getView(int position,View recycled,ViewGroup parent){TextView v=(TextView)super.getView(position,recycled,parent);v.setTextColor(TEXT);v.setTextSize(16);v.setPadding(dp(12),dp(10),dp(12),dp(10));return v;}@Override public View getDropDownView(int position,View recycled,ViewGroup parent){TextView v=(TextView)super.getDropDownView(position,recycled,parent);v.setTextColor(TEXT);v.setBackgroundColor(PANEL);v.setMinHeight(dp(48));return v;}};}
+    private void updateNetworkFields(){boolean addressCustom=addressSelection.equals("custom"),portCustom=portMode.getSelectedItemPosition()==1;customAddress.setVisibility(addressCustom?View.VISIBLE:View.GONE);customAddressLabel.setVisibility(addressCustom?View.VISIBLE:View.GONE);port.setVisibility(portCustom?View.VISIBLE:View.GONE);customPortLabel.setVisibility(portCustom?View.VISIBLE:View.GONE);applyNetwork.setVisibility(addressCustom||portCustom?View.VISIBLE:View.GONE);}
+    private String selectedListenAddress(){return ListenerSettings.address(addressSelection.equals("custom")?customAddress.getText().toString():addressSelection);}
+    private int selectedListenPort(){return portMode.getSelectedItemPosition()==1?ListenerSettings.port(port.getText().toString()):ListenerSettings.DEFAULT_PORT;}
+    private String outgoingAddress(){String value=sharingLifecycle.active()?sharingAddress:addressSelection.equals("custom")?customAddress.getText().toString().trim():addressSelection;return value.equals("0.0.0.0")?"":value;}
+    private void refreshInterfaces(){
+        List<String> nextAddresses=new ArrayList<>(),labels=new ArrayList<>();
+        try{for(NetworkInterface nic:Collections.list(NetworkInterface.getNetworkInterfaces()))if(nic.isUp()&&!nic.isLoopback())for(InetAddress address:Collections.list(nic.getInetAddresses()))if(address instanceof Inet4Address&&!address.isLoopbackAddress()&&!address.isLinkLocalAddress()){nextAddresses.add(address.getHostAddress());labels.add(nic.getDisplayName()+" ? "+address.getHostAddress());}}catch(Exception e){status("Network addresses could not be read");return;}
+        if(addresses.equals(nextAddresses)&&!interfaceValues.isEmpty())return;
+        addresses.clear();addresses.addAll(nextAddresses);interfaceValues.clear();interfaceLabels.clear();interfaceValues.add("0.0.0.0");interfaceLabels.add("All addresses");interfaceValues.addAll(addresses);interfaceLabels.addAll(labels);
+        if(!addressSelection.equals("custom")&&!interfaceValues.contains(addressSelection)){interfaceValues.add(addressSelection);interfaceLabels.add(addressSelection+" (unavailable)");}
+        interfaceValues.add("custom");interfaceLabels.add("Custom address");configuringNetwork=true;interfaces.setAdapter(networkAdapter(new ArrayList<>(interfaceLabels)));interfaces.setSelection(Math.max(0,interfaceValues.indexOf(addressSelection)));configuringNetwork=false;
+        if(sharingLifecycle.listening())refreshBeacon();
+    }
+
     private EditText deviceField(String hint,String value,boolean numeric){EditText field=new EditText(this);field.setSingleLine(true);field.setHint(hint);field.setText(value);field.setTextColor(TEXT);field.setHintTextColor(MUTED);if(numeric)field.setInputType(2);return field;}
     private String endpoint(String host,String servicePort){
         String value=host.trim().toLowerCase(java.util.Locale.ROOT);if(value.equals("localhost"))value="127.0.0.1";
@@ -283,7 +332,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private void connectDialog(String expected,String address,String servicePort,boolean requireCode){
         if(connectedPeers.containsValue(expected)&&!expected.isEmpty())return;
         LinearLayout form=column();form.setPadding(dp(20),dp(8),dp(20),dp(8));form.setBackgroundColor(BG);
-        EditText host=deviceField("IPv4 address",address,false),remotePort=deviceField("Port",servicePort.isBlank()?"43825":servicePort,true);form.addView(host,full());form.addView(remotePort,full());
+        EditText host=deviceField("IPv4 address",address,false),remotePort=deviceField("Port",servicePort.isBlank()?"43824":servicePort,true);form.addView(host,full());form.addView(remotePort,full());
         CheckBox open=check("Connect without pairing (identity will not be verified)");form.addView(open,full());if(requireCode)open.setVisibility(View.GONE);
         android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle(expected.isEmpty()?"Pair by address":"Pair device").setView(form).setPositiveButton("Pair",null).setNegativeButton("Cancel",null).create();
         dialog.setOnShowListener(ignored->dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
@@ -291,7 +340,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
                 int number=Integer.parseInt(remotePort.getText().toString().trim());if(number<1||number>65535)throw new IllegalArgumentException("Enter a port from 1 to 65535");
                 String destination=host.getText().toString().trim();if(!destination.equalsIgnoreCase("localhost")&&!destination.matches("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}"))throw new IllegalArgumentException("Enter an IPv4 address");
                 if(endpoint(destination,""+number).isEmpty())throw new IllegalArgumentException("Enter a valid IPv4 address");
-                String local=interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString();if(destination.equalsIgnoreCase("localhost")||destination.startsWith("127."))local="127.0.0.1";
+                String local=outgoingAddress();if(destination.equalsIgnoreCase("localhost")||destination.startsWith("127."))local="127.0.0.1";
                 if(connectedEndpoint(destination,""+number))return;dialog.dismiss();preparePairing(expected,destination,number,local,!requireCode&&open.isChecked(),"");
             }catch(Exception error){status(error.getMessage()==null?"Device connection failed":error.getMessage());}
         }));dialog.show();
@@ -311,21 +360,43 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         if(pairingDialog!=null)return;
         LinearLayout form=column();form.setPadding(dp(24),dp(12),dp(24),dp(12));form.setBackgroundColor(BG);
         form.addView(note(description));
-        EditText secret=deviceField("XXXXXX","",true);secret.setContentDescription("Pairing Code");
-        secret.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        secret.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
-        secret.setSaveEnabled(false);
-        form.addView(label("Pairing Code",16));form.addView(secret,full());if(attempt.gateway>0)form.addView(note("Enter the code shown on the device you are pairing with, not the forwarding device."));
+        EditText secret=deviceField("Enter PIN or password","",false);secret.setContentDescription("PIN or password");configureSecretField(secret);
+        form.addView(label("PIN or password",16));form.addView(secret,full());if(attempt.gateway>0)form.addView(note("Enter the PIN or password for the device you are pairing with, not the forwarding device."));
         android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle(displayName==null||displayName.isBlank()?"Pair with device":"Pair with "+displayName).setView(form).setPositiveButton("Pair",null).setNegativeButton("Cancel",null).create();
         pairingDialog=dialog;
         dialog.setOnDismissListener(ignored->{attempt.cancel();secret.setText("");if(pairingDialog==dialog)pairingDialog=null;});
         dialog.setOnShowListener(ignored->dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
             String entered=secret.getText().toString();
-            if(attempt.codeRequired&&!entered.matches("[0-9]{6}")){secret.setError("Enter the six-digit pairing code");secret.requestFocus();return;}
+            if(attempt.codeRequired&&!PairingAttempt.validSecret(entered)){secret.setError("Enter a PIN or password (up to 1024 UTF-8 bytes)");secret.requestFocus();return;}
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setEnabled(false);
             try {submitPairing(attempt,entered);}catch(Exception error){status(error.getMessage()==null?"Device connection failed":error.getMessage());}
             finally {secret.setText("");dialog.dismiss();}
         }));dialog.show();
+    }
+    private void configureSecretField(EditText field){
+        field.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        field.setSaveEnabled(false);field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        field.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+    }
+    private void savePairingCredential(){
+        if(peers==null)return;
+        boolean custom=pairingMode.getSelectedItemPosition()==1;
+        String value=custom?pairingPassword.getText().toString():"";
+        if(custom&&!PairingAttempt.validSecret(value)){pairingPassword.setError("Enter a PIN or password (up to 1024 UTF-8 bytes)");pairingPassword.requestFocus();return;}
+        try{peers.setPairingPassword(value);pairingPassword.setText("");refreshPairingStatus();Toast.makeText(this,custom?"Custom PIN or password saved":"Generated pairing code enabled",Toast.LENGTH_SHORT).show();}
+        catch(Exception error){status(error.getMessage()==null?"Pairing settings could not be saved":error.getMessage());}
+    }
+    private void refreshPairingStatus()throws Exception{
+        if(peers==null)return;
+        PeerService.PairingStatus state=peers.pairingStatus();
+        if(!pairingSettingsInitialized){pairingSettingsInitialized=true;pairingMode.setSelection(state.custom()?1:0);}
+        boolean visible=pairing.isChecked()&&!state.custom();
+        code.setVisibility(visible?View.VISIBLE:View.GONE);pairingCountdown.setVisibility(visible?View.VISIBLE:View.GONE);
+        String shown=state.custom()?"":state.code();if(!code.getText().toString().equals(shown))code.setText(shown);
+        code.setContentDescription("Pairing code "+shown+", changes in "+state.remainingSeconds()+" seconds");
+        pairingCountdown.update(state.remainingSeconds());
+        String message=state.custom()?"Custom PIN or password is set. Saved credentials are not displayed.":"Generated codes change every 20 seconds.";
+        if(!pairingModeStatus.getText().toString().equals(message))pairingModeStatus.setText(message);
     }
     private void submitPairing(PairingAttempt attempt,String code) throws Exception {
         if(!foreground||peers==null||!attempt.submit(code))return;
@@ -342,7 +413,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     }
     private void searchNearby(){
         if(peers==null||!foreground)return;cancelSearch();nearby=new NearbyPeers();renderNearby();searchVisual(true);searchStatus.setText("Searching this network");long epoch=searchEpoch;
-        String local=interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString();nearbySearch=new NearbyPeerSearch();nearbySearch.start(this,local,new NearbyPeerSearch.Listener(){
+        String local=outgoingAddress();nearbySearch=new NearbyPeerSearch();nearbySearch.start(this,local,new NearbyPeerSearch.Listener(){
             public void progress(NearbyPeers found){handler.post(()->{if(!foreground||epoch!=searchEpoch)return;nearby=found;renderNearby();});}
             public void finished(NearbyPeers found,String error){handler.post(()->{if(!foreground||epoch!=searchEpoch)return;nearbySearch=null;searchVisual(false);nearby=found;safely(()->{for(NearbyPeers.Hint hint:found.visible(peers.identity(),Set.of(),android.os.SystemClock.elapsedRealtime()))peers.observeRoute(hint.id(),hint.address(),hint.port());});searchStatus.setText(error==null?"Search complete. Refresh to search again.":error);renderNearby();});}
         });
@@ -350,7 +421,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private void renderNearby(){if(peers==null||nearbyRows==null)return;safely(()->{
         Set<String> known=new HashSet<>(connectedPeers.values());known.addAll(pendingPeers.values());for(String[] device:peers.remembered())if(device.length>0)known.add(device[0]);for(String[] device:peers.pendingForgets())if(device.length>0)known.add(device[0]);
         nearbyRows.removeAllViews();for(NearbyPeers.Hint hint:nearby.visible(peers.identity(),known,android.os.SystemClock.elapsedRealtime())){
-            LinearLayout row=column();row.setPadding(dp(14),dp(8),dp(14),dp(8));row.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams params=full();params.bottomMargin=dp(12);nearbyRows.addView(row,params);LinearLayout identityRow=new LinearLayout(this);identityRow.setGravity(Gravity.CENTER_VERTICAL);ImageView deviceIcon=new ImageView(this);deviceIcon.setImageDrawable(new LineIcon("Devices"));identityRow.addView(deviceIcon,new LinearLayout.LayoutParams(dp(32),dp(32)));TextView deviceName=label(hint.name(),18);deviceName.setPadding(dp(12),dp(8),0,dp(8));deviceName.setTypeface(null,Typeface.BOLD);identityRow.addView(deviceName,new LinearLayout.LayoutParams(0,-2,1));row.addView(identityRow,full());row.addView(note(hint.address()+":"+hint.port()));if(!hint.pairingRequired())row.addView(note("Pairing disabled ? identity will not be verified"));row.addView(button("Connect",()->safely(()->preparePairing(hint.id(),hint.address(),hint.port(),interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString(),!hint.pairingRequired(),hint.name()))));
+            LinearLayout row=column();row.setPadding(dp(14),dp(8),dp(14),dp(8));row.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams params=full();params.bottomMargin=dp(12);nearbyRows.addView(row,params);LinearLayout identityRow=new LinearLayout(this);identityRow.setGravity(Gravity.CENTER_VERTICAL);ImageView deviceIcon=new ImageView(this);deviceIcon.setImageDrawable(new LineIcon("Devices"));identityRow.addView(deviceIcon,new LinearLayout.LayoutParams(dp(32),dp(32)));TextView deviceName=label(hint.name(),18);deviceName.setPadding(dp(12),dp(8),0,dp(8));deviceName.setTypeface(null,Typeface.BOLD);identityRow.addView(deviceName,new LinearLayout.LayoutParams(0,-2,1));row.addView(identityRow,full());row.addView(note(hint.address()+":"+hint.port()));if(!hint.pairingRequired())row.addView(note("Pairing disabled ? identity will not be verified"));row.addView(button("Connect",()->safely(()->preparePairing(hint.id(),hint.address(),hint.port(),outgoingAddress(),!hint.pairingRequired(),hint.name()))));
         }
     });}
     private String gatewayDescription(long gateway,String name){
@@ -366,7 +437,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
             if(known.contains(endpoint.getKey())||!shown.add(endpoint.getKey()))continue;
             final long gateway=route.getKey();final String identity=endpoint.getKey(),name=endpoint.getValue();final String gatewayName=peerName(connectedPeers.get(gateway));
             LinearLayout card=column();card.setPadding(dp(14),dp(8),dp(14),dp(8));card.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams spacing=full();spacing.bottomMargin=dp(12);endpointRows.addView(card,spacing);
-            card.addView(label(name,18));card.addView(note("Via "+gatewayName+". Pair with this device so it can securely request this phone's resources."));
+            card.addView(label(name,18));
             card.addView(button("Pair device",()->showPairingPrompt(PairingAttempt.via(gateway,identity),name,gatewayDescription(gateway,gatewayName))));
         }
         endpointSection.setVisibility(endpointRows.getChildCount()>0?View.VISIBLE:View.GONE);
@@ -415,18 +486,71 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         share.setOnCheckedChangeListener((view,enabled)->{sharePolicy.set(policyKey,enabled,()->{for(Offered other:offered.values())if(other.policyKey().equals(policyKey))disconnectResource(other.id());},this::publish);updateOfferStates();});
         if(!available(item)){Button grant=button("Allow "+(kind==1?"camera":"microphone")+" access",()->grantResourcePermission(kind));group.body.addView(grant,full());}
     }
-    private void updateOfferStates(){for(Offered item:offered.values()){if(item.share().isChecked()!=sharePolicy.enabled(item.policyKey()))item.share().setChecked(sharePolicy.enabled(item.policyKey()));List<ProviderSessions.Session> sessions=providerSessions.forResource(item.id());boolean active=!sessions.isEmpty();item.selected().setChecked(active);item.selected().setEnabled(active);item.selected().setAlpha(active?1f:.35f);item.selected().setVisibility(active?View.VISIBLE:View.GONE);item.selected().setContentDescription(active?"Disconnect "+item.label():"Available for another device to request");item.selected().setStateDescription(active?"In use":!sharePolicy.enabled(item.policyKey())?"Not shared":available(item)?"Available":"Permission required");Set<String> users=new LinkedHashSet<>();for(ProviderSessions.Session session:sessions)users.add(peerName(session.peer()));item.availability().setText(active?"Used by "+String.join(", ",users):item.policyKey().contains(":unavailable:")?"Device unavailable; refresh the resource list":!sharePolicy.enabled(item.policyKey())?"Not shared":available(item)?(foreground&&sharingLifecycle.listening()?"Available":"Waiting for network"):"Permission required");}updateSharingControls();}
+    private void updateOfferStates(){for(Offered item:offered.values()){if(item.share().isChecked()!=sharePolicy.enabled(item.policyKey()))item.share().setChecked(sharePolicy.enabled(item.policyKey()));List<ProviderSessions.Session> sessions=providerSessions.forResource(item.id());boolean active=!sessions.isEmpty();item.selected().setChecked(active);item.selected().setEnabled(active);item.selected().setAlpha(active?1f:.35f);item.selected().setVisibility(active?View.VISIBLE:View.GONE);item.selected().setContentDescription(active?"Disconnect "+item.label():"Available for another device to request");item.selected().setStateDescription(active?"In use":!sharePolicy.enabled(item.policyKey())?"Not shared":available(item)?"Available":"Permission required");Set<String> users=new LinkedHashSet<>();for(ProviderSessions.Session session:sessions)users.add(peerName(session.peer()));item.availability().setText(active?"Used by "+String.join(", ",users):item.policyKey().contains(":unavailable:")?"Device unavailable":!sharePolicy.enabled(item.policyKey())?"Not shared":available(item)?(foreground&&sharingLifecycle.listening()?"Available":"Waiting for network"):"Permission required");}updateSharingControls();}
     private void disconnectResource(String resource){for(ProviderSessions.Session session:providerSessions.forResource(resource))disconnectSession(session);}
     private void disconnectSession(ProviderSessions.Session session){stopNative(session.key());if(peers!=null)safely(()->peers.closeResource(session.connection(),session.grant()));}
     private void disconnectAll(){for(ProviderSessions.Session session:providerSessions.all())disconnectSession(session);status("Resources disconnected; this device is still available");}
-    private void refreshOffers(){if(inputAllowed.getParent() instanceof ViewGroup oldParent)oldParent.removeView(inputAllowed);offerRows.removeAllViews();offerGroups.clear();offered.clear();for(int kind:new int[]{0,1,4,2,3})offerGroups.put(kind,new ResourceGroup(groupName(kind),offerRows));addOffer("display","This phone's display",0,null);offerGroups.get(0).body.addView(resourceRow("Allow input",inputAllowed),full());Point size=new Point();getDisplay().getRealSize(size);offerGroups.get(0).body.addView(note(size.x+" x "+size.y+" / "+Math.round(getDisplay().getRefreshRate())+" Hz. Shows a virtual monitor created on your other computer."));
-        try{for(CameraCapture.Choice choice:CameraCapture.choices(this))addOffer("camera:"+choice.id(),choice.toString(),1,choice);}catch(Exception e){offerGroups.get(1).body.addView(note("Camera inventory unavailable: "+e.getMessage()));}
-        for(SpeakerSession.Choice choice:SpeakerSession.choices(this))addOffer("speaker:"+choice.id(),choice.label(),4,choice);
-        for(MicrophoneCapture.Choice choice:MicrophoneCapture.choices(this))addOffer("microphone:"+choice.id(),choice.label(),2,choice);
-        for(Map.Entry<Integer,ResourceGroup> entry:offerGroups.entrySet()){int count=0;for(Offered item:offered.values())if(item.kind()==entry.getKey())++count;entry.getValue().count(count);if(count==0)entry.getValue().body.addView(note(entry.getKey()==3?"USB sharing is not available on Android.":"No available devices."));}publish();updateOfferStates();}
-    private void updateConnectionGroups(){int total=0;for(ResourceGroup group:activeGroups.values()){int count=group.body.getChildCount();group.count(count);group.box.setVisibility(count>0?View.VISIBLE:View.GONE);total+=count;}connectionEmpty.setVisibility(total==0?View.VISIBLE:View.GONE);refreshResources.setEnabled(true);updateOfferStates();}
+    private record InventoryItem(String local,String label,int kind,Object source) {}
+    private final Map<Integer,List<InventoryItem>> inventorySnapshots=new LinkedHashMap<>();
+    private String inventoryDisplay="",inventoryPermissions="";
+    private boolean inventoryDirty;
+    private long nextInventoryRefresh;
+    private final Runnable refreshInventoryTask=()->{if(foreground&&peers!=null)safely(this::refreshOffers);};
+    private void scheduleInventoryRefresh(){if(!foreground)return;handler.removeCallbacks(refreshInventoryTask);handler.postDelayed(refreshInventoryTask,350);}
+    private final android.media.AudioDeviceCallback audioChanges=new android.media.AudioDeviceCallback(){
+        @Override public void onAudioDevicesAdded(android.media.AudioDeviceInfo[] devices){scheduleInventoryRefresh();}
+        @Override public void onAudioDevicesRemoved(android.media.AudioDeviceInfo[] devices){scheduleInventoryRefresh();}
+    };
+    private final android.hardware.camera2.CameraManager.AvailabilityCallback cameraChanges=new android.hardware.camera2.CameraManager.AvailabilityCallback(){
+        // Busy is not removal: re-read the complete ID catalog, never withdraw a
+        // camera just because another app or our own session opened it.
+        @Override public void onCameraAvailable(String id){scheduleInventoryRefresh();}
+        @Override public void onCameraUnavailable(String id){scheduleInventoryRefresh();}
+    };
+    private final android.hardware.display.DisplayManager.DisplayListener displayChanges=new android.hardware.display.DisplayManager.DisplayListener(){
+        public void onDisplayAdded(int id){scheduleInventoryRefresh();}
+        public void onDisplayRemoved(int id){scheduleInventoryRefresh();}
+        public void onDisplayChanged(int id){scheduleInventoryRefresh();}
+    };
+    private boolean audioWatching,cameraWatching,displayWatching;
+    private void watchInventory(){
+        try{if(!audioWatching){getSystemService(android.media.AudioManager.class).registerAudioDeviceCallback(audioChanges,handler);audioWatching=true;}}catch(RuntimeException ignored){}
+        try{if(!cameraWatching){getSystemService(android.hardware.camera2.CameraManager.class).registerAvailabilityCallback(cameraChanges,handler);cameraWatching=true;}}catch(RuntimeException ignored){}
+        try{if(!displayWatching){getSystemService(android.hardware.display.DisplayManager.class).registerDisplayListener(displayChanges,handler);displayWatching=true;}}catch(RuntimeException ignored){}
+        nextInventoryRefresh=android.os.SystemClock.elapsedRealtime()+15000;
+    }
+    private void unwatchInventory(){
+        handler.removeCallbacks(refreshInventoryTask);
+        try{if(audioWatching)getSystemService(android.media.AudioManager.class).unregisterAudioDeviceCallback(audioChanges);}catch(RuntimeException ignored){}audioWatching=false;
+        try{if(cameraWatching)getSystemService(android.hardware.camera2.CameraManager.class).unregisterAvailabilityCallback(cameraChanges);}catch(RuntimeException ignored){}cameraWatching=false;
+        try{if(displayWatching)getSystemService(android.hardware.display.DisplayManager.class).unregisterDisplayListener(displayChanges);}catch(RuntimeException ignored){}displayWatching=false;
+    }
+    private void refreshOffers(){
+        Map<Integer,List<InventoryItem>> queried=new LinkedHashMap<>();
+        queried.put(0,List.of(new InventoryItem("display","This phone's display",0,null)));
+        try{List<InventoryItem> rows=new ArrayList<>();for(CameraCapture.Choice choice:CameraCapture.choices(this))rows.add(new InventoryItem("camera:"+choice.id(),choice.toString(),1,choice));queried.put(1,rows);}catch(Exception ignored){/* A failed query is not authoritative removal. */}
+        try{List<InventoryItem> rows=new ArrayList<>();for(SpeakerSession.Choice choice:SpeakerSession.choices(this))rows.add(new InventoryItem("speaker:"+choice.id(),choice.label(),4,choice));queried.put(4,rows);}catch(RuntimeException ignored){}
+        try{List<InventoryItem> rows=new ArrayList<>();for(MicrophoneCapture.Choice choice:MicrophoneCapture.choices(this))rows.add(new InventoryItem("microphone:"+choice.id(),choice.label(),2,choice));queried.put(2,rows);}catch(RuntimeException ignored){}
+        Map<Integer,List<InventoryItem>> next=InventorySnapshots.merge(inventorySnapshots,queried);
+        Point size=new Point();getDisplay().getRealSize(size);String display=size.x+" x "+size.y+" / "+Math.round(getDisplay().getRefreshRate())+" Hz";
+        String permissions=checkSelfPermission(Manifest.permission.CAMERA)+":"+checkSelfPermission(Manifest.permission.RECORD_AUDIO);
+        boolean changed=!next.equals(inventorySnapshots)||!display.equals(inventoryDisplay)||!permissions.equals(inventoryPermissions)||inventoryDirty;
+        if(!changed){updateOfferStates();return;}
+        inventorySnapshots.clear();inventorySnapshots.putAll(next);inventoryDisplay=display;inventoryPermissions=permissions;inventoryDirty=false;
+        if(inputAllowed.getParent() instanceof ViewGroup oldParent)oldParent.removeView(inputAllowed);
+        offerRows.removeAllViews();offerGroups.clear();offered.clear();
+        for(int kind:new int[]{0,1,4,2,3}){
+            ResourceGroup group=new ResourceGroup(groupName(kind),offerRows);offerGroups.put(kind,group);
+            for(InventoryItem item:next.getOrDefault(kind,List.of()))addOffer(item.local(),item.label(),item.kind(),item.source());
+            group.count(next.getOrDefault(kind,List.of()).size());
+            if(kind==0){group.body.addView(resourceRow("Allow input",inputAllowed),full());group.body.addView(note(display+". Shows a virtual monitor created on your other computer."));}
+            if(!next.containsKey(kind)||next.get(kind).isEmpty())group.body.addView(note(kind==3?"USB sharing is not available on Android.":next.containsKey(kind)?"No available devices.":"Device inventory temporarily unavailable; retrying automatically."));
+        }
+        publish();updateOfferStates();
+    }
+    private void updateConnectionGroups(){int total=0;for(ResourceGroup group:activeGroups.values()){int count=group.body.getChildCount();group.count(count);group.box.setVisibility(count>0?View.VISIBLE:View.GONE);total+=count;}connectionEmpty.setVisibility(total==0?View.VISIBLE:View.GONE);updateOfferStates();}
     private boolean allowed(Offered item){return sharePolicy.allowed(item.policyKey(),available(item));}
-    private void updateSharingControls(){boolean active=sharingLifecycle.active();sharing.setVisibility(!providerSessions.all().isEmpty()?View.VISIBLE:View.GONE);sharing.setEnabled(true);interfaces.setEnabled(providerSessions.all().isEmpty());port.setEnabled(providerSessions.all().isEmpty());applyNetwork.setEnabled(providerSessions.all().isEmpty());}
+    private void updateSharingControls(){sharing.setVisibility(!providerSessions.all().isEmpty()?View.VISIBLE:View.GONE);sharing.setEnabled(true);}
     private void publishSelected()throws java.io.IOException{
         ArrayList<String[]> rows=new ArrayList<>();Point size=new Point();getDisplay().getRealSize(size);int hz=Math.max(1,Math.min(1000,Math.round(getDisplay().getRefreshRate())));
         for(Offered item:offered.values())if(allowed(item)){int width=item.kind()==0?size.x:0,height=item.kind()==0?size.y:0;rows.add(new String[]{item.id(),item.label(),""+item.kind(),"true",item.kind()==0&&inputAllowed.isChecked()?"true":"false",""+width,""+height,item.kind()==0?""+hz:"0",""});}
@@ -434,52 +558,54 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     }
     private void publish(){if(peers==null)return;try{publishSelected();}catch(Exception e){stopSharing();status(e.getMessage()==null?"Device sharing failed":e.getMessage());}updateSharingControls();}
     private void ensureListening(){
-        try{
-            if(peers==null||!foreground||listenFailed)return;
-
-            if(!sharingLifecycle.active()){
-                int number;try{number=Integer.parseInt(port.getText().toString().trim());}catch(NumberFormatException e){throw new IllegalArgumentException("Enter a port from 1 to 65535");}
-                if(number<1||number>65535)throw new IllegalArgumentException("Enter a port from 1 to 65535");
-                int index=interfaces.getSelectedItemPosition();if(index<0||index>=addresses.size())throw new IllegalArgumentException("Select a local network address");
-                String address=addresses.get(index);InetAddress local=InetAddress.getByName(address);NetworkInterface nic=NetworkInterface.getByInetAddress(local);
-                if(nic==null||!nic.isUp())throw new IllegalArgumentException("The selected network address is no longer available");
-                publishSelected();sharingAddress=address;sharingLifecycle.begin(peers.start(address,number));status("Starting sharing...");
-            }
-        }catch(Exception e){
-            // Retry a configuration/bind failure only after Apply, resume, or a real network change.
-            listenFailed=true;failedNetworks=new ArrayList<>(addresses);stopSharing();status(e.getMessage()==null?"Device sharing failed":e.getMessage());
-        }
+        if(peers==null||!foreground||listenFailed||sharingLifecycle.active())return;
+        try{String address=selectedListenAddress();int number=selectedListenPort();publishSelected();long generation=peers.start(address,number);sharingAddress=address;listeningPort=number;sharingLifecycle.begin(generation);status("Starting sharing...");}
+        catch(Exception e){listenFailed=true;failedNetworks=new ArrayList<>(addresses);status(e.getMessage()==null?"Device sharing failed":e.getMessage());}
         updateSharingControls();
     }
     private void applyNetworkSettings(){
-        if(!providerSessions.all().isEmpty())return;
-        try{int requested=Integer.parseInt(port.getText().toString().trim());if(requested<1||requested>65535)throw new NumberFormatException();}
-        catch(NumberFormatException e){port.setError("Enter a port from 1 to 65535");return;}
-        listenFailed=false;stopSharing();refreshInterfaces();ensureListening();
+        if(peers==null||!foreground)return;
+        try{
+            String address=selectedListenAddress();int number=selectedListenPort();
+            if(sharingLifecycle.active()&&address.equals(sharingAddress)&&number==listeningPort)return;
+            listenFailed=false;
+            if(!sharingLifecycle.active()){ensureListening();return;}
+            PeerService.ListenerChange change=peers.rebind(address,number);listenerNotice=change.error();
+            stopKnownPeerObserver();if(beacon!=null){beacon.close();beacon=null;}
+            sharingAddress=change.address();listeningPort=change.port();
+            if(change.port()==0){sharingLifecycle.stop();listenFailed=true;failedNetworks=new ArrayList<>(addresses);}
+            else {
+                // Rebind reports the actual listener even when an unchanged endpoint emits no event.
+                sharingLifecycle.replace(change.generation());
+                sharingLifecycle.confirm(change.generation());
+                refreshBeacon();
+            }
+            status(change.error().isEmpty()?"Listening on "+sharingAddress+":"+listeningPort:change.error());
+        }catch(Exception e){status(e.getMessage()==null?"Network settings could not be applied":e.getMessage());Toast.makeText(this,"Check the network address and port",Toast.LENGTH_SHORT).show();}
+        updateSharingControls();
+    }
+    private void refreshBeacon(){
+        if(beacon!=null){beacon.close();beacon=null;}
+        try{if(sharingLifecycle.listening())beacon=new PeerBeacon(peers,sharingAddress,listeningPort);}catch(Exception ignored){/* Direct-address access remains available. */}
     }
     private void maintainAvailability()throws Exception{
         if(!foreground||peers==null)return;
-        if(sharingLifecycle.active()){
-            NetworkInterface nic=NetworkInterface.getByInetAddress(InetAddress.getByName(sharingAddress));
-            if(nic==null||!nic.isUp())stopSharing();
-            else if(providerSessions.all().isEmpty()&&sharingAddress.equals("127.0.0.1")){
-                refreshInterfaces();if(!addresses.contains("127.0.0.1"))stopSharing();
-            }
-        }
-        if(!sharingLifecycle.active()){refreshInterfaces();if(listenFailed&&!failedNetworks.equals(addresses))listenFailed=false;ensureListening();}
+        refreshInterfaces();
+        if(!sharingLifecycle.active()){if(listenFailed&&!failedNetworks.equals(addresses))listenFailed=false;ensureListening();}
     }
     private void stopSharing(){
+        inventoryDirty=true;
         stopKnownPeerObserver();sharingLifecycle.stop();providerSessions.clear();
         if(fullscreen)setFullscreen(false);if(beacon!=null){beacon.close();beacon=null;}
         if(peers!=null){safely(()->peers.offers(new String[0][]));safely(()->peers.stop());}
         for(Runnable cancel:new ArrayList<>(cancellations.values()))cancel.run();cancellations.clear();activeRows.clear();for(ResourceGroup group:activeGroups.values())group.body.removeAllViews();updateConnectionGroups();pendingDisplay=null;displayEvent=null;videoActive=false;displayKey=null;input.enable(false);videoArea.setVisibility(View.GONE);updateSharingControls();status("Device unavailable while ExtraPane is paused");
     }
-    private final Runnable poll=new Runnable(){public void run(){if(!foreground||peers==null)return;safely(()->{for(String[] event:peers.poll())event(event);});if(android.os.SystemClock.elapsedRealtime()>=nextListenAttempt){nextListenAttempt=android.os.SystemClock.elapsedRealtime()+3000;safely(PeerActivity.this::maintainAvailability);observeKnownPeers();}handler.postDelayed(this,30);}};
+    private final Runnable poll=new Runnable(){public void run(){if(!foreground||peers==null)return;safely(()->{for(String[] event:peers.poll())event(event);});if(android.os.SystemClock.elapsedRealtime()>=nextPairingStatus){nextPairingStatus=android.os.SystemClock.elapsedRealtime()+1000;safely(PeerActivity.this::refreshPairingStatus);}if(android.os.SystemClock.elapsedRealtime()>=nextInventoryRefresh){nextInventoryRefresh=android.os.SystemClock.elapsedRealtime()+15000;scheduleInventoryRefresh();}if(android.os.SystemClock.elapsedRealtime()>=nextListenAttempt){nextListenAttempt=android.os.SystemClock.elapsedRealtime()+3000;safely(PeerActivity.this::maintainAvailability);observeKnownPeers();}handler.postDelayed(this,30);}};
     private void event(String[] event)throws Exception{if(event.length<15)return;switch(event[0]){
-        case "listening" -> {if(!foreground||event.length<=18||!sharingLifecycle.confirm(Long.parseLong(event[18])))return;updateOfferStates();status("Listening on "+sharingAddress+":"+event[6]);try{if(beacon!=null)beacon.close();beacon=new PeerBeacon(peers,sharingAddress,Integer.parseInt(event[6]));}catch(Exception e){status("Listening on "+sharingAddress+":"+event[6]+". LAN discovery unavailable; connect by address.");}}
+        case "listening" -> {if(!foreground||event.length<=18||!sharingLifecycle.confirm(Long.parseLong(event[18])))return;listeningPort=Integer.parseInt(event[6]);updateOfferStates();status("Listening on "+sharingAddress+":"+event[6]+(listenerNotice.isEmpty()?"":". "+listenerNotice));listenerNotice="";refreshBeacon();}
         case "native-ready" -> {try{startNative(event);}catch(Exception e){ended(event,e.getMessage()==null?"Resource could not start":e.getMessage());}}
         case "native-stop" -> stopNative(key(event));
-        case "error" -> {long failedToken=Long.parseLong(event[1]);pendingPeers.remove(failedToken);if(!connectedPeers.containsKey(failedToken))peerEndpoints.remove(failedToken);refreshTrusted();long generation=event.length>18?Long.parseLong(event[18]):0;if(generation!=0){if(!sharingLifecycle.matches(generation))return;listenFailed=true;failedNetworks=new ArrayList<>(addresses);stopSharing();}status(event[7]);}
+        case "error" -> {long failedToken=Long.parseLong(event[1]);pendingPeers.remove(failedToken);if(!connectedPeers.containsKey(failedToken))peerEndpoints.remove(failedToken);refreshTrusted();long generation=event.length>18?Long.parseLong(event[18]):0;if(generation!=0){if(!sharingLifecycle.matches(generation))return;listenFailed=true;failedNetworks=new ArrayList<>(addresses);sharingLifecycle.stop();if(beacon!=null){beacon.close();beacon=null;}}status(event[7]);}
         case "catalog-begin" -> endpointsVia.put(Long.parseLong(event[1]),new LinkedHashMap<>());
         case "endpoint" -> endpointsVia.computeIfAbsent(Long.parseLong(event[1]),ignored->new LinkedHashMap<>()).put(event[8],event[7]);
         case "catalog-end" -> renderEndpointDevices();
@@ -505,8 +631,8 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     public void surfaceCreated(SurfaceHolder holder){surfaceReady=true;startDisplay();}public void surfaceChanged(SurfaceHolder holder,int format,int width,int height){}public void surfaceDestroyed(SurfaceHolder holder){surfaceReady=false;if(displayKey!=null){String[] event=displayEvent;stopNative(displayKey);if(event!=null&&peers!=null)safely(()->peers.closeResource(Long.parseLong(event[1]),Long.parseLong(event[3])));}}
     @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(!focused)input.reset();}
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(foreground)safely(()->{refreshOffers();ensureListening();});}
-    @Override protected void onResume(){super.onResume();foreground=true;listenFailed=false;if(peers!=null)safely(()->{peers.setForeground(true);peers.setAutoConnect(true);refreshInterfaces();refreshOffers();ensureListening();});handler.post(poll);}
-    @Override protected void onPause(){if(pairingDialog!=null)pairingDialog.dismiss();cancelSearch();cancelDrawerAnimation();drawerSwipe.cancel();drawerSwipeConsumed=false;if(drawerVelocity!=null){drawerVelocity.recycle();drawerVelocity=null;}if(drawer!=null)setDrawerProgress(drawerOpen?1:0);foreground=false;handler.removeCallbacks(poll);if(peers!=null)safely(()->{peers.setAutoConnect(false);peers.setForeground(false);});stopSharing();super.onPause();}
+    @Override protected void onResume(){super.onResume();foreground=true;listenFailed=false;watchInventory();if(peers!=null)safely(()->{peers.setForeground(true);peers.setAutoConnect(true);refreshInterfaces();refreshOffers();ensureListening();});handler.post(poll);}
+    @Override protected void onPause(){if(pairingPassword!=null)pairingPassword.setText("");unwatchInventory();if(pairingDialog!=null)pairingDialog.dismiss();cancelSearch();cancelDrawerAnimation();drawerSwipe.cancel();drawerSwipeConsumed=false;if(drawerVelocity!=null){drawerVelocity.recycle();drawerVelocity=null;}if(drawer!=null)setDrawerProgress(drawerOpen?1:0);foreground=false;handler.removeCallbacks(poll);if(peers!=null)safely(()->{peers.setAutoConnect(false);peers.setForeground(false);});stopSharing();super.onPause();}
     @Override protected void onStop(){foreground=false;handler.removeCallbacks(poll);stopSharing();super.onStop();}
-    @Override protected void onDestroy(){handler.removeCallbacks(poll);if(peers!=null){PeerService closing=peers;peers=null;new Thread(closing::close,"ExtraPane peer shutdown").start();}super.onDestroy();}
+    @Override protected void onDestroy(){unwatchInventory();handler.removeCallbacks(poll);if(peers!=null){PeerService closing=peers;peers=null;new Thread(closing::close,"ExtraPane peer shutdown").start();}super.onDestroy();}
 }

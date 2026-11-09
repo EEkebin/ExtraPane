@@ -1,10 +1,49 @@
 #include <dm/usb_recovery.hpp>
 #include <dm/usb_runner.hpp>
+#include <dm/usb_generic_lease.hpp>
 #include <algorithm>
 #include <cwctype>
 #include <sstream>
 #include <stdexcept>
 namespace dm::usb {
+bool valid_generic_lease(const GenericLease& lease){
+    if(lease.parent.empty()!=(!lease.port)||lease.port>255||lease.parent.size()>4096||std::any_of(lease.parent.begin(),lease.parent.end(),[](auto c){return c<32||c==127;}))return false;
+    if(lease.guid.size()!=38||lease.guid.front()!=L'{'||lease.guid.back()!=L'}')return false;bool nonzero=false;
+    for(std::size_t i=1;i<37;++i){const auto c=lease.guid[i];if(i==9||i==14||i==19||i==24){if(c!=L'-')return false;}else{if(!((c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f')||(c>=L'A'&&c<=L'F')))return false;nonzero|=c!=L'0';}}
+    if(!nonzero||!lease.instance.starts_with(L"USB\\")||lease.instance.size()<9||lease.instance.size()>4096||std::any_of(lease.instance.begin(),lease.instance.end(),[](auto c){return c<32||c==127;}))return false;
+    const auto dash=lease.bus.find('-');if(dash==lease.bus.npos||!dash||dash+1==lease.bus.size()||lease.bus.size()>=16||lease.bus.find('-',dash+1)!=lease.bus.npos)return false;
+    if(lease.bus[0]=='0'||lease.bus[dash+1]=='0')return false;
+    return std::all_of(lease.bus.begin(),lease.bus.end(),[](char c){return(c>='0'&&c<='9')||c=='-';});
+}
+bool generic_stub_matches(const GenericLease& lease,const std::wstring& instance,const std::wstring& parent,unsigned port,const std::wstring& service){
+    if(!valid_generic_lease(lease)||lease.parent.empty())return false;
+    const auto same=[](const std::wstring& a,const std::wstring& b){return a.size()==b.size()&&std::equal(a.begin(),a.end(),b.begin(),[](auto x,auto y){return towupper(x)==towupper(y);});};
+    const auto split=lease.instance.rfind(L'\\');if(split==lease.instance.npos)return false;
+    return same(instance,L"USB\\VID_80EE&PID_CAFE"+lease.instance.substr(split))&&same(parent,lease.parent)&&port==lease.port&&same(service,L"VBoxUSB");
+}
+GenericLeaseAction generic_lease_action(const GenericLease& lease,const std::wstring& actual,bool exists,bool active,bool forced,bool foreign){
+    if(!valid_generic_lease(lease)||active)return GenericLeaseAction::refuse;
+    if(!exists)return GenericLeaseAction::retire_only;
+    const bool same=actual.size()==lease.instance.size()&&std::equal(actual.begin(),actual.end(),lease.instance.begin(),[](auto a,auto b){return towupper(a)==towupper(b);});
+    if(!actual.empty()&&!same)return GenericLeaseAction::retire_only;
+    if(forced||foreign)return GenericLeaseAction::refuse;
+    return GenericLeaseAction::release_binding;
+}
+bool import_port_absent(unsigned exit_code,std::string_view output){
+    while(!output.empty()&&(output.back()=='\r'||output.back()=='\n'))output.remove_suffix(1);
+    return exit_code==1&&output=="error: requested port(s) not found";
+}
+bool matches_generic_import_port(std::string_view output,unsigned port,std::uint16_t local,const std::string& bus,bool active){
+    if(!port||port>255||!local||bus.empty()||output.size()>1024*1024)return false;
+    const auto heading="Port "+(port<10?std::string("0"):std::string{})+std::to_string(port)+":";
+    const auto uri="-> usbip://127.0.0.1:"+std::to_string(local)+"/"+bus;
+    std::istringstream lines{std::string(output)};std::string line;unsigned headers=0,uris=0;
+    while(std::getline(lines,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();const auto begin=line.find_first_not_of(' ');if(begin!=line.npos)line.erase(0,begin);
+        if(line.starts_with("Port ")){if(!line.starts_with(heading+(active?" device in use at ":" "))||line.size()>256)return false;++headers;}
+        if(line.starts_with("-> usbip://")){if(line!=uri)return false;++uris;}
+    }
+    return headers==1&&uris==1;
+}
 bool matches_import_port(std::string_view output,unsigned port,std::uint16_t local,const std::string& bus,const std::string& serial,bool active){
     if(!port||port>255||!local||bus.empty()||serial.empty()||output.size()>1024*1024)return false;
     const auto heading="Port "+(port<10?std::string("0"):std::string{})+std::to_string(port)+":";

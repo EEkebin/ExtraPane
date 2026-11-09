@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QStringList>
 #include <windows.h>
+#include <dbt.h>
 #include <filesystem>
 
 namespace {
@@ -22,7 +23,8 @@ namespace {
 // Exit command. A message-only HWND would not be found by FindWindow.
 class InstallerShutdownWindow {
 public:
-    bool create(){
+    bool create(std::function<void()> hardwareChanged={}){
+        hardwareChanged_=std::move(hardwareChanged);
         instance_=GetModuleHandleW(nullptr);
         WNDCLASSW type{};
         type.lpfnWndProc=&procedure;
@@ -31,10 +33,13 @@ public:
         atom_=RegisterClassW(&type);
         if(!atom_)return false;
         window_=CreateWindowExW(WS_EX_TOOLWINDOW,type.lpszClassName,L"ExtraPane shutdown",
-            WS_POPUP,0,0,0,0,nullptr,nullptr,instance_,nullptr);
+            WS_POPUP,0,0,0,0,nullptr,nullptr,instance_,this);
+        if(window_&&hardwareChanged_){DEV_BROADCAST_DEVICEINTERFACE_W filter{};filter.dbcc_size=sizeof(filter);filter.dbcc_devicetype=DBT_DEVTYP_DEVICEINTERFACE;
+            notification_=RegisterDeviceNotificationW(window_,&filter,DEVICE_NOTIFY_WINDOW_HANDLE|DEVICE_NOTIFY_ALL_INTERFACE_CLASSES);}
         return window_!=nullptr;
     }
     ~InstallerShutdownWindow(){
+        if(notification_)UnregisterDeviceNotification(notification_);
         if(window_)DestroyWindow(window_);
         if(atom_)UnregisterClassW(L"ExtraPane.Tray",instance_);
     }
@@ -43,6 +48,9 @@ public:
     InstallerShutdownWindow& operator=(const InstallerShutdownWindow&)=delete;
 private:
     static LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wparam,LPARAM lparam){
+        if(message==WM_NCCREATE)SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams));
+        auto* self=reinterpret_cast<InstallerShutdownWindow*>(GetWindowLongPtrW(window,GWLP_USERDATA));
+        if(self&&self->hardwareChanged_&&(message==WM_DISPLAYCHANGE||(message==WM_DEVICECHANGE&&(wparam==DBT_DEVNODES_CHANGED||wparam==DBT_DEVICEARRIVAL||wparam==DBT_DEVICEREMOVECOMPLETE))))self->hardwareChanged_();
         if(message==WM_COMMAND&&wparam==3&&lparam==0){
             // Queue normal Qt shutdown so aboutToQuit stops both roles and
             // releases session-owned resources before the instance mutex closes.
@@ -54,6 +62,8 @@ private:
     HINSTANCE instance_=nullptr;
     ATOM atom_=0;
     HWND window_=nullptr;
+    HDEVNOTIFY notification_=nullptr;
+    std::function<void()> hardwareChanged_;
 };
 }
 
@@ -82,6 +92,9 @@ int main(int argc,char** argv){
     std::shared_ptr<extrapane::windows_peer::WindowsPeerRuntime> peerRuntime;
     std::future<std::vector<extrapane::peers::Offer>> inventory;
     QTimer inventoryTimer;
+    QTimer inventoryDebounce,inventoryFallback;
+    bool inventoryAgain=false,inventoryStopping=false;
+    std::function<void()> refreshInventory;
     if(checkUi&&!app.arguments().contains("--legacy")){
         checkDirectory=std::make_unique<QTemporaryDir>();
         if(!checkDirectory->isValid())return 1;
@@ -93,12 +106,16 @@ int main(int argc,char** argv){
         try{
             peerRuntime=std::make_shared<extrapane::windows_peer::WindowsPeerRuntime>(extrapane::windows_peer::native_process_factory());
             peers=std::make_unique<PeerController>(peerRuntime->hooks(),QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/peers");
-            auto refreshInventory=[&]{if(inventory.valid())return;inventory=std::async(std::launch::async,[peerRuntime]{return peerRuntime->refresh();});inventoryTimer.start(50);};
+            refreshInventory=[&]{if(inventoryStopping)return;if(inventory.valid()){inventoryAgain=true;return;}inventoryAgain=false;inventory=std::async(std::launch::async,[peerRuntime]{return peerRuntime->refresh();});inventoryTimer.start(50);};
             QObject::connect(peers.get(),&PeerController::refreshRequested,&app,refreshInventory);
+            inventoryDebounce.setSingleShot(true);inventoryDebounce.setInterval(350);
+            QObject::connect(&inventoryDebounce,&QTimer::timeout,&app,refreshInventory);
+            QObject::connect(&inventoryFallback,&QTimer::timeout,&app,refreshInventory);inventoryFallback.start(10000);
             refreshInventory();
             QObject::connect(&inventoryTimer,&QTimer::timeout,&app,[&]{
                 if(!inventory.valid()||inventory.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
-                inventoryTimer.stop();try{peers->setLocalOffers(inventory.get());}catch(const std::exception& e){QMessageBox::warning(nullptr,"ExtraPane",QString::fromUtf8(e.what()));}
+                inventoryTimer.stop();try{peers->setLocalOffers(inventory.get());}catch(const std::exception& e){qWarning()<<"Resource inventory refresh failed:"<<e.what();}
+                if(inventoryAgain&&!inventoryStopping)inventoryDebounce.start();
             });inventoryTimer.start(50);
         }catch(const std::exception& e){QMessageBox::critical(nullptr,"ExtraPane",QString::fromUtf8(e.what()));return 1;}
     }
@@ -140,8 +157,8 @@ int main(int argc,char** argv){
     QObject::connect(&controller,&WindowsController::hostChanged,&app,stateChanged);
     QObject::connect(&controller,&WindowsController::changed,&app,stateChanged);
     QObject::connect(&app,&QCoreApplication::aboutToQuit,&controller,&WindowsController::shutdown);
-    QObject::connect(&app,&QCoreApplication::aboutToQuit,&app,[&]{inventoryTimer.stop();if(peers)peers->shutdown();});
+    QObject::connect(&app,&QCoreApplication::aboutToQuit,&app,[&]{inventoryStopping=true;inventoryTimer.stop();inventoryDebounce.stop();inventoryFallback.stop();if(peers)peers->shutdown();});
     InstallerShutdownWindow installerShutdown;
-    if(!installerShutdown.create())return 1;
+    if(!installerShutdown.create([&]{if(peers&&!inventoryStopping)inventoryDebounce.start();}))return 1;
     return app.exec();
 }

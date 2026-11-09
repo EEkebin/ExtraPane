@@ -12,9 +12,13 @@ class PeerController final:public QObject {
     Q_OBJECT
     Q_PROPERTY(DeviceDirectory* directory READ directory CONSTANT)
     Q_PROPERTY(QString deviceName READ deviceName CONSTANT)
-    Q_PROPERTY(QString pairingCode READ pairingCode NOTIFY changed)
+    Q_PROPERTY(QString pairingCode READ pairingCode NOTIFY pairingChanged)
+    Q_PROPERTY(bool pairingCustom READ pairingCustom NOTIFY pairingChanged)
+    Q_PROPERTY(unsigned pairingSeconds READ pairingSeconds NOTIFY pairingChanged)
     Q_PROPERTY(bool pairingRequired READ pairingRequired WRITE setPairingRequired NOTIFY changed)
     Q_PROPERTY(bool gatewayEnabled READ gatewayEnabled WRITE setGatewayEnabled NOTIFY changed)
+    Q_PROPERTY(QString listeningAddress READ listeningAddress NOTIFY changed)
+    Q_PROPERTY(unsigned listeningPort READ listeningPort NOTIFY changed)
     Q_PROPERTY(bool sharing READ sharing NOTIFY changed)
     Q_PROPERTY(bool sharingStarting READ sharingStarting NOTIFY changed)
     Q_PROPERTY(bool active READ active NOTIFY changed)
@@ -31,8 +35,13 @@ public:
     DeviceDirectory* directory(){return &directory_;}
     QString deviceName()const{return name_;}
     QString pairingCode()const;
+    bool pairingCustom()const{return pairingStatus_.custom;}
+    unsigned pairingSeconds()const{return pairingStatus_.remaining_seconds;}
+    Q_INVOKABLE bool setPairingPassword(QString password);
     bool pairingRequired()const{return pairingRequired_;}
     bool gatewayEnabled()const{return gatewayEnabled_;}
+    QString listeningAddress()const{return bindAddress_;}
+    unsigned listeningPort()const{return listenPort_;}
     bool sharing()const{return sharing_;}
     bool sharingStarting()const{return sharingStarting_;}
     bool active()const{return (!automaticAvailability_&&(sharing_||sharingStarting_||!devices_.isEmpty()))||!connections_.isEmpty()||!pending_.isEmpty();}
@@ -67,6 +76,7 @@ public:
     void shutdown();
 signals:
     void changed();
+    void pairingChanged();
     void refreshRequested();
     void toast(QString message);
 private:
@@ -75,6 +85,7 @@ private:
     DeviceDirectory directory_;
     QTimer timer_;
     std::unique_ptr<Service> service_;
+    Service::PairingStatus pairingStatus_;
     QString name_,status_="Sharing stopped";
     bool automaticAvailability_=false;
     bool pairingRequired_=true,sharing_=false,sharingStarting_=false,gatewayEnabled_=false;
