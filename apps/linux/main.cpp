@@ -100,11 +100,16 @@ int main(int argc,char** argv){
     controller.setEngine(&engine);
     std::unique_ptr<LinuxPeerRuntime> peerRuntime;
     std::unique_ptr<PeerController> peers;
+    QTimer peerInventoryTimer;
     if(!app.arguments().contains("--legacy")){
         try{peerRuntime=std::make_unique<LinuxPeerRuntime>(&engine,unavailable);peers=std::make_unique<PeerController>(peerRuntime->hooks(),QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/peers");
             QObject::connect(peerRuntime.get(),&LinuxPeerRuntime::inventoryChanged,&app,[&]{try{peers->setLocalOffers(peerRuntime->offers());}catch(const std::exception& e){qWarning()<<e.what();}});
             QObject::connect(peerRuntime.get(),&LinuxPeerRuntime::inventoryFailed,&app,[](const QString& reason){qWarning().noquote()<<reason;});
             QObject::connect(peers.get(),&PeerController::refreshRequested,peerRuntime.get(),&LinuxPeerRuntime::refreshInventory);
+            QObject::connect(&peerInventoryTimer,&QTimer::timeout,peerRuntime.get(),&LinuxPeerRuntime::refreshInventory);
+            QObject::connect(&app,&QGuiApplication::screenAdded,peerRuntime.get(),[&](QScreen*){peerRuntime->refreshInventory();});
+            QObject::connect(&app,&QGuiApplication::screenRemoved,peerRuntime.get(),[&](QScreen*){peerRuntime->refreshInventory();});
+            peerInventoryTimer.start(3000);
             engine.rootContext()->setContextProperty("peers",peers.get());peerRuntime->refreshInventory();
         }catch(const std::exception& e){qWarning()<<e.what();return 1;}
     }

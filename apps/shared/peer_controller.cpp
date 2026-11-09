@@ -16,7 +16,8 @@ DeviceId identity(QString value){
     const auto data=QByteArray::fromHex(value.toLatin1());DeviceId id{};std::copy(data.begin(),data.end(),id.begin());if(!valid_id(id))throw std::invalid_argument("Invalid device identity");return id;
 }
 QString address(QString value){value=value.trimmed();if(value.compare("localhost",Qt::CaseInsensitive)==0)return "127.0.0.1";QHostAddress parsed(value);if(parsed.protocol()!=QAbstractSocket::IPv4Protocol||parsed.isMulticast()||(parsed.toIPv4Address()>>24)==0||(parsed.toIPv4Address()>>24)>=224)throw std::invalid_argument("Enter a reachable IPv4 address or localhost");return parsed.toString();}
-QString kindName(Kind kind){switch(kind){case Kind::display_destination:return "Extend desktop";case Kind::existing_screen:return "Existing screen";case Kind::camera:return "Camera";case Kind::microphone:return "Microphone";case Kind::speaker:return "Speakers";case Kind::usb:return "USB storage";}return {};}
+QString listenAddress(QString value){return value.trimmed()=="0.0.0.0"?QStringLiteral("0.0.0.0"):address(value);}
+QString kindName(Kind kind){switch(kind){case Kind::display_destination:return "Extend desktop";case Kind::existing_screen:return "Existing screen";case Kind::camera:return "Camera";case Kind::microphone:return "Microphone";case Kind::speaker:return "Speakers";case Kind::usb:return "USB";}return {};}
 QVariantMap offerMap(const Offer& offer){return {{"id",QString::fromStdString(offer.id)},{"label",QString::fromStdString(offer.label)},{"kind",kindName(offer.kind)},{"kindId",static_cast<int>(offer.kind)},{"available",offer.available},{"inputAllowed",offer.input_allowed},{"reason",QString::fromStdString(offer.unavailable_reason)},{"width",offer.width},{"height",offer.height},{"refresh",offer.refresh}};}
 QString token(std::uint64_t value){return QString::number(value);}
 }
@@ -45,7 +46,7 @@ std::vector<Offer> PeerController::selectedOffers()const{std::vector<Offer> resu
 QVariantList PeerController::networkAddresses()const{
     QVariantList result;for(const auto& nic:QNetworkInterface::allInterfaces()){
         const auto flags=nic.flags();if(!(flags&QNetworkInterface::IsUp)||!(flags&QNetworkInterface::IsRunning)||(flags&QNetworkInterface::IsLoopBack))continue;
-        for(const auto& entry:nic.addressEntries())if(entry.ip().protocol()==QAbstractSocket::IPv4Protocol&&!entry.ip().isLoopback()&&!entry.ip().isNull())result.push_back(QVariantMap{{"label",nic.humanReadableName()+" ? "+entry.ip().toString()},{"address",entry.ip().toString()},{"interfaceIndex",nic.index()}});
+        for(const auto& entry:nic.addressEntries())if(entry.ip().protocol()==QAbstractSocket::IPv4Protocol&&!entry.ip().isLoopback()&&!entry.ip().isNull())result.push_back(QVariantMap{{"label",nic.humanReadableName()+" - "+entry.ip().toString()},{"address",entry.ip().toString()},{"interfaceIndex",nic.index()}});
     }return result;
 }
 QVariantList PeerController::offers()const{QVariantList result;for(const auto& offer:inventory_){
@@ -58,6 +59,19 @@ QVariantList PeerController::offers()const{QVariantList result;for(const auto& o
 }return result;}
 QVariantList PeerController::remembered()const{QVariantList result;if(!service_)return result;for(const auto& device:service_->remembered())result.push_back(QVariantMap{{"id",hex(device.id)},{"name",device.name.empty()?hex(device.id).left(12):QString::fromStdString(device.name)},{"address",QString::fromStdString(device.address_hint)},{"port",device.port_hint},{"pendingForget",false}});for(const auto& device:service_->pending_forgets())result.push_back(QVariantMap{{"id",hex(device.id)},{"name",QString::fromStdString(device.name)},{"address",QString::fromStdString(device.address_hint)},{"port",device.port_hint},{"pendingForget",true}});return result;}
 void PeerController::setLocalOffers(std::vector<Offer> offers){
+    // A resource in use may disappear from idle inventory while its native
+    // adapter still owns it. Only native termination or explicit withdrawal
+    // should stop that session; unrelated hotplug must not revoke it.
+    for(const auto& value:connections_){const auto row=value.toMap();
+        if(!row.value("incoming").toBool()||row.value("owner").toString()!=hex(service_->identity()))continue;
+        const auto id=row.value("resource").toString();
+        const auto old=std::find_if(inventory_.begin(),inventory_.end(),[&](const auto& item){return QString::fromStdString(item.id)==id;});
+        if(old==inventory_.end())continue;
+        const auto replacement=std::find_if(offers.begin(),offers.end(),[&](const auto& item){return item.id==old->id;});
+        if(replacement==offers.end())offers.push_back(*old);else *replacement=*old;
+    }
+    std::sort(offers.begin(),offers.end(),[](const auto& a,const auto& b){return a.id<b.id;});
+    if(offers==inventory_)return;
     inventory_=std::move(offers);
     if(automaticAvailability_)for(const auto& offer:inventory_)if(offer.available&&!disabledOffers_.contains(QString::fromStdString(offer.id)))enabled_.insert(QString::fromStdString(offer.id));
     for(auto it=enabled_.begin();it!=enabled_.end();) {
@@ -74,14 +88,22 @@ void PeerController::startAvailableSharing(QString bind,unsigned port){
     automaticAvailability_=true;
     try{
         service_->auto_connect(true);
-        if(bind.trimmed().isEmpty()){const auto addresses=networkAddresses();if(addresses.empty())throw std::invalid_argument("No connected local network address. Connect a network and refresh availability.");bind=addresses.first().toMap().value("address").toString();}
-        // Validate the requested endpoint before withdrawing an existing listener.
-        bind=address(bind);if(!port||port>65535)throw std::invalid_argument("Enter a port between 1 and 65535");
-        if(!QHostAddress(bind).isLoopback()){bool found=false;for(const auto& nic:networkAddresses())if(nic.toMap().value("address").toString()==bind){found=true;break;}if(!found)throw std::invalid_argument("Select a connected local network address");}
+        if(bind.trimmed().isEmpty())bind="0.0.0.0";
+        bind=listenAddress(bind);if(!port||port>65535)throw std::invalid_argument("Enter a port between 1 and 65535");
+        unsigned index=0;
+        if(bind!="0.0.0.0"&&!QHostAddress(bind).isLoopback()){bool found=false;for(const auto& value:networkAddresses()){const auto nic=value.toMap();if(nic.value("address").toString()==bind){found=true;index=nic.value("interfaceIndex").toUInt();break;}}if(!found)throw std::invalid_argument("Select a connected local network address");}
         if(sharing_||sharingStarting_){
             if(bind==bindAddress_&&port==configuredPort_)return;
-            if(!connections_.empty()||!pending_.empty())throw std::invalid_argument("Disconnect active resources before changing the listening address");
-            stopSharing();
+            const auto result=service_->rebind(bind.toStdString(),static_cast<std::uint16_t>(port));
+            directory_.withdraw();sharingGeneration_=result.generation;
+            sharing_=result.port!=0;sharingStarting_=false;listenPort_=result.port;
+            bindAddress_=QString::fromStdString(result.address);configuredPort_=result.port;
+            interfaceIndex_=0;loopbackSharing_=QHostAddress(bindAddress_).isLoopback();
+            for(const auto& value:networkAddresses()){const auto nic=value.toMap();if(nic.value("address").toString()==bindAddress_)interfaceIndex_=nic.value("interfaceIndex").toUInt();}
+            announcementInstance_=QRandomGenerator::global()->generate64()|1;announcementSequence_=0;
+            if(sharing_){directory_.start(interfaceIndex_);announce(listenPort_);}
+            status_=sharing_?"Available to paired devices":"Network listener unavailable";
+            emit changed();if(!result.error.empty())error(QString::fromStdString(result.error));return;
         }
         enabled_.clear();for(const auto& offer:inventory_)if(offer.available&&!disabledOffers_.contains(QString::fromStdString(offer.id)))enabled_.insert(QString::fromStdString(offer.id));
         service_->offers(selectedOffers());beginSharing(bind,port);emit changed();
@@ -133,8 +155,8 @@ void PeerController::setGatewaySharing(bool enabled,QString bind,unsigned port){
 void PeerController::setPairingRequired(bool value){try{service_->pairing_required(value);pairingRequired_=value;QSettings().setValue("peers/pairingRequired",value);if(sharing_)announce(listenPort_);emit changed();}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
 void PeerController::beginSharing(QString bind,unsigned port,unsigned interfaceIndex){
     if(!port||port>65535)throw std::invalid_argument("Enter a port between 1 and 65535");
-    const auto local=address(bind);const bool loopback=QHostAddress(local).isLoopback();
-    if(!loopback){bool found=false;for(const auto& item:networkAddresses()){const auto nic=item.toMap();if(nic.value("address").toString()==local&&(!interfaceIndex||nic.value("interfaceIndex").toUInt()==interfaceIndex)){interfaceIndex=nic.value("interfaceIndex").toUInt();found=true;break;}}if(!found)throw std::invalid_argument("Select a connected local network address");}
+    const auto local=listenAddress(bind);const bool loopback=QHostAddress(local).isLoopback();
+    if(!loopback&&local!="0.0.0.0"){bool found=false;for(const auto& item:networkAddresses()){const auto nic=item.toMap();if(nic.value("address").toString()==local&&(!interfaceIndex||nic.value("interfaceIndex").toUInt()==interfaceIndex)){interfaceIndex=nic.value("interfaceIndex").toUInt();found=true;break;}}if(!found)throw std::invalid_argument("Select a connected local network address");}
     const auto generation=service_->start(local.toStdString(),static_cast<std::uint16_t>(port));
     sharingGeneration_=generation;sharingStarting_=true;bindAddress_=local;configuredPort_=port;interfaceIndex_=interfaceIndex;loopbackSharing_=loopback;
     announcementInstance_=QRandomGenerator::global()->generate64()|1;announcementSequence_=0;status_="Starting sharing...";

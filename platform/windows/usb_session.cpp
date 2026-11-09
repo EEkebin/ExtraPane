@@ -1,6 +1,7 @@
 #include <dm/usb_session.hpp>
 #include <dm/usb_host_backend.hpp>
 #include <dm/usb_device.hpp>
+#include <dm/usb_descriptors.hpp>
 #include <extrapane/usb_offer.hpp>
 #include <dm/usb_tunnel.hpp>
 #include <dm/tls.hpp>
@@ -176,16 +177,8 @@ Disk owned_disk(const Offer& offer,const std::string& serial){
     }
     eject_check(found.has_value(),TunnelControl::return_not_ready,"Owned USB port exists, but its storage disk has not enumerated");return *found;
 }
-void verify_generic_node(DEVINST node){
-    // A composite parent can enumerate a storage interface after its first HID
-    // child. Until complete configuration descriptors are verified, admit only
-    // explicit non-composite HID/audio USB device classes.
-    const auto ids=property(node,CM_DRP_COMPATIBLEIDS);bool supported=false;
-    for(std::size_t at=0;at<ids.size()&&ids[at];){std::wstring id(ids.data()+at);std::transform(id.begin(),id.end(),id.begin(),[](wchar_t c){return towupper(c);});
-        eject_check(id!=L"USB\\COMPOSITE",TunnelControl::return_identity,"Composite USB devices need full descriptor verification and are not supported yet");
-        supported|=id.starts_with(L"USB\\CLASS_03")||id.starts_with(L"USB\\CLASS_01");at+=id.size()+1;
-    }
-    eject_check(supported,TunnelControl::return_identity,"Only verified non-composite USB HID/audio classes are supported");
+void verify_generic_node(DEVINST node,unsigned port){
+    (void)read_device_descriptors(node_id(node),port); // Every configuration and alternate interface must be HID/audio.
     std::vector<DEVINST> pending{node};unsigned visited=0;
     while(!pending.empty()){
         const auto current=pending.back();pending.pop_back();
@@ -211,7 +204,7 @@ void eject_owned(ImportRunner& runner,unsigned port,std::uint16_t local,const Of
         eject_check(handle.value!=INVALID_HANDLE_VALUE,TunnelControl::return_flush,"Cannot open destination volume for flush");
         try{verify_volume_disk(handle.value,disk.disk_number);}catch(const std::exception& error){throw EjectFailure(TunnelControl::return_identity,error.what());}
         eject_check(FlushFileBuffers(handle.value),TunnelControl::return_flush,"Destination volume cannot be flushed");
-    }}else verify_generic_node(node);
+    }}else verify_generic_node(node,port);
     eject_check(verified_import(runner,port,local,offer,serial)&&imported_node(port,offer,serial)==node&&same(node_id(node),id),TunnelControl::return_identity,"USB destination changed before eject");
     PNP_VETO_TYPE veto=PNP_VetoTypeUnknown;wchar_t name[512]{};const auto result=CM_Request_Device_EjectW(node,&veto,name,512,0);
     if(result!=CR_SUCCESS){const auto detail="Windows refused device eject: CONFIGRET="+std::to_string(result)+", veto="+std::to_string(static_cast<unsigned>(veto));throw EjectFailure(result==CR_REMOVE_VETOED?TunnelControl::return_busy:TunnelControl::return_failed,detail.c_str());}
@@ -330,7 +323,7 @@ Cancellation cancellation(remote,session_stop);std::array<std::uint8_t,8> hello{
         auto next_probe=Clock::now();const auto enumeration_deadline=Clock::now()+std::chrono::seconds(30);
         while(!token.stop_requested()&&!session_stop.load()){
             if(!ready&&Clock::now()>=next_probe){
-                try{if(offer.kind==DeviceKind::storage)(void)owned_disk(offer,serial);else verify_generic_node(generic_node(port,offer));eject_check(verified_import(*runner,port,local_port,offer,serial),TunnelControl::return_identity,"Imported port identity changed during enumeration");ready=true;notice=TunnelControl::storage_ready;report("USB_STARTED receiving");}
+                try{if(offer.kind==DeviceKind::storage)(void)owned_disk(offer,serial);else verify_generic_node(generic_node(port,offer),port);eject_check(verified_import(*runner,port,local_port,offer,serial),TunnelControl::return_identity,"Imported port identity changed during enumeration");ready=true;notice=TunnelControl::storage_ready;report("USB_STARTED receiving");}
                 catch(const std::exception& error){const std::string detail=clean(error.what());if(detail!=last_enumeration_error){last_enumeration_error=detail;report("USB_ENUMERATING "+detail);}}
                 next_probe=Clock::now()+std::chrono::milliseconds(500);
                 if(!ready&&Clock::now()>=enumeration_deadline){

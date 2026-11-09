@@ -58,7 +58,7 @@ struct WindowsPeerRuntime::State {
     using Key=std::pair<Service::Token,Service::Token>;
     Factory factory;Inventory inventory;Port allocate;mutable std::mutex mutex;
     std::vector<Source> sources;WindowsPeerMediaAdapter provider;WindowsPeerReceiver receiver;
-    struct Use {Service::Context context;std::uint64_t lease=0;std::unique_ptr<ScopedScreenProvider> screenHost;std::unique_ptr<ScopedScreenReceiver> screenClient;};
+    struct Use {Service::Context context;std::optional<Source> source;std::uint64_t lease=0;std::unique_ptr<ScopedScreenProvider> screenHost;std::unique_ptr<ScopedScreenReceiver> screenClient;};
     std::map<Key,Use> uses;
     State(Factory f,Inventory i,Port p):factory(std::move(f)),inventory(std::move(i)),allocate(std::move(p)),provider(factory),receiver(factory){
 #ifdef _WIN32
@@ -73,7 +73,20 @@ struct WindowsPeerRuntime::State {
     void stop(const Service::Context& c){const auto found=uses.find(key(c));if(found==uses.end())return;auto& use=found->second;if(c.grant&&use.context.grant&&c.grant!=use.context.grant)return;if(use.context.incoming&&use.context.kind!=Kind::existing_screen)provider.stop(use.context.grant);if(use.lease)receiver.release(use.lease);if(use.screenHost)use.screenHost->stop();if(use.screenClient)use.screenClient->stop();uses.erase(found);if(std::none_of(uses.begin(),uses.end(),[](const auto& item){return item.second.lease!=0;}))receiver.stop();}
 };
 WindowsPeerRuntime::WindowsPeerRuntime(Factory f,Inventory i,Port p):state_(std::make_shared<State>(std::move(f),std::move(i),std::move(p))){}
-std::vector<peers::Offer> WindowsPeerRuntime::refresh(){auto inventory=state_->inventory();if(inventory.size()>peers::max_resources)fail("Native inventory exceeds resource catalog budget");std::lock_guard lock(state_->mutex);state_->provider.sources(inventory);state_->sources=std::move(inventory);std::vector<peers::Offer> result;for(const auto& s:state_->sources)result.push_back(s.offer);return result;}
+std::vector<peers::Offer> WindowsPeerRuntime::refresh(){
+    auto inventory=state_->inventory();if(inventory.size()>peers::max_resources)fail("Native inventory exceeds resource catalog budget");std::lock_guard lock(state_->mutex);
+    // Capture can make a camera temporarily unavailable, and USB export removes
+    // the physical node from the local driver. The session's native owner is the
+    // authority on whether its device is still alive, not a new idle inventory.
+    // Keep that exact source snapshot until its native session ends. Explicit
+    // permission withdrawal still revokes it through SharingPolicy.
+    for(const auto& [key,use]:state_->uses)if(use.context.incoming&&use.source){
+        const auto found=std::find_if(inventory.begin(),inventory.end(),[&](const auto& item){return item.offer.id==use.source->offer.id;});
+        if(found==inventory.end())inventory.push_back(*use.source);else *found=*use.source;
+    }
+    if(inventory.size()>peers::max_resources)fail("Native inventory exceeds resource catalog budget");
+    state_->provider.sources(inventory);state_->sources=std::move(inventory);std::vector<peers::Offer> result;for(const auto& s:state_->sources)result.push_back(s.offer);return result;
+}
 std::vector<Source> WindowsPeerRuntime::sources()const{std::lock_guard lock(state_->mutex);return state_->sources;}
 Service::Hooks WindowsPeerRuntime::hooks()const{
     auto state=state_;Service::Hooks hooks;
@@ -83,7 +96,7 @@ Service::Hooks WindowsPeerRuntime::hooks()const{
     };
     hooks.prepare=[state](const Service::Context& c,peers::rpc::Open& request){std::lock_guard lock(state->mutex);
         if(c.incoming){if(state->uses.contains(State::key(c)))fail("Duplicate native grant");State::Use use;use.context=c;
-            const auto& source=state->source(request.resource);if(source.offer.kind!=c.kind)fail("Native resource kind mismatch");
+            const auto& source=state->source(request.resource);if(source.offer.kind!=c.kind)fail("Native resource kind mismatch");use.source=source;
             if(c.kind==Kind::existing_screen){use.screenHost=std::make_unique<ScopedScreenProvider>(state->factory);request.native_credential=use.screenHost->start(source,state->grant(c,request),state->allocate(),deadline());const auto port=use.screenHost->port();state->uses.emplace(State::key(c),std::move(use));return Service::Endpoint{Service::Role::connect_local,port};}
             state->uses.emplace(State::key(c),std::move(use));return Service::Endpoint{Service::Role::listen_local,0};
         }

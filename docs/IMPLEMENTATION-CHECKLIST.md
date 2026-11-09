@@ -1,5 +1,45 @@
 # Resource-sharing implementation checklist
 
+## Active increment: automatic hardware updates and composite USB
+
+- [x] Refresh local resources on hardware changes and notify paired devices.
+- [x] Preserve unrelated and actively owned sessions across inventory refreshes.
+- [x] Remove manual resource refresh controls.
+- [x] Validate complete USB configuration/interface descriptors for composite
+  HID/audio devices; report Bluetooth and unsupported functions clearly.
+- [x] Add all-address listener and preset/custom address/port controls, preserving
+  active resources during rebind and reporting actual state after failed rollback.
+- [x] Verify isolated transitions and the authorized Surface USB mouse return.
+- [ ] Build and deliver matching Windows/Android packages; verify all-platform CI.
+
+Windows uses debounced device notifications and periodic reconciliation; Linux
+and macOS reconcile periodically, and Android uses hardware callbacks plus a
+fallback timer. Catalog changes notify paired peers; older peers retain their
+polling fallback. Busy active sources keep their advertised identity until native
+session termination or explicit sharing/permission withdrawal.
+
+Isolated evidence: native USB descriptor/ownership/return checks, Qt startup and
+offscreen UI checks, and TLS catalog-change/rebind tests pass. Rebind tests retain
+live resource bytes through address changes and verify occupied-port rollback.
+Android's 16 host suites, Java compilation, lint and native builds for both ABIs
+pass. Changing a listener can briefly pause Android controls (up to about four
+seconds while an existing handshake ends); active streams continue. Physical media hotplug
+and other operating systems' hardware behavior remain pending.
+
+The first authorized Surface mouse test exposed premature exporter shutdown:
+destination eject succeeded but source restart was interrupted, leaving the exact
+VBox stub at Problem 21. Restarting that verified stub restored the mouse, and the
+user confirmed local operation. The fix waits for normal source return and keeps
+an exact, durable ownership record for interrupted cleanup.
+
+The repeat test with VID 3151/PID 3020 passed import, destination eject and automatic
+source return. The original composite device and HID interfaces were present and
+healthy afterward, with no remaining owned binding, stub or recovery lease. No
+manual repair was needed. This verifies one mouse's transfer/return lifecycle;
+headset compatibility, application input behavior and physical crash/unplug
+recovery are not broadly validated. Bluetooth forwarding is deferred at the
+user's request. No Windows installer or new driver was run during this test.
+
 ## Active increment: generic USB device forwarding
 
 - [x] Audit pinned USB/IP transfer support and separate non-storage ownership from
@@ -15,9 +55,10 @@
 - [ ] With user permission, verify actual USB mouse/keyboard and headset transfer,
   release, disconnect, unplug and crash recovery on physical devices.
 
-Implementation is in progress. Pinned backends implement interrupt and isochronous
-transfers, but this is not a physical compatibility result. No USB device has been
-bound, detached or imported for this increment. Raw USB on other platforms remains
+Initial pre.113 implementation evidence: pinned backends implement interrupt and
+isochronous transfers, but that alone was not physical compatibility evidence.
+No USB device was bound, detached or imported before that delivery; the follow-up
+mouse result is recorded above. Raw USB on other platforms remains
 unsupported. Existing storage safety rules remain separate and unchanged.
 
 Initial isolated evidence: native USB helper and Qt app compile; Qt offscreen
@@ -1383,7 +1424,7 @@ No transport/media lifecycle was changed and no physical stream test was run.
 - [x] Build and deliver matching Windows/Android packages. Physical verification
   remains a separate gate; no driver installation is authorized by compilation.
 
-### Unified full Windows installation — 2026-11-08
+### Unified full Windows installation â€” 2026-11-08
 
 - [x] Removed the installer role chooser and all role-dependent component branches. One ExtraPane installation prepares the managed display, camera, audio/USB receiving and USB source components; it does not activate resources or export storage.
 - [x] Kept explicit development-certificate consent through **I agree - Next**, unified uninstall ownership and existing Update/Restore/Uninstall maintenance behavior. Previously limited installations receive the full component set when updated.

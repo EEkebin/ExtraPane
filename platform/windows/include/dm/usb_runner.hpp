@@ -10,6 +10,7 @@ namespace dm::usb {
 struct Disk;
 struct PendingRecovery;
 struct HostDevice {std::wstring instance_id;std::string bus_id;std::wstring binding_id;bool forced=false,attached=false;};
+bool import_port_absent(unsigned exit_code,std::string_view output);
 bool matches_generic_import_port(std::string_view output,unsigned port,std::uint16_t local_port,const std::string& bus,bool require_active);
 bool matches_import_port(std::string_view output,unsigned port,std::uint16_t local_port,
     const std::string& bus,const std::string& serial,bool require_active);

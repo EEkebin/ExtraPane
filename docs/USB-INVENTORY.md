@@ -54,11 +54,28 @@ recovery now exist; see [USB.md](USB.md) for their implementation and limitation
 Physical storage tests have exposed return and cleanup failures, so compilation
 and parser tests must not be presented as successful end-to-end storage validation.
 
-Generic HID/audio inventory is being added separately in
-`platform/windows/usb_device_inventory.cpp`. It must not set `removable_storage`
-to bypass these storage rules. Availability requires a supported, complete device
-classification and exact backend ownership checks. Generic implementation status
-and remaining driver gates are tracked in the implementation checklist.
+## Non-storage HID/audio inventory
+
+Generic inventory is implemented separately in
+`platform/windows/usb_device_inventory.cpp`; it does not set `removable_storage`
+or bypass the storage rules above. It reads the selected physical node's device
+descriptor and every configuration through its exact parent hub/port, verifying
+the driver-key mapping before and after the reads. Source admission rechecks the
+full descriptor fingerprint before binding; the receiver validates its imported
+device through the owned port too.
+
+The shared parser checks descriptor lengths, configuration totals, interface
+counts, alternate settings, endpoints and interface associations. Every interface
+in every configuration and alternate setting must be supported HID or audio.
+Composite HID/audio devices can therefore qualify, while storage-containing
+composites, hubs and unknown functions remain excluded. Bluetooth adapters receive
+an explicit unsupported explanation; Bluetooth forwarding is deferred.
+
+A `3151:3020` composite USB mouse passed source classification and receiving import
+in Surface-to-Windows testing. After fixing a shutdown race, a repeat test also
+verified safe eject and automatic local return with healthy original HID nodes
+and no remaining binding or lease. Other devices and crash recovery still need
+physical validation; see the implementation checklist for current evidence.
 
 API references:
 

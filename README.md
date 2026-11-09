@@ -20,9 +20,13 @@ playback device that sends audio to a selected Windows or Android client output.
 This new path has isolated checks; physical playback verification is pending.
 
 The USB development branch adds actual Windows-to-Windows USB forwarding for
-eligible non-composite mice, keyboards and audio devices. This is exclusive
-device forwarding, separate from microphone/speaker streaming. It is not yet
-physically validated; composite devices are unavailable and each Windows source
+eligible mice, keyboards and audio devices, including composites whose complete
+configuration descriptors contain only supported HID/audio functions. This is
+exclusive device forwarding, separate from microphone/speaker streaming. A USB
+mouse was imported from the Surface, safely ejected, and automatically returned
+to its local driver in the repeat hardware test after a return-race fix. Other
+hardware and crash recovery still need physical testing. Bluetooth, hubs, unknown
+functions and storage-containing composites are excluded; each Windows source
 currently exports one USB device at a time. See [USB support and limits](docs/USB.md).
 
 The `feat/device-discovery` branch is developing a device-oriented interface with
@@ -55,6 +59,18 @@ Use resource power buttons to stop individual streams; saved devices manage thei
 availability automatically. Forget removes trust locally and requests removal on
 the other device; offline remote removal is shown as pending.
 OS permissions and receiving-device support still apply.
+
+The device workspace listens on all local IPv4 addresses (`0.0.0.0`) at port
+`43824` by default. Choose a connected adapter address or **Custom** to restrict
+the listener, and choose the default port or a custom port. Preset selections
+apply immediately; custom fields use **Apply**. Changing the listener preserves
+existing resource sessions; if the new bind fails, ExtraPane attempts to restore
+the previous listener and reports the error. This does not configure port forwarding.
+
+Hardware inventories refresh automatically and changes are sent to paired peers,
+so plugging in or removing a device updates its resource list without a manual
+refresh. Active transfers retain their selected resource identity during expected
+driver transitions instead of being disconnected by the inventory refresh.
 
 Under **This device** on Devices, resources show Available until another device requests them. Red
 power indicates actual use of that exact resource and shows who is using it.

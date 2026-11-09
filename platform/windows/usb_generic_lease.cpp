@@ -27,9 +27,21 @@ bool open(Key& key,bool write){
 }
 std::wstring encoded(const GenericLease& lease){
     need(valid_generic_lease(lease));
-    return L"ExtraPane generic USB lease 1\n"+lease.instance+L"\n"+std::wstring(lease.bus.begin(),lease.bus.end());
+    if(lease.parent.empty())return L"ExtraPane generic USB lease 1\n"+lease.instance+L"\n"+std::wstring(lease.bus.begin(),lease.bus.end());
+    return L"ExtraPane generic USB lease 2\n"+lease.instance+L"\n"+std::wstring(lease.bus.begin(),lease.bus.end())+L"\n"+lease.parent+L"\n"+std::to_wstring(lease.port);
 }
-GenericLease decode(const std::wstring& guid,const std::wstring& text){const std::wstring prefix=L"ExtraPane generic USB lease 1\n";need(text.starts_with(prefix));const auto at=text.find(L'\n',prefix.size());need(at!=text.npos);GenericLease result{guid,text.substr(prefix.size(),at-prefix.size()),{}};auto bus=text.substr(at+1);for(auto c:bus){need(c<128);result.bus.push_back(static_cast<char>(c));}need(encoded(result)==text);return result;}
+GenericLease decode(const std::wstring& guid,const std::wstring& text){
+    const std::wstring prefix=L"ExtraPane generic USB lease ";need(text.starts_with(prefix));
+    const auto version=text.substr(prefix.size(),2);need(version==L"1\n"||version==L"2\n");
+    const auto start=prefix.size()+2,at=text.find(L'\n',start);need(at!=text.npos);
+    GenericLease result{guid,text.substr(start,at-start),{}};auto bus=text.substr(at+1);
+    if(version==L"2\n"){
+        const auto split=bus.find(L'\n'),end=bus.find(L'\n',split+1);need(split!=bus.npos&&end!=bus.npos);
+        result.parent=bus.substr(split+1,end-split-1);const auto port=bus.substr(end+1);need(!port.empty()&&port.size()<=3&&std::all_of(port.begin(),port.end(),[](auto c){return c>=L'0'&&c<=L'9';}));
+        result.port=std::stoul(port);bus.resize(split);
+    }
+    for(auto c:bus){need(c<128);result.bus.push_back(static_cast<char>(c));}need(encoded(result)==text);return result;
+}
 std::wstring read(HKEY key,const std::wstring& name){
     DWORD size=0,type=0;need(RegQueryValueExW(key,name.c_str(),nullptr,&type,nullptr,&size)==ERROR_SUCCESS&&type==REG_SZ&&size>=2&&size<=16384&&size%2==0);
     const auto original=size;std::vector<wchar_t> value(size/2);need(RegQueryValueExW(key,name.c_str(),nullptr,&type,reinterpret_cast<BYTE*>(value.data()),&size)==ERROR_SUCCESS&&type==REG_SZ&&size==original&&value.back()==0);

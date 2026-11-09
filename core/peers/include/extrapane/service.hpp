@@ -37,6 +37,10 @@ public:
     // Methods enqueue bounded commands; poll drains UI events.
     // Returned generation identifies the matching asynchronous listening event.
     Token start(std::string bind,std::uint16_t port);
+    struct ListenerChange {Token generation=0;std::string address;std::uint16_t port=0;std::string error;};
+    // Replace only the acceptor, preserving paired links and active resources.
+    // On failure report the actual restored endpoint (port zero if unavailable).
+    ListenerChange rebind(std::string bind,std::uint16_t port);
     void stop();
     Token connect(ConnectOptions);
     // End-to-end endpoint authentication through one paired gateway. No media starts.

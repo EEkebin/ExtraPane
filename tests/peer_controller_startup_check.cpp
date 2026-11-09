@@ -95,6 +95,10 @@ struct PeerControllerEventCheck {
         Service::Event event{};event.kind=Service::EventKind::granted;event.context.incoming=true;event.context.connection=21;event.context.grant=1;event.context.kind=Kind::camera;event.resource=rpc::Open{controller.service_->identity(),"front"};controller.applyEvent(event);
         event.context.connection=22;event.context.grant=2;controller.applyEvent(event);
         require(offer("front").value("sessionCount")==2&&!offer("rear").value("inUse").toBool(),"Fanout or same-kind exact resource activity incorrect");
+        controller.setLocalOffers({{"rear","Rear camera",Kind::camera,true},{"plugged","New microphone",Kind::microphone,true}});
+        require(offer("front").value("enabled").toBool()&&offer("front").value("sessionCount")==2&&offer("plugged").value("enabled").toBool(),"Hotplug revoked in-use resource or failed to add sibling");
+        controller.enableOffer("front",false);require(!offer("front").value("enabled").toBool(),"Active snapshot bypassed explicit permission withdrawal");
+        controller.enableOffer("front",true);
         event.context.incoming=false;event.context.connection=23;event.context.grant=3;controller.applyEvent(event);require(offer("front").value("sessionCount")==2,"Outgoing use incorrectly counted as incoming");
         const auto generation=controller.sharingGeneration_;controller.disconnectIncomingAll();require(controller.sharingGeneration_==generation&&controller.sharing(),"Disconnect incoming all withdrew availability");
         controller.connections_.clear();controller.devices_.clear();controller.pending_.clear();

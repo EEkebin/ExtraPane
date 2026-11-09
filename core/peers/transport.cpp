@@ -72,13 +72,13 @@ struct SocketOwner {
     }
     void wait(bool write,Deadline d){wait_events(static_cast<short>(write?POLLOUT:POLLIN),d);}
 };
-sockaddr_in address(std::string text,std::uint16_t port){
+sockaddr_in address(std::string text,std::uint16_t port,bool allow_wildcard=false){
     std::string folded=text;std::transform(folded.begin(),folded.end(),folded.begin(),[](unsigned char c){return c>='A'&&c<='Z'?char(c+'a'-'A'):char(c);});
     if(folded=="localhost")text="127.0.0.1";
     sockaddr_in a{};a.sin_family=AF_INET;a.sin_port=htons(port);
     if(inet_pton(AF_INET,text.c_str(),&a.sin_addr)!=1)fail("A numeric IPv4 address or localhost is required");
     const auto first=ntohl(a.sin_addr.s_addr)>>24;
-    if(first==0 || first>=224)fail("An explicit unicast IPv4 address is required");
+    if((first==0&&!(allow_wildcard&&a.sin_addr.s_addr==htonl(INADDR_ANY))) || first>=224)fail("An explicit unicast IPv4 address is required");
     return a;
 }
 void configure(Socket s){
@@ -229,7 +229,7 @@ void Stream::cancel() noexcept {if(state_)state_->cancel();}
 std::string Stream::peer_address()const{return state_?state_->peer:std::string{};}
 struct Listener::State:SocketOwner {std::shared_ptr<ServerIdentity> identity;std::uint16_t port=0;};
 Listener::Listener(const std::string& bind,std::uint16_t port,std::shared_ptr<ServerIdentity> identity):state_(std::make_unique<State>()){
-    runtime();auto addr=address(bind,port);auto& s=*state_;s.identity=identity?std::move(identity):std::make_shared<ServerIdentity>();
+    runtime();auto addr=address(bind,port,true);auto& s=*state_;s.identity=identity?std::move(identity):std::make_shared<ServerIdentity>();
     s.socket=::socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);if(s.socket==invalid)fail("Cannot create listener");configure(s.socket);
 #ifdef _WIN32
     const int exclusive=1;if(setsockopt(s.socket,SOL_SOCKET,SO_EXCLUSIVEADDRUSE,reinterpret_cast<const char*>(&exclusive),sizeof(exclusive)))fail("Cannot reserve listener address");

@@ -8,7 +8,7 @@ bool same(const std::wstring& a,const std::wstring& b){return a.size()==b.size()
 extrapane::Availability generic_eligibility(const GenericFacts& facts){
     if(!facts.complete)return {false,"USB device inventory is incomplete"};
     if(facts.hub||facts.controller)return {false,"USB hubs and controllers cannot be shared"};
-    if(facts.composite)return {false,"Composite USB devices require complete configuration-descriptor validation"};
+    if(facts.composite&&!facts.descriptors_verified)return {false,"USB configuration descriptors could not be verified"};
     if(facts.storage)return {false,"Storage-containing devices require the storage sharing path"};
     if(facts.unknown||(!facts.hid&&!facts.audio))return {false,"USB device contains an unsupported function"};
     if(facts.owned)return {false,"USB device is already bound or attached elsewhere"};

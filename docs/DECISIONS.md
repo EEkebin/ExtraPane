@@ -1,5 +1,28 @@
 # Decisions, assumptions, and evidence
 
+## Hardware updates and listener controls (2026-11-09)
+
+Resource inventories refresh automatically on device changes, with bounded
+reconciliation for missed events. A changed catalog is sent to paired peers;
+unchanged snapshots do not rebuild the interface. Inventory refresh must not end
+an active resource merely because capture or exclusive USB forwarding hides its
+local device. Native session termination and explicit sharing/OS permission
+withdrawal remain authoritative. Remove manual resource-refresh buttons.
+
+The default listener is all IPv4 addresses (`0.0.0.0`) on port `43824`. The address
+menu lists All addresses, each active adapter/address pair, and Custom address.
+Multiple IPv4 addresses on one adapter are separate labeled choices. The port
+menu offers Default (43824) and Custom port. Presets apply immediately; custom
+choices reveal editable fields and an Apply action. Rebinding replaces only the
+listener, preserving existing peer connections and resource sessions. A failed
+bind restores the previous listener where possible and reports the actual state.
+This does not change firewall rules, enable UPnP, or alter outbound destination
+validation. Pairing remains enabled by default.
+
+Composite HID/audio USB devices may be admitted only after validating all
+configuration, interface and alternate-setting descriptors on both endpoints.
+Storage, Bluetooth, hubs and unknown functions remain outside this generic path.
+
 ## Generic USB forwarding (2026-11-08)
 
 Extend ExtraPane's USB resources to actual Windows USB mice, keyboards and audio

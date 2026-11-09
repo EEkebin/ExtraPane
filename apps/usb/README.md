@@ -11,11 +11,21 @@ camera interfaces, license devices, ambiguous identities and devices already
 bound by another USB application are unavailable.
 
 The generic USB increment adds a separate Windows path for explicitly classified
-non-composite HID/audio devices. It uses an exact binding lease, not volume locks
+HID/audio devices, including fully validated composites. It uses an exact binding lease, not volume locks
 or disk-offline recovery. Hubs, controllers, unknown functions, storage-containing
-devices and composite devices remain unavailable through this path. Physical
-compatibility and interrupted-return testing are still pending. Media microphone
+devices and Bluetooth remain unavailable through this path. Every configuration,
+interface and alternate setting must contain supported HID/audio functions;
+source reinspection and imported-device validation both enforce this policy.
+A Surface `3151:3020` composite mouse passed import, safe eject and automatic
+local-driver return in a repeat test after fixing a shutdown race. Original HID
+nodes were healthy afterward, with no remaining binding or lease. Other hardware
+and interrupted-return testing are still pending. Media microphone
 and speaker sharing remains independent of raw USB headset forwarding.
+
+Normal shutdown waits for the physical driver to return before killing the
+exporter. Protected v2 leases record parent/port identity for exact owned-stub
+restart after a crash; cleanup verifies restoration or physical absence before
+retiring the lease. Unbind alone is not treated as successful physical return.
 
 The receiver gets an actual imported USB device, not a shared network folder.
 The device cannot remain mounted for normal use on the source during export.

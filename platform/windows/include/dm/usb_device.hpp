@@ -13,7 +13,7 @@ struct GenericDevice {
 std::vector<GenericDevice> generic_inventory(HostRunner&);
 struct GenericFacts {
     bool complete=false,storage=false,hub=false,controller=false,unknown=false,composite=false;
-    bool hid=false,audio=false,owned=false;
+    bool hid=false,audio=false,owned=false,descriptors_verified=false;
 };
 extrapane::Availability generic_eligibility(const GenericFacts&);
 class GenericExport {

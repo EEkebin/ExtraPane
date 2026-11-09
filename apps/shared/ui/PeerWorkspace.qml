@@ -65,25 +65,22 @@ Item {
         return !bad
     }
     function sharingConfigurationValid() {
-        if(!sharingBusy) {
-            const valid=checkFields([listenPort])
-            bind.invalid=!validAddress(bind.selectedAddress)
-            if(bind.invalid) bindInvalidTimer.restart()
-            if(!valid || bind.invalid) {
-                notification.text="Check the highlighted information."
-                notification.open()
-                return false
-            }
+        const valid=portMode.currentIndex===0 || checkFields([listenPort])
+        customBind.invalid=!(bind.selectedAddress==="0.0.0.0" || validAddress(bind.selectedAddress))
+        if(!valid || customBind.invalid) {
+            notification.text="Check the highlighted information."; notification.open(); return false
         }
         return true
     }
+    function listeningPort() { return portMode.currentIndex===0 ? 43824 : Number(listenPort.text) }
+    function applyListening() { if(sharingConfigurationValid()) peers.startAvailableSharing(bind.selectedAddress,listeningPort()) }
     function setOfferSharing(id, enabled) {
         if(enabled && !sharingConfigurationValid()) return
-        peers.setOfferSharing(id,enabled,bind.selectedAddress,Number(listenPort.text))
+        peers.setOfferSharing(id,enabled,bind.selectedAddress,listeningPort())
     }
     function setGatewaySharing(enabled) {
         if(enabled && !sharingConfigurationValid()) return
-        peers.setGatewaySharing(enabled,bind.selectedAddress,Number(listenPort.text))
+        peers.setGatewaySharing(enabled,bind.selectedAddress,listeningPort())
     }
     Dialog {
         id: pendingRemovalDialog
@@ -430,18 +427,25 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         Label { textFormat: Text.PlainText; text: peers.deviceName; font.pixelSize: 20; Layout.fillWidth: true }
-                        Button { objectName: "peerRefreshOffers"; text: "Refresh resources"; onClicked: peers.refreshOffers() }
                     }
-                    RowLayout {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        ComboBox { id: bind; objectName: "peerBindNic"; property bool invalid: false; Rectangle { anchors.fill: parent; color: "transparent"; radius: 5; border.width: 2; border.color: "#ff6978"; visible: bind.invalid } Timer { id: bindInvalidTimer; interval: 4500; onTriggered: bind.invalid=false } Layout.fillWidth: true; editable: true; model: peers.networkAddresses; textRole: "label"; valueRole: "address"; enabled: peers.connections.length===0; property string selectedAddress: ""
-                            onActivated: selectedAddress=currentValue
-                            onModelChanged: Qt.callLater(function() { if(!bind.selectedAddress&&bind.count) bind.selectedAddress=bind.valueAt(0); bind.currentIndex=bind.indexOfValue(bind.selectedAddress); bind.editText=bind.selectedAddress })
-                            Connections { target: bind.contentItem; function onTextEdited() { bind.selectedAddress=bind.contentItem.text } }
-                         }
-                        Field { id: listenPort; objectName: "peerListenPort"; text: "43824"; Layout.preferredWidth: 100; placeholderText: "Port"; enabled: peers.connections.length===0; validator: IntValidator { bottom:1; top:65535 } }
+                        Label { text: "Listen on" }
+                        Label { visible:peers.sharing; text:"Listening: "+(peers.listeningAddress||"0.0.0.0")+":"+(peers.listeningPort||43824);color:"#9eacc2" }
+                        ComboBox {
+                            id: bind; objectName: "peerBindNic"; Layout.fillWidth: true
+                            editable: false; textRole: "label"; valueRole: "address"
+                            property string selectedAddress: currentValue==="custom" ? customBind.text.trim() : (currentValue||"0.0.0.0")
+                            property string selectedPreset: "0.0.0.0"
+                            model: [{label:"All addresses",address:"0.0.0.0"}].concat(peers.networkAddresses).concat([{label:"Custom address",address:"custom"}])
+                            onActivated: { selectedPreset=currentValue; if(currentValue!=="custom")workspace.applyListening() }
+                            onModelChanged: Qt.callLater(function(){let found=bind.indexOfValue(bind.selectedPreset);if(found<0){customBind.text=bind.selectedPreset;bind.selectedPreset="custom";found=bind.indexOfValue("custom")}bind.currentIndex=found})
+                        }
+                        Field { id: customBind; objectName: "peerCustomBind"; visible: bind.currentValue==="custom"; Layout.fillWidth: true; placeholderText: "Local IPv4 address"; text:"127.0.0.1" }
+                        ComboBox { id: portMode; objectName:"peerPortMode"; Layout.fillWidth:true; model:["Default ? 43824","Custom port"]; onActivated:if(currentIndex===0)workspace.applyListening() }
+                        Field { id: listenPort; objectName: "peerListenPort"; visible:portMode.currentIndex===1; text: "43824"; Layout.fillWidth:true; placeholderText: "Port"; validator: IntValidator { bottom:1; top:65535 } }
+                        Action { objectName:"peerApplyListening"; text:"Apply"; visible:bind.currentValue==="custom"||portMode.currentIndex===1; onClicked:workspace.applyListening() }
                     }
-                    Action { text: workspace.sharingBusy ? "Apply address" : "Retry availability"; enabled: peers.connections.length===0; onClicked: { if(workspace.sharingConfigurationValid()) peers.startAvailableSharing(bind.selectedAddress,Number(listenPort.text)) } }
                     Label { text: "Share makes a resource available to paired devices. The red power button stops its current streams."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     CheckBox { text: "Require pairing"; checked: peers.pairingRequired; onToggled: peers.pairingRequired=checked }
                     Label { textFormat: Text.PlainText; visible: peers.pairingRequired; text: "The code stays the same until ExtraPane restarts. Previously paired devices use their saved identity."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }

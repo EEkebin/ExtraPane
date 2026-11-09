@@ -15,6 +15,8 @@ class PeerController final:public QObject {
     Q_PROPERTY(QString pairingCode READ pairingCode NOTIFY changed)
     Q_PROPERTY(bool pairingRequired READ pairingRequired WRITE setPairingRequired NOTIFY changed)
     Q_PROPERTY(bool gatewayEnabled READ gatewayEnabled WRITE setGatewayEnabled NOTIFY changed)
+    Q_PROPERTY(QString listeningAddress READ listeningAddress NOTIFY changed)
+    Q_PROPERTY(unsigned listeningPort READ listeningPort NOTIFY changed)
     Q_PROPERTY(bool sharing READ sharing NOTIFY changed)
     Q_PROPERTY(bool sharingStarting READ sharingStarting NOTIFY changed)
     Q_PROPERTY(bool active READ active NOTIFY changed)
@@ -33,6 +35,8 @@ public:
     QString pairingCode()const;
     bool pairingRequired()const{return pairingRequired_;}
     bool gatewayEnabled()const{return gatewayEnabled_;}
+    QString listeningAddress()const{return bindAddress_;}
+    unsigned listeningPort()const{return listenPort_;}
     bool sharing()const{return sharing_;}
     bool sharingStarting()const{return sharingStarting_;}
     bool active()const{return (!automaticAvailability_&&(sharing_||sharingStarting_||!devices_.isEmpty()))||!connections_.isEmpty()||!pending_.isEmpty();}

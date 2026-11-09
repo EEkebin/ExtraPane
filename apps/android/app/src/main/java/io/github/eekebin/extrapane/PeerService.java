@@ -19,6 +19,8 @@ final class PeerService implements AutoCloseable {
     /** Offer rows: id,label,kind,available,inputAllowed,width,height,refresh,reason. */
     synchronized void offers(String[][] rows)throws IOException{nativeOffers(alive(),rows);}
     synchronized long start(String address,int port)throws IOException{return nativeStart(alive(),address,port);}
+    record ListenerChange(long generation,String address,int port,String error) {}
+    synchronized ListenerChange rebind(String address,int port)throws IOException{String[] result=nativeRebind(alive(),address,port);return new ListenerChange(Long.parseLong(result[0]),result[1],Integer.parseInt(result[2]),result[3]);}
     synchronized void stop()throws IOException{nativeStop(alive());}
     synchronized void setPairingRequired(boolean value)throws IOException{nativePairing(alive(),value);}
     /** Going into background stops all sharing; no camera/mic starts behind UI. */
@@ -60,6 +62,7 @@ final class PeerService implements AutoCloseable {
     private static native String nativeCode(long h)throws IOException;
     private static native void nativeOffers(long h,String[][] rows)throws IOException;
     private static native long nativeStart(long h,String address,int port)throws IOException;
+    private static native String[] nativeRebind(long h,String address,int port)throws IOException;
     private static native void nativeStop(long h)throws IOException;
     private static native void nativePairing(long h,boolean required)throws IOException;
     private static native void nativeForeground(long h,boolean foreground)throws IOException;
