@@ -68,7 +68,7 @@ selected headset must not redirect its session to the loudspeaker.
    no per-resource enable or separate Start sharing action is needed.
    Keep **Require pairing** enabled. Offering the destination alone must not create
    a virtual monitor or start a stream.
-2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or expand **Pair by address** and enter its
+2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or use manual address entry and enter its
    IPv4 address and port. Choose Automatic route, or the intended local interface
    on a multihomed computer. Click Connect, then enter the laptop's displayed
    six-digit code in the pairing dialog.
@@ -86,7 +86,7 @@ where the provider advertises support and requires Allow input to be selected.
 
 ## Device cards
 
-Click a connected device header to collapse or expand its resource groups. Collapse
+Click an available device header to collapse or expand its resource groups. Collapse
 one device while another stays expanded; refresh its catalog and confirm the
 collapsed state stays with the same device. Active video/audio/camera/USB sessions
 must continue unchanged. Paired devices manage availability automatically; use
@@ -176,7 +176,8 @@ but are not OS-keychain encryption.
 
 - Devices: press Search nearby; no search starts at launch. After pairing, the
   peer disappears from Nearby and appears in the saved/connected device list.
-- Saved peers have availability status and Forget, not Connect/Disconnect buttons.
+- Saved peers stay in Paired devices with Resources and Forget, without Connected
+  badges or a duplicate Connected devices list.
   Resource power controls remain on Resources.
 - Resources: expand a device card, then a resource group, and use its power
   button. Moving pages or collapsing cards must preserve active resources.
@@ -224,3 +225,17 @@ but are not OS-keychain encryption.
   or checkbox changed. Pending pairing removal blocks new pairing until resolved.
 - Check Android rotation/background/dismissal: no duplicate request or retained
   code; cancelling the modal does not close the app or stop other resources.
+
+
+### Pairing-focused device presentation
+
+- A saved peer appears once in Paired devices, with no Connected/Disconnected or
+  checking-connection badge. Its entry and Resources action survive a temporary
+  control-link interruption.
+- Nearby discovery remains for new pairings. Deliberately unpaired access appears
+  separately as unverified, without being relabeled as a saved pairing.
+- Resource power remains green until that resource is requested, then reflects its
+  pending/active state. Stopping one resource does not remove the pairing or stop
+  unrelated resources. Pairing/background catalogs alone must not activate capture.
+- Generic device-connection footer messages disappear; real errors and active
+  camera, microphone, speaker, display and USB status must remain visible.

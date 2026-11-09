@@ -1,5 +1,19 @@
 # Decisions, assumptions, and evidence
 
+## Pairings versus resource usage (2026-11-08)
+
+Devices presents saved pairings, not a separate connected/disconnected state for
+each peer. Remove Connected badges and the duplicate Connected devices section.
+Unpaired access remains explicitly marked unverified and separate from pairings.
+Resource power buttons own stream startup and stop; their active state identifies
+what is actually in use. Pairing or availability refresh must not activate media.
+
+Authenticated discovery/catalog control traffic may run in the background so
+resources can be listed without a manual device connection step. This is not a
+claim that every network socket is closed while resources are idle. Saved device
+entries remain visible and navigation to Resources remains available; unavailable
+resources and real connection errors must still be explained when relevant.
+
 ## Pairing-code dialog (2026-11-08)
 
 Connect requests a six-digit code in a modal only for a new pairing. Nearby

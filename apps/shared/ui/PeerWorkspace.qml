@@ -26,7 +26,7 @@ Item {
             const key=row.identity||String(row.connection)
             if(!byIdentity[key] || row.incoming!==true) byIdentity[key]=row
         }
-        return Object.values(byIdentity)
+        return Object.values(byIdentity).filter(row=>row.verified!==true&&!peers.remembered.some(saved=>saved.id===row.identity))
     }
     function disconnectManagedDevice(device) {
         for(const row of peers.devices.slice())
@@ -382,7 +382,7 @@ Item {
                 objectName: "peerPageContent"
                 width: pageScroll.availableWidth; spacing: 18
                 Label { textFormat: Text.PlainText; text: ["Devices","Devices","Resources","About"][workspace.page]; font.pixelSize: 30; font.weight: Font.DemiBold }
-                Label { textFormat: Text.PlainText; visible: workspace.page!==3; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#aabbd3"; text: workspace.page===0 ? "Manage this device and your paired devices. Available paired devices connect automatically; search nearby to pair a new one." : workspace.page===1 ? "Choose what other devices can use. Sharing a resource does not activate it until someone connects." : workspace.page===2 ? "Choose resources from your connected devices. Each power button connects or disconnects only that resource." : "Displays, cameras, microphones, speakers and USB devices across your computers." }
+                Label { textFormat: Text.PlainText; visible: workspace.page!==3; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#aabbd3"; text: workspace.page===0 ? "Manage this device and your paired devices. Search nearby to pair a new device, then use resource power buttons to start streams." : workspace.page===1 ? "Choose what other devices can use. Sharing a resource does not activate it until someone connects." : workspace.page===2 ? "Choose resources from your devices. Each power button starts or stops only that resource." : "Displays, cameras, microphones, speakers and USB devices across your computers." }
                 ColumnLayout {
                     visible: workspace.page===0; Layout.fillWidth: true; spacing: 14
                     RowLayout {
@@ -461,8 +461,7 @@ Item {
                                 Label { textFormat: Text.PlainText; text: pairedCard.modelData.name; Layout.fillWidth: true; elide: Text.ElideRight }
                                 Label { textFormat: Text.PlainText; text: pairedCard.modelData.address ? pairedCard.modelData.address+":"+pairedCard.modelData.port : "Choose this device from discovery or enter its address"; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
-                            Label { text: "Connected"; color: "#aabbd3"; visible: !pairedCard.modelData.pendingForget && workspace.connectedDevice(pairedCard.modelData.id) }
-                            Action { text: "Resources"; visible: !pairedCard.modelData.pendingForget && workspace.connectedDevice(pairedCard.modelData.id); onClicked: workspace.page=2 }
+                            Action { text: "Resources"; objectName: "peerPairedResources_"+pairedCard.modelData.id; visible: !pairedCard.modelData.pendingForget; onClicked: workspace.page=2 }
                             Label { text: "Removing pairing when the other device is reachable..."; visible: modelData.pendingForget===true; color: "#f0c66e"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                             Action { objectName: "peerClearPending_"+pairedCard.modelData.id; text: "Clear pending removal"; visible: pairedCard.modelData.pendingForget===true; onClicked: {pendingRemovalDialog.deviceId=pairedCard.modelData.id;pendingRemovalDialog.open()} }
                             Action { objectName: "peerForget_"+pairedCard.modelData.id; text: "Forget"; visible: !pairedCard.modelData.pendingForget; destructive: true; onClicked: { workspace.monitorDrafts=workspace.monitorDrafts.filter(row=>row.owner!==pairedCard.modelData.id); peers.forgetDevice(pairedCard.modelData.id) } }
@@ -515,7 +514,7 @@ Item {
                         CheckBox { id: openConnection; text: "Connect without pairing"; checked: false }
                         Label { textFormat: Text.PlainText; visible: openConnection.checked; text: "The other device must also have pairing disabled. Its identity will not be verified."; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
-                    SectionHeading { title: "Connected devices"; visible: peers.devices.length>0; Layout.topMargin: 16 }
+                    SectionHeading { objectName:"peerUnpairedHeading"; title: "Unpaired devices"; visible: workspace.managedDevices.length>0; Layout.topMargin: 16 }
                     Repeater {
                         model: workspace.managedDevices
                         delegate: Frame {
@@ -528,7 +527,7 @@ Item {
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     Label { text: modelData.name; textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideRight }
-                                    Label { text: modelData.verified ? "Connected - verified" : "Connected - unverified"; color: "#aabbd3" }
+                                    Label { text: "Identity is not verified"; color: "#f0c66e" }
                                 }
                                 Action { text: "Resources"; visible: !modelData.incoming; onClicked: workspace.page=2 }
                             }
@@ -756,7 +755,7 @@ Item {
                     InfoLink { title: "GitHub repository"; subtitle: "Source code, issues and contributions"; destination: "https://github.com/EEkebin/ExtraPane" }
                     Label { text: "Third-party components retain their respective licenses. A project-wide license has not yet been selected."; color: "#91a6c0"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
-                Label { textFormat: Text.PlainText; Layout.fillWidth: true; visible: workspace.page!==3; text: peers.status; wrapMode: Text.WordWrap; color: "#aabbd3" }
+                Label { textFormat: Text.PlainText; Layout.fillWidth: true; objectName:"peerStatus"; visible: workspace.page!==3 && text.length>0; text: ["Device connected","Device disconnected"].indexOf(peers.status)>=0 ? "" : peers.status; wrapMode: Text.WordWrap; color: "#aabbd3" }
             }
         }
     }

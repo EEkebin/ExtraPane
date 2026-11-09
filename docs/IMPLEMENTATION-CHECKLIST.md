@@ -1224,3 +1224,20 @@ No physical media or input tests were run for this UI increment.
 - [ ] Hosted run `42542690583` is queued behind the previous run. pre.107 hosted
   Linux, Android and both macOS jobs passed; its Windows job is still running.
   Native macOS modal compilation and physical UI acceptance remain pending.
+
+
+## Active increment: pairing-focused device list (2026-11-08)
+
+- [x] Remove device-level Connected indicators and duplicate paired-peer cards.
+- [x] Keep saved pairings and Resources navigation independent of current control
+  transport; preserve explicit unpaired identity warnings and actual resource errors.
+- [x] Match shared Qt, Android and native macOS presentation; retain media-on-power
+  semantics and background resource-list refresh without claiming idle sockets close.
+- [ ] Isolated checks and matching Windows/Android build delivery.
+
+
+Verification: Qt offscreen checks passed for persistent paired Resources navigation,
+no duplicate paired management card, generic status suppression and preserved
+resource errors. Rendered Devices layout reviewed. Android's 13 host suites and
+integrated build/lint passed. Native macOS statically reviewed pending hosted build.
+No transport/media lifecycle was changed and no physical stream test was run.

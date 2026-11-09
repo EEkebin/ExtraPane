@@ -41,8 +41,10 @@ a published package contains this branch's preview.
 Devices are peers: a computer can offer its camera while using another device's
 speakers. Supported resources are available by default while ExtraPane is open.
 Discover a device, pair using its displayed code, then select a resource to use.
-Available paired devices reconnect automatically and load their resource catalogs.
-This does not activate a camera, microphone, monitor or USB device.
+Available paired devices refresh their resource lists in the background.
+This does not activate a camera, microphone, monitor or USB device. Devices shows
+saved pairings without a separate Connected badge; resource power buttons show
+what is actually in use.
 Use resource power buttons to stop individual streams; saved devices manage their
 availability automatically. Forget removes trust locally and requests removal on
 the other device; offline remote removal is shown as pending.
@@ -54,15 +56,15 @@ Disconnecting one resource preserves the others; disconnecting all active shares
 leaves the device discoverable and ready for a new request.
 
 **Devices** manages pairing and saved devices. Press **Search nearby** to run a
-short LAN search for new devices; paired devices are excluded. Expand **Pair by address** for
+short LAN search for new devices; paired devices are excluded. Use manual address entry for
 an IPv4 address or localhost, port and optional interface. **Connect** opens a
 pairing-code dialog when needed; the code is no longer entered on the Devices page. This also
 works on static-IP LANs and when multicast discovery is unavailable. Across networks,
 the address/port must already be reachable; discovery does not cross the internet.
-Open **Resources** to browse a connected device's grouped resources. Green power
+Open **Resources** to browse a paired device's available resources. Green power
 connects a resource; red power stops it without interrupting other resources.
 
-Each connected device has a bordered, collapsible card in Resources. Collapsing it hides
+Each available device has a bordered, collapsible card in Resources. Collapsing it hides
 its resource controls without disconnecting or changing any active resource.
 
 Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**,
