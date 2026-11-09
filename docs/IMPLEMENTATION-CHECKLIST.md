@@ -6,13 +6,24 @@
 - [x] Add Pairing Code label and XXXXXX placeholder across desktop and Android.
 - [x] Preserve frozen-target validation, cancellation, remembered-peer and gateway
   authentication behavior; render discovered names as plain text.
-- [ ] Verify layout and build/deliver matching Windows and Android packages.
+- [x] Verify layout and build/deliver matching Windows and Android packages.
 
 Qt offscreen checks pass, including named/unknown devices, plain-text rendering,
 frozen endpoints, validation and cancellation. Focused and invalid-code screenshots
 reviewed; XXXXXX stays inside the field without a floating label/border overlap.
 Android's 14 host checks and integrated compile/lint passed. Native macOS source
 updated; native compilation remains for CI. No physical pairing tests were run.
+
+Delivered **2026.11.09-pre.112.1** from clean
+`b42f57851b0c737bb0c6b7827f900b111238a743`. Verified Windows app/native versions,
+clean metadata, extracted UI, component payloads and checksums. Installer copied
+to both Desktops; saved Surface SSH identity and destination SHA256 verified:
+`f095f560749ebf89d0a64b8d06f7db1c23e0eb7d167fa61e68ab142a4b83cdd4`.
+Android streamed install succeeded; version 11201 confirmed, with pinned signer,
+release settings, both ABIs and 16-KB alignment checked. APK SHA256:
+`29a1504eab8fe34083fa7ef256fd4af771b63d606c1633de586779a5827b08da`.
+Hosted run `42549268217` is still building all platforms. Windows installers were
+not run; no driver or system-setting changes were made.
 
 ## Active increment: local device card and resource restrictions
 
