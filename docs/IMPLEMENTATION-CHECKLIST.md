@@ -10,7 +10,8 @@
 - [x] Add all-address listener and preset/custom address/port controls, preserving
   active resources during rebind and reporting actual state after failed rollback.
 - [x] Verify isolated transitions and the authorized Surface USB mouse return.
-- [ ] Build and deliver matching Windows/Android packages; verify all-platform CI.
+- [x] Build and deliver matching Windows/Android packages.
+- [ ] Complete all-platform CI for this source revision.
 
 Windows uses debounced device notifications and periodic reconciliation; Linux
 and macOS reconcile periodically, and Android uses hardware callbacks plus a
@@ -39,6 +40,23 @@ manual repair was needed. This verifies one mouse's transfer/return lifecycle;
 headset compatibility, application input behavior and physical crash/unplug
 recovery are not broadly validated. Bluetooth forwarding is deferred at the
 user's request. No Windows installer or new driver was run during this test.
+
+Delivery: **2026.11.09-pre.114.1**, built from clean source
+`dd9f0e20c1af0f6129a5af82bab8be75f5b3229b`. Windows installer and portable
+extraction checks passed, including embedded components and isolated Qt startup.
+The installer was copied to this Desktop and the Surface Desktop at
+`10.0.20.143`; both copies were verified. Neither installer was executed.
+Android release build/lint, signer, both native ABIs and alignment checks passed.
+The APK was stream-installed on the authorized Pixel, and installed version
+`2026.11.09-pre.114.1` / code `11401` was confirmed.
+
+- Windows installer SHA-256:
+  `e9e2ca20712768660d3f4b04fd7e3a2a76e1288cd54f2a4d2ce5fea3b0812247`
+- Android APK SHA-256:
+  `298aa43fe80141cd36a2db1890ae3c0adbd11a7d7d3d33ad213dce4c98117337`
+- [All-platform CI run](https://github.com/EEkebin/ExtraPane/actions/runs/42562223287)
+  was still running at delivery. Full installed-UI hardware acceptance remains
+  pending; the successful mouse lifecycle test used the updated native helper.
 
 ## Active increment: generic USB device forwarding
 
