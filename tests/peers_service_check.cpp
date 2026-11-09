@@ -75,9 +75,14 @@ rebound=host.rebind("127.0.0.1",port);check(rebound.error.empty()&&rebound.port=
 auto failed=host.rebind("127.0.0.1",ntohs(address.sin_port));check(!failed.error.empty()&&failed.port==port&&failed.address=="127.0.0.1","Failed rebind lost original listener");
 // An independent loopback interface blocks wildcard rebinding after the old
 // listener was closed. Rollback must restore its exact endpoint and grants.
+// macOS exposes only 127.0.0.1 without an administrator-created loopback alias.
+// Keep this overlap case on Windows/Linux; all platforms exercise occupied-port
+// rejection and preservation of active streams above without modifying routes.
+#ifndef __APPLE__
 Socket conflict=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);auto conflictAddress=addr(port);conflictAddress.sin_addr.s_addr=htonl(0x7f000002);
 check(!bind(conflict,reinterpret_cast<sockaddr*>(&conflictAddress),sizeof(conflictAddress))&&!listen(conflict,1),"Rollback reservation failed");
 failed=host.rebind("0.0.0.0",port);check(!failed.error.empty()&&failed.port==port&&failed.address=="127.0.0.1","Overlap failure did not restore listener");close_socket(conflict);
+#endif
 check(stops==0&&starts==1,"Listener rebind stopped active resource");
 check(send(source,"live",4,0)==4,"Send after rebind failed");actual.clear();
 while(actual.size()<4){char buffer[4];int n=recv(received,buffer,4,0);if(n>0)actual.append(buffer,n);waiting();}check(actual=="live","Rebind lost native media delivery");

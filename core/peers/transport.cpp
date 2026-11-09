@@ -233,6 +233,10 @@ Listener::Listener(const std::string& bind,std::uint16_t port,std::shared_ptr<Se
     s.socket=::socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);if(s.socket==invalid)fail("Cannot create listener");configure(s.socket);
 #ifdef _WIN32
     const int exclusive=1;if(setsockopt(s.socket,SOL_SOCKET,SO_EXCLUSIVEADDRUSE,reinterpret_cast<const char*>(&exclusive),sizeof(exclusive)))fail("Cannot reserve listener address");
+#else
+    // Permit restarting our listener after accepted TCP connections enter
+    // TIME_WAIT. Never use SO_REUSEPORT: live listeners must remain exclusive.
+    const int reuse=1;if(setsockopt(s.socket,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof(reuse)))fail("Cannot configure listener restart");
 #endif
     if(::bind(s.socket,reinterpret_cast<const sockaddr*>(&addr),sizeof(addr)) || ::listen(s.socket,16))fail("Cannot listen on selected address");
     SockLen size=sizeof(addr);if(getsockname(s.socket,reinterpret_cast<sockaddr*>(&addr),&size))fail("Cannot inspect listener address");s.port=ntohs(addr.sin_port);

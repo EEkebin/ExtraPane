@@ -14,13 +14,29 @@ int main(){try{
     for(const auto* bad:{"","::1","example.org","224.0.0.1","255.255.255.255"})rejects([&]{Listener l(bad,0);});
     {
         Listener wildcard("0.0.0.0",0);require(wildcard.port()!=0,"wildcard ephemeral port missing");
+        rejects([&]{Listener duplicate("0.0.0.0",wildcard.port());});
+        rejects([&]{Listener intercept("127.0.0.1",wildcard.port());});
         rejects([&]{Stream::connect("0.0.0.0",wildcard.port(),"127.0.0.1",deadline());});
         rejects([&]{Stream::connect("127.0.0.1",wildcard.port(),"0.0.0.0",deadline());});
         auto accepted=std::async(std::launch::async,[&]{return wildcard.accept(deadline());});
         auto client=Stream::connect("127.0.0.1",wildcard.port(),"127.0.0.1",deadline());auto server=accepted.get();
         require(client.binding()==server.binding(),"wildcard listener exporter mismatch");
     }
+    #ifndef _WIN32
+    // The accepted side actively closes first, leaving its local endpoint in
+    // TIME_WAIT. A fresh listener must still accept a new TLS connection.
+    std::uint16_t restartedPort=0;
+    for(int attempt=0;attempt<3;++attempt){
+        Listener restarting("127.0.0.1",restartedPort);restartedPort=restarting.port();
+        auto accepted=std::async(std::launch::async,[&]{return restarting.accept(deadline());});
+        auto client=Stream::connect("127.0.0.1",restartedPort,{},deadline());auto server=accepted.get();
+        require(client.binding()==server.binding(),"restarted listener TLS mismatch");
+        server.cancel();std::array<std::uint8_t,1> byte{};rejects([&]{client.read(byte,deadline());});
+    }
+#endif
     Listener listener("localhost",0);require(listener.port()!=0,"ephemeral port missing");
+    rejects([&]{Listener duplicate("127.0.0.1",listener.port());});
+    rejects([&]{Listener intercept("0.0.0.0",listener.port());});
     std::array<std::uint8_t,32> previous{};
     for(int round=0;round<2;++round){
         auto accepted=std::async(std::launch::async,[&]{return listener.accept(deadline());});
