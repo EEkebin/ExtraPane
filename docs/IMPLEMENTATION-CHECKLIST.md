@@ -9,7 +9,7 @@
   active-use power controls; withdrawal stops only affected sessions.
 - [x] Verify shared desktop and Android with isolated checks; native macOS source
   reviewed, with compilation/physical validation pending.
-- [ ] Build and deliver matching Windows/Android packages; do not run Windows
+- [x] Build and deliver matching Windows/Android packages; do not run Windows
   installers or physical media tests as an incidental verification step.
 
 Verification: Qt offscreen layout and resource routing checks passed, including
@@ -23,6 +23,17 @@ transient route numbers; indistinguishable routes share a conservative opt-out.
 Windows named monitor presets retain their existing DISPLAYn IDs, which can change
 after display-topology changes; a newly identified resource defaults to allowed.
 No physical media, driver installation or system-setting changes were performed.
+
+Delivery: **2026.11.09-pre.111.1** from clean
+`c0e459cef16a7ed00ec5d43245fb589bdedcbef8`. Windows installer copied to both
+Desktops with matching SHA256 and saved Surface SSH identity verified. Installer
+SHA256: `b21b582ae982673d7c94c629bf4b83a98ed83822e82d04b53eb4dedc6c248fdd`.
+Android streamed install succeeded; version 11101 confirmed. APK SHA256:
+`033c2cade51b62ede3f37e560d15e1d71b8d98bb61dd4db62d9995bc868d460a`.
+Exact Windows app/native versions, clean metadata, extracted portable UI and
+component payload checks passed. Android signer, release flags, both ABIs and
+16-KB alignment passed. Hosted run `42547801425` remains in progress; native macOS
+compilation and physical acceptance are pending. Neither Windows installer was run.
 
 This is the working checklist for the shared ExtraPane app and device-sharing
 features. Update it after every completed increment, in the same change as the
