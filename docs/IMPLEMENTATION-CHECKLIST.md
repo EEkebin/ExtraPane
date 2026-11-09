@@ -1054,8 +1054,8 @@ This replaces the earlier opt-in offer power behavior.
 - [ ] Physical camera/auto-presence acceptance pending after user updates Windows;
   no Windows installer or media connection was run. Cross-platform hosted run
   `42476646478` remains in progress.
-- [ ] Nonblocking native macOS UI followup: mutual incoming/outgoing control links
-  may show duplicate device rows; each row currently disconnects its own link.
+- [x] Native macOS management now deduplicates mutual control links by identity;
+  device-level Disconnect closes both directions. Physical acceptance pending.
 - Previous pre.104.1 hosted Linux/Android jobs passed. Both macOS jobs exposed an
   Objective-C ivar initializer syntax error; source corrected here, CI recheck pending.
 
@@ -1087,4 +1087,14 @@ This replaces the earlier opt-in offer power behavior.
   for this increment; hosted build/visual acceptance still pending.
 - Previous pre.105.1 hosted run `42476646478` passed Windows, Linux, Android and
   both macOS architecture jobs. No new physical media tests performed.
-- [ ] Matching updated packages and delivery pending.
+- [x] Matching `2026.11.08-pre.106.1` packages built from clean `e19e9c6`.
+  Windows installer copied to local Desktop and Surface Desktop at 10.0.20.143;
+  both checksums verified and Surface SSH identity matched the saved key. Android
+  streamed install succeeded; versionName/code `10601` confirmed. Windows exact
+  version, clean build metadata, extracted UI smoke and native payload checks passed.
+  Installer SHA256:
+  `dad49b8c10fb803c441774ddcc7967026ca8f0cfda32ed2fd4c84eb8823f9cf3`.
+  APK SHA256:
+  `d8845252965b09dc4d682288db551b8c10e368c98913e486f18e5ce1610777f0`.
+- [ ] User visual acceptance after Windows installation pending. No Windows
+  installer or media connection was run. Hosted run `42538425580` remains active.
