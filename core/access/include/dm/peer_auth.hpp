@@ -26,8 +26,8 @@ struct Identity {
 };
 bool valid_pairing_password(const std::string&);
 struct PairingStatus {std::string code;bool custom=false;unsigned remaining_seconds=0;};
-// Generated PINs rotate every 60 seconds. Attempt budgets are independently
-// windowed; changing the configured secret never resets the attempt budget.
+// Generated PINs rotate every 20 seconds. Attempt budgets are independently
+// windowed at five attempts per minute; changing the configured secret never resets the attempt budget.
 class Policy {
     struct Attempts {unsigned failures=0;};
     DeviceId local_;std::atomic_bool required_;bool active_=true,custom_=false;std::string code_;

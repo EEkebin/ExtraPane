@@ -26,8 +26,8 @@ try{
 #ifdef _WIN32
 WSADATA w{};check(!WSAStartup(MAKEWORD(2,2),&w),"WSA startup");
 #endif
-{Service settings({directory/"pairing-settings","Settings test",{},true},{});const auto initial=settings.pairing_status();check(!initial.custom&&initial.code.size()==6&&initial.remaining_seconds==60,"Generated status");settings.set_pairing_password(" permanent pass ! ");check(settings.pairing_status().custom&&settings.pairing_status().code.empty()&&settings.pairing_code().empty(),"Custom secret leaked through status");}
-{Service reopened({directory/"pairing-settings","Settings test",{},true},{});check(reopened.pairing_status().custom&&reopened.pairing_code().empty(),"Custom secret was not restored");reopened.set_pairing_password("");check(!reopened.pairing_status().custom&&reopened.pairing_status().remaining_seconds==60,"Generated reset");}
+{Service settings({directory/"pairing-settings","Settings test",{},true},{});const auto initial=settings.pairing_status();check(!initial.custom&&initial.code.size()==6&&initial.remaining_seconds==20,"Generated status");settings.set_pairing_password(" permanent pass ! ");check(settings.pairing_status().custom&&settings.pairing_status().code.empty()&&settings.pairing_code().empty(),"Custom secret leaked through status");}
+{Service reopened({directory/"pairing-settings","Settings test",{},true},{});check(reopened.pairing_status().custom&&reopened.pairing_code().empty(),"Custom secret was not restored");reopened.set_pairing_password("");check(!reopened.pairing_status().custom&&reopened.pairing_status().remaining_seconds==20,"Generated reset");}
 const auto end=std::chrono::steady_clock::now()+15s;
 auto waiting=[&]{check(std::chrono::steady_clock::now()<end,"Service test deadline");std::this_thread::sleep_for(1ms);};
 Socket dest=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);auto address=addr(0);check(!bind(dest,reinterpret_cast<sockaddr*>(&address),sizeof(address))&&!listen(dest,4),"fake destination bind");

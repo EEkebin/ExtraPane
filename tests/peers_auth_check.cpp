@@ -40,9 +40,9 @@ int main(){try{auto host=random_identity(),device=random_identity(),binding=rand
  {Policy p(host);std::vector<DeviceId> pending;for(unsigned i=0;i<5;++i){pending.push_back(random_identity());p.begin(pending.back(),Mode::pair);}rejects([&]{p.begin(random_identity(),Mode::pair);});for(auto id:pending)p.finish(id,Mode::pair,true);p.begin(device,Mode::pair);p.finish(device,Mode::pair,true);}
  auto now=dm::access::Clock::now();Policy limited(host,true,[&]{return now;});for(unsigned i=0;i<5;++i){limited.begin(device,Mode::pair);limited.finish(device,Mode::pair,false);}check(!limited.pairing_available());limited.set_password("Custom!");check(!limited.pairing_available());limited.set_password("");check(!limited.pairing_available());now+=std::chrono::minutes(2);check(limited.pairing_available());limited.begin(device,Mode::pair);limited.finish(device,Mode::pair,true);limited.begin(device,Mode::remembered);limited.finish(device,Mode::remembered,true);limited.stop();rejects([&]{limited.begin(device,Mode::remembered);});
  {
-  auto tick=dm::access::Clock::now();Policy rotating(host,true,[&]{return tick;});const auto first=rotating.status();check(first.remaining_seconds==60&&!first.custom&&first.code.size()==6);
-  tick+=std::chrono::milliseconds(59999);check(rotating.status().code==first.code&&rotating.status().remaining_seconds==1);
-  tick+=std::chrono::milliseconds(1);const auto next=rotating.status();check(next.remaining_seconds==60&&next.code!=first.code);rejects([&]{rotating.confirm_password(first.code);});rotating.confirm_password(next.code);
+  auto tick=dm::access::Clock::now();Policy rotating(host,true,[&]{return tick;});const auto first=rotating.status();check(first.remaining_seconds==20&&!first.custom&&first.code.size()==6);
+  tick+=std::chrono::milliseconds(19999);check(rotating.status().code==first.code&&rotating.status().remaining_seconds==1);
+  tick+=std::chrono::milliseconds(1);const auto next=rotating.status();check(next.remaining_seconds==20&&next.code!=first.code);rejects([&]{rotating.confirm_password(first.code);});rotating.confirm_password(next.code);
   auto old=o;old.code=first.code;Store a,b;Pair expired;check(!expired.run(rotating,old,a,b,binding));check(expired.client_error=="Incorrect PIN or password, or code expired");
   for(const auto& secret:std::vector<std::string>{" x ","words!# no six digits",std::string("caf")+"\xc3\xa9"+" \xf0\x9f\x94\x92",std::string(1024,'a')}){
    rotating.set_password(secret);check(rotating.status().custom&&rotating.status().code.empty()&&!rotating.status().remaining_seconds);tick+=std::chrono::seconds(120);check(rotating.code()==secret);rotating.confirm_password(secret);
@@ -50,11 +50,16 @@ int main(){try{auto host=random_identity(),device=random_identity(),binding=rand
    custom.local=random_identity();custom.code=secret+"!";if(custom.code.size()<=1024){Store wrongStore;Pair wrong;check(!wrong.run(rotating,custom,sa,wrongStore,binding));check(wrong.client_error=="Incorrect PIN or password, or code expired");}
   }
   rejects([&]{rotating.set_password(std::string(1025,'a'));});rejects([&]{rotating.set_password("\xc0\xaf");});check(!valid_pairing_password(""));check(!valid_pairing_password(std::string("a\0b",3)));check(!valid_pairing_password("\xed\xa0\x80"));
-  rotating.set_password("");check(!rotating.status().custom&&rotating.status().remaining_seconds==60);
+  rotating.set_password("");check(!rotating.status().custom&&rotating.status().remaining_seconds==20);
  }
  {auto tick=dm::access::Clock::now();Policy expiring(host,true,[&]{return tick;});Store a,b;auto attempt=o;attempt.code=expiring.code();Pair crossing;unsigned proofs=0;
-  crossing.cs.observe=[&](auto bytes){if(bytes.size()==32&&++proofs==2)tick+=std::chrono::seconds(60);};
+  crossing.cs.observe=[&](auto bytes){if(bytes.size()==32&&++proofs==2)tick+=std::chrono::seconds(20);};
   check(!crossing.run(expiring,attempt,a,b,binding));check(crossing.client_error=="Incorrect PIN or password, or code expired"&&a.empty()&&b.empty());
+ }
+ {auto tick=dm::access::Clock::now();Policy budget(host,true,[&]{return tick;});auto old=budget.code();
+  for(unsigned i=0;i<5;++i){budget.begin(device,Mode::pair);budget.finish(device,Mode::pair,false);}check(!budget.pairing_available());
+  for(unsigned i=0;i<2;++i){tick+=std::chrono::seconds(20);const auto fresh=budget.status();check(fresh.code!=old&&fresh.remaining_seconds==20);old=fresh.code;check(!budget.pairing_available());rejects([&]{budget.begin(random_identity(),Mode::pair);});}
+  tick+=std::chrono::milliseconds(19999);check(!budget.pairing_available());tick+=std::chrono::milliseconds(1);check(budget.pairing_available());budget.begin(device,Mode::pair);budget.finish(device,Mode::pair,true);
  }
  {Channel broken([](auto){throw std::runtime_error("transport timeout");},[](auto){});auto attempt=o;attempt.code="custom password";try{broken.client(attempt,{});check(false);}catch(const std::exception& e){check(std::string(e.what())=="transport timeout");}}
  std::cout<<"Peer auth checks passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

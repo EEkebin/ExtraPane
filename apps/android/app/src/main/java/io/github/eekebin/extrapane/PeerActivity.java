@@ -80,8 +80,8 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         private int remaining;
         PairingCountdown(){super(PeerActivity.this);setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);}
-        void update(int seconds){remaining=Math.max(0,Math.min(60,seconds));invalidate();}
-        @Override protected void onDraw(Canvas canvas){super.onDraw(canvas);float inset=dp(3);RectF bounds=new RectF(inset,inset,getWidth()-inset,getHeight()-inset);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(3));paint.setColor(BORDER);canvas.drawOval(bounds,paint);paint.setColor(ACCENT);paint.setStrokeCap(Paint.Cap.ROUND);canvas.drawArc(bounds,-90,360f*remaining/60,false,paint);}
+        void update(int seconds){remaining=Math.max(0,Math.min(20,seconds));invalidate();}
+        @Override protected void onDraw(Canvas canvas){super.onDraw(canvas);float inset=dp(3);RectF bounds=new RectF(inset,inset,getWidth()-inset,getHeight()-inset);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(3));paint.setColor(BORDER);canvas.drawOval(bounds,paint);paint.setColor(ACCENT);paint.setStrokeCap(Paint.Cap.ROUND);canvas.drawArc(bounds,-90,360f*remaining/20,false,paint);}
     }
     private PowerButton inputAllowed;
     private SurfaceView surface;
@@ -260,7 +260,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         setup.addView(note("Pairing credential"));pairingMode=networkSpinner();pairingMode.setAdapter(networkAdapter(List.of("Generated code","Custom PIN or password")));setup.addView(pairingMode,full());
         pairingPassword=deviceField("Enter new PIN or password","",false);configureSecretField(pairingPassword);setup.addView(pairingPassword,full());
         savePairingPassword=button("Use generated code",this::savePairingCredential);setup.addView(savePairingPassword);
-        pairingModeStatus=note("Generated codes change every 60 seconds.");setup.addView(pairingModeStatus,full());
+        pairingModeStatus=note("Generated codes change every 20 seconds.");setup.addView(pairingModeStatus,full());
         pairingMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){pairingPassword.setVisibility(position==1?View.VISIBLE:View.GONE);savePairingPassword.setText(position==1?"Save PIN or password":"Use generated code");if(position==0)pairingPassword.setText("");}});
         content.addView(button("Pair by address",()->connectDialog("","","",false)));
         sectionHeading(content,"Paired devices");trustedRows=column();content.addView(trustedRows,full());
@@ -395,7 +395,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         String shown=state.custom()?"":state.code();if(!code.getText().toString().equals(shown))code.setText(shown);
         code.setContentDescription("Pairing code "+shown+", changes in "+state.remainingSeconds()+" seconds");
         pairingCountdown.update(state.remainingSeconds());
-        String message=state.custom()?"Custom PIN or password is set. Saved credentials are not displayed.":"Generated codes change every 60 seconds.";
+        String message=state.custom()?"Custom PIN or password is set. Saved credentials are not displayed.":"Generated codes change every 20 seconds.";
         if(!pairingModeStatus.getText().toString().equals(message))pairingModeStatus.setText(message);
     }
     private void submitPairing(PairingAttempt attempt,String code) throws Exception {
@@ -437,7 +437,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
             if(known.contains(endpoint.getKey())||!shown.add(endpoint.getKey()))continue;
             final long gateway=route.getKey();final String identity=endpoint.getKey(),name=endpoint.getValue();final String gatewayName=peerName(connectedPeers.get(gateway));
             LinearLayout card=column();card.setPadding(dp(14),dp(8),dp(14),dp(8));card.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams spacing=full();spacing.bottomMargin=dp(12);endpointRows.addView(card,spacing);
-            card.addView(label(name,18));card.addView(note("Via "+gatewayName+". Pair with this device so it can securely request this phone's resources."));
+            card.addView(label(name,18));
             card.addView(button("Pair device",()->showPairingPrompt(PairingAttempt.via(gateway,identity),name,gatewayDescription(gateway,gatewayName))));
         }
         endpointSection.setVisibility(endpointRows.getChildCount()>0?View.VISIBLE:View.GONE);

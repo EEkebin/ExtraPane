@@ -11,7 +11,15 @@ static auto deadline(){return std::chrono::steady_clock::now()+5s;}
 static void require(bool b,const char* why){if(!b)throw std::runtime_error(why);}
 template<class F> static void rejects(F f){bool failed=false;try{f();}catch(const std::exception&){failed=true;}require(failed,"expected failure");}
 int main(){try{
-    for(const auto* bad:{"","0.0.0.0","::1","example.org","224.0.0.1","255.255.255.255"})rejects([&]{Listener l(bad,0);});
+    for(const auto* bad:{"","::1","example.org","224.0.0.1","255.255.255.255"})rejects([&]{Listener l(bad,0);});
+    {
+        Listener wildcard("0.0.0.0",0);require(wildcard.port()!=0,"wildcard ephemeral port missing");
+        rejects([&]{Stream::connect("0.0.0.0",wildcard.port(),"127.0.0.1",deadline());});
+        rejects([&]{Stream::connect("127.0.0.1",wildcard.port(),"0.0.0.0",deadline());});
+        auto accepted=std::async(std::launch::async,[&]{return wildcard.accept(deadline());});
+        auto client=Stream::connect("127.0.0.1",wildcard.port(),"127.0.0.1",deadline());auto server=accepted.get();
+        require(client.binding()==server.binding(),"wildcard listener exporter mismatch");
+    }
     Listener listener("localhost",0);require(listener.port()!=0,"ephemeral port missing");
     std::array<std::uint8_t,32> previous{};
     for(int round=0;round<2;++round){

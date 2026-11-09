@@ -4,22 +4,27 @@
 
 <img src="assets/branding/icon.png" alt="ExtraPane icon" width="96" align="right">
 
-ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Windows and Linux can host; a macOS host preview is in development with an initial M3 Pro session reported working. Windows, Linux and Android clients are implemented, with a macOS Universal client preview verified for Windows-host video and mouse/keyboard on an M3 Pro. Mouse, keyboard, touch and pen availability depends on the client and host; see the platform guides below.
+ExtraPane connects your computers and Android devices so they can share displays,
+cameras, microphones, speakers and supported USB devices. Pair once, then use
+resources in either direction. Each resource has its own connection control.
 
 [Project website](https://eekebin.github.io/ExtraPane/) | [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
-The development app opens Devices and Resources. A computer can offer its resources and use another device's resources at the same time. The older Server/Client interface remains available with `--legacy`; published releases may still use that interface. Windows servers allocate connections dynamically, subject to hardware and OS resources. See [Linux development status](docs/LINUX.md) for its native endpoint limits. Android offers resources but cannot create system-wide virtual camera/microphone endpoints. The macOS development preview supports hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
+The app opens **Devices** for pairing and local sharing preferences, and
+**Resources** for using another device's hardware. Choose a virtual monitor to
+extend the other computer's desktop, or view one of its existing screens.
+Windows, Linux and macOS support display hosting and receiving; Android receives
+displays and shares supported camera, microphone and speaker resources.
+Capabilities depend on the platform, installed components and permissions. See
+[Windows requirements](#requirements), [Linux](docs/LINUX.md),
+[macOS](docs/MACOS.md) and [Android](docs/ANDROID.md) for details.
 
-> This branch contains the device-sharing development build. Published releases
-> may have an older interface or fewer features. See the [current implementation
-> checklist](docs/IMPLEMENTATION-CHECKLIST.md#current-status--2026-11-08) for what
-> is implemented, tested and still pending.
+[Speakers](docs/SPEAKERS.md) creates a Windows playback device that sends audio to
+a selected Windows or Android output. It is separate from microphone forwarding.
+Physical playback validation is still pending. Other hardware-specific validation
+limits are recorded in the [implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md).
 
-The development build also adds [Speakers](docs/SPEAKERS.md): a Windows server
-playback device that sends audio to a selected Windows or Android client output.
-This new path has isolated checks; physical playback verification is pending.
-
-The USB development branch adds actual Windows-to-Windows USB forwarding for
+Windows-to-Windows USB forwarding is available for
 eligible mice, keyboards and audio devices, including composites whose complete
 configuration descriptors contain only supported HID/audio functions. This is
 exclusive device forwarding, separate from microphone/speaker streaming. A USB
@@ -29,24 +34,12 @@ hardware and crash recovery still need physical testing. Bluetooth, hubs, unknow
 functions and storage-containing composites are excluded; each Windows source
 currently exports one USB device at a time. See [USB support and limits](docs/USB.md).
 
-The `feat/device-discovery` branch is developing a device-oriented interface with
-automatic resource availability, LAN discovery, direct-address connections and remembered
-pairing. This redesign is not yet a tested replacement for the existing Server /
-Client workflow. Its current gates are recorded in the [implementation
-checklist](docs/IMPLEMENTATION-CHECKLIST.md#active-implementation-devices-sharing-and-gateways).
+## Devices and resources
 
-## Devices workspace (development preview)
-
-Use the [device acceptance guide](docs/DEVICE-WORKSPACE-TESTING.md) when testing
-this preview. Build checks do not replace physical media and driver verification.
-
-Open ExtraPane normally to use the new workspace. On desktop, `--legacy` opens
-the older Server/Client interface; `--devices` remains a compatibility alias for
-the default. Android opens its device-sharing page and offers **Legacy connections**
-for the older workflow. These defaults apply to builds after `pre.92.1`;
-`pre.92.1` still opens the older interface, and its Windows package has a resource
-path error for the new page. Use a newer build for this workspace. Do not assume
-a published package contains this branch's preview.
+Use the [device acceptance guide](docs/DEVICE-WORKSPACE-TESTING.md) for detailed
+checks. Build verification does not replace physical media and driver testing.
+Desktop `--legacy` and Android's **Legacy connections** keep the older
+Server/Client interface available; normal launch uses the peer workspace.
 
 Devices are peers: a computer can offer its camera while using another device's
 speakers. Supported resources are available by default while ExtraPane is open.
@@ -122,7 +115,7 @@ first connection using the Connect dialog; remembered devices subsequently prove
 their saved secret without prompting again. Nearby devices with pairing disabled
 are labeled unverified and connect without a code dialog. A manual address defaults
 to pairing unless Connect without pairing is explicitly selected.
-Generated six-digit codes refresh every minute; the circular countdown shows when
+Generated six-digit codes refresh every 20 seconds; the circular countdown shows when
 another code will appear. Under This device, choose a fixed custom PIN/password
 instead if preferred. Entries are masked and accept text up to 1024 UTF-8 bytes.
 Custom credentials stay fixed until changed and are stored in protected local

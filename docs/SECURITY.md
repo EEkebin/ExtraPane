@@ -3,7 +3,7 @@
 ## Devices workspace (development branch)
 
 The current workspace defaults to pairing. Generated six-digit codes rotate every
-60 seconds; an optional fixed custom PIN/password replaces automatic generation.
+20 seconds; an optional fixed custom PIN/password replaces automatic generation.
 Custom secrets accept valid UTF-8 up to 1024 bytes and use the same private storage
 protections as remembered trust (Windows DPAPI; user-private files on POSIX).
 They are not advertised or returned to the UI after saving. Five failed new-pair

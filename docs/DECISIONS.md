@@ -3,7 +3,7 @@
 ## Rotating pairing credentials and mutual resources (2026-11-09)
 
 The user replaced the earlier process-lifetime code policy: generated pairing
-codes rotate every 60 seconds, with a visible circular countdown. A custom PIN
+codes rotate every 20 seconds, with a visible circular countdown. A custom PIN
 or password is an optional fixed alternative until explicitly changed. Both use
 the same masked, neutral "PIN or password" prompt; discovery does not reveal
 credential mode or length. Input is not restricted to digits or six characters;

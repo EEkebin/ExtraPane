@@ -34,12 +34,12 @@ void Policy::generate_locked(){
  wipe(code_);code_=std::move(next);rotated_=clock_();
 }
 void Policy::refresh_locked(){
- const auto now=clock_();if(!custom_&&now-rotated_>=std::chrono::seconds(60))generate_locked();
+ const auto now=clock_();if(!custom_&&now-rotated_>=std::chrono::seconds(20))generate_locked();
  if(now-window_>=std::chrono::seconds(60)){window_=now;attempts_.clear();global_failures_=pair_failures_=0;}
 }
 Policy::~Policy(){stop();}
 std::string Policy::code(){std::lock_guard lock(mutex_);need(active_);refresh_locked();return code_;}
-PairingStatus Policy::status(){std::lock_guard lock(mutex_);need(active_);refresh_locked();if(custom_)return {{},true,0};const auto elapsed=std::chrono::duration_cast<std::chrono::seconds>(clock_()-rotated_).count();return {code_,false,static_cast<unsigned>(60-std::clamp<decltype(elapsed)>(elapsed,0,59))};}
+PairingStatus Policy::status(){std::lock_guard lock(mutex_);need(active_);refresh_locked();if(custom_)return {{},true,0};const auto elapsed=std::chrono::duration_cast<std::chrono::seconds>(clock_()-rotated_).count();return {code_,false,static_cast<unsigned>(20-std::clamp<decltype(elapsed)>(elapsed,0,19))};}
 void Policy::set_password(std::string value){Clean clean{value};if(!value.empty()&&!valid_pairing_password(value))throw std::invalid_argument("Pairing password must be valid UTF-8 and at most 1024 bytes");std::lock_guard lock(mutex_);need(active_);if(value.empty()){custom_=false;generate_locked();}else{wipe(code_);code_=std::move(value);custom_=true;}}
 void Policy::confirm_password(const std::string& value){std::lock_guard lock(mutex_);need(active_);refresh_locked();if(value.size()!=code_.size()||CRYPTO_memcmp(value.data(),code_.data(),value.size())!=0)throw access::PeerConfirmationError();}
 bool Policy::pairing_available(){std::lock_guard lock(mutex_);if(!active_)return false;refresh_locked();return pair_failures_+pair_pending_<5;}

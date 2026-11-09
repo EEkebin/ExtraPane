@@ -223,7 +223,7 @@ but are not OS-keychain encryption.
   device and accepts a masked PIN or password with a neutral placeholder. There
   is no inline credential field on Devices. Test a wrong credential: it should
   report incorrect/expired credentials, while network failure remains distinct.
-- Watch the local code/countdown for a minute: the generated code changes and the
+- Watch the local code/countdown for 20 seconds: the generated code changes and the
   circle resets. Already-paired devices and active resources must stay available.
 - Save a custom password with spaces and Unicode, restart, and verify it still
   pairs. It must not reappear in the local field or PIN label. Switch back to

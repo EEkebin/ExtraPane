@@ -427,8 +427,8 @@ Item {
                                     Canvas {
                                         objectName:"peerPairingCountdown"; Layout.preferredWidth:36;Layout.preferredHeight:36
                                         visible:peers.pairingRequired&&!peers.pairingCustom
-                                        property real progress: (peers.pairingSeconds||0)/60
-                                        Behavior on progress { enabled: (peers.pairingSeconds||0)<59; NumberAnimation {duration:850} }
+                                        property real progress: (peers.pairingSeconds||0)/20
+                                        Behavior on progress { enabled: (peers.pairingSeconds||0)<19; NumberAnimation {duration:850} }
                                         onProgressChanged:requestPaint()
                                         onPaint: { const ctx=getContext("2d");ctx.clearRect(0,0,width,height);ctx.lineWidth=3;ctx.strokeStyle="#334a65";ctx.beginPath();ctx.arc(width/2,height/2,15,0,2*Math.PI);ctx.stroke();ctx.strokeStyle="#80b8ff";ctx.lineCap="round";ctx.beginPath();ctx.arc(width/2,height/2,15,-Math.PI/2,-Math.PI/2+2*Math.PI*progress);ctx.stroke() }
                                         Label { anchors.centerIn:parent;text:String(peers.pairingSeconds||0);font.pixelSize:11;color:"#b8d7ff" }
@@ -472,7 +472,7 @@ Item {
                             }
                             Action { objectName:"peerSavePairingPassword";text:"Save";enabled:customPairing.text.length>0;onClicked:if(peers.setPairingPassword(customPairing.text))customPairing.clear() }
                         }
-                        Label { text:peers.pairingCustom?"Your custom PIN or password stays in effect until you change it. Previously paired devices keep their access.":"The code refreshes every minute. Previously paired devices and active resources stay connected.";color:"#9eacc2";wrapMode:Text.WordWrap;Layout.fillWidth:true }
+                        Label { text:peers.pairingCustom?"Your custom PIN or password stays in effect until you change it. Previously paired devices keep their access.":"The code refreshes every 20 seconds. Previously paired devices and active resources stay connected.";color:"#9eacc2";wrapMode:Text.WordWrap;Layout.fillWidth:true }
                     }
                     Repeater {
                         model: workspace.resourceGroups
@@ -703,9 +703,8 @@ Item {
                                         AppIcon { symbol: "chevron"; Layout.preferredWidth: 18; Layout.preferredHeight: 18; rotation: peerDevice.expanded ? 90 : 0 }
                                         ColumnLayout {
                                             Layout.fillWidth: true; spacing: 3
-                                            Label { textFormat: Text.PlainText; text: peerDevice.modelData.name+(peerDevice.modelData.verified ? " (verified)" : " (unverified)"); font.pixelSize: 18; Layout.fillWidth: true; elide: Text.ElideRight }
+                                            Label { textFormat: Text.PlainText; text: peerDevice.modelData.name+(peerDevice.modelData.verified ? "" : " (unverified)"); font.pixelSize: 18; Layout.fillWidth: true; elide: Text.ElideRight }
                                             Label { text: peerDevice.modelData.resources.length+" resources"+(peerDevice.activeCount ? " - "+peerDevice.activeCount+" active" : ""); color: "#9eacc2"; Layout.fillWidth: true; elide: Text.ElideRight }
-                                            Label { visible: !!peerDevice.modelData.viaConnection; text: "Via gateway - paired directly with this device"; color: "#9eacc2"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                         }
                                     }
                                 }
@@ -718,7 +717,7 @@ Item {
                                 delegate: RowLayout {
                                     required property var modelData
                                     Layout.fillWidth:true
-                                    Label { text: modelData.name+" (via gateway)"; textFormat:Text.PlainText; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+                                    Label { text: modelData.name; textFormat:Text.PlainText; Layout.fillWidth:true; wrapMode:Text.WordWrap }
                                     Action { objectName:"peerGatewayPair_"+modelData.identity; text:"Pair device"; onClicked:workspace.beginGatewayPairing(peerDevice.modelData.connection,modelData.identity,modelData.name) }
                                 }
                             }
@@ -752,7 +751,6 @@ Item {
                                             ColumnLayout {
                                                 id: resourceContent; anchors.fill: parent; anchors.margins: 14; spacing: 10
                                                 Label { textFormat: Text.PlainText; text: resourceCard.modelData.label; font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                                                Label { textFormat: Text.PlainText; visible: resourceCard.modelData.delegated===true; text: "Via gateway ? "+(resourceCard.modelData.ownerName||""); color: "#aabbd3"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                                 Label { textFormat: Text.PlainText; visible: !resourceCard.modelData.available; text: resourceCard.modelData.reason; color: "#f0c66e"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
 
                                                 RowLayout {

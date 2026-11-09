@@ -1,5 +1,23 @@
 # Resource-sharing implementation checklist
 
+## Release preparation: 2026.11.09
+
+- [x] Remove verified suffixes and gateway-route description lines from device and
+  resource cards. Mutual pairing remains authenticated in both directions.
+- [x] Shorten generated PIN rotation/countdowns to 20 seconds on every UI.
+  Keep the independent five-attempt-per-minute limit; changing PIN does not reset it.
+- [x] Update README, security/acceptance docs and generated release instructions
+  for Devices/Resources instead of the legacy Server/Client workflow.
+- [x] Fix wildcard-listener regression expectations and cross-platform crypto
+  dependency declarations found by the final CI audit.
+- [ ] Verify final CI, merge the stacked branches into main, and publish the
+  stable release with Windows, Linux, Android and Universal macOS packages.
+
+Targeted Qt layout/routing, native auth/rotation/rate-limit, listener and private
+store checks pass. Android UI compilation/lint and host checks pass. Full final
+CI remains pending. The preceding pre.116.1 platform build passed all four
+platforms; its separate core CI failures are addressed in this increment.
+
 ## Active increment: pairing credentials and mutual resource availability
 
 - [x] Rotate generated codes every minute without interrupting paired devices.
