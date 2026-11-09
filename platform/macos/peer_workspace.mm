@@ -86,7 +86,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
     std::uint64_t instance,sequence;
     DeviceId expected;
     bool sharing,sharingStarting,gatewayEnabled,loopbackSharing,scanning,refreshing,terminating;
-    std::chrono::steady_clock::time_point nextInventoryRefresh{};
+    std::chrono::steady_clock::time_point nextInventoryRefresh;
     Service::Token sharingGeneration;
     unsigned listeningPort;
     std::string listeningAddress;

@@ -65,6 +65,7 @@ public:
     // Drain native status regularly; returned leases lost admission control and
     // their media bridges must be closed by the owner.
     std::vector<std::uint64_t> poll();
+    std::string failure(std::uint64_t lease)const;
     bool running()const;
     std::uint16_t port()const;
     void stop()noexcept;

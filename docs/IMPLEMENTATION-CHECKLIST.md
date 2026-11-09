@@ -1,5 +1,33 @@
 # Resource-sharing implementation checklist
 
+## Active increment: USB routing through the installed peer workspace
+
+- [x] Update unified receiver routing to recognize the current kind-bound USB
+  protocol for both storage and generic devices.
+- [x] Surface native failure details instead of silently returning the power
+  button to green after a premature connection toast.
+- [x] Verify actual protocol greetings through the shared routing check.
+- [ ] Build and deliver matching Windows/Android packages.
+
+User acceptance of pre.114.1 found that USB connects briefly in the peer workspace
+then ends before the mouse leaves the Surface. The shared receiver still matched
+the version-3 USB prefix, while the native helper sends version 4 with a device
+kind. The previous direct-helper physical test bypassed that router. Read-only
+inspection confirms both installed services are pre.114.1 and the Surface mouse
+and HID interfaces remain healthy. This is an integration defect, not successful
+installed-app USB acceptance.
+
+Regression evidence: actual storage/generic greeting definitions pass through
+session-prefix routing; malformed kinds, old/future versions, reserved bytes and
+reply frames are rejected. The updated standalone routing check passes.
+The previous all-platform run also found an Objective-C++ ivar initializer syntax
+error on macOS; the declaration is corrected and an isolated syntax check passes.
+Full macOS verification is queued for the next source build.
+Native runtime, authenticated loopback failure propagation/redaction, Qt startup
+and UI checks pass. Provider errors reach the requesting peer through the existing
+rejection message; native credentials are withheld from diagnostics. The initial
+toast says "Resource connection requested" rather than claiming device readiness.
+
 ## Active increment: automatic hardware updates and composite USB
 
 - [x] Refresh local resources on hardware changes and notify paired devices.

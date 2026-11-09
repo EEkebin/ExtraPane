@@ -115,10 +115,14 @@ struct Service::State {
         if(l.deferred_streams.contains(message.id)){const auto bytes=rpc::header_size+message.payload.size();need(l.deferred.size()<4096&&bytes<=1024*1024-l.deferred_bytes,"Pending media exceeds its budget");l.deferred.push_back(message);l.deferred_bytes+=bytes;return;}
         l.bridge->receive(message);
     }
-    void native_failure(Context context,const std::string& reason){
+    void native_failure(Context context,const std::string& input){
+        auto reason=input;std::string lower=reason;for(auto& c:lower)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        for(const auto* secret:{"epct1:","access_code","session_ticket","password","secret","token="})if(lower.find(secret)!=lower.npos){reason="Native component failed (credential-bearing diagnostic withheld)";break;}
+        if(reason.size()>768)reason.resize(768);for(auto& c:reason)if(static_cast<unsigned char>(c)<32||c==127)c=' ';
+        if(reason.empty())reason="Native resource failed";
         auto linkIt=links.find(context.connection);if(linkIt==links.end())return;auto& l=*linkIt->second;auto found=l.resources.find(context.grant);if(found==l.resources.end())return;found->second.failure=reason;
         const bool announced=found->second.native_ready;
-        if(context.incoming){try{auto response=l.dispatcher->handle({rpc::Operation::close,context.grant,{}},now());if(announced)l.connection->queue(response);}catch(...){stop_resource(l,context.grant);l.connection->cancel();}}
+        if(context.incoming){try{if(announced)l.connection->queue({rpc::Operation::rejected,context.request,rpc::detail(reason)});auto response=l.dispatcher->handle({rpc::Operation::close,context.grant,{}},now());if(announced)l.connection->queue(response);}catch(...){stop_resource(l,context.grant);l.connection->cancel();}}
         else {stop_resource(l,context.grant);try{l.connection->queue({rpc::Operation::close,context.grant,{}});}catch(...){l.connection->cancel();}}
         retry_done(context.connection,context.request,false);event({EventKind::error,context,0,reason});
     }
@@ -525,7 +529,7 @@ struct Service::State {
         if(hooks.poll&&!native_poll_pending&&Clock::now()-last_poll>=std::chrono::milliseconds(50)){
             last_poll=Clock::now();native_poll_pending=true;
             try{native_post([this]{std::vector<Context> ended;std::string failure;try{ended=hooks.poll();}catch(const std::exception& e){failure=e.what();}catch(...){failure="Native resource status failed";}
-                complete([this,ended=std::move(ended),failure=std::move(failure)]{native_poll_pending=false;if(!failure.empty()){event({EventKind::error,{},0,failure});return;}for(const auto& context:ended){auto f=links.find(context.connection);if(f==links.end())continue;auto& l=*f->second;if(!context.grant){end_pending(l,context.request,"Native preparation ended");continue;}if(!l.resources.contains(context.grant))continue;if(!context.failure_detail.empty())event({EventKind::error,context,0,context.failure_detail});if(l.incoming)l.connection->queue(l.dispatcher->handle({rpc::Operation::close,context.grant,{}},now()));else{stop_resource(l,context.grant);l.connection->queue({rpc::Operation::close,context.grant,{}});}}});
+                complete([this,ended=std::move(ended),failure=std::move(failure)]{native_poll_pending=false;if(!failure.empty()){event({EventKind::error,{},0,failure});return;}for(const auto& context:ended){auto f=links.find(context.connection);if(f==links.end())continue;auto& l=*f->second;if(!context.grant){end_pending(l,context.request,"Native preparation ended");continue;}if(!l.resources.contains(context.grant))continue;if(!context.failure_detail.empty()){native_failure(context,context.failure_detail);continue;}if(l.incoming)l.connection->queue(l.dispatcher->handle({rpc::Operation::close,context.grant,{}},now()));else{stop_resource(l,context.grant);l.connection->queue({rpc::Operation::close,context.grant,{}});}}});
             });}catch(const std::exception& e){native_poll_pending=false;event({EventKind::error,{},0,e.what()});}
         }
         if(progress)std::this_thread::yield();else {std::unique_lock lock(mutex);wake.wait_for(lock,std::chrono::milliseconds(2),[this]{return ending||!commands.empty();});}

@@ -35,11 +35,13 @@ int length=sizeof(address);
 socklen_t length=sizeof(address);
 #endif
 check(!getsockname(dest,reinterpret_cast<sockaddr*>(&address),&length),"fake destination port");nonblock(dest);
+std::atomic<bool> failNative=false;Service::Context nativeContext;
 std::atomic<unsigned> starts=0,stops=0;Socket source=invalid;
 Service::Hooks hostHooks;
 hostHooks.prepare=[](const auto& context,auto&){check(context.incoming,"provider direction");return Service::Endpoint{};};
-hostHooks.ready=[&](const auto&,const auto&,auto port){source=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);auto a=addr(port);check(!::connect(source,reinterpret_cast<sockaddr*>(&a),sizeof(a)),"fake source connect");const char payload[]="authorized native bytes";check(send(source,payload,sizeof(payload),0)==sizeof(payload),"fake source send");++starts;};
+hostHooks.ready=[&](const auto& context,const auto&,auto port){nativeContext=context;source=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);auto a=addr(port);check(!::connect(source,reinterpret_cast<sockaddr*>(&a),sizeof(a)),"fake source connect");const char payload[]="authorized native bytes";check(send(source,payload,sizeof(payload),0)==sizeof(payload),"fake source send");++starts;};
 hostHooks.stopped=[&](const auto&){if(source!=invalid){close_socket(source);source=invalid;}++stops;};
+hostHooks.poll=[&]{if(failNative.exchange(false)){auto context=nativeContext;context.failure_detail="USB protocol version mismatch\nEPCT1:secret ACCESS_CODE 123456";return std::vector<Service::Context>{context};}return std::vector<Service::Context>{};};
 Service::Hooks clientHooks;
 clientHooks.prepare=[&](const auto& context,auto&){check(!context.incoming,"consumer direction");return Service::Endpoint{Service::Role::connect_local,ntohs(address.sin_port)};};
 clientHooks.ready=[](const auto&,const auto&,auto){};
@@ -76,6 +78,7 @@ failed=host.rebind("0.0.0.0",port);check(!failed.error.empty()&&failed.port==por
 check(stops==0&&starts==1,"Listener rebind stopped active resource");
 check(send(source,"live",4,0)==4,"Send after rebind failed");actual.clear();
 while(actual.size()<4){char buffer[4];int n=recv(received,buffer,4,0);if(n>0)actual.append(buffer,n);waiting();}check(actual=="live","Rebind lost native media delivery");
+failNative=true;bool failureSeen=false;while(!failureSeen){for(const auto& e:client.poll())if(e.kind==Service::EventKind::error&&e.detail=="Native component failed (credential-bearing diagnostic withheld)")failureSeen=true;waiting();}
 client.close(id,grant);while(stops==0){client.poll();host.poll();waiting();}check(starts==1,"one approved adapter start");close_socket(received);
 std::this_thread::sleep_for(50ms);client.poll();bool disconnected=false;
 id=connect({});check(host.pairing_code()==originalCode,"pairing code changed on reconnect");

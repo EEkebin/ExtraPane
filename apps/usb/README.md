@@ -89,9 +89,11 @@ helper requires a local ExtraPane pipe name, matching pipe-server PID and user
 SID, and opens it with identification-only impersonation permissions. The parent
 is watched throughout the session. Device IDs and codes never appear in argv.
 
-The EPUS v1 negotiation is fixed binary: 8-byte request/grant/ready controls,
-64-byte source offer (nonce, VID/PID, selected bus), and 32-byte clean-eject
-receipt. The EPUT v1 tunnel uses 24-byte headers, 64 KiB maximum chunks and 256 KiB
+The EPUS v4 negotiation is fixed binary: 8-byte request/grant/ready controls,
+64-byte source offer (device kind, nonce, VID/PID, selected bus), and 32-byte clean-eject
+receipt. The unified host recognizes the same storage/generic greetings as the
+dedicated USB receiver; legacy and unknown greetings are rejected before export.
+The EPUT v3 tunnel uses 24-byte headers, 64 KiB maximum chunks and 256 KiB
 bounded credit queues. A single worker owns all TLS reads and writes. The exporter
 side gates the initial raw USB/IP import to the exact selected bus; device-list
 requests and imports of other devices are rejected before local forwarding.

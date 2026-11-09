@@ -34,8 +34,14 @@ int main(){try{
     const auto camera=extrapane::camera_wire::encode({1280,720,30,{1,17}});route(camera,ResourceKind::camera);
     const auto microphone=extrapane::microphone_wire::encode_offer({2,91});route(microphone,ResourceKind::microphone);
     const auto speaker=extrapane::speaker_wire::encode_offer({3,92});route(speaker,ResourceKind::speaker);
-    const std::array<std::uint8_t,8> usb{'E','P','U','S',3,0,0,0};route(usb,ResourceKind::usb);
-    {auto legacy=usb;legacy[4]=1;rejects([&]{extrapane::classify_session_prefix(legacy);});}
+    const auto usb=extrapane::usb::wire::greeting(0,extrapane::usb::wire::DeviceKind::storage);
+    for(const auto kind:{extrapane::usb::wire::DeviceKind::storage,extrapane::usb::wire::DeviceKind::generic}){
+        const auto hello=extrapane::usb::wire::greeting(0,kind);route(hello,ResourceKind::usb);
+        for(auto version:{1,2,3,5}){auto invalid=hello;invalid[4]=version;rejects([&]{extrapane::classify_session_prefix(invalid);});}
+        for(auto unsupported:{0,3,255}){auto invalid=hello;invalid[6]=unsupported;rejects([&]{extrapane::classify_session_prefix(invalid);});}
+        auto reserved=hello;reserved[7]=1;rejects([&]{extrapane::classify_session_prefix(reserved);});
+        const auto reply=extrapane::usb::wire::greeting(2,kind);rejects([&]{extrapane::classify_session_prefix(reply);});
+    }
     for(const auto* original:std::array<const std::uint8_t*,5>{display.data(),camera.data(),microphone.data(),usb.data(),speaker.data()}){
         std::array<std::uint8_t,8> bytes{};std::copy_n(original,8,bytes.begin());++bytes[4];rejects([&]{extrapane::classify_session_prefix(bytes);});
         rejects([&]{extrapane::classify_session_prefix(std::span(bytes).first(7));});

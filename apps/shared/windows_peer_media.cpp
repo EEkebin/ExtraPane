@@ -1,5 +1,6 @@
 #include "windows_peer_media.hpp"
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <stdexcept>
 #include <thread>
@@ -24,8 +25,13 @@ bool safe_device(const std::string& value){return !value.empty()&&value.size()<=
 std::string executable(Kind kind){switch(kind){case Kind::display_destination:return "dm-view.exe";case Kind::camera:return "ExtraPane.Resources.exe";case Kind::microphone:return "ExtraPane.Microphone.exe";case Kind::speaker:return "ExtraPane.Speakers.exe";case Kind::usb:return "ExtraPane.Usb.exe";default:fail("Unsupported native resource");}}
 void append_lines(std::string& pending,const std::string& data){if(data.size()>16384 || pending.size()+data.size()>16384)fail("Native status exceeded its limit");pending+=data;}
 std::vector<std::string> lines(std::string& pending){std::vector<std::string> out;for(auto n=pending.find('\n');n!=pending.npos;n=pending.find('\n')){auto line=pending.substr(0,n);if(!line.empty()&&line.back()=='\r')line.pop_back();out.push_back(std::move(line));pending.erase(0,n+1);}return out;}
+std::string diagnostic(std::string value){
+    std::string lower=value;std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+    for(const auto* secret:{"epct1:","access_code","session_ticket","password","secret","token="})if(lower.find(secret)!=lower.npos)return "Native component failed (credential-bearing diagnostic withheld)";
+    if(value.size()>768)value.resize(768);for(auto& c:value)if(static_cast<unsigned char>(c)<32||c==127)c=' ';return value;
+}
 std::string wait_line(Process& process,std::string& pending,const std::function<bool(const std::string&)>& match,std::chrono::steady_clock::time_point deadline){
-    for(;;){append_lines(pending,process.drain());while(pending.find('\n')!=pending.npos){const auto at=pending.find('\n');auto line=pending.substr(0,at);pending.erase(0,at+1);if(!line.empty()&&line.back()=='\r')line.pop_back();if(match(line))return line;if(line.starts_with("error:"))fail("Native component preparation failed");}
+    for(;;){append_lines(pending,process.drain());while(pending.find('\n')!=pending.npos){const auto at=pending.find('\n');auto line=pending.substr(0,at);pending.erase(0,at+1);if(!line.empty()&&line.back()=='\r')line.pop_back();if(match(line))return line;if(line.starts_with("error:"))throw std::runtime_error(diagnostic(line));}
         if(!process.running())fail("Native component exited before readiness");if(std::chrono::steady_clock::now()>=deadline)fail("Native component preparation timed out");std::this_thread::sleep_for(std::chrono::milliseconds(10));}
 }
 #ifdef _WIN32
@@ -106,23 +112,23 @@ void WindowsPeerMediaAdapter::stop_all()noexcept{while(!impl_->rows.empty())stop
 std::vector<Event> WindowsPeerMediaAdapter::poll(){
     std::vector<Event> result;std::vector<std::uint64_t> ended;
     for(auto& [key,source]:impl_->shared){
-        bool failed=!source.process->running();try{append_lines(source.pending,source.process->drain());for(const auto& line:lines(source.pending)){
-            if(line.starts_with("error:")||line.starts_with("BROKER_ERROR"))failed=true;
+        std::string reason;bool failed=!source.process->running();try{append_lines(source.pending,source.process->drain());for(const auto& line:lines(source.pending)){
+            if(line.starts_with("error:")||line.starts_with("BROKER_ERROR")){failed=true;reason=diagnostic(line);}
             const auto first=line.find('\t'),second=line.find('\t',first==line.npos?line.size():first+1);if(first==line.npos||second==line.npos)continue;
-            if(line.starts_with("error:")||line.starts_with("BROKER_ERROR"))failed=true;
+            if(line.starts_with("error:")||line.starts_with("BROKER_ERROR")){failed=true;reason=diagnostic(line);}
             const auto idText=line.substr(first+1,second-first-1);for(auto& [id,row]:impl_->rows)if(row.shared==key&&std::to_string(id)==idText){const auto event=line.substr(second+1,line.find('\t',second+1)-second-1);const bool active=line.starts_with("RESOURCE_EVENT\t")&&event=="STARTED";const bool stopped=line.starts_with("RESOURCE_EVENT\t")&&(event=="ERROR"||event=="STOPPED");if(active){row.active=true;result.push_back({id,true,false,"Connected"});}if(stopped){ended.push_back(id);result.push_back({id,false,true,"Native resource ended"});}}
         }}catch(...){failed=true;}
-        if(failed)for(const auto& [id,row]:impl_->rows)if(row.shared==key){ended.push_back(id);result.push_back({id,false,true,"Native source ended"});}
+        if(failed)for(const auto& [id,row]:impl_->rows)if(row.shared==key){ended.push_back(id);result.push_back({id,false,true,reason.empty()?"Native source ended":reason});}
     }
-    for(auto& [id,row]:impl_->rows)if(row.process){bool failed=!row.process->running();try{append_lines(row.pending,row.process->drain());for(const auto& line:lines(row.pending)){
+    for(auto& [id,row]:impl_->rows)if(row.process){std::string reason;bool failed=!row.process->running();try{append_lines(row.pending,row.process->drain());for(const auto& line:lines(row.pending)){
         if(line.starts_with("VIDEO_RECEIVING")||line.starts_with("VIDEO_STARTED")||line.starts_with("SPEAKER_STARTED")||line.starts_with("USB_STARTED")){row.active=true;result.push_back({id,true,false,"Connected"});}
-        if(line.starts_with("error:")||line.starts_with("USB_RETURN_FAILED")){failed=true;}
-    }}catch(...){failed=true;}if(failed){ended.push_back(id);result.push_back({id,false,true,"Native resource ended"});}}
+        if(line.starts_with("error:")||line.starts_with("USB_RETURN_FAILED")){failed=true;reason=diagnostic(line);}
+    }}catch(...){failed=true;}if(failed){ended.push_back(id);result.push_back({id,false,true,reason.empty()?"Native resource ended":reason});}}
     for(auto id:ended)stop(id);return result;
 }
 struct WindowsPeerReceiver::Impl {
     Factory factory;std::unique_ptr<Process> host;std::map<std::uint64_t,std::unique_ptr<Process>> brokers;
-    std::uint16_t port=0;std::uint64_t nextLease=0;std::string hostPending,initialCode;
+    std::uint16_t port=0;std::uint64_t nextLease=0;std::string hostPending,initialCode;std::map<std::uint64_t,std::string> failures;
     explicit Impl(Factory f):factory(std::move(f)){if(!factory)fail("Missing process factory");}
 };
 WindowsPeerReceiver::WindowsPeerReceiver(Factory f):impl_(std::make_unique<Impl>(std::move(f))){}
@@ -161,11 +167,12 @@ Admission WindowsPeerReceiver::issue(Kind kind,bool input,std::chrono::steady_cl
 }
 void WindowsPeerReceiver::release(std::uint64_t lease)noexcept{const auto found=impl_->brokers.find(lease);if(found==impl_->brokers.end())return;found->second->stop();impl_->brokers.erase(found);}
 std::vector<std::uint64_t> WindowsPeerReceiver::poll(){
-    std::vector<std::uint64_t> lost;bool hostLost=!running();
+    impl_->failures.clear();std::vector<std::uint64_t> lost;bool hostLost=!running();
     if(impl_->host){auto status=impl_->host->drain();wipe(status);}
-    for(auto& [id,broker]:impl_->brokers){auto status=broker->drain();const bool failed=hostLost||!broker->running()||status.find("error:")!=status.npos;wipe(status);if(failed)lost.push_back(id);}
+    for(auto& [id,broker]:impl_->brokers){auto status=broker->drain();const bool failed=hostLost||!broker->running()||status.find("error:")!=status.npos;if(failed){std::string reason="Native receiving component stopped unexpectedly";const auto error=status.find("error:");if(error!=status.npos)reason=diagnostic(status.substr(error,status.find('\n',error)-error));impl_->failures[id]=reason;lost.push_back(id);}wipe(status);}
     for(auto id:lost)release(id);return lost;
 }
+std::string WindowsPeerReceiver::failure(std::uint64_t lease)const{const auto found=impl_->failures.find(lease);return found==impl_->failures.end()?std::string{}:found->second;}
 bool WindowsPeerReceiver::running()const{return impl_->host&&impl_->host->running();}
 std::uint16_t WindowsPeerReceiver::port()const{return impl_->port;}
 void WindowsPeerReceiver::stop()noexcept{for(auto& [id,broker]:impl_->brokers)broker->stop();impl_->brokers.clear();if(impl_->host)impl_->host->stop();impl_->host.reset();wipe(impl_->hostPending);wipe(impl_->initialCode);impl_->port=0;}
