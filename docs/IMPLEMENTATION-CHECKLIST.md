@@ -1,5 +1,19 @@
 # Resource-sharing implementation checklist
 
+## Active increment: pairing dialog labels
+
+- [x] Show the selected device name in Pair with NAME; smaller address/port below.
+- [x] Add Pairing Code label and XXXXXX placeholder across desktop and Android.
+- [x] Preserve frozen-target validation, cancellation, remembered-peer and gateway
+  authentication behavior; render discovered names as plain text.
+- [ ] Verify layout and build/deliver matching Windows and Android packages.
+
+Qt offscreen checks pass, including named/unknown devices, plain-text rendering,
+frozen endpoints, validation and cancellation. Focused and invalid-code screenshots
+reviewed; XXXXXX stays inside the field without a floating label/border overlap.
+Android's 14 host checks and integrated compile/lint passed. Native macOS source
+updated; native compilation remains for CI. No physical pairing tests were run.
+
 ## Active increment: local device card and resource restrictions
 
 - [x] Put This device first with a collapsed hostname/pairing-code card.

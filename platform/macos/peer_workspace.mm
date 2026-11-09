@@ -142,7 +142,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
 -(void)renderNearby;
 -(void)observeRoutes:(const std::vector<Route>&)routes;
 -(void)connectAddress:(std::string)address port:(unsigned)port expected:(DeviceId)identity code:(std::string)code open:(BOOL)open;
--(BOOL)requestPairingCode:(NSString*)target result:(std::string&)code;
+-(BOOL)requestPairingCode:(NSString*)target subtitle:(NSString*)subtitle result:(std::string&)code;
 -(void)pairVia:(Service::Token)gateway owner:(DeviceId)owner name:(NSString*)name;
 -(void)error:(NSString*)message;
 -(void)showWindow:(id)sender;
@@ -308,16 +308,18 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         auto validRoute=[&](){if(local.empty())return true;const auto connected=dm::mac::localAddresses();return std::any_of(connected.begin(),connected.end(),[&](const auto& item){return item.address==local;});};
         if(!validRoute()){invalidField(self.outboundRoute);[self error:@"Choose an available local network interface."];return;}
         if(!open&&!remembered){
-            if(![self requestPairingCode:text(address) result:code])return;
+            NSString* name=@"device";for(const auto& route:nearbyRoutes)if((valid_id(identity)&&route.announcement.device==identity)||(!valid_id(identity)&&route.observed_ipv4==normalized(address)&&route.announcement.port==port))if(!route.announcement.name.empty()){name=text(route.announcement.name);break;}
+            if(![self requestPairingCode:name subtitle:text(address+":"+std::to_string(port)) result:code])return;
         }
         if(!validRoute()){code.clear();[self error:@"The selected network interface is no longer available."];return;}
         const auto connection=service->connect({address,static_cast<std::uint16_t>(port),local,identity,code,bool(open)});code.clear();connectingLinks.insert(connection);destinations[connection]={normalizedAddress(address),port};[self updateManualConnect];self.status.stringValue=@"";self.status.textColor=NSColor.labelColor;
     }catch(const std::exception& e){[self error:text(e.what())];}
 }
--(BOOL)requestPairingCode:(NSString*)target result:(std::string&)code{
-    auto* alert=[NSAlert new];alert.messageText=[NSString stringWithFormat:@"Pair with %@",target];alert.informativeText=@"Enter the six-digit code shown on that device. A gateway cannot supply this code on its behalf.";
-    auto* input=[NSSecureTextField textFieldWithString:@""];input.frame=NSMakeRect(0,0,280,28);input.placeholderString=@"Six-digit pairing code";alert.accessoryView=input;[alert addButtonWithTitle:@"Pair"];[alert addButtonWithTitle:@"Cancel"];[alert.window setInitialFirstResponder:input];
-    for(;;){const auto response=[alert runModal];code=str(input.stringValue);input.stringValue=@"";if(response!=NSAlertFirstButtonReturn){code.clear();return NO;}if(code.size()==6&&std::all_of(code.begin(),code.end(),[](char c){return c>='0'&&c<='9';}))return YES;code.clear();alert.informativeText=@"Enter exactly six digits from the other device.";}
+-(BOOL)requestPairingCode:(NSString*)target subtitle:(NSString*)subtitle result:(std::string&)code{
+    auto* alert=[NSAlert new];alert.messageText=[NSString stringWithFormat:@"Pair with %@",target.length?target:@"device"];alert.informativeText=subtitle?:@"";
+    auto* content=stack();content.frame=NSMakeRect(0,0,300,78);[content addArrangedSubview:label(@"Pairing Code",13)];
+    auto* input=[NSSecureTextField textFieldWithString:@""];[input.widthAnchor constraintEqualToConstant:300].active=YES;input.placeholderString=@"XXXXXX";[content addArrangedSubview:input];alert.accessoryView=content;[alert addButtonWithTitle:@"Pair"];[alert addButtonWithTitle:@"Cancel"];[alert.window setInitialFirstResponder:input];
+    for(;;){const auto response=[alert runModal];code=str(input.stringValue);input.stringValue=@"";if(response!=NSAlertFirstButtonReturn){code.clear();return NO;}if(code.size()==6&&std::all_of(code.begin(),code.end(),[](char c){return c>='0'&&c<='9';}))return YES;code.clear();alert.informativeText=[NSString stringWithFormat:@"%@\nEnter exactly six digits.",subtitle?:@""];}
 }
 -(void)pairVia:(Service::Token)gateway owner:(DeviceId)owner name:(NSString*)name{
     try{
@@ -326,7 +328,8 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         for(const auto& [token,identity]:endpointPairing)if(identity==owner)return;
         const auto removed=service->pending_forgets();if(std::any_of(removed.begin(),removed.end(),[&](const auto& item){return item.id==owner;}))throw std::runtime_error("Finish or clear the pending pairing removal before pairing this device.");
         const auto saved=service->remembered();const bool remembered=std::any_of(saved.begin(),saved.end(),[&](const auto& item){return item.id==owner;});std::string code;
-        if(!remembered&&![self requestPairingCode:name result:code])return;
+        NSString* gatewayName=@"gateway";const auto gatewayIdentity=links.at(gateway).context.peer;for(const auto& item:saved)if(item.id==gatewayIdentity&&!item.name.empty())gatewayName=text(item.name);for(const auto& item:catalogs[gateway])if(item.device==gatewayIdentity&&!item.name.empty())gatewayName=text(item.name);std::string route;auto destination=destinations.find(gateway);if(destination!=destinations.end())route=destination->second.address+":"+std::to_string(destination->second.port);else for(const auto& item:saved)if(item.id==gatewayIdentity&&!item.address_hint.empty())route=item.address_hint+":"+std::to_string(item.port_hint);NSString* subtitle=[NSString stringWithFormat:@"Via %@%@",gatewayName,route.empty()?@"":[NSString stringWithFormat:@" (%@)",text(route)]];
+        if(!remembered&&![self requestPairingCode:name subtitle:subtitle result:code])return;
         const auto token=service->connect_via(gateway,owner,code);code.clear();connectingLinks.insert(token);endpointPairing.emplace(token,owner);[self renderCatalogs];
     }catch(const std::exception& e){[self error:text(e.what())];}
 }
@@ -382,7 +385,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
                 const auto owner=catalog.device;const auto saved=service->remembered();const bool known=std::any_of(saved.begin(),saved.end(),[&](const auto& item){return item.id==owner;});const bool pending=std::any_of(endpointPairing.begin(),endpointPairing.end(),[&](const auto& item){return item.second==owner;});
                 const bool ready=std::any_of(links.begin(),links.end(),[&](const auto& item){return !item.second.context.incoming&&item.second.verified&&item.second.context.peer==owner;});
                 if(ready)[remote addArrangedSubview:label(@"Use this device's resource section below.")];
-                else{NSString* target=text(catalog.name.empty()?hex(owner).substr(0,12):catalog.name);auto* pair=button(pending?@"Verifying device...":known?@"View resources":@"Pair device",^{[weak pairVia:connectionId owner:owner name:target];});pair.enabled=event.verified&&!pending;[remote addArrangedSubview:pair];}
+                else{NSString* target=text(catalog.name.empty()?std::string("device"):catalog.name);auto* pair=button(pending?@"Verifying device...":known?@"View resources":@"Pair device",^{[weak pairVia:connectionId owner:owner name:target];});pair.enabled=event.verified&&!pending;[remote addArrangedSubview:pair];}
                 [body addArrangedSubview:remote];continue;
             }
             [body addArrangedSubview:label(text(catalog.name),16)];std::vector<Offer> monitors;for(const auto& offer:catalog.offers)if(offer.kind==Kind::display_destination||offer.kind==Kind::existing_screen)monitors.push_back(offer);

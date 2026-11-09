@@ -292,12 +292,12 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
                 String destination=host.getText().toString().trim();if(!destination.equalsIgnoreCase("localhost")&&!destination.matches("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}"))throw new IllegalArgumentException("Enter an IPv4 address");
                 if(endpoint(destination,""+number).isEmpty())throw new IllegalArgumentException("Enter a valid IPv4 address");
                 String local=interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString();if(destination.equalsIgnoreCase("localhost")||destination.startsWith("127."))local="127.0.0.1";
-                if(connectedEndpoint(destination,""+number))return;dialog.dismiss();preparePairing(expected,destination,number,local,!requireCode&&open.isChecked());
+                if(connectedEndpoint(destination,""+number))return;dialog.dismiss();preparePairing(expected,destination,number,local,!requireCode&&open.isChecked(),"");
             }catch(Exception error){status(error.getMessage()==null?"Device connection failed":error.getMessage());}
         }));dialog.show();
         TextView already=note("This device is already listed. Manage its resources in Resources.");form.addView(already);Runnable updateConnect=()->{boolean connected=connectedEndpoint(host.getText().toString(),remotePort.getText().toString());dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setVisibility(connected?View.GONE:View.VISIBLE);already.setVisibility(connected?View.VISIBLE:View.GONE);};android.text.TextWatcher changes=new android.text.TextWatcher(){public void beforeTextChanged(CharSequence text,int start,int count,int after){}public void onTextChanged(CharSequence text,int start,int before,int count){updateConnect.run();}public void afterTextChanged(android.text.Editable text){}};host.addTextChangedListener(changes);remotePort.addTextChangedListener(changes);updateConnectDialog=updateConnect;dialog.setOnDismissListener(ignored->{if(updateConnectDialog==updateConnect)updateConnectDialog=null;});updateConnect.run();
     }
-    private void preparePairing(String expected,String address,int port,String local,boolean open) throws Exception {
+    private void preparePairing(String expected,String address,int port,String local,boolean open,String displayName) throws Exception {
         if(pairingDialog!=null||connectedEndpoint(address,""+port))return;
         for(String[] pending:peers.pendingForgets())if(pending.length>=4&&((!expected.isEmpty()&&expected.equals(pending[0]))||endpoint(address,""+port).equals(endpoint(pending[2],pending[3]))))throw new IllegalStateException("Pairing removal is pending for this device. Finish or dismiss it before pairing again.");
         String identity=expected;boolean remembered=false;
@@ -305,18 +305,18 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         if(!remembered&&!expected.isEmpty())for(String[] saved:peers.remembered())if(saved.length>=4&&endpoint(address,""+port).equals(endpoint(saved[2],saved[3])))throw new IllegalStateException("This address belongs to a saved device with a different identity. Check the address or remove its old pairing first.");
         PairingAttempt attempt=new PairingAttempt(address,port,local,identity,remembered,open);
         if(!attempt.codeRequired){submitPairing(attempt,"");return;}
-        showPairingPrompt(attempt,address+":"+port);
+        showPairingPrompt(attempt,displayName,address+":"+port);
     }
-    private void showPairingPrompt(PairingAttempt attempt,String description) {
+    private void showPairingPrompt(PairingAttempt attempt,String displayName,String description) {
         if(pairingDialog!=null)return;
         LinearLayout form=column();form.setPadding(dp(24),dp(12),dp(24),dp(12));form.setBackgroundColor(BG);
         form.addView(note(description));
-        EditText secret=deviceField("Six-digit pairing code","",true);
+        EditText secret=deviceField("XXXXXX","",true);secret.setContentDescription("Pairing Code");
         secret.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         secret.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
         secret.setSaveEnabled(false);
-        form.addView(note("Enter the code shown on the other device."));form.addView(secret,full());
-        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Pairing code").setView(form).setPositiveButton("Connect",null).setNegativeButton("Cancel",null).create();
+        form.addView(label("Pairing Code",16));form.addView(secret,full());if(attempt.gateway>0)form.addView(note("Enter the code shown on the device you are pairing with, not the forwarding device."));
+        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle(displayName==null||displayName.isBlank()?"Pair with device":"Pair with "+displayName).setView(form).setPositiveButton("Pair",null).setNegativeButton("Cancel",null).create();
         pairingDialog=dialog;
         dialog.setOnDismissListener(ignored->{attempt.cancel();secret.setText("");if(pairingDialog==dialog)pairingDialog=null;});
         dialog.setOnShowListener(ignored->dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
@@ -350,9 +350,14 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private void renderNearby(){if(peers==null||nearbyRows==null)return;safely(()->{
         Set<String> known=new HashSet<>(connectedPeers.values());known.addAll(pendingPeers.values());for(String[] device:peers.remembered())if(device.length>0)known.add(device[0]);for(String[] device:peers.pendingForgets())if(device.length>0)known.add(device[0]);
         nearbyRows.removeAllViews();for(NearbyPeers.Hint hint:nearby.visible(peers.identity(),known,android.os.SystemClock.elapsedRealtime())){
-            LinearLayout row=column();row.setPadding(dp(14),dp(8),dp(14),dp(8));row.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams params=full();params.bottomMargin=dp(12);nearbyRows.addView(row,params);LinearLayout identityRow=new LinearLayout(this);identityRow.setGravity(Gravity.CENTER_VERTICAL);ImageView deviceIcon=new ImageView(this);deviceIcon.setImageDrawable(new LineIcon("Devices"));identityRow.addView(deviceIcon,new LinearLayout.LayoutParams(dp(32),dp(32)));TextView deviceName=label(hint.name(),18);deviceName.setPadding(dp(12),dp(8),0,dp(8));deviceName.setTypeface(null,Typeface.BOLD);identityRow.addView(deviceName,new LinearLayout.LayoutParams(0,-2,1));row.addView(identityRow,full());row.addView(note(hint.address()+":"+hint.port()));if(!hint.pairingRequired())row.addView(note("Pairing disabled ? identity will not be verified"));row.addView(button("Connect",()->safely(()->preparePairing(hint.id(),hint.address(),hint.port(),interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString(),!hint.pairingRequired()))));
+            LinearLayout row=column();row.setPadding(dp(14),dp(8),dp(14),dp(8));row.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams params=full();params.bottomMargin=dp(12);nearbyRows.addView(row,params);LinearLayout identityRow=new LinearLayout(this);identityRow.setGravity(Gravity.CENTER_VERTICAL);ImageView deviceIcon=new ImageView(this);deviceIcon.setImageDrawable(new LineIcon("Devices"));identityRow.addView(deviceIcon,new LinearLayout.LayoutParams(dp(32),dp(32)));TextView deviceName=label(hint.name(),18);deviceName.setPadding(dp(12),dp(8),0,dp(8));deviceName.setTypeface(null,Typeface.BOLD);identityRow.addView(deviceName,new LinearLayout.LayoutParams(0,-2,1));row.addView(identityRow,full());row.addView(note(hint.address()+":"+hint.port()));if(!hint.pairingRequired())row.addView(note("Pairing disabled ? identity will not be verified"));row.addView(button("Connect",()->safely(()->preparePairing(hint.id(),hint.address(),hint.port(),interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString(),!hint.pairingRequired(),hint.name()))));
         }
     });}
+    private String gatewayDescription(long gateway,String name){
+        String address=peerEndpoints.getOrDefault(gateway,"");
+        if(address.isEmpty()&&peers!=null)try{String identity=connectedPeers.get(gateway);for(String[] saved:peers.remembered())if(saved.length>=4&&saved[0].equals(identity)&&!saved[2].isBlank()) {address=endpoint(saved[2],saved[3]);break;}}catch(Exception ignored){}
+        return "Via "+name+(address.isEmpty()?"":" ("+address+")");
+    }
     private void renderEndpointDevices(){if(peers==null||endpointRows==null)return;safely(()->{
         endpointRows.removeAllViews();Set<String> known=new HashSet<>(connectedPeers.values());known.addAll(pendingPeers.values());known.add(peers.identity());
         for(String[] saved:peers.remembered())if(saved.length>0)known.add(saved[0]);for(String[] pending:peers.pendingForgets())if(pending.length>0)known.add(pending[0]);
@@ -362,7 +367,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
             final long gateway=route.getKey();final String identity=endpoint.getKey(),name=endpoint.getValue();final String gatewayName=peerName(connectedPeers.get(gateway));
             LinearLayout card=column();card.setPadding(dp(14),dp(8),dp(14),dp(8));card.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams spacing=full();spacing.bottomMargin=dp(12);endpointRows.addView(card,spacing);
             card.addView(label(name,18));card.addView(note("Via "+gatewayName+". Pair with this device so it can securely request this phone's resources."));
-            card.addView(button("Pair device",()->showPairingPrompt(PairingAttempt.via(gateway,identity),name+" via "+gatewayName+". Enter the code shown on "+name+", not the forwarding device.")));
+            card.addView(button("Pair device",()->showPairingPrompt(PairingAttempt.via(gateway,identity),name,gatewayDescription(gateway,gatewayName))));
         }
         endpointSection.setVisibility(endpointRows.getChildCount()>0?View.VISIBLE:View.GONE);
     });}

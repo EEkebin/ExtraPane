@@ -1,5 +1,15 @@
 # Decisions, assumptions, and evidence
 
+## Pairing dialog presentation (2026-11-08)
+
+Show Pair with NAME, followed by the selected address and port in smaller text,
+then a Pairing Code label and an XXXXXX input placeholder. Snapshot the discovered
+name with the selected endpoint; names remain display metadata, not identity proof.
+For manual addresses without a known name, use Pair with device. Gateway pairing
+names the actual end device and labels the route as Via the gateway, never claiming
+the gateway's address belongs to that end device. Authentication and validation
+rules are unchanged.
+
 ## Local device card and sharing restrictions (2026-11-08)
 
 Devices starts with This device, followed by a collapsed card whose header shows

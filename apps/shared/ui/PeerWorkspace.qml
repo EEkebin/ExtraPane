@@ -103,7 +103,8 @@ Item {
         const known=matches.length===1
         const route=outgoingNic.selectedAddress
         if(route&&!peers.networkAddresses.some(item=>item.address===route)){notification.text="Choose an available local network interface.";notification.open();return}
-        const snapshot={address:address.trim(),port:Number(targetPort),identity:known?matches[0].id:identity,route:route,open:known?false:openMode}
+        const discovered=peers.directory.devices.find(device=>identity?device.id===identity:device.address===normalized&&Number(device.port)===Number(targetPort))
+        const snapshot={name:known?matches[0].name:(discovered&&discovered.name?discovered.name:"device"),subtitle:address.trim()+":"+Number(targetPort),address:address.trim(),port:Number(targetPort),identity:known?matches[0].id:identity,route:route,open:known?false:openMode}
         if(known||snapshot.open){peers.connectDevice(snapshot.address,snapshot.port,"",snapshot.identity,snapshot.route,snapshot.open);return}
         pairingDialog.target=snapshot; pairingDialog.submitted=false; code.clear();code.invalid=false;pairingDialog.open()
     }
@@ -112,7 +113,9 @@ Item {
         const saved=peers.remembered.find(device=>device.id===identity)
         if(saved&&saved.pendingForget){notification.text="Finish or clear the pending pairing removal before pairing again.";notification.open();return}
         if(saved){peers.connectVia(String(connection),identity,"");return}
-        pairingDialog.target={gateway:String(connection),identity:identity,name:name}
+        const gateway=peers.devices.find(device=>String(device.connection)===String(connection))
+        const route=gateway&&gateway.address ? " ("+gateway.address+":"+gateway.port+")" : ""
+        pairingDialog.target={gateway:String(connection),identity:identity,name:name||"device",subtitle:"Via "+(gateway&&gateway.name?gateway.name:"gateway")+route}
         pairingDialog.submitted=false;code.clear();code.invalid=false;pairingDialog.open()
     }
     function gatewayDevices(resources) {
@@ -125,12 +128,15 @@ Item {
         id: pairingDialog; objectName: "peerPairingDialog"
         property var target: ({})
         property bool submitted: false
-        title: target.gateway ? "Pair with "+target.name : target.address ? "Pair with "+target.address : "Pair device"; modal: true; anchors.centerIn: parent
+        title: "Pair with "+(target.name||"device"); modal: true; anchors.centerIn: parent
         Material.theme: Material.Dark; Material.accent: "#80b8ff"
         padding: 24
         background: Rectangle { color: "#14243a"; radius: 16; border.color: "#48617e" }
         Overlay.modal: Rectangle { color: "#99050910" }
-        header: Label { text: pairingDialog.title; color: "#eef4ff"; font.pixelSize: 22; leftPadding: 24; rightPadding:24; topPadding: 22; bottomPadding: 14; elide: Text.ElideRight }
+        header: ColumnLayout { spacing:6
+            Label { objectName:"peerPairingTitle"; text:pairingDialog.title;textFormat:Text.PlainText;color:"#eef4ff";font.pixelSize:22;Layout.fillWidth:true;Layout.leftMargin:24;Layout.rightMargin:24;Layout.topMargin:22;elide:Text.ElideRight }
+            Label { objectName:"peerPairingSubtitle";text:pairingDialog.target.subtitle||"";textFormat:Text.PlainText;color:"#aabbd3";font.pixelSize:13;Layout.fillWidth:true;Layout.leftMargin:24;Layout.rightMargin:24;Layout.bottomMargin:14;elide:Text.ElideRight }
+        }
         width: Math.min(workspace.width-40,440); height: 320
         closePolicy: Popup.CloseOnEscape
         onOpened: code.forceActiveFocus()
@@ -147,9 +153,12 @@ Item {
         }
         contentItem: ColumnLayout {
             spacing: 14
-            Label { color: "#eef4ff"; text: "Enter the six-digit code shown on the other device."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-            Label { text: pairingDialog.target.gateway ? "Pair directly with this device through the gateway. Both devices can share resources." : pairingDialog.target.address ? pairingDialog.target.address+":"+pairingDialog.target.port : ""; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; Accessible.name: "Six-digit pairing code"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: pairingDialog.submit() }
+            Label { text:"Pairing Code";color:"#eef4ff";Layout.fillWidth:true }
+            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; Layout.preferredHeight:52; Accessible.name: "Pairing Code"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: pairingDialog.submit()
+                leftPadding:14;rightPadding:14;topPadding:10;bottomPadding:10
+                background:Rectangle { color:"#111f32";radius:6;border.width:code.activeFocus||code.invalid?2:1;border.color:code.invalid?"#ff6978":code.activeFocus?"#80b8ff":"#48617e" }
+                Text { text:"XXXXXX";visible:code.text.length===0;color:"#9eacc2";anchors.left:parent.left;anchors.leftMargin:14;anchors.verticalCenter:parent.verticalCenter;font:code.font }
+            }
             Label { text: "Enter exactly six digits."; color: "#ff6978"; visible: code.invalid }
             RowLayout { Layout.alignment: Qt.AlignRight
                 Action { objectName:"peerPairingCancel"; text:"Cancel"; onClicked:pairingDialog.close() }
