@@ -25,12 +25,13 @@ mean every device combination has been validated.
 - [x] Windows USB forwarding and bounded ownership return implementation.
 - [x] Surface orphaned-driver uninstall helper repaired; removal precheck passes.
 - [x] Unified Windows installer and portable package; Linux AppImage, Android APK, macOS Universal ZIP/DMG builds.
-- [x] Matching pre.106.1 Windows installers delivered to both desktops; Android APK installed and version verified.
+- [x] Matching 2026.11.09-pre.107.1 Windows installers delivered to both desktops; Android APK installed and version verified.
 
 ### Current validation and remaining work
 
 - [x] pre.106.1 hosted build passed Windows, Linux AppImage, Android and both macOS architectures; release publication was skipped.
-- [ ] Complete the active monitor-row/bilateral-Forget increment and deliver its matching packages; pre.106.1 does not contain these changes.
+- [x] Complete the monitor-row/bilateral-Forget increment and deliver matching pre.107.1 Windows/Android packages.
+- [ ] Finish hosted pre.107.1 cross-platform validation; physical input and upgrade acceptance remain pending.
 - [ ] Retest phone microphone while three Surface display streams are active; confirm application recording quality.
 - [ ] Verify successful Surface uninstall with the repaired helper (precheck alone is not a completed uninstall).
 - [ ] Make the microSD USB reader enumerate and transfer reliably on the receiving PC; verify eject, return, reconnect and uninstall.
@@ -1113,7 +1114,7 @@ This replaces the earlier opt-in offer power behavior.
 - [x] Authenticated bilateral Forget with durable offline pending state, idempotent
   acknowledgement retry and no catalog/media access using a revocation credential.
 - [x] Review upgrade/trust preservation and safe background availability retries.
-- [ ] Isolated regression checks, matching Windows/Android packages and delivery.
+- [x] Isolated regression checks, matching Windows/Android packages and delivery.
 - [ ] Physical verification remains pending; no capture/input test is implied by builds.
 
 Verification so far: Qt offscreen checks passed after final monitor numbering;
@@ -1158,3 +1159,29 @@ frames total. This proves native-resolution continuity, not 60 FPS normal-LAN
 performance. No input was injected. CPU camera encoding shares the repaired output
 logic but was not physically retested. Native host SHA256:
 `68710ee5876bd3486ae1c389c01e3dfca2401eff6a993d099de6d760a09928ce`.
+
+
+### Matching pre.107.1 delivery
+
+- [x] Source saved and pushed on `feat/device-discovery`: `a639811` (monitor rows,
+  bilateral Forget and UI) and `f75fd35` (verified encoder repair). Not merged.
+- [x] Matching **2026.11.09-pre.107.1** packages built from clean `f75fd35`.
+  Date follows GitHub run creation in UTC, rather than the local November 8 date.
+- [x] Windows installer copied to this Desktop and the Surface Desktop at
+  10.0.20.143. Both SHA256 values verified; Surface SSH identity matches its saved
+  key. No Windows installation performed. Exact version, clean metadata, driver
+  hashes, portable checksums, extracted UI smoke and native payload checks passed.
+  SHA256: `50d0339e2c56196ba7b57419e4c67b844a956c448f5512cb618784e479bcb586`.
+- [x] Android streamed replacement install succeeded; versionName and code10701
+  confirmed. Signature, both ABIs, release settings and alignment verified.
+  SHA256: `59d2e067685bd514d8f74c636b36be170e2d81122547f2236f3cdccd8294de83`.
+- [x] Approved Surface diagnostic processes, temporary scheduled tasks, staged
+  native binary and SSH forwarding cleaned up. No driver, firewall, layout or
+  saved-pairing mutation was part of that diagnostic.
+- [ ] Hosted run `42541586067` remains active for Windows/Linux/Android/macOS
+  architecture checks. Local package validation does not substitute for these.
+- [ ] User installer/update, bilateral Forget UI and existing-screen input checks.
+  Existing-screen video is live-verified; no input was injected during the test.
+- Limit: bilateral Forget needs a reachable remote listener. One-way forwarded
+  routes may leave remote removal pending even after local access is revoked;
+  explicit pending dismissal never claims remote acknowledgement.

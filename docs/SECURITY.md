@@ -13,7 +13,10 @@ Forget removes ordinary trust and access immediately. A durable revocation outbo
 asks the other device to remove the same pairing. Its separate authentication mode
 accepts only Forget and acknowledgement, never catalogs, resource requests or media.
 The retained key is bound to that old pairing; delayed requests cannot delete a
-new pairing. Offline/unsupported peers remain pending rather than falsely reported
+new pairing. Remote removal opens a separate authenticated connection, so the
+other device's listener must be reachable from the device initiating Forget. A
+one-way port forward or gateway route does not guarantee that reverse reachability.
+Offline/unsupported/unreachable peers remain pending rather than falsely reported
 as removed. A bounded receipt cache permits acknowledgement retries after a restart.
 
 The version-2 private trust store preserves version-1 pairs when migrated. Windows
