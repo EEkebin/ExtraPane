@@ -1,5 +1,28 @@
 # Decisions, assumptions, and evidence
 
+## Mutual peers, complete installation and gateway encryption (2026-11-08)
+
+Both paired devices can offer and use resources simultaneously. Provider and
+consumer describe a particular resource session, never a permanent device role.
+For a virtual monitor, the computer whose desktop is extended still needs the
+virtual-display integration; the other device presents that monitor.
+
+The user approved independent mutual pairing between the two end devices when
+access goes through a gateway. Pair once, then use supported resources in either
+direction, subject to reachability and permissions. A gateway's existing pairings
+do not substitute for this endpoint authentication. Resource setup, admission
+credentials, input and media must remain inside the authenticated endpoint tunnel.
+Older relay protocols must not be used as a silent fallback. The branch now
+implements this using nested TLS and independently authenticated endpoints, with
+isolated checks; physical gateway verification remains pending. The pre.109.1
+build does not provide this guarantee.
+
+Remove the Client only / Viewer only installer choice. One complete ExtraPane
+installation prepares the supported offering and receiving components. Preserve
+explicit development-driver certificate consent and platform capability checks;
+installation must not begin capture or export storage. This supersedes earlier
+installer role-choice decisions below.
+
 ## Pairings versus resource usage (2026-11-08)
 
 Devices presents saved pairings, not a separate connected/disconnected state for
@@ -510,10 +533,10 @@ LAN discovery is optional convenience. The using device initiates a connection t
 the offering device. Media may flow in either direction; the virtual-display driver
 always belongs on the computer whose desktop is extended.
 
-Gateway sharing is disabled by default. When explicitly enabled for a trusted
-visitor, the gateway delegates its authorized access to its paired devices without
-requiring that visitor to pair separately with each destination. This does not
-create permanent visitor/destination trust. Enforce one gateway hop, ExtraPane-only
+Gateway sharing is disabled by default. The original implementation delegated a
+gateway's access without separate endpoint pairing. The mutual-peer encryption
+decision above supersedes that trust model: the two end devices must authenticate
+each other independently of the gateway. Enforce one gateway hop, ExtraPane-only
 resource sessions, existing resource permissions, bounded queues and immediate
 revocation/stop. Gateway discovery alone is insufficient: relay traffic over an
 authorized session when private destinations cannot be reached directly.

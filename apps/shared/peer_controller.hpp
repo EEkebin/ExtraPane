@@ -57,6 +57,7 @@ public:
     Q_INVOKABLE void stopSharing();
     Q_INVOKABLE void connectDevice(QString address,unsigned port,QString code,QString expectedId={},QString localAddress={},bool openMode=false);
     Q_INVOKABLE void disconnectDevice(QString connection);
+    Q_INVOKABLE void connectVia(QString gatewayConnection,QString endpoint,QString code={});
     Q_INVOKABLE void forgetDevice(QString identity);
     Q_INVOKABLE void dismissPendingForget(QString identity);
     Q_INVOKABLE QString useResource(QString connection,QString owner,QString resource,bool input=false,unsigned width=0,unsigned height=0,unsigned refresh=0);

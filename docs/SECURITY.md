@@ -13,9 +13,11 @@ Forget removes ordinary trust and access immediately. A durable revocation outbo
 asks the other device to remove the same pairing. Its separate authentication mode
 accepts only Forget and acknowledgement, never catalogs, resource requests or media.
 The retained key is bound to that old pairing; delayed requests cannot delete a
-new pairing. Remote removal opens a separate authenticated connection, so the
-other device's listener must be reachable from the device initiating Forget. A
-one-way port forward or gateway route does not guarantee that reverse reachability.
+new pairing. Remote removal opens a separate authenticated connection. Direct
+removal needs a reachable listener; the new endpoint tunnel can carry the dedicated
+revocation-only exchange through an available paired gateway. It cannot restore
+ordinary access while removal is pending. A missing route or one-way port forward
+without a usable gateway still prevents remote acknowledgement.
 Offline/unsupported/unreachable peers remain pending rather than falsely reported
 as removed. A bounded receipt cache permits acknowledgement retries after a restart.
 
@@ -34,21 +36,39 @@ TLS-exporter-bound SPAKE2 exchange. Resource control and tunneled media then tra
 inside TLS 1.3. Open/unpaired mode encrypts traffic but does not authenticate the
 other endpoint, so it does not protect against active impersonation.
 
-Current gateway mode must not be described as gateway-blind end-to-end encryption.
+Gateway mode through pre.109.1 must not be described as gateway-blind end-to-end encryption.
 Although native media normally retains its own encrypted stream, the gateway can
 read the native admission credential carried in Open/Granted RPC messages. That
 secret allows an actively malicious gateway to impersonate the media endpoints.
 See `core/peers/service.cpp` relay handling, `core/peers/rpc.cpp` credential encoding
 and `core/access/access.cpp` native credential authentication.
 
-The proposed replacement authenticates the visitor directly to the resource owner
-through an opaque tunnel. Resource setup, native credentials, media and input must
-remain within that endpoint-authenticated tunnel; relay metadata must not contain
-those secrets. Both endpoints must negotiate support, with no silent fallback to
-trusted-gateway semantics. A one-time pairing with the actual owner is a product
-decision pending user confirmation because current gateway access trusts the
-friend's gateway without separate owner pairing. No new E2E protocol is implemented
-by the pre.109.1 UI build.
+The replacement in this branch authenticates the two end devices through an opaque
+tunnel. It uses a separate inner TLS 1.3 connection and the existing exporter-bound
+pairing/remembered-key exchange. Resource setup, native credentials, media and input
+remain inside that authenticated endpoint connection. The gateway handles route
+identities, tunnel IDs and encrypted bytes, not the endpoint admission secrets.
+The peers negotiate tunnel support; the old credential-forwarding path is removed,
+and unsupported peers receive an error rather than an insecure fallback.
+
+Pair the end devices once using the code on the actual other device, not the
+gateway's code. Both devices can offer and use resources. Reverse resource access
+uses a separately authenticated tunnel with the same mutual pairing; neither end
+needs a directly reachable reverse address. Pairing and catalog refresh do not
+start capture. A routed pairing never saves the gateway or an internal loopback
+address as the end device's direct address.
+
+Synthetic checks cover independent endpoint pairing, wrong-code rejection without
+media activation, reverse catalog access, data delivery, gateway shutdown and
+bilateral Forget through a live gateway. Service, presence, asynchronous startup,
+reconnect and self-connection regression checks also pass. Package checks are
+still in progress. Physical multi-device gateway verification and independent
+cryptographic review remain pending. This change is not in pre.109.1.
+
+Endpoint confidentiality concerns the relayed session. A gateway that is separately
+paired with a device may still request that device's advertised resources in its
+own authorized session. Encryption does not remove permissions already granted to
+the gateway, protect a compromised endpoint, or conceal routing metadata.
 
 Discovery still broadcasts basic device metadata; IP addresses and traffic timing
 are not concealed by media encryption. Raw USB/IP is local loopback traffic wrapped
@@ -135,6 +155,6 @@ ExtraPane.exe is asInvoker. Server startup elevates ExtraPane.Service.exe with f
 
 ## Development driver installation
 
-Server + Client setup requires a machine-wide virtual-display driver. The elevated driver installer explicitly asks to trust its development code-signing certificate in machine Root and TrustedPublisher. The app itself remains per-user; Client only makes no driver/trust changes. The build discards its ephemeral private signing key and ships only the public certificate. This is not Microsoft release signing.
+The complete Windows setup includes a machine-wide virtual-display driver. Setup explicitly asks to trust its development code-signing certificate in machine Root and TrustedPublisher. The app itself remains per-user; there is no limited-role installer choice. The build discards its ephemeral private signing key and ships only the public certificate. This is not Microsoft release signing.
 
-The manager and records live under Program Files. Package hashes, allowed filenames, certificate identity and catalog signer are verified before trust changes; Windows SetupAPI validates catalog membership when staging. Removal verifies recorded package identities and removes only installer-owned packages/certificate entries. App uninstall preserves the driver for other users/portable copies. No boot security policy is changed and staging is not proof of runtime loading under every Windows policy. See DRIVER-INSTALLATION.md for consent, rollback and logs.
+The manager and records live under Program Files. Package hashes, allowed filenames, certificate identity and catalog signer are verified before trust changes; Windows SetupAPI validates catalog membership when staging. The unified ExtraPane uninstaller removes its managed driver components after verifying ownership, preserving unrelated third-party components. No boot security policy is changed and staging is not proof of runtime loading under every Windows policy. See DRIVER-INSTALLATION.md for consent, rollback and logs.

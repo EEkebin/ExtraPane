@@ -1256,6 +1256,45 @@ No transport/media lifecycle was changed and no physical stream test was run.
 - [x] Audited direct/gateway/native media encryption paths. Direct paired links
   authenticate encrypted endpoints; open mode remains unverified. Current relays
   see native admission secrets, so gateway-blind E2E is not guaranteed.
-- [ ] Confirm end-device pairing policy for gateway access before implementing
+- [x] Confirm end-device pairing policy for gateway access before implementing
   endpoint-only authentication/tunneling. See SECURITY.md for findings and scope.
   pre.109.1 changes presentation only; it is not an E2E protocol upgrade.
+
+### Active increment: mutual peers and complete installation
+
+- [x] User approved independent mutual endpoint pairing through gateways; both
+  devices can offer and consume resources concurrently, with no fixed roles.
+- [x] Implement and verify an opaque authenticated endpoint tunnel; exclude native
+  admission credentials from gateway-visible messages and reject legacy fallback.
+- [x] Remove installer role choices and prepare all supported components through
+  one ExtraPane install, retaining explicit driver certificate consent.
+- [x] Shared Qt endpoint-pairing dialog routes the code to the selected end device
+  through its gateway, blocks pending removal, skips the code for saved identity,
+  and does not start media. Offscreen UI checks passed; core integration pending.
+- [x] Verify lifecycle, compatibility and isolated security checks; update guides.
+- [ ] Build and deliver matching Windows/Android packages. Physical verification
+  remains a separate gate; no driver installation is authorized by compilation.
+
+### Unified full Windows installation — 2026-11-08
+
+- [x] Removed the installer role chooser and all role-dependent component branches. One ExtraPane installation prepares the managed display, camera, audio/USB receiving and USB source components; it does not activate resources or export storage.
+- [x] Kept explicit development-certificate consent through **I agree - Next**, unified uninstall ownership and existing Update/Restore/Uninstall maintenance behavior. Previously limited installations receive the full component set when updated.
+- [x] Silent setup requires `/ACCEPTDEVELOPMENTCERT=1`. Historical `/SERVER=1` remains a redundant alias; `/SERVER=0` or other values reject installation before stopping the app. Uninstall maintenance is exempt from role and certificate requirements.
+- [x] Updated driver-installation documentation and generated package/release notes. Packaging now refuses payloads missing any required managed component.
+- [x] Verification: compiled the real Inno Setup script against the existing pre.109 payload into isolated `out/installer-full-role-compile`; Python package/release/driver-test scripts compile; `git diff --check` passed. Disposable-runner driver tests now cover obsolete no-driver flag rejection and legacy full-install compatibility.
+- [ ] Fresh install, upgrading a formerly limited installation, restore, unified uninstall and physical component behavior still require acceptance testing. The compile-check installer was not run or delivered and does not represent a new release build.
+
+### Integrated desktop endpoint build verification - 2026-11-08
+
+- [x] Built the real Windows desktop application with `cmake --build out/shared-ui --target ExtraPane`: endpoint RPC/session/service, `connectVia` Qt controller and MOC, Windows native runtime, embedded QML and final `ExtraPane.exe` link all passed. No application was launched or installed. This isolated build is not a packaged delivery.
+- [ ] Native macOS endpoint-pairing UI still needs CI compilation; physical cross-network endpoint and media acceptance tests remain pending.
+
+
+### Authenticated gateway endpoint core verification - 2026-11-08
+
+- [x] Implemented one-hop opaque endpoint tunnels with inner TLS and actual-device pairing. Opposite directions use separate tunnel grant namespaces; endpoint pairing persists no gateway/loopback address as the actual device's direct route. Legacy delegated media requests fail closed.
+- [x] Verified isolated service, presence, gateway reverse, asynchronous preparation, reconnect and self-connection checks: all six passed (13.12 seconds). Four additional repeated gateway checks passed after fixing concurrent reverse/revocation tunnel grant collisions.
+- [x] The gateway regression verifies wrong endpoint code creates neither trust nor media, canceled and unavailable endpoint attempts preserve the gateway, independent endpoint pairing, automatic reverse catalog connection using the same pairing, no media from catalog connections, legacy delegated-open rejection, bidirectional synthetic native payload delivery, and bilateral Forget through a live gateway while its control links remain available.
+- [x] Auth and session checks passed. Wire/policy, private trust store, RPC framing/flow control and loopback media checks all passed; new RPC assertions cover exact endpoint identity payload lengths, empty cancellation/close payloads and fixed-width ready grants.
+- [x] Bounded retirement handles late endpoint replies, canceled handshakes, completed tunnel tokens and closed streams without stopping unrelated gateway resources.
+- [ ] Remaining acceptance gates: real cross-network/native media tests, malicious relay interception/replay testing and physical platform behavior. Credential confidentiality currently follows the nested authenticated TLS implementation and review; synthetic payload tests are not a packet-level hostile-gateway audit. Unavailable/offline endpoints leave bilateral removal pending until an authenticated route returns.

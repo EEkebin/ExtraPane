@@ -16,6 +16,12 @@ int main(){try{
     auto bad=bytes;bad[6]=1;Decoder poisoned;rejects([&]{poisoned.feed(bad);});rejects([&]{poisoned.feed(bytes);});need(poisoned.failed());
     auto empty=encode_catalogs({});need(decode_catalogs(empty).empty());empty.push_back(0);rejects([&]{decode_catalogs(empty);});
     auto granted=rpc::encode(Granted{9,"EPCT1.ticket"});need(decode_granted(granted).grant==9&&decode_granted(granted).native_credential=="EPCT1.ticket");granted.push_back(0);rejects([&]{decode_granted(granted);});rejects([&]{rpc::encode(Granted{0,{}});});
+    for(auto operation:{Operation::endpoint_open,Operation::endpoint_forward}){
+        Decoder tunnel;const auto frames=tunnel.feed(rpc::encode(Message{operation,71,Bytes(id.begin(),id.end())}));need(frames.size()==1&&frames[0].payload.size()==32);
+        rejects([&]{rpc::encode(Message{operation,71,Bytes(31)});});rejects([&]{rpc::encode(Message{operation,71,Bytes(33)});});
+    }
+    for(auto operation:{Operation::endpoint_cancel,Operation::endpoint_close}){Decoder tunnel;need(tunnel.feed(rpc::encode(Message{operation,72,{}})).size()==1);rejects([&]{rpc::encode(Message{operation,72,{1}});});}
+    {Decoder tunnel;need(tunnel.feed(rpc::encode(Message{Operation::endpoint_ready,73,integer(55)})).size()==1);rejects([&]{rpc::encode(Message{Operation::endpoint_ready,73,Bytes(7)});});}
     bool allowed=true;Multiplexer sender(true,[&](auto grant){return allowed&&grant==17;});Multiplexer receiver(false,[&](auto grant){return allowed&&grant==17;});
     auto opening=sender.open(17);receiver.opened(opening);rejects([&]{receiver.opened(opening);});
     const Bytes chunk(data_chunk,73);std::size_t count=0;while(auto data=sender.send(opening.id,chunk)){receiver.receive(*data);count+=data->payload.size();}need(count==Multiplexer::window&&receiver.queued()==count);

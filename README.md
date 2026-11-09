@@ -104,12 +104,23 @@ and enter its reachable address and code. There is no UPnP. Optional gateway
 sharing is off by default: an authenticated trusted visitor can use explicitly
 offered resources from devices paired with the gateway, through one relay hop.
 This does not expose arbitrary network services or recursively discover networks.
+This branch adds independent pairing between the two end devices and an encrypted
+endpoint tunnel through the gateway. Both devices can offer and use resources;
+these are not fixed server/client roles. Earlier builds through pre.109.1 expose
+native admission credentials to their gateway and do not provide that guarantee.
+The replacement requires upgraded peers and is still undergoing verification.
+See [connection security](docs/SECURITY.md) for guarantees and remaining work.
 
 Windows, Linux and macOS use native platform adapters with different endpoint
 capabilities; Android currently offers supported local resources while foregrounded.
 The preview does not imply that every OS can receive every resource type. See the
 [implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md) and platform guides
 for unsupported paths and verification limits.
+
+The development Windows installer prepares all supported ExtraPane components in
+one installation, without Client only or Viewer only choices. The same app can
+offer and use resources at the same time. Development-driver certificate consent
+is still required; installation does not start capture or export USB storage.
 
 ## Requirements
 

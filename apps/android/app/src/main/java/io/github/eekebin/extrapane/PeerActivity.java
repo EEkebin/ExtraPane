@@ -42,7 +42,8 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private long searchEpoch;
     private final Map<Long,String> connectedPeers=new HashMap<>(),pendingPeers=new HashMap<>();
     private final Map<Long,String> peerEndpoints=new HashMap<>();
-    private LinearLayout nearbyRows,unpairedSection,unpairedRows;
+    private LinearLayout nearbyRows,unpairedSection,unpairedRows,endpointSection,endpointRows;
+    private final Map<Long,Map<String,String>> endpointsVia=new LinkedHashMap<>();
     private ImageButton searchDevices;
     private LinearLayout searchDots;
     private final List<android.animation.Animator> searchAnimations=new ArrayList<>();
@@ -221,6 +222,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         content.addView(button("Pair by address",()->connectDialog("","","",false)));
         sectionHeading(content,"Paired devices");trustedRows=column();content.addView(trustedRows,full());
         unpairedSection=column();sectionHeading(unpairedSection,"Unpaired devices");unpairedRows=column();unpairedSection.addView(unpairedRows,full());unpairedSection.setVisibility(View.GONE);content.addView(unpairedSection,full());
+        endpointSection=column();sectionHeading(endpointSection,"Devices through paired devices");endpointRows=column();endpointSection.addView(endpointRows,full());endpointSection.setVisibility(View.GONE);content.addView(endpointSection,full());
         sectionHeading(content,"Nearby devices");LinearLayout searchRow=new LinearLayout(this);searchRow.setGravity(Gravity.CENTER_VERTICAL);searchDevices=new ImageButton(this);searchDevices.setImageDrawable(new LineIcon("refresh"));searchDevices.setBackground(rounded(PANEL,BORDER));searchDevices.setContentDescription("Search nearby devices");searchDevices.setTooltipText("Search nearby devices");searchDevices.setOnClickListener(view->searchNearby());searchRow.addView(searchDevices,new LinearLayout.LayoutParams(dp(48),dp(48)));searchStatus=note("Search for devices on this network.");searchRow.addView(searchStatus,new LinearLayout.LayoutParams(0,-2,1));searchDots=new LinearLayout(this);searchDots.setGravity(Gravity.CENTER);searchDots.setVisibility(View.GONE);searchDots.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);for(int i=0;i<3;++i){View dot=new View(this);dot.setBackground(rounded(ACCENT,0));LinearLayout.LayoutParams spacing=new LinearLayout.LayoutParams(dp(6),dp(6));spacing.setMargins(dp(3),dp(10),dp(3),dp(10));searchDots.addView(dot,spacing);}searchRow.addView(searchDots);content.addView(searchRow,full());nearbyRows=column();content.addView(nearbyRows,full());
     }
     private void buildResources(){connections=pages.get("Resources");connections.addView(label("Resources",25));connections.addView(note("Start a resource using its power button on the receiving device. Pairing alone does not start it. This phone shows available resources and lets you stop those in use."));
@@ -293,8 +295,12 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         if(!remembered&&!expected.isEmpty())for(String[] saved:peers.remembered())if(saved.length>=4&&endpoint(address,""+port).equals(endpoint(saved[2],saved[3])))throw new IllegalStateException("This address belongs to a saved device with a different identity. Check the address or remove its old pairing first.");
         PairingAttempt attempt=new PairingAttempt(address,port,local,identity,remembered,open);
         if(!attempt.codeRequired){submitPairing(attempt,"");return;}
+        showPairingPrompt(attempt,address+":"+port);
+    }
+    private void showPairingPrompt(PairingAttempt attempt,String description) {
+        if(pairingDialog!=null)return;
         LinearLayout form=column();form.setPadding(dp(24),dp(12),dp(24),dp(12));form.setBackgroundColor(BG);
-        form.addView(note(address+":"+port));
+        form.addView(note(description));
         EditText secret=deviceField("Six-digit pairing code","",true);
         secret.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         secret.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
@@ -313,8 +319,8 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     }
     private void submitPairing(PairingAttempt attempt,String code) throws Exception {
         if(!foreground||peers==null||!attempt.submit(code))return;
-        long token=peers.connect(attempt.address,attempt.port,attempt.local,attempt.identity,code,attempt.open);
-        peerEndpoints.put(token,endpoint(attempt.address,""+attempt.port));pendingPeers.put(token,attempt.identity);refreshTrusted();renderNearby();
+        long token=attempt.gateway>0?peers.connectVia(attempt.gateway,attempt.identity,code):peers.connect(attempt.address,attempt.port,attempt.local,attempt.identity,code,attempt.open);
+        if(attempt.gateway==0)peerEndpoints.put(token,endpoint(attempt.address,""+attempt.port));pendingPeers.put(token,attempt.identity);refreshTrusted();renderNearby();
     }
     private void cancelSearch(){++searchEpoch;if(nearbySearch!=null){nearbySearch.close();nearbySearch=null;}if(searchDevices!=null)searchVisual(false);}
     private void stopKnownPeerObserver(){++observerEpoch;if(knownPeerObserver!=null){knownPeerObserver.close();knownPeerObserver=null;}}
@@ -337,6 +343,19 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
             LinearLayout row=column();row.setPadding(dp(14),dp(8),dp(14),dp(8));row.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams params=full();params.bottomMargin=dp(12);nearbyRows.addView(row,params);LinearLayout identityRow=new LinearLayout(this);identityRow.setGravity(Gravity.CENTER_VERTICAL);ImageView deviceIcon=new ImageView(this);deviceIcon.setImageDrawable(new LineIcon("Devices"));identityRow.addView(deviceIcon,new LinearLayout.LayoutParams(dp(32),dp(32)));TextView deviceName=label(hint.name(),18);deviceName.setPadding(dp(12),dp(8),0,dp(8));deviceName.setTypeface(null,Typeface.BOLD);identityRow.addView(deviceName,new LinearLayout.LayoutParams(0,-2,1));row.addView(identityRow,full());row.addView(note(hint.address()+":"+hint.port()));if(!hint.pairingRequired())row.addView(note("Pairing disabled ? identity will not be verified"));row.addView(button("Connect",()->safely(()->preparePairing(hint.id(),hint.address(),hint.port(),interfaces.getSelectedItem()==null?"":interfaces.getSelectedItem().toString(),!hint.pairingRequired()))));
         }
     });}
+    private void renderEndpointDevices(){if(peers==null||endpointRows==null)return;safely(()->{
+        endpointRows.removeAllViews();Set<String> known=new HashSet<>(connectedPeers.values());known.addAll(pendingPeers.values());known.add(peers.identity());
+        for(String[] saved:peers.remembered())if(saved.length>0)known.add(saved[0]);for(String[] pending:peers.pendingForgets())if(pending.length>0)known.add(pending[0]);
+        Set<String> shown=new HashSet<>();
+        for(Map.Entry<Long,Map<String,String>> route:endpointsVia.entrySet())if(connectedPeers.containsKey(route.getKey()))for(Map.Entry<String,String> endpoint:route.getValue().entrySet()){
+            if(known.contains(endpoint.getKey())||!shown.add(endpoint.getKey()))continue;
+            final long gateway=route.getKey();final String identity=endpoint.getKey(),name=endpoint.getValue();final String gatewayName=peerName(connectedPeers.get(gateway));
+            LinearLayout card=column();card.setPadding(dp(14),dp(8),dp(14),dp(8));card.setBackground(rounded(PANEL,BORDER));LinearLayout.LayoutParams spacing=full();spacing.bottomMargin=dp(12);endpointRows.addView(card,spacing);
+            card.addView(label(name,18));card.addView(note("Via "+gatewayName+". Pair with this device so it can securely request this phone's resources."));
+            card.addView(button("Pair device",()->showPairingPrompt(PairingAttempt.via(gateway,identity),name+" via "+gatewayName+". Enter the code shown on "+name+", not the forwarding device.")));
+        }
+        endpointSection.setVisibility(endpointRows.getChildCount()>0?View.VISIBLE:View.GONE);
+    });}
     private void refreshTrusted(){if(peers==null)return;if(updateConnectDialog!=null)updateConnectDialog.run();safely(()->{
         trustedRows.removeAllViews();unpairedRows.removeAllViews();
         Map<String,String[]> listed=new LinkedHashMap<>();Set<String> rememberedIds=new HashSet<>();for(String[] entry:peers.remembered())if(entry.length>=2){listed.put(entry[0],entry);rememberedIds.add(entry[0]);}for(String id:connectedPeers.values())listed.putIfAbsent(id,new String[]{id,peerName(id)});Set<String> removals=new HashSet<>();for(String[] entry:peers.pendingForgets())if(entry.length>=2){listed.put(entry[0],entry);removals.add(entry[0]);}
@@ -357,7 +376,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
             header.setAccessibilityDelegate(new View.AccessibilityDelegate(){@Override public void onInitializeAccessibilityNodeInfo(View host,android.view.accessibility.AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName(Button.class.getName());}});
             header.setOnClickListener(view->{boolean open=!deviceExpanded.getOrDefault(id,true);deviceExpanded.put(id,open);details.setVisibility(open?View.VISIBLE:View.GONE);arrow.animate().rotation(open?90:0).setDuration(160).start();header.setStateDescription(open?"Expanded":"Collapsed");});
         }
-        if(trustedRows.getChildCount()==0)trustedRows.addView(note("No paired devices yet. Search nearby devices or pair by address."));unpairedSection.setVisibility(unpairedRows.getChildCount()>0?View.VISIBLE:View.GONE);renderNearby();
+        if(trustedRows.getChildCount()==0)trustedRows.addView(note("No paired devices yet. Search nearby devices or pair by address."));unpairedSection.setVisibility(unpairedRows.getChildCount()>0?View.VISIBLE:View.GONE);renderNearby();renderEndpointDevices();
     });}
     private void setFullscreen(boolean value){fullscreen=value;if(drawerOpen)showDrawer(false);toolbar.setVisibility(value?View.GONE:View.VISIBLE);status.setVisibility(value||status.getText().length()==0?View.GONE:View.VISIBLE);selectPage(selectedPage);fullscreenButton.setText(value?"Exit fullscreen":"Fullscreen");fitVideo();}
     private void fitVideo(){int width=Math.max(dp(120),page.getWidth()-page.getPaddingLeft()-page.getPaddingRight());int height=Math.max(1,width*streamHeight/Math.max(1,streamWidth));int maximum=fullscreen?Math.max(dp(120),scroll.getHeight()-dp(88)):dp(340);if(height>maximum){height=maximum;width=Math.max(1,height*streamWidth/Math.max(1,streamHeight));}surface.setLayoutParams(new LinearLayout.LayoutParams(width,height));}
@@ -445,7 +464,10 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         case "native-ready" -> {try{startNative(event);}catch(Exception e){ended(event,e.getMessage()==null?"Resource could not start":e.getMessage());}}
         case "native-stop" -> stopNative(key(event));
         case "error" -> {long failedToken=Long.parseLong(event[1]);pendingPeers.remove(failedToken);if(!connectedPeers.containsKey(failedToken))peerEndpoints.remove(failedToken);refreshTrusted();long generation=event.length>18?Long.parseLong(event[18]):0;if(generation!=0){if(!sharingLifecycle.matches(generation))return;listenFailed=true;failedNetworks=new ArrayList<>(addresses);stopSharing();}status(event[7]);}
-        case "disconnected" -> {long token=Long.parseLong(event[1]);connectedPeers.remove(token);pendingPeers.remove(token);peerEndpoints.remove(token);refreshTrusted();}
+        case "catalog-begin" -> endpointsVia.put(Long.parseLong(event[1]),new LinkedHashMap<>());
+        case "endpoint" -> endpointsVia.computeIfAbsent(Long.parseLong(event[1]),ignored->new LinkedHashMap<>()).put(event[8],event[7]);
+        case "catalog-end" -> renderEndpointDevices();
+        case "disconnected" -> {long token=Long.parseLong(event[1]);endpointsVia.remove(token);connectedPeers.remove(token);pendingPeers.remove(token);peerEndpoints.remove(token);refreshTrusted();}
         case "connected" -> {long token=Long.parseLong(event[1]);pendingPeers.remove(token);connectedPeers.put(token,event[4]);refreshTrusted();}
         case "trust-changed" -> refreshTrusted();
         default -> {}

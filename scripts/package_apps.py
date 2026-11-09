@@ -51,14 +51,14 @@ enter the server IPv4 address and Connect. No pairing or approval is needed.
 The app normally runs unelevated. Use automatic connections on a trusted LAN: TLS
 encrypts traffic but does not verify the identity of the other computer.
 
-In Setup, choose Client only or Server + Client. Server + Client requires the
-bundled driver installation, certificate consent and administrator permission.
+Setup prepares all supported components without a device-role choice. It requires
+the bundled driver installation, certificate consent and administrator permission.
 For a portable server, run ExtraPane.DriverSetup.exe once before Start Driver.
 The driver is development signed. Setup trusts its public code-signing certificate
 in machine Root and TrustedPublisher and stages the driver. Windows policy can
 still reject loading. Secure Boot, Memory Integrity and test-signing mode are
-not changed. Receiving needs no driver. The driver has a separate Windows Apps
-uninstall entry; removing ExtraPane alone preserves it for other users/copies.
+not changed. ExtraPane's unified uninstaller removes its managed components;
+unrelated third-party components are preserved.
 
 Start Driver waits for a valid client before creating its display. Each client
 supplies resolution/refresh preferences (currently capped at 60 fps). Windows

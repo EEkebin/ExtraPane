@@ -104,11 +104,25 @@ Item {
         if(known||snapshot.open){peers.connectDevice(snapshot.address,snapshot.port,"",snapshot.identity,snapshot.route,snapshot.open);return}
         pairingDialog.target=snapshot; pairingDialog.submitted=false; code.clear();code.invalid=false;pairingDialog.open()
     }
+    function beginGatewayPairing(connection,identity,name) {
+        if(pairingDialog.visible) return
+        const saved=peers.remembered.find(device=>device.id===identity)
+        if(saved&&saved.pendingForget){notification.text="Finish or clear the pending pairing removal before pairing again.";notification.open();return}
+        if(saved){peers.connectVia(String(connection),identity,"");return}
+        pairingDialog.target={gateway:String(connection),identity:identity,name:name}
+        pairingDialog.submitted=false;code.clear();code.invalid=false;pairingDialog.open()
+    }
+    function gatewayDevices(resources) {
+        const devices={}
+        for(const item of resources) if(item.delegated===true&&!peers.remembered.some(saved=>saved.id===item.owner&&!saved.pendingForget))
+            devices[item.owner]={identity:item.owner,name:item.ownerName||"Device"}
+        return Object.values(devices)
+    }
     Dialog {
         id: pairingDialog; objectName: "peerPairingDialog"
         property var target: ({})
         property bool submitted: false
-        title: target.address ? "Pair with "+target.address : "Pair device"; modal: true; anchors.centerIn: parent
+        title: target.gateway ? "Pair with "+target.name : target.address ? "Pair with "+target.address : "Pair device"; modal: true; anchors.centerIn: parent
         Material.theme: Material.Dark; Material.accent: "#80b8ff"
         padding: 24
         background: Rectangle { color: "#14243a"; radius: 16; border.color: "#48617e" }
@@ -119,18 +133,19 @@ Item {
         onOpened: code.forceActiveFocus()
         onClosed: { code.clear();code.invalid=false;target=({});submitted=false }
         function submit() {
-            if(submitted||!visible||!target.address)return
+            if(submitted||!visible||(!target.address&&!target.gateway))return
             code.invalid=!/^\d{6}$/.test(code.text)
             if(code.invalid){code.forceActiveFocus();return}
             submitted=true
             const frozen=target
-            peers.connectDevice(frozen.address,frozen.port,code.text,frozen.identity,frozen.route,false)
+            if(frozen.gateway) peers.connectVia(frozen.gateway,frozen.identity,code.text)
+            else peers.connectDevice(frozen.address,frozen.port,code.text,frozen.identity,frozen.route,false)
             close()
         }
         contentItem: ColumnLayout {
             spacing: 14
             Label { color: "#eef4ff"; text: "Enter the six-digit code shown on the other device."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-            Label { text: pairingDialog.target.address ? pairingDialog.target.address+":"+pairingDialog.target.port : ""; color: "#aabbd3"; Layout.fillWidth: true }
+            Label { text: pairingDialog.target.gateway ? "Pair directly with this device through the gateway. Both devices can share resources." : pairingDialog.target.address ? pairingDialog.target.address+":"+pairingDialog.target.port : ""; color: "#aabbd3"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; Accessible.name: "Six-digit pairing code"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: pairingDialog.submit() }
             Label { text: "Enter exactly six digits."; color: "#ff6978"; visible: code.invalid }
             RowLayout { Layout.alignment: Qt.AlignRight
@@ -630,6 +645,7 @@ Item {
                                             Layout.fillWidth: true; spacing: 3
                                             Label { textFormat: Text.PlainText; text: peerDevice.modelData.name+(peerDevice.modelData.verified ? " (verified)" : " (unverified)"); font.pixelSize: 18; Layout.fillWidth: true; elide: Text.ElideRight }
                                             Label { text: peerDevice.modelData.resources.length+" resources"+(peerDevice.activeCount ? " - "+peerDevice.activeCount+" active" : ""); color: "#9eacc2"; Layout.fillWidth: true; elide: Text.ElideRight }
+                                            Label { visible: !!peerDevice.modelData.viaConnection; text: "Via gateway - paired directly with this device"; color: "#9eacc2"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                         }
                                     }
                                 }
@@ -638,11 +654,20 @@ Item {
                                 objectName: "peerDeviceBody_"+peerDevice.modelData.connection
                                 Layout.fillWidth: true; spacing: 10; visible: peerDevice.expanded
                             Repeater {
+                                model: workspace.gatewayDevices(peerDevice.modelData.resources)
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth:true
+                                    Label { text: modelData.name+" (via gateway)"; textFormat:Text.PlainText; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+                                    Action { objectName:"peerGatewayPair_"+modelData.identity; text:"Pair device"; onClicked:workspace.beginGatewayPairing(peerDevice.modelData.connection,modelData.identity,modelData.name) }
+                                }
+                            }
+                            Repeater {
                                 model: workspace.resourceGroups
                                 delegate: ResourceGroup {
                                     id: catalogGroup
                                     required property var modelData
-                                    property var items: workspace.groupedRows(peerDevice.modelData.resources, modelData)
+                                    property var items: workspace.groupedRows(peerDevice.modelData.resources.filter(item=>item.delegated!==true), modelData)
                                     title: modelData.title; symbol: modelData.icon; count: modelData.key==="monitors"?workspace.monitorDrafts.filter(row=>row.connection===String(peerDevice.modelData.connection)).length:items.length
                                     groupKey: "peerCatalog_"+peerDevice.modelData.connection+"_"+modelData.key
                                     visible: items.length>0

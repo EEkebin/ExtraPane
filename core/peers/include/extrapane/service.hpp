@@ -24,7 +24,7 @@ public:
         std::function<std::vector<Context>()> poll;
     };
     enum class EventKind {listening,connected,catalog,granted,stopped,disconnected,error,trust_changed,reconnecting};
-    struct Event {EventKind kind;Context context;std::uint16_t port=0;std::string detail;std::vector<Catalog> catalogs;bool verified=false;std::optional<rpc::Open> resource;Token replaces_grant=0;Token sharing_generation=0;};
+    struct Event {EventKind kind;Context context;std::uint16_t port=0;std::string detail;std::vector<Catalog> catalogs;bool verified=false;std::optional<rpc::Open> resource;Token replaces_grant=0;Token sharing_generation=0;Token via_connection=0;};
     Service(Options,Hooks);
     ~Service();
     Service(const Service&)=delete;
@@ -39,6 +39,8 @@ public:
     Token start(std::string bind,std::uint16_t port);
     void stop();
     Token connect(ConnectOptions);
+    // End-to-end endpoint authentication through one paired gateway. No media starts.
+    Token connect_via(Token gateway_connection,DeviceId owner,std::string code={});
     Token catalog(Token connection);
     Token open(Token connection,rpc::Open);
     void close(Token connection,Token grant);

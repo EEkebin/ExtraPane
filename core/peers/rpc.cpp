@@ -11,11 +11,13 @@ std::uint64_t get(std::span<const std::uint8_t> in){std::uint64_t n=0;for(auto b
 void valid(const Message& m,std::size_t size){
     require(m.id&&size<=max_payload);
     switch(m.operation){
-    case Operation::forget:case Operation::forget_ack:case Operation::cancel_request:case Operation::catalog:case Operation::close:case Operation::stopped:case Operation::stream_close:case Operation::ping:case Operation::pong:require(!size);break;
+    case Operation::endpoint_cancel:case Operation::endpoint_close:case Operation::forget:case Operation::forget_ack:case Operation::cancel_request:case Operation::catalog:case Operation::close:case Operation::stopped:case Operation::stream_close:case Operation::ping:case Operation::pong:require(!size);break;
+    case Operation::endpoint_open:case Operation::endpoint_forward:require(size==32);break;
+    case Operation::endpoint_ready:require(size==8);break;
     case Operation::granted:require(size>=10&&size<=115);break;
     case Operation::stream_open:case Operation::stream_credit:require(size==8);break;
     case Operation::stream_data:require(size&&size<=data_chunk);break;
-    case Operation::rejected:require(size&&size<=1024);break;
+    case Operation::endpoint_rejected:case Operation::rejected:require(size&&size<=1024);break;
     case Operation::open:require(size>=50&&size<=410);break;
     case Operation::catalog_reply:require(size>=4);break;
     default:require(false);

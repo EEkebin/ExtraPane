@@ -20,10 +20,10 @@ void legacy_cancel(const std::filesystem::path& path){
    else if(message.operation==rpc::Operation::close){require(message.id==901,"Legacy fallback closed wrong grant");closed=true;peer.send({rpc::Operation::stopped,901,{}},deadline());return;}
   }
  });
- Service client({path/"legacy-client","Legacy cancellation check",{},true},{});auto connection=client.connect({"127.0.0.1",listener.port(),{},identity,auth.code(),false});bool catalog=false;Service::Token request=0;const auto until=deadline();
- while(!closed){require(std::chrono::steady_clock::now()<until,"Legacy cancellation deadline");for(const auto& e:client.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::connected)client.catalog(connection);if(e.kind==Service::EventKind::catalog)catalog=true;if(e.kind==Service::EventKind::stopped&&e.context.request==request)cancelled=true;}
-  if(catalog&&!request)request=client.open(connection,{identity,"camera"});if(opened&&!cancelled)client.cancel(connection,request);std::this_thread::sleep_for(2ms);
- }remote.get();require(echoed&&cancelled&&closed,"Legacy peer fallback not exercised");
+ Service client({path/"legacy-client","Legacy cancellation check",{},true},{});auto connection=client.connect({"127.0.0.1",listener.port(),{},identity,auth.code(),false});bool catalog=false;Service::Token request=0,unsupported=0;bool unsupportedDenied=false;const auto until=deadline();
+ while(!closed){require(std::chrono::steady_clock::now()<until,"Legacy cancellation deadline");for(const auto& e:client.poll()){if(e.kind==Service::EventKind::error){if(e.context.connection==unsupported)unsupportedDenied=true;else throw std::runtime_error(e.detail);}if(e.kind==Service::EventKind::connected)client.catalog(connection);if(e.kind==Service::EventKind::catalog)catalog=true;if(e.kind==Service::EventKind::stopped&&e.context.request==request)cancelled=true;}
+  if(catalog&&!unsupported)unsupported=client.connect_via(connection,dm::peer_auth::random_identity(),"123456");if(catalog&&unsupportedDenied&&!request)request=client.open(connection,{identity,"camera"});if(opened&&!cancelled)client.cancel(connection,request);std::this_thread::sleep_for(2ms);
+ }remote.get();require(echoed&&cancelled&&closed&&unsupportedDenied,"Legacy peer fallback not exercised");
 }
 void open_admission_race(const std::filesystem::path& path){
  for(unsigned scenario=0;scenario<3;++scenario){

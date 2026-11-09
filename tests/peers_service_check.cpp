@@ -57,7 +57,7 @@ nonblock(received);std::string actual;while(actual.size()<24){char buffer[64];in
 client.close(id,grant);while(stops==0){client.poll();host.poll();waiting();}check(starts==1,"one approved adapter start");close_socket(received);
 std::this_thread::sleep_for(50ms);client.poll();bool disconnected=false;
 id=connect({});check(host.pairing_code()==originalCode,"pairing code changed on reconnect");
-host.forget(client.identity());disconnected=false;while(!disconnected){for(auto& e:client.poll())if(e.kind==Service::EventKind::disconnected&&e.context.connection==id)disconnected=true;host.poll();waiting();}
+client.disconnect(id);disconnected=false;while(!disconnected){for(auto& e:client.poll())if(e.kind==Service::EventKind::disconnected&&e.context.connection==id)disconnected=true;host.poll();waiting();}
 // Three authenticated services: an opt-in gateway delegates only its paired
 // direct provider, forwarding bytes without a native adapter at the gateway.
 Service gateway({directory/"gateway","Fake gateway",{},true},{});
@@ -75,7 +75,9 @@ gateway.gateway(true);providerLink=gateway.connect({"localhost",port,"127.0.0.1"
 while(!providerCatalog){for(auto& e:gateway.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::connected&&e.context.peer==host.identity())providerLink=e.context.connection;if(e.kind==Service::EventKind::catalog&&e.context.connection==providerLink)providerCatalog=true;}waiting();}
 auto after=client.catalog(visitorLink);checked=false;
 while(!checked){for(auto& e:client.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::catalog&&e.context.request==after){check(e.catalogs.size()==2,"direct paired provider absent from gateway");checked=true;}}waiting();}
-auto relayRequest=client.open(visitorLink,{host.identity(),"camera",false});Service::Token relayGrant=0;received=invalid;
+auto endpointLink=client.connect_via(visitorLink,host.identity());bool endpointCatalog=false;
+while(!endpointCatalog){for(auto& e:client.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::catalog&&e.context.connection==endpointLink)endpointCatalog=true;}waiting();}
+auto relayRequest=client.open(endpointLink,{host.identity(),"camera",false});Service::Token relayGrant=0;received=invalid;
 while(!relayGrant||received==invalid){for(auto& e:client.poll()){if(e.kind==Service::EventKind::error||e.kind==Service::EventKind::disconnected)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::granted&&e.context.request==relayRequest)relayGrant=e.context.grant;}for(auto& e:gateway.poll())if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(received==invalid)received=accept(dest,nullptr,nullptr);waiting();}
 nonblock(received);actual.clear();while(actual.size()<24){char buffer[64];int n=recv(received,buffer,sizeof(buffer),0);if(n>0)actual.append(buffer,n);waiting();}check(actual==std::string("authorized native bytes",24),"delegated native media delivery");
 client.start("127.0.0.1",0);bool localListening=false;

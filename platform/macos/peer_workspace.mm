@@ -72,6 +72,7 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
     std::set<std::pair<std::string,Service::Token>> collapsedDevices;
     std::set<std::pair<Service::Token,Service::Token>> retrying;
     std::map<std::pair<Service::Token,Service::Token>,PendingResource> pending;
+    std::map<Service::Token,DeviceId> endpointPairing;
     std::map<Service::Token,MonitorDraft> monitorDrafts;
     std::map<std::pair<Service::Token,Service::Token>,Service::Token> resourceRows;
     Service::Token monitorSequence;
@@ -137,6 +138,8 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
 -(void)renderNearby;
 -(void)observeRoutes:(const std::vector<Route>&)routes;
 -(void)connectAddress:(std::string)address port:(unsigned)port expected:(DeviceId)identity code:(std::string)code open:(BOOL)open;
+-(BOOL)requestPairingCode:(NSString*)target result:(std::string&)code;
+-(void)pairVia:(Service::Token)gateway owner:(DeviceId)owner name:(NSString*)name;
 -(void)error:(NSString*)message;
 -(void)showWindow:(id)sender;
 -(void)quit:(id)sender;
@@ -292,12 +295,26 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         auto validRoute=[&](){if(local.empty())return true;const auto connected=dm::mac::localAddresses();return std::any_of(connected.begin(),connected.end(),[&](const auto& item){return item.address==local;});};
         if(!validRoute()){invalidField(self.outboundRoute);[self error:@"Choose an available local network interface."];return;}
         if(!open&&!remembered){
-            auto* alert=[NSAlert new];alert.messageText=[NSString stringWithFormat:@"Pair with %@",text(address)];alert.informativeText=@"Enter the six-digit code shown on the other device.";
-            auto* input=[NSSecureTextField textFieldWithString:@""];input.frame=NSMakeRect(0,0,280,28);input.placeholderString=@"Six-digit pairing code";alert.accessoryView=input;[alert addButtonWithTitle:@"Pair"];[alert addButtonWithTitle:@"Cancel"];[alert.window setInitialFirstResponder:input];
-            for(;;){const auto response=[alert runModal];code=str(input.stringValue);input.stringValue=@"";if(response!=NSAlertFirstButtonReturn){code.clear();return;}if(code.size()==6&&std::all_of(code.begin(),code.end(),[](char c){return c>='0'&&c<='9';}))break;code.clear();alert.informativeText=@"Enter exactly six digits from the other device.";}
+            if(![self requestPairingCode:text(address) result:code])return;
         }
         if(!validRoute()){code.clear();[self error:@"The selected network interface is no longer available."];return;}
         const auto connection=service->connect({address,static_cast<std::uint16_t>(port),local,identity,code,bool(open)});code.clear();connectingLinks.insert(connection);destinations[connection]={normalizedAddress(address),port};[self updateManualConnect];self.status.stringValue=@"";self.status.textColor=NSColor.labelColor;
+    }catch(const std::exception& e){[self error:text(e.what())];}
+}
+-(BOOL)requestPairingCode:(NSString*)target result:(std::string&)code{
+    auto* alert=[NSAlert new];alert.messageText=[NSString stringWithFormat:@"Pair with %@",target];alert.informativeText=@"Enter the six-digit code shown on that device. A gateway cannot supply this code on its behalf.";
+    auto* input=[NSSecureTextField textFieldWithString:@""];input.frame=NSMakeRect(0,0,280,28);input.placeholderString=@"Six-digit pairing code";alert.accessoryView=input;[alert addButtonWithTitle:@"Pair"];[alert addButtonWithTitle:@"Cancel"];[alert.window setInitialFirstResponder:input];
+    for(;;){const auto response=[alert runModal];code=str(input.stringValue);input.stringValue=@"";if(response!=NSAlertFirstButtonReturn){code.clear();return NO;}if(code.size()==6&&std::all_of(code.begin(),code.end(),[](char c){return c>='0'&&c<='9';}))return YES;code.clear();alert.informativeText=@"Enter exactly six digits from the other device.";}
+}
+-(void)pairVia:(Service::Token)gateway owner:(DeviceId)owner name:(NSString*)name{
+    try{
+        if(!service||!links.contains(gateway)||!links.at(gateway).verified||links.at(gateway).context.incoming)throw std::runtime_error("The verified gateway is no longer available.");
+        for(const auto& [token,event]:links)if(!event.context.incoming&&event.verified&&event.context.peer==owner){[self.pages selectTabViewItemWithIdentifier:@"Resources"];return;}
+        for(const auto& [token,identity]:endpointPairing)if(identity==owner)return;
+        const auto removed=service->pending_forgets();if(std::any_of(removed.begin(),removed.end(),[&](const auto& item){return item.id==owner;}))throw std::runtime_error("Finish or clear the pending pairing removal before pairing this device.");
+        const auto saved=service->remembered();const bool remembered=std::any_of(saved.begin(),saved.end(),[&](const auto& item){return item.id==owner;});std::string code;
+        if(!remembered&&![self requestPairingCode:name result:code])return;
+        const auto token=service->connect_via(gateway,owner,code);code.clear();connectingLinks.insert(token);endpointPairing.emplace(token,owner);[self renderCatalogs];
     }catch(const std::exception& e){[self error:text(e.what())];}
 }
 -(void)refreshInventory{if(refreshing||terminating)return;refreshing=true;auto shared=runtime;__weak ExtraPanePeerApp* weak=self;dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{try{auto offers=shared->refresh();dispatch_async(dispatch_get_main_queue(),^{ExtraPanePeerApp* strong=weak;if(!strong||strong->terminating)return;strong->inventory=offers;strong->refreshing=false;strong->enabled.clear();for(const auto& offer:offers)if(offer.available)strong->enabled.insert(offer.id);[strong publish];[strong renderOffers];if(!strong->sharing&&!strong->sharingStarting)try{[strong beginSharing];}catch(const std::exception& e){[strong error:text(e.what())];}});}catch(const std::exception& e){auto message=text(e.what());dispatch_async(dispatch_get_main_queue(),^{ExtraPanePeerApp* strong=weak;if(!strong)return;if(weak){strong->refreshing=false;[weak error:message];}});}});}
@@ -345,6 +362,15 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
         [header addArrangedSubview:disclosure];[section addArrangedSubview:header];[section addArrangedSubview:body];[self.remoteResources addArrangedSubview:section];
         [section.widthAnchor constraintEqualToAnchor:self.remoteResources.widthAnchor].active=YES;[header.widthAnchor constraintEqualToAnchor:section.widthAnchor constant:-24].active=YES;
         for(const auto& catalog:catalogs[connection]){
+            if(catalog.device!=event.context.peer){
+                auto* remote=borderedStack();[remote addArrangedSubview:label(text(catalog.name.empty()?hex(catalog.device).substr(0,12):catalog.name),18)];
+                [remote addArrangedSubview:label(@"Reached through this gateway. Pair directly with this device; both devices can share resources.")];
+                const auto owner=catalog.device;const auto saved=service->remembered();const bool known=std::any_of(saved.begin(),saved.end(),[&](const auto& item){return item.id==owner;});const bool pending=std::any_of(endpointPairing.begin(),endpointPairing.end(),[&](const auto& item){return item.second==owner;});
+                const bool ready=std::any_of(links.begin(),links.end(),[&](const auto& item){return !item.second.context.incoming&&item.second.verified&&item.second.context.peer==owner;});
+                if(ready)[remote addArrangedSubview:label(@"Use this device's resource section below.")];
+                else{NSString* target=text(catalog.name.empty()?hex(owner).substr(0,12):catalog.name);auto* pair=button(pending?@"Verifying device...":known?@"View resources":@"Pair device",^{[weak pairVia:connectionId owner:owner name:target];});pair.enabled=event.verified&&!pending;[remote addArrangedSubview:pair];}
+                [body addArrangedSubview:remote];continue;
+            }
             [body addArrangedSubview:label(text(catalog.name),16)];std::vector<Offer> monitors;for(const auto& offer:catalog.offers)if(offer.kind==Kind::display_destination||offer.kind==Kind::existing_screen)monitors.push_back(offer);
             std::stable_sort(monitors.begin(),monitors.end(),[](const auto& left,const auto& right){auto rank=[](const auto& item){return item.kind==Kind::existing_screen?2:(((!item.width&&!item.height)||item.label.find("Custom")!=std::string::npos)?0:1);};return rank(left)<rank(right);});
             if(!monitors.empty()){
@@ -388,13 +414,13 @@ static ExtraPanePeerAction* button(NSString* title,void (^action)(void),BOOL des
     if(!service||terminating)return;bool devicesChanged=false,connectionsChanged=false;
     for(auto& event:service->poll()){auto id=event.context.connection;switch(event.kind){
         case Service::EventKind::listening:if(!sharingGeneration||event.sharing_generation!=sharingGeneration)break;instance=std::chrono::steady_clock::now().time_since_epoch().count()|1;sequence=0;sharingStarting=false;sharing=true;listeningPort=event.port;self.status.stringValue=@"Sharing enabled";self.status.textColor=NSColor.labelColor;[self updateSharingControls];try{if(loopbackSharing)discovery.stop();else discovery.start(listeningAddress);[self publish];}catch(const std::exception& e){[self error:text(e.what())];}break;
-        case Service::EventKind::connected:connectingLinks.erase(id);links[id]=event;if(!event.context.incoming)service->catalog(id);devicesChanged=true;break;
+        case Service::EventKind::connected:endpointPairing.erase(id);connectingLinks.erase(id);links[id]=event;if(!event.context.incoming)service->catalog(id);devicesChanged=true;break;
         case Service::EventKind::catalog:catalogs[id]=event.catalogs;devicesChanged=true;break;
         case Service::EventKind::granted:{Service::Token row=0;auto requested=pending.find({id,event.context.request});if(requested!=pending.end())row=requested->second.monitorRow;pending.erase({id,event.context.request});if(event.replaces_grant){const auto old=std::make_pair(id,event.replaces_grant);if(resourceRows.contains(old))row=resourceRows.at(old);resourceRows.erase(old);retrying.erase(old);resources.erase(old);}const auto key=std::make_pair(id,event.context.grant);resources[key]=event;if(row)resourceRows[key]=row;connectionsChanged=true;self.status.stringValue=@"Resource connected";break;}
         case Service::EventKind::reconnecting:std::erase_if(pending,[&](const auto& entry){return entry.first.first==id;});for(const auto& [key,item]:resources)if(key.first==id&&!item.context.incoming&&item.context.kind!=Kind::usb)retrying.insert(key);catalogs.erase(id);self.status.stringValue=text(event.detail);devicesChanged=connectionsChanged=true;break;
         case Service::EventKind::stopped:{if(event.context.request&&!event.context.grant)pending.erase({id,event.context.request});const auto key=std::make_pair(id,event.context.grant);if(!retrying.contains(key)||!event.detail.empty()){retrying.erase(key);resources.erase(key);resourceRows.erase(key);}connectionsChanged=true;break;}
-        case Service::EventKind::disconnected:connectingLinks.erase(id);destinations.erase(id);std::erase_if(pending,[&](const auto& entry){return entry.first.first==id;});std::erase_if(retrying,[&](const auto& key){return key.first==id;});links.erase(id);catalogs.erase(id);std::erase_if(resourceRows,[&](const auto& entry){return entry.first.first==id;});std::erase_if(collapsedDevices,[&](const auto& key){return key.second==id;});for(auto i=resources.begin();i!=resources.end();)if(i->second.context.connection==id)i=resources.erase(i);else ++i;devicesChanged=connectionsChanged=true;break;
-        case Service::EventKind::error:connectingLinks.erase(id);if(!links.contains(id))destinations.erase(id);[self updateManualConnect];if(event.sharing_generation){if(event.sharing_generation!=sharingGeneration)break;[self stopListener];}if(pending.erase({id,event.context.request}))connectionsChanged=true;[self error:text(event.detail)];break;
+        case Service::EventKind::disconnected:endpointPairing.erase(id);connectingLinks.erase(id);destinations.erase(id);std::erase_if(pending,[&](const auto& entry){return entry.first.first==id;});std::erase_if(retrying,[&](const auto& key){return key.first==id;});links.erase(id);catalogs.erase(id);std::erase_if(resourceRows,[&](const auto& entry){return entry.first.first==id;});std::erase_if(collapsedDevices,[&](const auto& key){return key.second==id;});for(auto i=resources.begin();i!=resources.end();)if(i->second.context.connection==id)i=resources.erase(i);else ++i;devicesChanged=connectionsChanged=true;break;
+        case Service::EventKind::error:if(endpointPairing.erase(id))devicesChanged=true;connectingLinks.erase(id);if(!links.contains(id))destinations.erase(id);[self updateManualConnect];if(event.sharing_generation){if(event.sharing_generation!=sharingGeneration)break;[self stopListener];}if(pending.erase({id,event.context.request}))connectionsChanged=true;[self error:text(event.detail)];break;
         case Service::EventKind::trust_changed:observedRoutes.clear();devicesChanged=true;break;
     }}
     if(devicesChanged||connectionsChanged)[self renderDevices];if(connectionsChanged)[self renderConnections];if(devicesChanged||connectionsChanged)[self renderOffers];

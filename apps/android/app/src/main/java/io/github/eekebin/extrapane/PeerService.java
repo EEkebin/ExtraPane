@@ -26,6 +26,7 @@ final class PeerService implements AutoCloseable {
     synchronized void setAutoConnect(boolean value)throws IOException{nativeAutoConnect(alive(),value);}
     synchronized void observeRoute(String peer,String observedAddress,int port)throws IOException{nativeObserveRoute(alive(),peer,observedAddress,port);}
     synchronized long connect(String address,int port,String local,String expectedHex,String code,boolean openMode)throws IOException{return nativeConnect(alive(),address,port,local,expectedHex,code,openMode);}
+    synchronized long connectVia(long gateway,String endpoint,String code)throws IOException{return nativeConnectVia(alive(),gateway,endpoint,code);}
     synchronized long catalog(long connection)throws IOException{return nativeCatalog(alive(),connection);}
     synchronized long open(long connection,String owner,String resource,boolean input,int width,int height,int refresh)throws IOException{return nativeOpen(alive(),connection,owner,resource,input,width,height,refresh);}
     synchronized void closeResource(long connection,long grant)throws IOException{nativeCloseResource(alive(),connection,grant);}
@@ -34,7 +35,10 @@ final class PeerService implements AutoCloseable {
     /** Rows: type,connection,request,grant,peerHex,kind,port,detail,ownerHex,
      * resource,width,height,refresh,credential,input. Catalog rows additionally
      * contain available,unavailableReason,ownerName at columns15..17.
-     * Service events contain listener generation at column18 (zero for other events).
+     * Service events contain listener generation at column18 and the gateway
+     * connection token at column19 (zero for direct sessions). Catalog-begin/end
+     * bracket a snapshot; endpoint rows use ownerHex/name in columns8/7. These
+     * delegated names are discovery hints, not authenticated endpoint identity.
      * native-ready/stop are private adapter commands, not user-visible status.
      * Never log the credential column. Native-ready launches only a user-enabled
      * local source, using 127.0.0.1:port, after checking foreground permissions.
@@ -62,6 +66,7 @@ final class PeerService implements AutoCloseable {
     private static native void nativeAutoConnect(long h,boolean enabled)throws IOException;
     private static native void nativeObserveRoute(long h,String peer,String address,int port)throws IOException;
     private static native long nativeConnect(long h,String address,int port,String local,String expected,String code,boolean open)throws IOException;
+    private static native long nativeConnectVia(long h,long gateway,String endpoint,String code)throws IOException;
     private static native long nativeCatalog(long h,long connection)throws IOException;
     private static native long nativeOpen(long h,long connection,String owner,String resource,boolean input,int width,int height,int refresh)throws IOException;
     private static native void nativeCloseResource(long h,long connection,long grant)throws IOException;

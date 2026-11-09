@@ -135,6 +135,13 @@ device. There is no UPnP. Gateway testing requires a third device: enable the ga
 explicitly, verify only its directly paired resources appear, and verify disabling it
 ends relayed sessions. Gateway mode is off by default and supports one hop.
 
+The endpoint-encryption replacement has isolated checks; do not treat pre.109.1
+as confidential against its gateway. Physical acceptance requires pairing the two
+end devices independently through the gateway, without activating any resources.
+Verify that either end can subsequently offer and use supported resources and that
+an old gateway cannot cause fallback to the former credential-forwarding protocol.
+Disabling the gateway or forgetting either endpoint must terminate affected use.
+
 USB has a separate exclusive ownership/eject path. Test it only after the simpler
 resources, using expendable test data and the normal eject action. If enumeration or
 return fails, preserve the exact error and logs rather than repeatedly reattaching.

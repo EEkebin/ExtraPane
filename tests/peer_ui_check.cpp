@@ -35,6 +35,8 @@ public:
  }
  Q_INVOKABLE QString useResource(QString c,QString o,QString r,bool i,unsigned w,unsigned h,unsigned f){connection=c;owner=o;resource=r;input=i;width=w;height=h;hz=f;++calls;return QString::number(1000+calls);}
  Q_INVOKABLE void disconnectDevice(QString id){disconnectedDevices<<id;}
+ Q_INVOKABLE void connectVia(QString gateway,QString endpoint,QString code){connection=gateway;owner=endpoint;suppliedCode=code;++viaCalls;}
+ unsigned viaCalls=0;
  Q_INVOKABLE void forgetDevice(QString id){forgotten=id;}
  Q_INVOKABLE void dismissPendingForget(QString id){forgotten=id;}
  Q_INVOKABLE void disconnectAll(){}
@@ -153,5 +155,11 @@ QQuickStyle::setStyle("Material");try{MockPeers peers;QQmlEngine engine;QStringL
  QMetaObject::invokeMethod(named(root,"peerNotification"),"close");
  const auto screenshotDirectory=qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS");if(!screenshotDirectory.isEmpty()){QDir().mkpath(screenshotDirectory);root->setProperty("collapsed",false);window.resize(900,800);root->setWidth(900);for(int page=0;page<4;++page){root->setProperty("page",page);for(int n=0;n<60;++n){app.processEvents();QThread::msleep(5);}require(window.grabWindow().save(screenshotDirectory+"/peer-page-"+QString::number(page)+".png"),"Could not capture offscreen layout");}}
  const auto rowCount=monitorRows().size();const auto oldDevices=peers.value("devices").toList();auto renewedDevices=oldDevices;auto renewedPeer=renewedDevices[0].toMap();renewedPeer["connection"]="303";renewedDevices[0]=renewedPeer;peers.insert("connections",QVariantList{});peers.insert("devices",renewedDevices);for(int n=0;n<5;++n)app.processEvents();require(monitorRows().size()==rowCount&&monitorId("303")==firstRow,"Reconnected peer lost drafts or accumulated stale rows");require(named(root,"peerMonitorChoice_"+firstRow)->property("currentText").toString().contains("Another display"),"Reconnect discarded named preset");
+ auto beginVia=[&](QString endpoint){require(QMetaObject::invokeMethod(root,"beginGatewayPairing",Q_ARG(QVariant,QVariant("303")),Q_ARG(QVariant,QVariant(endpoint)),Q_ARG(QVariant,QVariant("Remote laptop"))),"Cannot request endpoint pairing");app.processEvents();};
+ const auto streamsBeforePair=peers.calls;beginVia("new-endpoint");require(named(root,"peerPairingDialog")->property("visible").toBool()&&peers.viaCalls==0,"Endpoint pairing bypassed code dialog");
+ named(root,"peerCode")->setProperty("text","123");QMetaObject::invokeMethod(named(root,"peerPairingSubmit"),"clicked");require(peers.viaCalls==0,"Invalid endpoint code reached backend");
+ named(root,"peerCode")->setProperty("text","123456");QMetaObject::invokeMethod(named(root,"peerPairingSubmit"),"clicked");require(peers.viaCalls==1&&peers.connection=="303"&&peers.owner=="new-endpoint"&&peers.suppliedCode=="123456"&&peers.calls==streamsBeforePair,"Endpoint pairing lost route or activated media");
+ for(int n=0;n<30;++n){app.processEvents();QThread::msleep(10);}beginVia("known-device");require(peers.viaCalls==2&&peers.suppliedCode.isEmpty()&&!named(root,"peerPairingDialog")->property("visible").toBool(),"Remembered endpoint prompted for code");
+ auto gatewayPeers=peers.value("devices").toList();auto gatewayPeer=gatewayPeers[0].toMap();auto advertised=gatewayPeer["resources"].toList();advertised.push_back(QVariantMap{{"id","private-camera"},{"label","Private camera"},{"kindId",1},{"owner","new-endpoint"},{"ownerName","Remote laptop"},{"delegated",true},{"available",true}});gatewayPeer["resources"]=advertised;gatewayPeers[0]=gatewayPeer;peers.insert("devices",gatewayPeers);root->setProperty("page",2);app.processEvents();require(named(root,"peerGatewayPair_new-endpoint"),"Delegated endpoint omitted pairing action");
  for(int page=1;page<4;++page){root->setProperty("page",page);app.processEvents();}for(const auto& warning:warnings)std::cerr<<warning.toStdString()<<'\n';require(warnings.empty(),"Peer QML emitted warnings");std::cout<<"Peer offscreen layout, resource routing and input defaults passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
 #include "peer_ui_check.moc"

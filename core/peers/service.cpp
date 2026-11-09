@@ -20,8 +20,10 @@ struct Service::State {
         NativeCancel native_cancel;bool native_ready=false;Clock::time_point native_started=Clock::now();std::string failure;
     };
     struct RelayPending {Token visitor=0,grant=0,request=0;bool cancelled=false;};
+    struct Tunnel {Token other_connection=0,other_grant=0,inner_token=0;std::shared_ptr<transport::Listener> listener;Clock::time_point expires=Clock::time_point::max();Token request=0;};
     struct Link {
-        Token token;bool incoming;std::unique_ptr<AuthenticatedConnection> connection;
+        Token token;bool incoming;Token via_connection=0,via_grant=0;
+        std::map<Token,Tunnel> tunnels;std::unique_ptr<AuthenticatedConnection> connection;
         std::optional<ConnectOptions> route;
         std::unique_ptr<MediaBridge> bridge;std::unique_ptr<SessionDispatcher> dispatcher;
         std::map<Token,rpc::Open> pending;std::set<Token> catalogs,automatic_catalogs,abandoned;
@@ -34,12 +36,12 @@ struct Service::State {
         std::size_t deferred_bytes=0;
         std::map<Token,Clock::time_point> requests;
         std::map<Token,Resource> resources;Token current_request=0;
-        bool used_resources=false,request_cancel_supported=false,automatic_presence=false;
+        bool used_resources=false,request_cancel_supported=false,automatic_presence=false,endpoint_supported=false;
         Clock::time_point activity=Clock::now(),last_ping=Clock::now();
         Clock::time_point last_catalog=Clock::now()-std::chrono::seconds(11);
         Link(Token t,bool in,std::unique_ptr<AuthenticatedConnection> c):token(t),incoming(in),connection(std::move(c)){}
     };
-    struct Result {Token token;bool incoming;std::unique_ptr<AuthenticatedConnection> connection;std::string error;std::uint64_t epoch=0;std::optional<ConnectOptions> route;bool transient=false;};
+    struct Result {Token token;bool incoming;std::unique_ptr<AuthenticatedConnection> connection;std::string error;std::uint64_t epoch=0;std::optional<ConnectOptions> route;bool transient=false;Token via_connection=0,via_grant=0;bool revocation_complete=false;};
     struct SavedResource {rpc::Open request;Kind kind;Token previous_grant=0,restoring_request=0;};
     struct RetryPlan {ConnectOptions route;Reconnect budget{Kind::camera};std::vector<SavedResource> resources;bool dialing=false;Token catalog_request=0;Milliseconds began=0;std::set<Token> waiting;};
     std::map<Token,RetryPlan> retries;
@@ -62,6 +64,13 @@ struct Service::State {
     struct GatewayRoute {RememberedDevice device;Token pending=0;unsigned failures=0;Milliseconds due=0;bool attempted=false,disabled=false,identity_failed=false;};
     std::map<DeviceId,GatewayRoute> gateway_routes;
     std::map<Token,DeviceId> gateway_dials,dial_targets;
+    struct EndpointPending {Token connection=0,visitor=0,visitor_request=0;DeviceId owner{};std::string code;Clock::time_point began=Clock::now();bool revocation=false;};
+    std::map<Token,EndpointPending> endpoint_pending;
+    std::set<Token> endpoint_inflight;
+    std::map<Token,Token> retired_endpoints;
+    void retire_endpoint(Token request,Token connection){retired_endpoints[request]=connection;while(retired_endpoints.size()>256)retired_endpoints.erase(retired_endpoints.begin());}
+    struct EndpointRoute {Token via=0,pending=0;Milliseconds due=0;};
+    std::map<DeviceId,EndpointRoute> endpoint_routes;
     bool auto_connect_enabled=false;
     struct ForgetAttempt {DeviceId peer;Milliseconds due=0;std::future<bool> job;};
     std::map<DeviceId,ForgetAttempt> forget_attempts;
@@ -99,7 +108,7 @@ struct Service::State {
     void stream_message(Link& l,const rpc::Message& message){
         const auto discarded=std::find(l.discarded_streams.begin(),l.discarded_streams.end(),message.id)!=l.discarded_streams.end();
         if(discarded){need(message.operation!=rpc::Operation::stream_open,"Reused retired stream identity");return;}
-        if(message.operation==rpc::Operation::stream_open){const auto grant=rpc::integer(message.payload);if(std::find(l.retired_grants.begin(),l.retired_grants.end(),grant)!=l.retired_grants.end()){l.discarded_streams.push_back(message.id);while(l.discarded_streams.size()>512)l.discarded_streams.pop_front();l.connection->queue({rpc::Operation::stream_close,message.id,{}});return;}const auto resource=l.resources.find(grant);need(resource!=l.resources.end(),"Unapproved media stream");
+        if(message.operation==rpc::Operation::stream_open){const auto grant=rpc::integer(message.payload);if(std::find(l.retired_grants.begin(),l.retired_grants.end(),grant)!=l.retired_grants.end()){l.discarded_streams.push_back(message.id);while(l.discarded_streams.size()>512)l.discarded_streams.pop_front();l.connection->queue({rpc::Operation::stream_close,message.id,{}});return;}const auto resource=l.resources.find(grant);if(l.tunnels.contains(grant)){l.bridge->receive(message);return;}need(resource!=l.resources.end(),"Unapproved media stream");
             if(!resource->second.relay&&!resource->second.native_ready){need(l.deferred_streams.size()<256&&!l.deferred_streams.contains(message.id),"Too many pending media streams");l.deferred_streams.emplace(message.id,grant);}
         }
         if(l.deferred_streams.contains(message.id)){const auto bytes=rpc::header_size+message.payload.size();need(l.deferred.size()<4096&&bytes<=1024*1024-l.deferred_bytes,"Pending media exceeds its budget");l.deferred.push_back(message);l.deferred_bytes+=bytes;return;}
@@ -157,6 +166,15 @@ struct Service::State {
         for(auto token:retrying){retries.erase(token);cancelled.insert(token);event({EventKind::disconnected,{token},0,"Device was forgotten"});}
         revoked(policy.forget(peer));std::vector<Token> ids;for(const auto& [id,l]:links)if(l->connection->remote_id()==peer)ids.push_back(id);for(auto id:ids)drop(id,"Device was forgotten");event({EventKind::trust_changed,{}});
     }
+    void receive_revocation(AuthenticatedConnection& revocation){
+                    const auto peer=revocation.remote_id();const auto request=revocation.receive(deadline());
+                    need(request.operation==rpc::Operation::forget&&request.id&&request.payload.empty()&&revocation.revocation_secret().has_value(),"Revocation connection only accepts Forget");
+                    const auto key=revocation.revocation_secret()->bytes;
+                    auto completed=std::make_shared<std::promise<bool>>();auto completion=completed->get_future();
+                    post([this,peer,key,completed]{try{std::lock_guard lock(trust_mutex);const bool wasTrusted=store.secret(peer).has_value();const auto pending=store.pending_forgets();const bool wasPending=std::any_of(pending.begin(),pending.end(),[&](const auto& item){return item.id==peer;});need(store.receive_forget(peer,key),"Revocation credential changed");if(wasTrusted){++epoch;revoke_local(peer);}else if(wasPending)event({EventKind::trust_changed,{}});completed->set_value(true);}catch(...){completed->set_value(false);}});
+                    need(completion.wait_until(deadline())==std::future_status::ready&&completion.get(),"Revocation did not complete");
+                    revocation.send({rpc::Operation::forget_ack,request.id,{}},deadline());
+    }
     void refresh_forgets(){
         if(now()<last_forget_poll+250)return;last_forget_poll=now();
         unsigned running=0;
@@ -172,7 +190,7 @@ struct Service::State {
         for(const auto& peer:pending){
             auto& attempt=forget_attempts[peer.id];if(attempt.job.valid()||now()<attempt.due||running>=2)continue;
             auto route=forget_routes.find(peer.id);const auto address=route==forget_routes.end()?peer.address_hint:route->second.first;const auto port=route==forget_routes.end()?peer.port_hint:route->second.second;
-            if(address.empty()||!port)continue;
+            if(address.empty()||!port){auto route=endpoint_routes.find(peer.id);if(route!=endpoint_routes.end()&&links.contains(route->second.via)&&!route->second.pending){attempt.due=now()+60000;try{begin_endpoint(next(),route->second.via,peer.id,{},true);}catch(...){} }continue;}
             auto key=store.revocation_secret(peer.id);if(!key)continue;++running;attempt.peer=peer.id;
             attempt.job=std::async(std::launch::async,[this,id=peer.id,address,port,key=*key]{try{
                 dm::peer_auth::ClientOptions proof;proof.local=store.identity();proof.expected_peer=id;proof.mode=dm::peer_auth::Mode::revocation;dm::peer_auth::Secret secret;secret.bytes=key;proof.remembered=secret;
@@ -313,12 +331,21 @@ struct Service::State {
         cancel_request(l,request);retry_done(l.token,request,false);
         event({EventKind::stopped,{l.token,request},0,reason});
     }
-    void drop(Token id,std::string reason={},bool transient=false){auto f=links.find(id);if(f==links.end())return;auto& l=*f->second;const bool retry=transient&&schedule_retry(l,reason);if(!retry)retries.erase(id);l.connection->cancel();if(l.dispatcher)l.dispatcher->close();while(!l.resources.empty())stop_resource(l,l.resources.begin()->first);while(!l.pending_contexts.empty()){auto context=l.pending_contexts.begin()->second;cancel_request(l,context.request);event({EventKind::stopped,context,0,"Connection ended before resource was ready"});}Context c{id,0,0,l.connection->remote_id(),l.incoming};const bool wasProvider=!l.incoming;links.erase(f);if(wasProvider)revoked(policy.remote_removed(c.peer));if(!retry)event({EventKind::disconnected,c,0,std::move(reason)});}
+    void drop(Token id,std::string reason={},bool transient=false){auto f=links.find(id);if(f==links.end())return;auto& l=*f->second;const auto parent=l.via_connection,parentGrant=l.via_grant;l.via_connection=0;
+        while(!l.tunnels.empty())close_tunnel(l,l.tunnels.begin()->first);
+        for(auto it=endpoint_pending.begin();it!=endpoint_pending.end();)if(it->second.connection==id||it->second.visitor==id){if(!it->second.visitor){endpoint_routes[it->second.owner].pending=0;event({EventKind::error,{it->first},0,"Gateway disconnected"});}retire_endpoint(it->first,it->second.connection);it=endpoint_pending.erase(it);}else ++it;
+        const bool retry=!parent&&transient&&schedule_retry(l,reason);if(!retry)retries.erase(id);l.connection->cancel();if(l.dispatcher)l.dispatcher->close();while(!l.resources.empty())stop_resource(l,l.resources.begin()->first);while(!l.pending_contexts.empty()){auto context=l.pending_contexts.begin()->second;cancel_request(l,context.request);event({EventKind::stopped,context,0,"Connection ended before resource was ready"});}Context c{id,0,0,l.connection->remote_id(),l.incoming};const bool wasProvider=!l.incoming;links.erase(f);if(wasProvider)revoked(policy.remote_removed(c.peer));if(!retry)event({EventKind::disconnected,c,0,std::move(reason)});if(parent){auto outer=links.find(parent);if(outer!=links.end())close_tunnel(*outer->second,parentGrant);}}
 
     void granted(Link& l,Token grant,std::uint16_t port){const auto& resource=l.resources.at(grant);auto public_request=resource.request;public_request.native_credential.clear();Token previous=0;auto retry=retries.find(l.token);if(retry!=retries.end())for(const auto& saved:retry->second.resources)if(saved.restoring_request==resource.context.request)previous=saved.previous_grant;
         event({EventKind::granted,resource.context,port,{},{},l.connection->identity().paired,std::move(public_request),previous});retry_done(l.token,resource.context.request,true);}
     void add(Result result){
-        dial_targets.erase(result.token);
+        dial_targets.erase(result.token);endpoint_inflight.erase(result.token);
+        if(result.via_connection){
+            auto parent=links.find(result.via_connection);if(parent==links.end()||!parent->second->tunnels.contains(result.via_grant)){for(auto& [owner,route]:endpoint_routes)if(route.pending==result.token)route.pending=0;if(!result.incoming)event({EventKind::error,{result.token},0,"Gateway disconnected before endpoint authentication completed"});cancelled.erase(result.token);return;}
+            for(auto& [owner,route]:endpoint_routes)if(route.pending==result.token)route.pending=0;
+            if(result.revocation_complete){if(result.incoming){auto& tunnel=parent->second->tunnels.at(result.via_grant);tunnel.inner_token=0;tunnel.expires=Clock::now()+std::chrono::seconds(5);}else{close_tunnel(*parent->second,result.via_grant);event({EventKind::trust_changed,{},0,"Device forgotten on both computers"});}return;}
+            if(!result.connection||result.epoch!=epoch||cancelled.contains(result.token)){close_tunnel(*parent->second,result.via_grant);if(!result.incoming)event({EventKind::error,{result.token},0,result.error.empty()?"Endpoint connection cancelled":result.error});cancelled.erase(result.token);return;}
+        }
         auto retry=retries.find(result.token);
         if(retry!=retries.end()){
             retry->second.dialing=false;
@@ -349,13 +376,15 @@ struct Service::State {
         }catch(const std::exception& e){event({EventKind::error,{result.token},0,e.what()});return;}}
         if(!automaticDial&&result.connection){std::vector<Token> duplicates;for(const auto& [id,link]:links)if(link->automatic_presence&&!link->incoming&&link->resources.empty()&&link->pending.empty()&&link->connection->remote_id()==result.connection->remote_id())duplicates.push_back(id);for(auto id:duplicates)drop(id,"Replaced by explicit connection");}
         if(automaticDial&&result.connection&&std::any_of(links.begin(),links.end(),[&](const auto& item){return !item.second->incoming&&item.second->connection->remote_id()==result.connection->remote_id();}))return;
-        if(result.epoch!=epoch||cancelled.erase(result.token)){event({EventKind::disconnected,{result.token},0,"Connection cancelled"});return;}if(!result.connection){event({EventKind::error,{result.token},0,result.error});return;}need(!result.connection->revocation_only(),"Revocation connections cannot access resources");need(links.size()<64,"Peer service connection budget exhausted");auto object=std::make_unique<Link>(result.token,result.incoming,std::move(result.connection));auto& l=*object;l.automatic_presence=automaticDial;l.route=std::move(result.route);const auto identity=l.connection->identity();if(identity.paired&&identity.device!=store.identity()){need(store.secret(identity.device).has_value(),"Device was forgotten during authentication");policy.remember(identity.device);if(l.incoming){auto route=gateway_routes.find(identity.device);if(route!=gateway_routes.end()){route->second.identity_failed=false;route->second.failures=0;route->second.due=0;}}}
-        l.bridge=std::make_unique<MediaBridge>(!l.incoming,[&l](Token grant){return l.resources.contains(grant);},[&l](const rpc::Message& m){l.connection->queue(m);});
+        if(result.epoch!=epoch||cancelled.erase(result.token)){event({EventKind::disconnected,{result.token},0,"Connection cancelled"});return;}if(!result.connection){event({EventKind::error,{result.token},0,result.error});return;}need(!result.connection->revocation_only(),"Revocation connections cannot access resources");need(links.size()<64,"Peer service connection budget exhausted");auto object=std::make_unique<Link>(result.token,result.incoming,std::move(result.connection));auto& l=*object;l.automatic_presence=automaticDial;l.via_connection=result.via_connection;l.via_grant=result.via_grant;l.route=std::move(result.route);const auto identity=l.connection->identity();if(identity.paired&&identity.device!=store.identity()){need(store.secret(identity.device).has_value(),"Device was forgotten during authentication");policy.remember(identity.device);if(l.incoming){auto route=gateway_routes.find(identity.device);if(route!=gateway_routes.end()){route->second.identity_failed=false;route->second.failures=0;route->second.due=0;}}}
+        l.bridge=std::make_unique<MediaBridge>(!l.incoming,[&l](Token grant){return l.resources.contains(grant)||l.tunnels.contains(grant);},[&l](const rpc::Message& m){l.connection->queue(m);});
         Adapter adapter;
-        adapter.start=[this,&l](const Grant& grant,const rpc::Open& request,std::string& reason){if(!l.incoming||grant.delegated){reason="Delegated relay is not available";return false;}Resource r{{l.token,l.current_request,grant.id,l.connection->remote_id(),true,grant.kind},request};l.resources.emplace(grant.id,std::move(r));try{prepare(l,l.resources.at(grant.id));return true;}catch(const std::exception& e){reason=e.what();return false;}};
+        adapter.start=[this,&l](const Grant& grant,const rpc::Open& request,std::string& reason){if(!l.incoming||grant.delegated){reason="Delegated relay is not available";return false;}if(l.tunnels.contains(grant.id)){reason="Resource grant conflicts with endpoint tunnel";return false;}Resource r{{l.token,l.current_request,grant.id,l.connection->remote_id(),true,grant.kind},request};l.resources.emplace(grant.id,std::move(r));try{prepare(l,l.resources.at(grant.id));return true;}catch(const std::exception& e){reason=e.what();return false;}};
         adapter.stop=[this,&l](const Grant& g){stop_resource(l,g.id);};
         adapter.credential=[&l](const Grant& g){return l.resources.at(g.id).request.native_credential;};
-        l.dispatcher=std::make_unique<SessionDispatcher>(policy,*l.connection,std::move(adapter));Context c{l.token,0,0,identity.device,l.incoming};links.emplace(l.token,std::move(object));l.connection->queue({rpc::Operation::ping,rpc::cancel_probe,{}});event({EventKind::connected,c,0,{},{},identity.paired});if(identity.paired){if(!l.incoming&&l.route)for(auto device:store.devices())if(device.id==identity.device){device.address_hint=l.route->address;device.port_hint=l.route->port;store.update_hint(device);auto route=gateway_routes.find(device.id);if(route!=gateway_routes.end())route->second.device=device;break;}sync_routes();event({EventKind::trust_changed,c});}
+        l.dispatcher=std::make_unique<SessionDispatcher>(policy,*l.connection,std::move(adapter));Context c{l.token,0,0,identity.device,l.incoming};links.emplace(l.token,std::move(object));l.connection->queue({rpc::Operation::ping,rpc::cancel_probe,{}});if(!l.via_connection)l.connection->queue({rpc::Operation::ping,rpc::endpoint_probe,{}});
+        Event connected{EventKind::connected,c,0,{},{},identity.paired};connected.via_connection=l.via_connection;event(std::move(connected));
+        if(l.via_connection&&identity.paired){endpoint_routes[identity.device]={l.via_connection,0,0};if(!l.incoming){const auto request=next();l.catalogs.insert(request);l.requests[request]=Clock::now();l.connection->queue({rpc::Operation::catalog,request,{}});}}if(identity.paired){if(!l.incoming&&l.route)for(auto device:store.devices())if(device.id==identity.device){device.address_hint=l.route->address;device.port_hint=l.route->port;store.update_hint(device);auto route=gateway_routes.find(device.id);if(route!=gateway_routes.end())route->second.device=device;break;}sync_routes();event({EventKind::trust_changed,c});}
         if(auto_connect_enabled&&!l.incoming&&identity.paired&&automaticDial){const auto request=next();l.catalogs.insert(request);l.requests[request]=Clock::now();l.connection->queue({rpc::Operation::catalog,request,{}});}
         auto restoring=retries.find(l.token);if(restoring!=retries.end()){const auto request=next();restoring->second.catalog_request=request;l.catalogs.insert(request);l.requests[request]=Clock::now();l.connection->queue({rpc::Operation::catalog,request,{}});}
     }
@@ -365,48 +394,112 @@ struct Service::State {
             for(const auto& grant:grants){auto f=l->resources.find(grant.id);if(l->incoming&&f!=l->resources.end()&&f->second.relay){stop_resource(*l,grant.id);l->connection->queue({rpc::Operation::stopped,grant.id,{}});}}
         }
     }
-    void relay_open(Link& visitor,const rpc::Message& message,const rpc::Open& request){
-        const auto decision=policy.open(visitor.connection->identity(),request.owner,request.resource,request.input,now());
-        if(!decision.grant){visitor.connection->queue({rpc::Operation::rejected,message.id,rpc::detail(decision.reason)});return;}
-        const auto grant=*decision.grant;Link* provider=nullptr;
-        for(auto& [id,l]:links)if(!l->incoming&&l->connection->identity().paired&&l->connection->remote_id()==request.owner){provider=l.get();break;}
-        if(!grant.delegated||!provider||provider->pending.size()+provider->resources.size()>=256||relays.size()>=256){policy.close(grant.id);visitor.connection->queue({rpc::Operation::rejected,message.id,rpc::detail("Direct paired provider is unavailable")});return;}
-        const auto token=next();
-        visitor.resources.emplace(grant.id,Resource{{visitor.token,message.id,grant.id,visitor.connection->remote_id(),true,grant.kind},request,true,provider->token,0});
-        relays.emplace(token,RelayPending{visitor.token,grant.id,message.id});
-        provider->pending.emplace(token,request);
-        provider->requests[token]=Clock::now();
-        provider->pending_contexts.emplace(token,Context{provider->token,token,0,provider->connection->remote_id(),false,grant.kind});
-        try{provider->connection->queue({rpc::Operation::open,token,rpc::encode(request)});}catch(...){provider->pending.erase(token);provider->pending_contexts.erase(token);relays.erase(token);stop_resource(visitor,grant.id);throw;}
+    void close_tunnel(Link& link,Token grant,bool notify=true){
+        auto found=link.tunnels.find(grant);if(found==link.tunnels.end())return;auto tunnel=std::move(found->second);link.tunnels.erase(found);link.bridge->revoke(grant);discard_deferred(link,grant);
+        if(tunnel.listener)tunnel.listener->cancel();
+        if(notify)try{link.connection->queue({rpc::Operation::endpoint_close,grant,{}});}catch(...){}
+        if(tunnel.other_connection){auto other=links.find(tunnel.other_connection);if(other!=links.end())close_tunnel(*other->second,tunnel.other_grant);}
+        if(tunnel.inner_token&&links.contains(tunnel.inner_token))drop(tunnel.inner_token,"Endpoint tunnel closed");
+        if(tunnel.inner_token&&endpoint_inflight.contains(tunnel.inner_token))cancelled.insert(tunnel.inner_token);
     }
-    bool relay_granted(Link& provider,Token request,const rpc::Granted& grant){
-        auto found=relays.find(request);if(found==relays.end())return false;
-        const auto pending=found->second;relays.erase(found);provider.requests.erase(request);
-        auto open=provider.pending.at(request);provider.pending.erase(request);auto context=provider.pending_contexts.at(request);provider.pending_contexts.erase(request);context.grant=grant.grant;
-        auto visitor=links.find(pending.visitor);
-        if(visitor==links.end()||!visitor->second->resources.contains(pending.grant)){provider.connection->queue({rpc::Operation::close,grant.grant,{}});return true;}
-        auto& v=*visitor->second;auto& local=v.resources.at(pending.grant);local.other_grant=grant.grant;
-        provider.resources.emplace(grant.grant,Resource{context,std::move(open),true,v.token,pending.grant});
-        try{
-            if(local.context.kind==Kind::existing_screen){auto port=provider.bridge->listen(grant.grant);v.bridge->connect(pending.grant,port);}
-            else {auto port=v.bridge->listen(pending.grant);provider.bridge->connect(grant.grant,port);}
-            provider.used_resources=true;v.used_resources=true;
-            v.connection->queue({rpc::Operation::granted,pending.request,rpc::encode(rpc::Granted{pending.grant,grant.native_credential})});
-            granted(v,pending.grant,0);
-        }catch(...){stop_resource(v,pending.grant);throw;}
-        return true;
+    void begin_endpoint(Token token,Token gateway,const DeviceId& owner,std::string code,bool revocation=false){
+        auto& link=this->link(gateway);need(!link.via_connection&&link.connection->identity().paired&&link.endpoint_supported,"This gateway does not support authenticated endpoint tunnels");
+        need(valid_id(owner)&&owner!=store.identity()&&owner!=link.connection->remote_id(),"Invalid remote device");
+        need(endpoint_pending.size()<32&&link.tunnels.size()<32,"Endpoint tunnel budget exhausted");
+        if(!revocation)for(const auto& peer:store.pending_forgets())need(peer.id!=owner,"Endpoint removal is pending");
+        need((revocation&&store.revocation_secret(owner).has_value())||store.secret(owner).has_value()||dm::access::validCode(code),"Enter the actual endpoint device's pairing code");
+        endpoint_pending.emplace(token,EndpointPending{gateway,0,0,owner,std::move(code),Clock::now(),revocation});
+        endpoint_routes[owner]={gateway,token,now()+60000};
+        link.connection->queue({rpc::Operation::endpoint_open,token,Bytes(owner.begin(),owner.end())});
+    }
+    void endpoint_dial(Token token,Link& outer,Token grant,DeviceId owner,std::string code,bool revocation){
+        need(dialing.size()<8,"Endpoint authentication budget exhausted");const auto generation=epoch.load();
+        const auto port=outer.bridge->listen(grant);outer.tunnels.at(grant).inner_token=token;endpoint_inflight.insert(token);const auto parent=outer.token;
+        dialing.push_back(std::async(std::launch::async,[this,token,parent,grant,generation,port,owner,revocation,code=std::move(code)]()mutable{
+            try{dm::peer_auth::ClientOptions proof;{std::lock_guard lock(trust_mutex);need(epoch==generation,"Endpoint authentication cancelled");if(!revocation)for(const auto& peer:store.pending_forgets())need(peer.id!=owner,"Endpoint removal is pending");proof.local=store.identity();proof.expected_peer=owner;proof.code=std::move(code);proof.mode=dm::peer_auth::Mode::pair;if(auto key=revocation?store.revocation_secret(owner):store.secret(owner)){proof.mode=revocation?dm::peer_auth::Mode::revocation:dm::peer_auth::Mode::remembered;dm::peer_auth::Secret secret;secret.bytes=*key;proof.remembered=secret;}}
+                auto connection=AuthenticatedConnection::client(transport::Stream::connect("127.0.0.1",port,{},deadline()),proof,remember({},0,generation),Clock::now()+std::chrono::seconds(15));
+                need(connection.identity().paired&&connection.remote_id()==owner,"Endpoint identity verification failed");
+                if(revocation){const auto request=next();connection.send({rpc::Operation::forget,request,{}},deadline());const auto response=connection.receive(deadline());need(response.operation==rpc::Operation::forget_ack&&response.id==request,"Invalid endpoint forget acknowledgement");need(proof.remembered&&store.acknowledge_forget(owner,proof.remembered->bytes),"Endpoint revocation credential changed");return Result{token,false,{}, {},generation,{},false,parent,grant,true};}
+                return Result{token,false,std::make_unique<AuthenticatedConnection>(std::move(connection)),{},generation,{},false,parent,grant};
+            }catch(const std::exception& e){return Result{token,false,{},e.what(),generation,{},false,parent,grant};}
+        }));dial_targets[token]=owner;
+    }
+    void endpoint_message(Link& link,const rpc::Message& message){using O=rpc::Operation;
+        need(!link.via_connection&&link.connection->identity().paired&&link.endpoint_supported,"Endpoint tunnels require a directly paired upgraded peer");
+        if(message.operation==O::endpoint_close){close_tunnel(link,message.id,false);return;}
+        if(message.operation==O::endpoint_cancel){
+            for(auto it=endpoint_pending.begin();it!=endpoint_pending.end();)if(it->second.visitor==link.token&&it->second.visitor_request==message.id){retire_endpoint(it->first,it->second.connection);it=endpoint_pending.erase(it);}else ++it;
+            std::vector<Token> grants;for(const auto& [grant,tunnel]:link.tunnels)if(tunnel.request==message.id)grants.push_back(grant);for(auto grant:grants)close_tunnel(link,grant);return;
+        }
+        if(message.operation==O::endpoint_open||message.operation==O::endpoint_forward){
+            try{
+                DeviceId owner{};std::copy(message.payload.begin(),message.payload.end(),owner.begin());need(valid_id(owner)&&owner!=store.identity(),"Invalid tunnel endpoint identity");need(link.tunnels.size()<32&&endpoint_pending.size()<32,"Endpoint tunnel budget exhausted");
+                if(message.operation==O::endpoint_open){
+                    need(policy.gateway_enabled(),"Gateway sharing is disabled");Link* provider=nullptr;
+                    for(auto& [id,candidate]:links)if(!candidate->via_connection&&candidate->connection->identity().paired&&candidate->endpoint_supported&&candidate->connection->remote_id()==owner){provider=candidate.get();break;}
+                    need(provider&&provider->token!=link.token&&store.secret(owner).has_value(),"Direct paired endpoint is unavailable");
+                    const auto request=next();endpoint_pending.emplace(request,EndpointPending{provider->token,link.token,message.id,owner,{}});
+                    const auto visitor=link.connection->remote_id();provider->connection->queue({O::endpoint_forward,request,Bytes(visitor.begin(),visitor.end())});return;
+                }
+                need(dialing.size()<8,"Endpoint authentication budget exhausted");
+                // Opposite directions own disjoint tunnel IDs on the same control link.
+                const auto grant=(next()<<1)|(Token{1}<<63)|Token(link.incoming),inner=next(),parent=link.token,generation=epoch.load();auto listener=std::make_shared<transport::Listener>("127.0.0.1",0);
+                link.tunnels.emplace(grant,Tunnel{0,0,inner,listener});link.tunnels.at(grant).request=message.id;link.bridge->connect(grant,listener->port());endpoint_inflight.insert(inner);
+                dialing.push_back(std::async(std::launch::async,[this,listener,inner,parent,grant,generation,owner]{try{
+                    auto checkIdentity=[this,owner](const DeviceId& peer){need(peer==owner,"Endpoint visitor identity mismatch");return lookup()(peer);};
+                    auto rememberEndpoint=[this,owner,generation](const DeviceId& peer,const dm::peer_auth::Secret& key){need(peer==owner,"Endpoint visitor identity mismatch");remember({},0,generation)(peer,key);};
+                    auto revokeIdentity=[this,owner](const DeviceId& peer){need(peer==owner,"Endpoint visitor identity mismatch");return revocation_lookup()(peer);};
+                    auto connection=AuthenticatedConnection::server(listener->accept(Clock::now()+std::chrono::seconds(15)),auth,checkIdentity,rememberEndpoint,Clock::now()+std::chrono::seconds(15),revokeIdentity);
+                    if(connection.revocation_only()){receive_revocation(connection);return Result{inner,true,{}, {},generation,{},false,parent,grant,true};}
+                    need(connection.identity().paired&&!connection.revocation_only()&&connection.remote_id()==owner,"Endpoint authentication did not match requesting device");
+                    return Result{inner,true,std::make_unique<AuthenticatedConnection>(std::move(connection)),{},generation,{},false,parent,grant};
+                }catch(const std::exception& e){return Result{inner,true,{},e.what(),generation,{},false,parent,grant};}}));
+                link.connection->queue({O::endpoint_ready,message.id,rpc::integer(grant)});return;
+            }catch(const std::exception& e){link.connection->queue({O::endpoint_rejected,message.id,rpc::detail(e.what())});return;}
+        }
+        auto found=endpoint_pending.find(message.id);if(found==endpoint_pending.end()&&retired_endpoints.contains(message.id)&&retired_endpoints.at(message.id)==link.token){if(message.operation==O::endpoint_ready)link.connection->queue({O::endpoint_close,rpc::integer(message.payload),{}});return;}need(found!=endpoint_pending.end()&&found->second.connection==link.token,"Unknown endpoint tunnel response");auto pending=std::move(found->second);endpoint_pending.erase(found);
+        if(message.operation==O::endpoint_rejected){
+            if(pending.visitor){auto visitor=links.find(pending.visitor);if(visitor!=links.end())visitor->second->connection->queue({O::endpoint_rejected,pending.visitor_request,message.payload});}
+            else{endpoint_routes[pending.owner].pending=0;event({EventKind::error,{message.id,0,0,pending.owner},0,rpc::detail(message.payload)});}return;
+        }
+        need(message.operation==O::endpoint_ready,"Invalid endpoint response");const auto grant=rpc::integer(message.payload);need((grant&(Token{1}<<63))&&bool(grant&1)!=link.incoming&&!link.tunnels.contains(grant)&&!link.resources.contains(grant),"Invalid or duplicate endpoint grant");link.tunnels.emplace(grant,Tunnel{});
+        if(pending.visitor){auto visitor=links.find(pending.visitor);if(visitor==links.end()||!policy.gateway_enabled()){close_tunnel(link,grant);return;}
+            auto& target=*visitor->second;const auto visitorGrant=(next()<<1)|(Token{1}<<63)|Token(target.incoming);target.tunnels.emplace(visitorGrant,Tunnel{link.token,grant});target.tunnels.at(visitorGrant).request=pending.visitor_request;link.tunnels.at(grant)={target.token,visitorGrant};
+            const auto port=link.bridge->listen(grant);target.bridge->connect(visitorGrant,port);target.connection->queue({O::endpoint_ready,pending.visitor_request,rpc::integer(visitorGrant)});
+        }else{
+            if(cancelled.contains(message.id)){close_tunnel(link,grant);endpoint_routes[pending.owner].pending=0;return;}
+            try{endpoint_dial(message.id,link,grant,pending.owner,std::move(pending.code),pending.revocation);}catch(const std::exception& e){close_tunnel(link,grant);endpoint_routes[pending.owner].pending=0;event({EventKind::error,{message.id},0,e.what()});}
+        }
+    }
+    void refresh_endpoints(){
+        for(auto& [id,link]:links){std::vector<Token> expired;for(const auto& [grant,tunnel]:link->tunnels)if(Clock::now()>tunnel.expires)expired.push_back(grant);for(auto grant:expired)close_tunnel(*link,grant);}
+        const auto pendingRemoval=store.pending_forgets();
+        const auto removing=[&](const DeviceId& owner){return std::any_of(pendingRemoval.begin(),pendingRemoval.end(),[&](const auto& peer){return peer.id==owner;});};
+        std::erase_if(endpoint_routes,[&](const auto& entry){return !entry.second.pending&&!store.secret(entry.first)&&!removing(entry.first);});
+        // Only authenticated direct-gateway catalogs can supply an endpoint route.
+        for(const auto& [token,link]:links)if(!link->via_connection&&link->connection->identity().paired&&link->endpoint_supported)for(const auto& catalog:link->catalog_cache)if(catalog.device!=link->connection->remote_id()&&catalog.device!=store.identity()&&(store.secret(catalog.device)||removing(catalog.device))){auto [route,inserted]=endpoint_routes.try_emplace(catalog.device,EndpointRoute{token});if(!links.contains(route->second.via)){route->second.via=token;route->second.pending=0;route->second.due=0;}}
+        std::vector<Token> expired;for(const auto& [id,pending]:endpoint_pending)if(Clock::now()-pending.began>std::chrono::seconds(20))expired.push_back(id);
+        for(auto id:expired){auto pending=std::move(endpoint_pending.at(id));retire_endpoint(id,pending.connection);endpoint_pending.erase(id);if(!pending.visitor){endpoint_routes[pending.owner].pending=0;event({EventKind::error,{id},0,"Endpoint tunnel request timed out"});}}
+        if(!auto_connect_enabled)return;
+        for(auto& [owner,route]:endpoint_routes){
+            if(route.pending||now()<route.due||!store.secret(owner)||!links.contains(route.via)||dialing.size()>=8)continue;
+            bool connected=false;for(const auto& [token,link]:links)if(!link->incoming&&link->connection->identity().paired&&link->connection->remote_id()==owner){connected=true;break;}if(connected)continue;
+            route.due=now()+60000;try{begin_endpoint(next(),route.via,owner,{});}catch(...){}
+        }
+
     }
     void message(Link& l,rpc::Message m){using O=rpc::Operation;l.activity=Clock::now();
         if(m.operation==O::catalog_reply||m.operation==O::granted||m.operation==O::rejected)l.requests.erase(m.id);
+        if(m.operation>=O::endpoint_open&&m.operation<=O::endpoint_cancel){endpoint_message(l,m);return;}
         if(m.operation>=O::stream_open&&m.operation<=O::stream_close){stream_message(l,m);return;}
         if(m.operation==O::catalog_reply){need(l.catalogs.erase(m.id)>0,"Unsolicited catalog response");auto catalogs=rpc::decode_catalogs(m.payload);for(const auto& c:catalogs){need(c.device==l.connection->remote_id()||l.connection->identity().paired,"Unverified delegated catalog rejected");if(policy.gateway_enabled()&&!l.incoming&&l.connection->identity().paired&&c.device!=store.identity()&&c.device==l.connection->remote_id())revoked(policy.remote(l.connection->identity(),c,0,now()));}const bool unchanged=l.automatic_catalogs.erase(m.id)>0&&rpc::encode_catalogs(l.catalog_cache)==m.payload;l.catalog_cache=catalogs;retry_catalog(l,m.id,catalogs);if(unchanged)return;event({EventKind::catalog,{l.token,m.id,0,l.connection->remote_id(),l.incoming},0,{},std::move(catalogs)});return;}
         if(m.operation==O::granted&&l.abandoned.erase(m.id)){auto grant=rpc::decode_granted(m.payload);discard_deferred(l,grant.grant);l.connection->queue({O::close,grant.grant,{}});return;}
         if(m.operation==O::rejected&&l.abandoned.erase(m.id))return;
-        if(m.operation==O::granted){auto p=l.pending.find(m.id);need(!l.incoming&&p!=l.pending.end(),"Unsolicited resource grant");auto grant=rpc::decode_granted(m.payload);need(!l.resources.contains(grant.grant),"Duplicate resource grant");if(relay_granted(l,m.id,grant))return;auto context=l.pending_contexts.at(m.id);context.grant=grant.grant;Resource r{context,std::move(p->second)};auto native=l.pending_native.find(m.id);if(native!=l.pending_native.end()){r.native_cancel=native->second;l.pending_native.erase(native);}l.pending.erase(p);l.pending_contexts.erase(m.id);if(!grant.native_credential.empty())r.request.native_credential=grant.native_credential;l.resources.emplace(grant.grant,std::move(r));try{prepare(l,l.resources.at(grant.grant));}catch(const std::exception& e){native_failure(context,e.what());}return;}
+        if(m.operation==O::granted){auto p=l.pending.find(m.id);need(!l.incoming&&p!=l.pending.end(),"Unsolicited resource grant");auto grant=rpc::decode_granted(m.payload);need(!l.resources.contains(grant.grant)&&!l.tunnels.contains(grant.grant),"Duplicate resource grant");auto context=l.pending_contexts.at(m.id);context.grant=grant.grant;Resource r{context,std::move(p->second)};auto native=l.pending_native.find(m.id);if(native!=l.pending_native.end()){r.native_cancel=native->second;l.pending_native.erase(native);}l.pending.erase(p);l.pending_contexts.erase(m.id);if(!grant.native_credential.empty())r.request.native_credential=grant.native_credential;l.resources.emplace(grant.grant,std::move(r));try{prepare(l,l.resources.at(grant.grant));}catch(const std::exception& e){native_failure(context,e.what());}return;}
         if(m.operation==O::rejected){cancel_request(l,m.id);retry_done(l.token,m.id,false);l.catalogs.erase(m.id);l.automatic_catalogs.erase(m.id);event({EventKind::error,{l.token,m.id,0,l.connection->remote_id(),l.incoming},0,rpc::detail(m.payload)});return;}
         if(m.operation==O::stopped){stop_resource(l,m.id);return;}
-        if(m.operation==O::ping){l.connection->queue({O::pong,m.id==rpc::cancel_probe?rpc::cancel_ack:m.id,{}});return;}
-        if(m.operation==O::pong){if(m.id==rpc::cancel_ack)l.request_cancel_supported=true;return;}
+        if(m.operation==O::ping){l.connection->queue({O::pong,m.id==rpc::cancel_probe?rpc::cancel_ack:(!l.via_connection&&m.id==rpc::endpoint_probe?rpc::endpoint_ack:m.id),{}});return;}
+        if(m.operation==O::pong){if(m.id==rpc::cancel_ack)l.request_cancel_supported=true;if(!l.via_connection&&m.id==rpc::endpoint_ack)l.endpoint_supported=true;return;}
         if(m.operation==O::cancel_request){
             need(l.incoming,"Only the requester can cancel resource preparation");std::vector<Token> grants;
             for(const auto& [id,resource]:l.resources)if(resource.context.request==m.id)grants.push_back(id);
@@ -414,7 +507,7 @@ struct Service::State {
             for(auto grant:grants){auto found=l.resources.find(grant);if(found==l.resources.end())continue;if(found->second.relay){stop_resource(l,grant);continue;}l.connection->queue(l.dispatcher->handle({O::close,grant,{}},now()));}return;
         }
         if(m.operation==O::open&&!l.incoming){l.connection->queue({O::rejected,m.id,rpc::detail("Open a separate connection to request this device's resources")});return;}
-        if(m.operation==O::open){auto request=rpc::decode_open(m.payload);if(request.owner!=store.identity()){relay_open(l,m,request);return;}}
+        if(m.operation==O::open){auto request=rpc::decode_open(m.payload);if(request.owner!=store.identity()){l.connection->queue({O::rejected,m.id,rpc::detail("Pair with the actual endpoint through an authenticated tunnel first")});return;}}
         if(m.operation==O::close&&l.incoming){auto resource=l.resources.find(m.id);if(resource!=l.resources.end()&&resource->second.relay){stop_resource(l,m.id);l.connection->queue({O::stopped,m.id,{}});return;}}
         if(m.operation==O::open)for(const auto& [grant,resource]:l.resources)need(resource.context.request!=m.id,"Duplicate resource request identity");
         l.current_request=m.id;auto response=l.dispatcher->handle(m,now());if(m.operation!=O::open||response.operation!=O::granted)l.connection->queue(response);
@@ -426,7 +519,7 @@ struct Service::State {
         for(auto& [id,l]:links)try{for(const auto& [request,began]:l->requests)need(Clock::now()-began<std::chrono::seconds(l->pending.contains(request)?60:15),"Peer request timed out");for(unsigned turn=0;turn<16;++turn){bool moved=l->connection->pump(deadline());while(auto m=l->connection->next()){message(*l,std::move(*m));moved=true;}if(!l->connection->pending_output())moved=l->bridge->pump()||moved;progress=progress||moved;if(!moved)break;}if(Clock::now()-l->activity>std::chrono::seconds(30))throw transport::Error(transport::ErrorReason::timeout,"Device connection timed out");if(Clock::now()-l->last_ping>std::chrono::seconds(10)){l->connection->queue({rpc::Operation::ping,next(),{}});l->last_ping=Clock::now();}}catch(const transport::Error& e){dead.emplace_back(id,e.what(),e.reason==transport::ErrorReason::network||e.reason==transport::ErrorReason::timeout);}catch(const std::exception& e){dead.emplace_back(id,e.what(),false);}
         for(auto& [id,reason,retry]:dead)drop(id,std::move(reason),retry);
         try{refresh_forgets();revoked(policy.expire(now()));if(policy.gateway_enabled()||auto_connect_enabled)for(auto& [id,l]:links)if(!l->incoming&&l->connection->identity().paired&&l->catalogs.empty()&&Clock::now()-l->last_catalog>std::chrono::seconds(10)){const auto request=next();l->catalogs.insert(request);l->automatic_catalogs.insert(request);l->requests[request]=Clock::now();l->connection->queue({rpc::Operation::catalog,request,{}});l->last_catalog=Clock::now();}}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}
-        if(Clock::now()-last_routes>=std::chrono::milliseconds(100)){last_routes=Clock::now();try{refresh_routes();refresh_retries();}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}}
+        if(Clock::now()-last_routes>=std::chrono::milliseconds(100)){last_routes=Clock::now();try{refresh_routes();refresh_retries();refresh_endpoints();}catch(const std::exception& e){event({EventKind::error,{},0,e.what()});}}
         for(auto& [id,l]:links){std::vector<Context> timedout;for(const auto& [grant,r]:l->resources)if(!r.relay&&!r.native_ready&&Clock::now()-r.native_started>std::chrono::seconds(60))timedout.push_back(r.context);for(const auto& context:timedout)native_failure(context,"Native resource preparation timed out");}
         if(hooks.poll&&!native_poll_pending&&Clock::now()-last_poll>=std::chrono::milliseconds(50)){
             last_poll=Clock::now();native_poll_pending=true;
@@ -458,13 +551,7 @@ Service::Token Service::start(std::string bind,std::uint16_t port){
                 auto stream=listener->accept(deadline());const auto generation=s.epoch.load();
                 auto connection=std::make_shared<std::unique_ptr<AuthenticatedConnection>>(std::make_unique<AuthenticatedConnection>(AuthenticatedConnection::server(std::move(stream),s.auth,s.lookup(),s.remember({},0,generation),deadline(),s.revocation_lookup())));
                 if((*connection)->revocation_only()){
-                    auto& revocation=**connection;const auto peer=revocation.remote_id();const auto request=revocation.receive(deadline());
-                    need(request.operation==rpc::Operation::forget&&request.id&&request.payload.empty()&&revocation.revocation_secret().has_value(),"Revocation connection only accepts Forget");
-                    const auto key=revocation.revocation_secret()->bytes;
-                    auto completed=std::make_shared<std::promise<bool>>();auto completion=completed->get_future();
-                    s.post([&s,peer,key,completed]{try{std::lock_guard lock(s.trust_mutex);const bool wasTrusted=s.store.secret(peer).has_value();const auto pending=s.store.pending_forgets();const bool wasPending=std::any_of(pending.begin(),pending.end(),[&](const auto& item){return item.id==peer;});need(s.store.receive_forget(peer,key),"Revocation credential changed");if(wasTrusted){++s.epoch;s.revoke_local(peer);}else if(wasPending)s.event({EventKind::trust_changed,{}});completed->set_value(true);}catch(...){completed->set_value(false);}});
-                    need(completion.wait_until(deadline())==std::future_status::ready&&completion.get(),"Revocation did not complete");
-                    revocation.send({rpc::Operation::forget_ack,request.id,{}},deadline());continue;
+                    s.receive_revocation(**connection);continue;
                 }
                 auto token=s.next();s.post([&s,connection,token,generation,serial]{if(s.accepting&&s.listener_serial==serial)s.add({token,true,std::move(*connection),{},generation});});
             }catch(const std::exception&){/* Timeout/rejected handshake never enters application state. */}
@@ -480,8 +567,9 @@ Service::Token Service::connect(ConnectOptions options){auto& s=*state_;const au
         s.suppressed_routes.erase(device.id);auto route=s.gateway_routes.find(device.id);if(route!=s.gateway_routes.end()){route->second.disabled=false;route->second.failures=0;route->second.due=0;route->second.identity_failed=false;route->second.attempted=false;}
     }
     s.launch_dial(token,std::move(options),generation);}catch(const std::exception& e){s.event({EventKind::error,{token},0,e.what()});}});return token;}
+Service::Token Service::connect_via(Token gateway,DeviceId owner,std::string code){auto& s=*state_;const auto token=s.next();s.post([&s,token,gateway,owner,code=std::move(code)]()mutable{try{s.begin_endpoint(token,gateway,owner,std::move(code));}catch(const std::exception& e){s.event({EventKind::error,{token},0,e.what()});}});return token;}
 Service::Token Service::catalog(Token connection){auto& s=*state_;auto request=s.next();s.post([&s,connection,request]{auto& l=s.link(connection);need(l.catalogs.size()<64,"Too many catalog requests");l.catalogs.insert(request);l.requests[request]=Clock::now();l.connection->queue({rpc::Operation::catalog,request,{}});});return request;}
-Service::Token Service::open(Token connection,rpc::Open request){auto& s=*state_;auto token=s.next();s.post([&s,connection,token,request=std::move(request)]()mutable{try{auto& l=s.link(connection);need(!l.incoming&&l.pending.size()+l.resources.size()<256,"Resource connection budget exhausted");need(request.owner==l.connection->remote_id()||l.connection->identity().paired,"A paired gateway is required for delegated resources");l.used_resources=true;const Offer* offer=nullptr;for(const auto& catalog:l.catalog_cache)if(catalog.device==request.owner)for(const auto& item:catalog.offers)if(item.id==request.resource)offer=&item;need(offer&&offer->available,"Refresh this device's available resources before connecting");need(!request.input||offer->input_allowed,"Remote input is not permitted");
+Service::Token Service::open(Token connection,rpc::Open request){auto& s=*state_;auto token=s.next();s.post([&s,connection,token,request=std::move(request)]()mutable{try{auto& l=s.link(connection);need(!l.incoming&&l.pending.size()+l.resources.size()<256,"Resource connection budget exhausted");need(request.owner==l.connection->remote_id(),"Connect to the actual endpoint through an authenticated tunnel before using this resource");l.used_resources=true;const Offer* offer=nullptr;for(const auto& catalog:l.catalog_cache)if(catalog.device==request.owner)for(const auto& item:catalog.offers)if(item.id==request.resource)offer=&item;need(offer&&offer->available,"Refresh this device's available resources before connecting");need(!request.input||offer->input_allowed,"Remote input is not permitted");
     if(offer->kind==Kind::existing_screen){
         const auto same=[&](const rpc::Open& other){return other.owner==request.owner&&other.resource==request.resource;};
         for(const auto& [id,peer]:s.links)if(!peer->incoming){for(const auto& [pending,other]:peer->pending)need(s.relays.contains(pending)||!same(other),"This screen is already opening on this device");for(const auto& [grant,other]:peer->resources)need(other.relay||!same(other.request),"This screen is already open on this device");}
@@ -512,6 +600,9 @@ void Service::cancel(Token connection,Token request){auto& s=*state_;s.post([&s,
     for(auto grant:active){s.stop_resource(l,grant);l.connection->queue({rpc::Operation::close,grant,{}});}
 });}
 void Service::disconnect(Token connection){auto& s=*state_;s.post([&s,connection]{
+    auto endpoint=s.endpoint_pending.find(connection);if(endpoint!=s.endpoint_pending.end()&&!endpoint->second.visitor){auto outer=s.links.find(endpoint->second.connection);if(outer!=s.links.end())outer->second->connection->queue({rpc::Operation::endpoint_cancel,connection,{}});s.endpoint_routes[endpoint->second.owner].pending=0;s.retire_endpoint(connection,endpoint->second.connection);s.endpoint_pending.erase(endpoint);s.event({EventKind::disconnected,{connection},0,"Endpoint connection cancelled"});return;}
+    if(s.endpoint_inflight.contains(connection)){for(auto& [id,link]:s.links){std::vector<Token> grants;for(const auto& [grant,tunnel]:link->tunnels)if(tunnel.inner_token==connection)grants.push_back(grant);for(auto grant:grants)s.close_tunnel(*link,grant);}s.cancelled.insert(connection);s.event({EventKind::disconnected,{connection},0,"Endpoint connection cancelled"});return;}
+
     auto suppress=[&](const DeviceId& peer){if(!valid_id(peer))return;s.suppressed_routes.insert(peer);auto route=s.gateway_routes.find(peer);if(route!=s.gateway_routes.end())route->second.disabled=true;};
     auto retry=s.retries.find(connection);if(retry!=s.retries.end())suppress(retry->second.route.expected_peer);
     auto target=s.dial_targets.find(connection);if(target!=s.dial_targets.end())suppress(target->second);
@@ -534,6 +625,7 @@ void Service::observe_route(DeviceId peer,std::string address,std::uint16_t port
     for(auto device:s.store.devices())if(device.id==peer){auto [entry,inserted]=s.gateway_routes.try_emplace(peer);const bool changed=entry->second.device.address_hint!=address||entry->second.device.port_hint!=port;if(changed)entry->second.identity_failed=false;device.address_hint=address;device.port_hint=port;entry->second.device=std::move(device);entry->second.disabled=s.suppressed_routes.contains(peer);break;}
 });}
 void Service::gateway(bool enabled){auto& s=*state_;s.post([&s,enabled]{s.revoked(s.policy.gateway(enabled));s.sync_routes();
+    if(!enabled)for(auto& [id,link]:s.links){std::vector<Token> relay;for(const auto& [grant,tunnel]:link->tunnels)if(tunnel.other_connection)relay.push_back(grant);for(auto grant:relay)s.close_tunnel(*link,grant);}
     if(!enabled&&!s.auto_connect_enabled)for(const auto& [token,id]:s.gateway_dials)s.cancelled.insert(token);
     if(enabled)for(auto& [id,l]:s.links)if(!l->incoming&&l->connection->identity().paired){l->last_catalog=Clock::now()-std::chrono::seconds(11);for(const auto& catalog:l->catalog_cache)if(catalog.device!=s.store.identity()&&catalog.device==l->connection->remote_id())s.revoked(s.policy.remote(l->connection->identity(),catalog,0,now()));}});}
 std::vector<Service::Event> Service::poll(){auto& s=*state_;std::lock_guard lock(s.mutex);std::vector<Event> result;while(!s.events.empty()){result.push_back(std::move(s.events.front()));s.events.pop_front();}return result;}
