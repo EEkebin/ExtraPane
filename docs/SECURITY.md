@@ -27,6 +27,34 @@ Update preserves trust; uninstall or clearing app data does not.
 The sections below describe the older Server/Client and diagnostic workflows.
 Their code lifetimes and credential storage are distinct from Devices pairing.
 
+## End-to-end encryption audit (2026-11-08)
+
+Direct paired Devices connections authenticate the two TLS endpoints with a
+TLS-exporter-bound SPAKE2 exchange. Resource control and tunneled media then travel
+inside TLS 1.3. Open/unpaired mode encrypts traffic but does not authenticate the
+other endpoint, so it does not protect against active impersonation.
+
+Current gateway mode must not be described as gateway-blind end-to-end encryption.
+Although native media normally retains its own encrypted stream, the gateway can
+read the native admission credential carried in Open/Granted RPC messages. That
+secret allows an actively malicious gateway to impersonate the media endpoints.
+See `core/peers/service.cpp` relay handling, `core/peers/rpc.cpp` credential encoding
+and `core/access/access.cpp` native credential authentication.
+
+The proposed replacement authenticates the visitor directly to the resource owner
+through an opaque tunnel. Resource setup, native credentials, media and input must
+remain within that endpoint-authenticated tunnel; relay metadata must not contain
+those secrets. Both endpoints must negotiate support, with no silent fallback to
+trusted-gateway semantics. A one-time pairing with the actual owner is a product
+decision pending user confirmation because current gateway access trusts the
+friend's gateway without separate owner pairing. No new E2E protocol is implemented
+by the pre.109.1 UI build.
+
+Discovery still broadcasts basic device metadata; IP addresses and traffic timing
+are not concealed by media encryption. Raw USB/IP is local loopback traffic wrapped
+by the network TLS tunnel. Android has no USB-sharing implementation. This audit
+is source review, not independent cryptographic certification.
+
 ## Optional access-code mode
 
 The access-code build supports short-lived, one-use six-digit admission codes on Windows, Linux and macOS hosts and all four clients. A password-authenticated exchange verifies code possession and derives session-specific encryption keys before monitor creation or input grants. See [setup, protocol and limits](ACCESS-CODES.md). This is separate from the legacy diagnostic PSK mode below. Do not substitute a numeric code directly for a TLS PSK.

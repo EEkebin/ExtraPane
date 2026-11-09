@@ -25,7 +25,7 @@ mean every device combination has been validated.
 - [x] Windows USB forwarding and bounded ownership return implementation.
 - [x] Surface orphaned-driver uninstall helper repaired; removal precheck passes.
 - [x] Unified Windows installer and portable package; Linux AppImage, Android APK, macOS Universal ZIP/DMG builds.
-- [x] Matching 2026.11.09-pre.108.1 Windows installers delivered to both desktops; Android APK installed and version verified.
+- [x] Matching 2026.11.09-pre.109.1 Windows installers delivered to both desktops; Android APK installed and version verified.
 
 ### Current validation and remaining work
 
@@ -1233,7 +1233,7 @@ No physical media or input tests were run for this UI increment.
   transport; preserve explicit unpaired identity warnings and actual resource errors.
 - [x] Match shared Qt, Android and native macOS presentation; retain media-on-power
   semantics and background resource-list refresh without claiming idle sockets close.
-- [ ] Isolated checks and matching Windows/Android build delivery.
+- [x] Isolated checks and matching Windows/Android build delivery.
 
 
 Verification: Qt offscreen checks passed for persistent paired Resources navigation,
@@ -1241,3 +1241,21 @@ no duplicate paired management card, generic status suppression and preserved
 resource errors. Rendered Devices layout reviewed. Android's 13 host suites and
 integrated build/lint passed. Native macOS statically reviewed pending hosted build.
 No transport/media lifecycle was changed and no physical stream test was run.
+
+
+### Pairing-state pre.109.1 delivery and encryption follow-up
+
+- [x] Clean `cfc5ccf` packages **2026.11.09-pre.109.1** built and verified.
+  Windows installer copied to both Desktops, matching SHA256 verified and saved
+  Surface SSH identity checked. No Windows installation run.
+  Installer SHA256: `f2483cd6e44e7d5871f8b5f3b8ab44939cb2562e5cd451d8ccbb2ab749d9f083`.
+- [x] Matching Android streamed install succeeded; version/code10901 confirmed.
+  APK SHA256: `7440ed4f7a9dd0a553a82c1dd5d42900a07012b22601bb6cc9ebeb688bed5e71`.
+- [ ] Hosted run `42543989485` queued; local Windows/Android checks passed but do
+  not replace native macOS compilation or physical UI acceptance.
+- [x] Audited direct/gateway/native media encryption paths. Direct paired links
+  authenticate encrypted endpoints; open mode remains unverified. Current relays
+  see native admission secrets, so gateway-blind E2E is not guaranteed.
+- [ ] Confirm end-device pairing policy for gateway access before implementing
+  endpoint-only authentication/tunneling. See SECURITY.md for findings and scope.
+  pre.109.1 changes presentation only; it is not an E2E protocol upgrade.
