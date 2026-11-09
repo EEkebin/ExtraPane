@@ -9,7 +9,8 @@
 - [x] Make one pairing provide resource availability in both directions, including
   when a reverse direct/discovery route is absent.
 - [x] Verify authentication boundaries and UI transitions.
-- [ ] Build and deliver matching packages; complete all-platform CI.
+- [x] Build and deliver matching Windows/Android packages.
+- [ ] Complete all-platform CI and physical acceptance for this revision.
 
 The user clarified that the pairing field should hide entered characters, not
 that typing freezes. Custom secrets remain fixed; generated credentials rotate.
@@ -24,6 +25,21 @@ and existing gateway regressions pass without reverse discovery/address hints.
 Qt app, offscreen prompt/countdown/masking and controller persistence/reset checks
 pass. Android's 16 host suites, both native ABIs, Java compilation and lint pass.
 macOS controls are implemented; full platform compilation remains for CI.
+
+Delivery: **2026.11.09-pre.116.1**, clean source
+`f06fbfdacc3e812ea05cba3f9a7064c1b44cc27c`. Windows installer/portable extraction,
+isolated UI and embedded component checks pass. Matching installer copied and
+SHA-256 verified on this Desktop and Surface Desktop (`10.0.20.143`), without
+running either installer. Android release build/lint, host checks, both ABIs,
+pinned signer and alignment checks pass; stream installation succeeded.
+
+- Windows installer SHA-256:
+  `ce892c335558265c6a76b2d790c54be5242fbc9f9d8b5a6f7efa402d049b17af`
+- Android APK SHA-256:
+  `5f6d37d5da79f0bdfbdf17ae3b8f078a865d88dcc5495185eda907ea4c787c0c`
+- [All-platform CI run](https://github.com/EEkebin/ExtraPane/actions/runs/42564669305)
+  remains in progress at delivery. User acceptance of new pairing and mutual
+  resources awaits both Windows installations being updated.
 
 ## Active increment: USB routing through the installed peer workspace
 
