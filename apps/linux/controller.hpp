@@ -53,6 +53,7 @@ public:
     LinuxConnectionRuntime* connectionRuntime()const{return runtime_.get();}
     void setEngine(QQmlEngine* engine);
     void setDisplayMode(QVariantMap mode){displayMode_=std::move(mode);}
+    void setScreenRequest(dm::video::wire::ScreenRequest screen,bool input=false){screenRequest_=screen;screenInput_=input;}
     QString status()const{return status_;}
     QString availability()const{return availability_;}
     QString savedAddress()const;
@@ -76,6 +77,7 @@ signals:
 private:
     std::unique_ptr<LinuxConnectionRuntime> runtime_;
     QVariantMap displayMode_;
+    dm::video::wire::ScreenRequest screenRequest_;bool screenInput_=false;
     ResourceModel resources_;
     std::shared_ptr<dm::access::Gate> accessGate_;QString accessCode_;
     dm::linux_client::Host* host_=nullptr;

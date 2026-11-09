@@ -1,17 +1,15 @@
-# Server driver installation
+# Windows component installation
 
-The virtual-display driver is required on a PC that hosts an extended desktop. A receiving client does not need it. Selecting **Server + Client** in ExtraPane Setup makes driver installation a required dependency, not an optional finish-page task.
+The virtual-display driver is required on a PC that hosts an extended desktop. In the Devices workspace, this is the computer using a remote display destination, not the device showing its picture. Every ExtraPane installation includes the managed display, camera, audio and USB components needed to offer and use resources. There is no Client only, Share only or role selection.
 
 ## Normal setup
 
-1. Run the ExtraPane installer and choose **Server + Client**.
-2. Read and accept the development-certificate explanation.
+1. Run the ExtraPane installer.
+2. Read the development-certificate explanation and select **I agree - Next** to consent, or cancel setup.
 3. Approve the ExtraPane installer administrator prompt. The app and its managed components install under Program Files\ExtraPane.
-4. After setup completes, open Server and choose Start server. A monitor is created only after a client connects.
+4. Open ExtraPane, pair the devices, then activate individual resources with their power buttons. Installing the components does not export USB storage, start capture or create a monitor.
 
-If you choose **Client only**, setup does not install a driver or trust a certificate. Both app pages remain available. To host later, rerun setup as Server + Client to install the required components.
-
-For the current shared-UI portable server, use the matching installer with **Server + Client** to prepare the managed components, then extract the ZIP and run `ExtraPane.exe`. The older `ExtraPane.DriverSetup.exe` is part of historical display-only packages. Display-driver installation is machine-wide and requires Windows administrator permission.
+For the current shared-UI portable server, use the matching installer to prepare the managed components, then extract the ZIP and run `ExtraPane.exe`. The older `ExtraPane.DriverSetup.exe` is part of historical display-only packages. Display-driver installation is machine-wide and requires Windows administrator permission.
 
 Canceling elevation or certificate consent prevents server setup. Driver installation runs after the main app and its uninstaller are available. If it fails, setup reports a nonzero result, suppresses application launch, and keeps ExtraPane installed for repair or removal. Resolve the reported error and rerun the installer; the PC is not ready to host until driver setup succeeds.
 
@@ -26,11 +24,11 @@ The main ExtraPane installer:
 - Records the exact package hashes, published `oemNN.inf`, and which driver/certificate entries it added, under its administrator-controlled `state` directory.
 - Registers only **ExtraPane** in Windows Apps. The installed app does not use a nested display-driver installer or uninstaller.
 
-It does not create a test monitor, change network addresses, disable Secure Boot or Memory Integrity, enable test-signing mode, or restart Windows automatically. It does not install a display driver on the receiving PC unless that PC is also being configured to host.
+It does not create a test monitor, change network addresses, disable Secure Boot or Memory Integrity, enable test-signing mode, or restart Windows automatically. The driver package is installed on every Windows PC; a virtual monitor is created only when requested.
 
 The package is signed with a development code-signing certificate, not a Microsoft release signature. Each newly built package has an ephemeral signing key; packaging discards that private key and ships only the public certificate. Its validity dates and hashes are in `package\manifest.json`. Frozen package output is not overwritten by the packaging script.
 
-Trusting a development certificate is a machine-wide change. It is shown separately from choosing a role. Driver-store installation and runtime loading are different checks: Windows security policy can still refuse to load a successfully staged driver. The installer never changes boot policy to work around that refusal.
+Trusting a development certificate is a machine-wide change. The installer presents this explanation before component installation. Driver-store installation and runtime loading are different checks: Windows security policy can still refuse to load a successfully staged driver. The installer never changes boot policy to work around that refusal.
 
 ## Updating and removing
 
@@ -40,7 +38,7 @@ Reinstalling the same driver package is idempotent. Installing a different packa
 
 Uninstall **ExtraPane** through Windows Apps to remove the app, its managed components and the executing account's saved settings. The main uninstaller calls the display manager directly. It verifies recorded package identities, removes only installer-owned driver-store packages, and removes only certificate entries it added when the corresponding package is no longer staged. Pre-existing packages and trust are preserved. No force-removal flag is used.
 
-The separately distributed portable driver setup remains available for portable users. A standalone installation has its own uninstall entry until a verified main-app upgrade takes ownership.
+Historical standalone display-driver installations have their own uninstall entry until a verified main-app upgrade takes ownership. Current portable users should prepare components through the matching main installer.
 If removal fails, the uninstaller keeps its manager and records for a retry. If Windows asks for a restart, restart manually and retry. Do not delete ownership records or guess an OEM INF number. The older development-script installations remain governed by their original records; see the historical notes in [EXTENDED-DISPLAY.md](EXTENDED-DISPLAY.md).
 
 ## Logs and troubleshooting
@@ -51,17 +49,19 @@ If removal fails, the uninstaller keeps its manager and records for a retry. If 
 
 An elevation cancellation does not mean Windows installed the driver. A hash or signer mismatch prevents installation; obtain a fresh copy of the release. An expired development certificate requires a newer packaged driver. A driver-store failure reports an error instead of treating the PC as configured for hosting.
 
-If installation succeeds but Start server or a client connection fails, preserve the error and logs. The next check is actual device loading and the machine's policy; repeating certificate imports or changing boot security is not an automatic repair step.
+If installation succeeds but a resource request fails, preserve the error and logs. The next check is actual device loading and the machine's policy; repeating certificate imports or changing boot security is not an automatic repair step.
 
 ## Silent deployment
 
-Silent app setup defaults to Client only. Explicit server deployment requires both flags:
+Silent installation, update and restore require explicit development-certificate consent:
 
 ```powershell
-.\ExtraPane-<version>-Setup-win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SERVER=1 /ACCEPTDEVELOPMENTCERT=1
+.\ExtraPane-<version>-Setup-win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /ACCEPTDEVELOPMENTCERT=1
 ```
 
-The driver step still requires administrator permission. For unattended deployment, use an appropriately elevated deployment context; `/VERYSILENT` does not bypass UAC. The standalone driver setup likewise requires `/ACCEPTDEVELOPMENTCERT=1` when silent. These flags authorize the documented machine certificate trust change; no security settings are silently disabled.
+The historical `/SERVER=1` flag is accepted as redundant compatibility. `/SERVER=0` and other role values are rejected before setup stops the running app; they no longer request a driver-free installation. `/MAINTENANCE=uninstall` ignores this obsolete role flag and does not require certificate consent. Stored role selections from old installations do not alter the full installation.
+
+The driver step still requires administrator permission. For unattended deployment, use an appropriately elevated deployment context; `/VERYSILENT` does not bypass UAC. The standalone driver setup likewise requires `/ACCEPTDEVELOPMENTCERT=1` when silent. This flag authorizes the documented machine certificate trust change; no security settings are silently disabled.
 
 ## Verification scope
 
@@ -78,18 +78,18 @@ ExtraPane was previously called SideScreen. The current manager imports verified
 An existing machine-wide ExtraPane installation enables a maintenance page.
 **Update** requires a strictly newer release label; prerelease run and attempt
 numbers are compared numerically, and a stable release outranks a prerelease of
-the same date/revision. Updates retain the previous Client only / Server + Client
-selection by default.
+the same date/revision. Updates install all managed components, including when
+the previous version was installed with a limited role.
 
 **Restore** is a clean reset: it runs the registered ExtraPane uninstaller to remove
-owned components and current-user settings before reinstalling the chosen role.
+owned components and current-user settings before reinstalling all managed components.
 **Uninstall** performs that removal and finishes without installing or launching
 ExtraPane. Missing/untrusted uninstaller paths and incomplete cleanup stop the
 operation; shared backend ownership safeguards remain in effect.
 
 Silent maintenance defaults to Update and refuses a same-version or older installer.
 An intentional clean reset requires `/MAINTENANCE=restore`; removal alone uses
-`/MAINTENANCE=uninstall`. Server installation still requires the existing driver
+`/MAINTENANCE=uninstall`. Installation and restore still require the driver
 certificate consent. These new maintenance paths require device acceptance testing.
 
 New uninstallers report completion and restart requirements to maintenance setup.

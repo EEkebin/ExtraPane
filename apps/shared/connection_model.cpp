@@ -15,9 +15,9 @@ bool keys(const QVariantMap& map,const QSet<QString>& allowed){
     return true;
 }
 bool ipv4(const QString& text,bool local){
-    QHostAddress address;if(!address.setAddress(text)||address.protocol()!=QAbstractSocket::IPv4Protocol)return false;
+    QHostAddress address;if(!address.setAddress(text.compare("localhost",Qt::CaseInsensitive)==0?QStringLiteral("127.0.0.1"):text)||address.protocol()!=QAbstractSocket::IPv4Protocol)return false;
     const auto number=address.toIPv4Address();
-    return (local&&number==0)||(number!=0&&number!=0xffffffffu&&!address.isMulticast()&&!address.isLoopback());
+    return (local&&number==0)||((number>>24)>0&&(number>>24)<224&&number!=0xffffffffu&&!address.isMulticast());
 }
 }
 ConnectionModel::ConnectionModel(QObject* parent):QAbstractListModel(parent){}
@@ -44,7 +44,7 @@ bool ConnectionModel::validTarget(const QVariantMap& target,bool complete){
     return ((!complete&&address.isEmpty())||ipv4(address,false))&&ipv4(target.value("localAddress").toString(),true)
         &&integer(target.value("port"),1,65535)&&integer(target.value("interfaceIndex"),0,2147483647);
 }
-bool ConnectionModel::setSharedTarget(QVariantMap target){if(!validTarget(target,false))return false;sharedTarget_=std::move(target);if(rowCount())emit dataChanged(index(0),index(rowCount()-1),{EffectiveTarget});emit sharedTargetChanged();return true;}
+bool ConnectionModel::setSharedTarget(QVariantMap target){if(!validTarget(target,false))return false;if(target["address"].toString().compare("localhost",Qt::CaseInsensitive)==0)target["address"]="127.0.0.1";if(target["localAddress"].toString().compare("localhost",Qt::CaseInsensitive)==0)target["localAddress"]="127.0.0.1";sharedTarget_=std::move(target);if(rowCount())emit dataChanged(index(0),index(rowCount()-1),{EffectiveTarget});emit sharedTargetChanged();return true;}
 QString ConnectionModel::addConnection(QString kind){
     if(rows_.size()>=static_cast<std::size_t>(std::numeric_limits<int>::max())||(kind!="display"&&kind!="camera"&&kind!="microphone"&&kind!="usb"&&kind!="speaker"))return {};
     Row row;row.id=QUuid::createUuid().toString(QUuid::WithoutBraces);row.kind=std::move(kind);row.target=sharedTarget_;
@@ -54,7 +54,7 @@ QString ConnectionModel::addConnection(QString kind){
 bool ConnectionModel::removeConnection(QString id){const auto i=find(id);if(i<0||busy(rows_[i].state))return false;beginRemoveRows({},i,i);rows_.erase(rows_.begin()+i);endRemoveRows();return true;}
 bool ConnectionModel::setEnabled(QString id,bool value){const auto i=find(id);if(i<0)return false;auto& row=rows_[i];if(row.enabled==value)return true;row.enabled=value;changed(i);emit enabledChanged(id,value);return true;}
 bool ConnectionModel::setSource(QString id,QString source){const auto i=find(id);if(i<0||busy(rows_[i].state)||source.size()>8192||source.contains(QChar(0))||source.contains('\n')||source.contains('\r'))return false;rows_[i].source=std::move(source);changed(i);return true;}
-bool ConnectionModel::setTarget(QString id,QVariantMap target){const auto i=find(id);if(i<0||busy(rows_[i].state)||!validTarget(target,false))return false;rows_[i].target=std::move(target);changed(i);return true;}
+bool ConnectionModel::setTarget(QString id,QVariantMap target){const auto i=find(id);if(i<0||busy(rows_[i].state)||!validTarget(target,false))return false;if(target["address"].toString().compare("localhost",Qt::CaseInsensitive)==0)target["address"]="127.0.0.1";if(target["localAddress"].toString().compare("localhost",Qt::CaseInsensitive)==0)target["localAddress"]="127.0.0.1";rows_[i].target=std::move(target);changed(i);return true;}
 bool ConnectionModel::validDisplay(const QVariantMap& mode){
     if(!keys(mode,{"mode","monitorId","width","height","fps"})||mode.size()!=5)return false;
     const auto type=mode.value("mode").toString();const auto monitor=mode.value("monitorId").toString();

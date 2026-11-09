@@ -188,8 +188,8 @@ void WindowsController::refreshAddresses(){
 }
 void WindowsController::connectTo(QString server,QString local,bool input,unsigned scale,unsigned interfaceIndex,unsigned port,QString code){
     if(!clientReady())return;
-    const QHostAddress address(server.trimmed());
-    if(address.protocol()!=QAbstractSocket::IPv4Protocol||address.isNull()||address.isMulticast()||address.isLoopback()||address.toIPv4Address()==0xffffffffu||!port||port>65535||scale>2){status_="Enter a valid server IPv4 address and port.";emit changed();return;}
+    const QHostAddress address(server.trimmed().compare("localhost",Qt::CaseInsensitive)==0?QStringLiteral("127.0.0.1"):server.trimmed());
+    if(address.protocol()!=QAbstractSocket::IPv4Protocol||address.isNull()||address.isMulticast()||address.toIPv4Address()==0xffffffffu||!port||port>65535||scale>2){status_="Enter a valid server IPv4 address and port.";emit changed();return;}
     if(!code.isEmpty()&&(code.size()!=6||std::any_of(code.begin(),code.end(),[](QChar c){return c<'0'||c>'9';}))){status_="Access code must contain six digits.";emit changed();return;}
     bool valid=interfaceIndex==0&&local=="0.0.0.0";
     for(const auto& item:addresses_){const auto entry=item.toMap();if(entry["address"].toString()==local&&entry["index"].toUInt()==interfaceIndex)valid=true;}
@@ -304,10 +304,11 @@ void WindowsController::disconnectFromServer(){
     status_=impl_->disconnectPending?"Returning USB before disconnecting...":active()?"Stopping resources...":"Disconnected";emit changed();
 }
 void WindowsController::startHost(QString address,unsigned port,bool requireCode){
+    if(address.compare("localhost",Qt::CaseInsensitive)==0)address="127.0.0.1";
     if(hosting()||cameraSetupRunning())return;
     if(!hostAvailability().isEmpty()){hostStatus_=hostAvailability();emit hostChanged();return;}
     if(!port||port>65535){hostStatus_="Enter a valid TCP port.";emit hostChanged();return;}
-    bool local=false;refreshAddresses();
+    bool local=address=="127.0.0.1";refreshAddresses();
     for(const auto& item:addresses_)if(item.toMap()["address"].toString()==address)local=true;
     if(!local){hostStatus_="Select a connected local address.";emit hostChanged();return;}
     const auto displayProblem=resourceAvailability("display");

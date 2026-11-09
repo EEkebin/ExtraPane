@@ -14,7 +14,7 @@ import javax.net.ssl.*;
 final class SpeakerSession extends Thread {
     record Choice(int id,String label){public String toString(){return label;}}
     interface Listener {void status(String text);void connected();void ended(String reason);}
-    static List<Choice> choices(Context context){List<Choice> result=new ArrayList<>();for(AudioDeviceInfo device:context.getSystemService(AudioManager.class).getDevices(AudioManager.GET_DEVICES_OUTPUTS))if(device.isSink())result.add(new Choice(device.getId(),device.getProductName()+" (output "+device.getId()+")"));return result;}
+    static List<Choice> choices(Context context){List<Choice> result=new ArrayList<>();for(AudioRouteCatalog.Entry route:AndroidAudioDevices.choices(context,false))result.add(new Choice(route.id(),route.label()));return result;}
     private final Context context;private final String address,local;private final int port;private String code;
     private final Network network;private final Choice choice;private final Listener listener;
     private volatile boolean cancelled,muted;private volatile int volume=100;private volatile Socket socket;
@@ -58,7 +58,10 @@ final class SpeakerSession extends Thread {
             AudioDeviceInfo selected=null;for(AudioDeviceInfo device:context.getSystemService(AudioManager.class).getDevices(AudioManager.GET_DEVICES_OUTPUTS))if(device.isSink()&&device.getId()==choice.id())selected=device;
             if(selected==null)throw new IOException("Selected output is no longer connected");
             int minimum=AudioTrack.getMinBufferSize(48000,AudioFormat.CHANNEL_OUT_STEREO,AudioFormat.ENCODING_PCM_16BIT);if(minimum<=0)throw new IOException("Selected output cannot play 48 kHz stereo PCM16");
-            AudioTrack created=new AudioTrack.Builder().setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            // Earpiece is a communication output. Request that usage per track;
+            // never seize global communication mode or another app's call route.
+            boolean earpiece=selected.getType()==AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            AudioTrack created=new AudioTrack.Builder().setAudioAttributes(new AudioAttributes.Builder().setUsage(earpiece?AudioAttributes.USAGE_VOICE_COMMUNICATION:AudioAttributes.USAGE_MEDIA).setContentType(earpiece?AudioAttributes.CONTENT_TYPE_SPEECH:AudioAttributes.CONTENT_TYPE_MUSIC).build())
                 .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
                 .setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(Math.max(minimum,3840)).build();
             try{

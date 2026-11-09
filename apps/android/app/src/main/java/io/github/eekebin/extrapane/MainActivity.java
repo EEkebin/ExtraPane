@@ -158,6 +158,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         setup=new LinearLayout(this);setup.setOrientation(LinearLayout.VERTICAL);setup.setPadding(dp(24),dp(20),dp(24),dp(16));setup.setBackgroundColor(background);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(setup);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));setup.setTag(scroll);
         setup.addView(text("ExtraPane",32,white));setup.addView(text("Share your devices",17,muted));
+        setup.addView(button("Devices",()->{if(session!=null||cameraRows.active()||microphoneRows.active()||speakerRows.active()){Toast.makeText(this,"Disconnect active resources before opening Devices",Toast.LENGTH_LONG).show();return;}startActivity(new android.content.Intent(this,PeerActivity.class));finish();}));
         setup.addView(text("Client",24,white));
         singleServer=new CheckBox(this);singleServer.setText("Use one server for all resources");singleServer.setTextColor(white);singleServer.setChecked(true);singleServer.setOnCheckedChangeListener((b,value)->refreshState());setup.addView(singleServer);
         destinationFields=new LinearLayout(this);destinationFields.setOrientation(LinearLayout.VERTICAL);setup.addView(destinationFields);

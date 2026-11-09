@@ -71,7 +71,7 @@ shutil.copytree(qt / 'sbom', qt_license / 'sbom', dirs_exist_ok=True)
 (stage / 'README.txt').write_text(
     'ExtraPane shared-resource development build\n\n'
     'Run ExtraPane.exe from the complete extracted folder. Hosting requires the receiving components; use the installer to prepare them.\n'
-    'The installer offers Client only or Server + Client. Both include USB source support; Server + Client also prepares display, camera and microphone/USB receiving components.\n'
+    'The installer prepares every managed component for offering and using resources: display, camera, audio and USB. Development-certificate trust requires explicit consent.\n'
     'Installation requires administrator approval. The display driver uses a development certificate, not Microsoft release signing; review the installer consent page.\n'
     'There is one ExtraPane uninstall entry. Shared independently installed drivers are preserved. Unresolved active ownership can require safe cleanup before removal.\n'
     'Camera and microphone use remains subject to Windows privacy settings. See TEST-GUIDE.md and DEVELOPMENT-STATUS.md for validation limits.\n'

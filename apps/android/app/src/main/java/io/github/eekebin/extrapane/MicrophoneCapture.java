@@ -16,8 +16,8 @@ final class MicrophoneCapture implements AutoCloseable {
     interface Failure{void failed(Exception error);}
     static List<Choice> choices(Context context){
         List<Choice> result=new ArrayList<>();
-        for(AudioDeviceInfo device:context.getSystemService(AudioManager.class).getDevices(AudioManager.GET_DEVICES_INPUTS))
-            if(device.isSource())result.add(new Choice(device.getId(),device.getProductName()+" (input "+device.getId()+")"));
+        for(AudioRouteCatalog.Entry route:AndroidAudioDevices.choices(context,true))
+            result.add(new Choice(route.id(),route.label()));
         return result;
     }
     private final Context context;private final Choice choice;private final Failure failure;

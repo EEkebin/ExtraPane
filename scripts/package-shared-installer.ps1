@@ -39,15 +39,14 @@ try {
         @'
 ExtraPane shared-resource development build
 
-All choices install the app in Program Files/ExtraPane with administrator approval.
-Both roles include USB source support automatically.
-Client only does not install receiving drivers.
-Server + Client installs the same app, virtual-display driver, camera source,
-and microphone/USB receiving components.
+ExtraPane installs in Program Files/ExtraPane with administrator approval.
+It includes the virtual-display driver, camera source, audio and USB components
+for offering and using resources. There is no installation role selection.
 Camera setup requires administrator permission. Camera use remains subject to
 Windows camera privacy settings. No physical camera is detached or replaced.
 
-Server + Client requires the bundled virtual-display driver package. The main
+ExtraPane requires the bundled virtual-display driver package and explicit
+development-certificate consent. The main
 installer owns its installation, repair and removal; no second installer runs.
 
 Managed components live under Program Files/ExtraPane/Components. There is one
@@ -55,7 +54,7 @@ ExtraPane uninstall entry, including its managed display driver.
 The camera component stays installed when its server stops. Uninstall ExtraPane
 removes its managed camera, microphone and USB source components, owned display
 driver and current-user app settings by default. Shared independently installed
-USB drivers are preserved. Pending USB recovery blocks uninstall. Loaded camera
+USB drivers are preserved. Any remaining USB recovery metadata is preserved for storage safety. Loaded camera
 files may require a restart. See DEVELOPMENT-STATUS.md for verification limits.
 '@ | Set-Content -LiteralPath $readme -Encoding utf8
     }

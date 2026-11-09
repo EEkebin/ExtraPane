@@ -21,6 +21,17 @@ void validate(const Offer& offer) {
     if(offer.input_caps>15 || (offer.input_caps!=0)!=(offer.input_epoch!=0))throw std::runtime_error("Invalid input grant");
 }
 }
+void set_screen_request(std::span<std::uint8_t> bytes, ScreenRequest screen) {
+    if(bytes.size()!=request.size() || (screen.mode!=DisplayMode::extend_desktop && screen.mode!=DisplayMode::existing_screen) ||
+       ((screen.mode==DisplayMode::existing_screen)!=(screen.screen_id!=0)))
+        throw std::runtime_error("Invalid display resource selection");
+    bytes[11]=static_cast<std::uint8_t>(screen.mode);put32(bytes,12,screen.screen_id);
+}
+ScreenRequest take_screen_request(std::span<std::uint8_t> bytes) {
+    if(bytes.size()!=request.size())throw std::runtime_error("Invalid request size");
+    ScreenRequest result{static_cast<DisplayMode>(bytes[11]),get32(bytes,12)};
+    set_screen_request(bytes,result);std::fill(bytes.begin()+11,bytes.begin()+16,std::uint8_t{0});return result;
+}
 void set_client_display(std::span<std::uint8_t> bytes, ClientDisplay display) {
     if(bytes.size()!=request.size() || ((display.width||display.height||display.hz) &&
        (!display.width || !display.height || !display.hz || display.width>16384 || display.height>16384 || display.hz>1000)))

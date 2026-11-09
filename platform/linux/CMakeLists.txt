@@ -9,6 +9,8 @@ pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET
 set(CMAKE_AUTOMOC ON)
 add_executable(ExtraPane
   tls.cpp host.cpp host.hpp portal.cpp portal.hpp receiver.cpp receiver.hpp media.cpp media.hpp input.cpp input.hpp
+  ../../apps/linux/peer_runtime.cpp ../../apps/linux/peer_runtime.hpp
+  ../../apps/shared/peer_controller.cpp ../../apps/shared/peer_controller.hpp ../../apps/shared/device_directory.cpp ../../apps/shared/device_directory.hpp
   ../../apps/linux/main.cpp ../../apps/linux/controller.cpp ../../apps/linux/controller.hpp
   ../../apps/linux/connection_runtime.cpp ../../apps/linux/connection_runtime.hpp ../../apps/linux/admission.cpp ../../apps/linux/admission.hpp
   resource_source.cpp resource_source.hpp resource_receiver.cpp resource_receiver.hpp
@@ -17,9 +19,10 @@ add_executable(ExtraPane
 target_include_directories(ExtraPane PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/apps/linux" "${PROJECT_SOURCE_DIR}/apps/shared")
 target_compile_features(ExtraPane PRIVATE cxx_std_20)
 target_compile_options(ExtraPane PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(ExtraPane PRIVATE extrapane_session dm_probe_protocol OpenSSL::SSL OpenSSL::Crypto
+target_link_libraries(ExtraPane PRIVATE extrapane_peer_service extrapane_session dm_probe_protocol OpenSSL::SSL OpenSSL::Crypto
   Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Widgets PkgConfig::GSTREAMER)
 # Stable resource paths, independent of this subdirectory's relative location.
+set_source_files_properties(../../apps/shared/ui/PeerWorkspace.qml PROPERTIES QT_RESOURCE_ALIAS PeerWorkspace.qml)
 set_source_files_properties(../../apps/shared/ui/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 set_source_files_properties(../../apps/shared/ui/ResourcePicker.qml PROPERTIES QT_RESOURCE_ALIAS ResourcePicker.qml)
 set_source_files_properties(../../apps/shared/ui/ClientConnections.qml PROPERTIES QT_RESOURCE_ALIAS ClientConnections.qml)
@@ -29,7 +32,7 @@ set_source_files_properties(../../apps/linux/ReceiverWindow.qml PROPERTIES QT_RE
 set_source_files_properties(../../apps/linux/Video.qml PROPERTIES QT_RESOURCE_ALIAS Video.qml)
 set_source_files_properties(../../assets/branding/icon.png PROPERTIES QT_RESOURCE_ALIAS extrapane.png)
 qt_add_resources(ExtraPane ui PREFIX / FILES
-  ../../apps/shared/ui/Main.qml ../../apps/shared/ui/ResourcePicker.qml ../../apps/shared/ui/ClientConnections.qml ../../apps/shared/ui/AppIcon.qml ../../apps/shared/ui/IconButton.qml ../../apps/linux/Video.qml ../../apps/linux/ReceiverWindow.qml ../../assets/branding/icon.png)
+  ../../apps/shared/ui/PeerWorkspace.qml ../../apps/shared/ui/Main.qml ../../apps/shared/ui/ResourcePicker.qml ../../apps/shared/ui/ClientConnections.qml ../../apps/shared/ui/AppIcon.qml ../../apps/shared/ui/IconButton.qml ../../apps/linux/Video.qml ../../apps/linux/ReceiverWindow.qml ../../assets/branding/icon.png)
 include(GNUInstallDirs)
 install(TARGETS ExtraPane RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES ../../packaging/linux/io.github.EEkebin.ExtraPane.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)

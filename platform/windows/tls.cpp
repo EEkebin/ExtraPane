@@ -130,16 +130,17 @@ bool TlsStream::open_control(){
     if(!accessGate)throw std::runtime_error("Control gate unavailable");
     control_gate_=accessGate;control_=protected_->open_control(*control_gate_);return true;
 }
-std::vector<access::ChannelCredential> TlsStream::control_channels(unsigned kind){
+std::vector<access::ChannelCredential> TlsStream::control_channels(unsigned kind,std::optional<bool> display_input){
     if(!server_||kind>4)throw std::runtime_error("Invalid control resource");
     if(!protected_)return {};
     if(!control_gate_||!control_)throw std::runtime_error("Control not admitted");
-    return control_gate_->control_channels(1u<<kind,control_);
+    return control_gate_->control_channels(1u<<kind,control_,display_input);
 }
 std::vector<access::ChannelCredential> TlsStream::issue_channels(unsigned mask){
     if(!server_||!accessGate||!protected_)throw std::runtime_error("Grouped admission requires a one-time access code");
     return protected_->issue_channels(*accessGate,mask);
 }
+std::optional<bool> TlsStream::authorized_display_input()const{return protected_?protected_->authorized_display_input():std::optional<bool>{};}
 void TlsStream::require_resource(unsigned kind)const{
     if(protected_){const auto allowed=protected_->authorized_kind();if(allowed&&*allowed!=kind)throw std::runtime_error("Grouped credential does not authorize this resource");}
 }

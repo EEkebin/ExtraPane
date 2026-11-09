@@ -7,7 +7,7 @@
 #include <mutex>
 namespace dm::mac {
 class Transport;
-struct ResourceOptions {extrapane::ResourceKind kind=extrapane::ResourceKind::camera;std::string sourceId;ResourceTarget target;std::string code;unsigned width=0,height=0,fps=0;};
+struct ResourceOptions {extrapane::ResourceKind kind=extrapane::ResourceKind::camera;std::string sourceId;ResourceTarget target;std::string code;unsigned width=0,height=0,fps=0;bool nativeTicket=false;};
 struct ResourceCallbacks {std::function<void(std::string)> status,ended;std::function<void(unsigned,unsigned,unsigned)> connected;};
 class ResourceSession {
     ResourceOptions options_;ResourceCallbacks callbacks_;std::atomic_bool cancelled_=false;MicrophoneMuteGate mute_;

@@ -84,7 +84,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix='ExtraPane-host-install-') as temp:
         target = Path(os.environ['ProgramFiles'])/'ExtraPane'
         assert not (target/'ExtraPane.exe').exists(), 'Refusing existing app'
-        run(installer, '/SERVER=1', f'/DIR={target}', '/TASKS=', success=False)
+        run(installer, f'/DIR={target}', '/TASKS=', success=False)
+        assert not folder.exists() and not (target/'ExtraPane.exe').exists()
+        # An old explicit no-driver deployment must not silently become full.
+        run(installer, '/SERVER=0', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
         assert not folder.exists() and not (target/'ExtraPane.exe').exists()
         # A real manager failure returns failure but leaves the main app and
         # uninstaller available for repair; no child installer is invoked.
@@ -100,14 +103,14 @@ def main():
         assert lock
         try:
             run(driver_setup, '/ACCEPTDEVELOPMENTCERT=1', success=False)
-            run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
+            run(installer, '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
             assert (target/'ExtraPane.exe').is_file()
             assert registered_uninstaller(target).is_file()
             assert ps(trust_count).stdout.strip() == '0'
         finally:
             kernel.ReleaseMutex(lock)
             kernel.CloseHandle(lock)
-        run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=')
+        run(installer, '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=')
         assert (target/'ExtraPane.exe').is_file()
         assert not driver_entry_exists(), 'Duplicate display-driver uninstall registration remains'
         assert (folder/'manage-driver.ps1').is_file()

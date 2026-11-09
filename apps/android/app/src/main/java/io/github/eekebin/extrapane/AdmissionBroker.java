@@ -62,6 +62,15 @@ final class AdmissionBroker {
     }
     static Lease acquire(String address,int port,String local,Network network,String code,int kind,Runnable onLost,BooleanSupplier cancelled)throws Exception {
         if(kind<0||kind>4)throw new IOException("Invalid resource kind");
+        if(cancelled.getAsBoolean()||Thread.currentThread().isInterrupted())throw new InterruptedException("Connection cancelled");
+        // Peer mode already obtained this one-use, kind-scoped native ticket over
+        // exporter-bound authenticated TLS. Never reinterpret it as a six-digit
+        // admission code or open an unrelated native control connection.
+        if(code.startsWith("EPCT1:")){
+            if(!code.matches("EPCT1:"+kind+":[0-9a-f]{32}:[0-9a-f]{64}"))throw new IOException("Invalid resource admission ticket");
+            return new Lease(code,null);
+        }
+        if(!code.isEmpty()&&!code.matches("[0-9]{6}"))throw new IOException("Invalid access code");
         final String key=address+":"+port+"@"+local+"#"+(network==null?0:network.getNetworkHandle());
         Pending pending;
         synchronized(brokers){

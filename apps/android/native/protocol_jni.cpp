@@ -19,6 +19,9 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_eekebin_extrapane_Protoco
 extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_eekebin_extrapane_Protocol_customRequest(JNIEnv* e,jclass,jint w,jint h,jint hz,jint caps,jint scale){
     try{if(caps<0 || caps>15 || scale<0 || scale>2)throw std::runtime_error("Invalid client options");auto r=dm::video::wire::request;r[7]=caps?1:0;r[8]=caps;r[9]=scale;dm::video::wire::set_client_display(r,{static_cast<uint32_t>(w),static_cast<uint32_t>(h),static_cast<uint32_t>(hz),true});return output(e,r);}catch(const std::exception& x){fail(e,x);return nullptr;}
 }
+extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_eekebin_extrapane_Protocol_existingScreenRequest(JNIEnv* e,jclass,jlong id,jint caps,jint scale){
+    try{if(id<=0 || id>0xffffffffLL || caps<0 || caps>15 || scale<0 || scale>2)throw std::runtime_error("Invalid existing-screen options");auto r=dm::video::wire::request;r[7]=caps?1:0;r[8]=caps;r[9]=scale;dm::video::wire::set_screen_request(r,{dm::video::wire::DisplayMode::existing_screen,static_cast<uint32_t>(id)});return output(e,r);}catch(const std::exception& x){fail(e,x);return nullptr;}
+}
 extern "C" JNIEXPORT jlongArray JNICALL Java_io_github_eekebin_extrapane_Protocol_offer(JNIEnv* e,jclass,jbyteArray a){
     try{auto o=dm::video::wire::decode_offer(bytes(e,a));return numbers(e,{o.width,o.height,o.fps,o.frames,static_cast<jlong>(o.codec),o.input_caps,static_cast<jlong>(o.input_epoch)});}catch(const std::exception& x){fail(e,x);return nullptr;}
 }

@@ -2,6 +2,7 @@
 #include "transport.hpp"
 #include "media.hpp"
 #include "host.hpp"
+#include "peer_workspace.hpp"
 #include "network.hpp"
 #include "display.hpp"
 #include "resource_ui.hpp"
@@ -44,6 +45,8 @@ struct Session {std::atomic_bool stopped=false;std::mutex mutex;std::shared_ptr<
 @end
 @interface App:NSObject<NSApplicationDelegate,NSWindowDelegate> {
 @public std::shared_ptr<Session> session;
+    wire::ScreenRequest selectedScreen;
+    bool existingScreenInput;
     std::unique_ptr<dm::mac::Host> host;
     std::shared_ptr<dm::access::Gate> accessGate;
     std::set<unsigned> heldKeys,heldButtons;
@@ -182,21 +185,24 @@ static NSButton* button(NSString* title,id target,SEL action){return [NSButton b
 - (void)fullscreen:(id)sender{(void)sender;[self resetInput];[self.window toggleFullScreen:nil];}
 - (void)showControls{BOOL wasHidden=self.controls.hidden;self.controls.hidden=NO;if(wasHidden)[self resetInput];self.video.remoteEnabled=session && !self.paused;[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideControls) object:nil];if(session && !self.paused)[self performSelector:@selector(hideControls) withObject:nil afterDelay:5];}
 - (void)hideControls {if(session && !self.paused){NSPoint p=[self.controls convertPoint:self.window.mouseLocationOutsideOfEventStream fromView:nil];if(!self.controls.hidden && NSPointInRect(p,self.controls.bounds)){[self performSelector:@selector(hideControls) withObject:nil afterDelay:1];return;}self.controls.hidden=YES;self.video.remoteEnabled=YES;[self.window makeFirstResponder:self.video];}}
-- (void)displayPower:(id)sender{if(session)[self disconnect:sender];else [self connect:sender];}
+- (void)displayPower:(id)sender{if(session)[self disconnect:sender];else {selectedScreen={};existingScreenInput=false;[self connect:sender];}}
 - (void)disconnect:(id)sender{(void)sender;[NSObject cancelPreviousPerformRequestsWithTarget:self];[self resetInput];self.video.remoteEnabled=NO;if(session){session->cancel();self.status.stringValue=@"Disconnecting…";[self updateActive];}}
+// Device catalogue invokes this only for an explicit existing-screen offer.
+- (void)connectScreen:(uint32_t)screenId allowInput:(BOOL)allowInput {if(session)return;selectedScreen={wire::DisplayMode::existing_screen,screenId};existingScreenInput=allowInput;[self connect:nil];}
 - (void)connect:(id)sender{(void)sender;if(session)return;try{
     dm::mac::ResourceTarget target{self.address.stringValue.UTF8String,[(NSString*)self.routes.selectedItem.representedObject UTF8String]?:"",[self selectedPort]};
     if(!dm::mac::ipv4(target.address.c_str()))throw std::runtime_error("Enter a reachable server IPv4 address");
     std::string code=self.accessCode.stringValue.UTF8String;auto current=std::make_shared<Session>();self.accessCode.stringValue=@"";session=current;[self updateActive];
     [[NSUserDefaults standardUserDefaults]setObject:self.address.stringValue forKey:@"server"];self.address.enabled=NO;self.routes.enabled=NO;self.status.stringValue=@"Connecting…";self.paused=NO;
     auto screen=self.window.screen;auto size=screen.frame.size;double scale=screen.backingScaleFactor;wire::ClientDisplay preferred{uint32_t(size.width*scale),uint32_t(size.height*scale),60};
-    std::thread([current,self,preferred,target,code=std::move(code)]() mutable {@autoreleasepool{struct Wipe{std::string& code;~Wipe(){std::fill(code.begin(),code.end(),0);}}wipe{code};NSString* ending=@"Disconnected";try{
+    const auto screenRequest=selectedScreen;const unsigned requestedInput=screenRequest.mode==wire::DisplayMode::existing_screen&&!existingScreenInput?0u:3u;
+    std::thread([current,self,preferred,target,screenRequest,requestedInput,code=std::move(code)]() mutable {@autoreleasepool{struct Wipe{std::string& code;~Wipe(){std::fill(code.begin(),code.end(),0);}}wipe{code};NSString* ending=@"Disconnected";try{
         auto admission=dm::mac::acquireAdmission(target,code,0,[current]{return current->stopped.load();});std::fill(code.begin(),code.end(),0);code.clear();
         auto ownedTransport=std::make_shared<dm::mac::Transport>(target.address.c_str(),target.local.c_str(),target.port,admission->credential);current->setTransport(ownedTransport);
         if(current->stopped)throw std::runtime_error("Disconnected");
-        auto& transport=*ownedTransport;transport.connect();NSLog(@"ExtraPane: TLS ready");auto request=wire::request;request[7]=1;request[8]=3;wire::set_client_display(request,preferred);transport.write(request);
+        auto& transport=*ownedTransport;transport.connect();NSLog(@"ExtraPane: TLS ready");auto request=wire::request;request[7]=requestedInput?1:0;request[8]=requestedInput;wire::set_screen_request(request,screenRequest);wire::set_client_display(request,screenRequest.mode==wire::DisplayMode::existing_screen?wire::ClientDisplay{}:preferred);transport.write(request);
         auto offer=wire::decode_offer(transport.read(32,45));NSLog(@"ExtraPane: offer %ux%u caps=%u",offer.width,offer.height,offer.input_caps);dm::mac::Media media;
-        auto prepare=[&]{if(offer.codec!=wire::Codec::h264 || (offer.input_caps&~3))throw std::runtime_error("Unsupported codec or input grant");current->input.grant(offer.input_caps);media.reset();
+        auto prepare=[&]{if(offer.codec!=wire::Codec::h264 || (offer.input_caps&~requestedInput))throw std::runtime_error("Unsupported codec or input grant");current->input.grant(offer.input_caps);media.reset();
             dispatch_sync(dispatch_get_main_queue(),^{[self resetInput];[self.video.display flushAndRemoveImage];self.video.sourceSize=NSMakeSize(offer.width,offer.height);self.video.remoteEnabled=!self.paused;self.status.stringValue=[NSString stringWithFormat:@"Connected · TLS 1.3 · %u × %u · input: %@%@",offer.width,offer.height,(offer.input_caps&1)?@"mouse ":@"",(offer.input_caps&2)?@"keyboard":@""];[self.window makeFirstResponder:self.video];[self performSelector:@selector(hideControls) withObject:nil afterDelay:5];});transport.write(wire::ready);};prepare();
         uint32_t sequence=0,count=0;uint64_t previous=0,total=0;auto tick=std::chrono::steady_clock::now();
         while(!current->stopped && (!offer.frames || sequence<offer.frames)){
@@ -252,9 +258,17 @@ static int checks(){try{
     InputQueue queue;queue.grant(3);input::Event e;e.kind=input::Kind::key;e.action=input::Action::down;e.id='A';e.code=30;queue.add(e);auto batch=queue.take(1,0);require(batch.size()==96);queue.reset();require(queue.take(1,1).size()==96);
     const uint8_t packet[]={0,0,0,1,0x67,1,2,0,0,1,0x68,3,4};auto units=dm::mac::annexb(packet);require(units.size()==2 && units[0].size()==3 && units[1][0]==0x68);
     bool rejected=false;try{const uint8_t bad[]={4,5,6};dm::mac::annexb(bad);}catch(...){rejected=true;}require(rejected);
-    require(dm::mac::ipv4("10.0.0.1") && !dm::mac::ipv4("127.0.0.1") && !dm::mac::ipv4("hostname"));
+    require(dm::mac::ipv4("10.0.0.1") && dm::mac::ipv4("127.0.0.1") && dm::mac::ipv4("localhost") && !dm::mac::ipv4("hostname"));
     mediaCheck();puts("macOS protocol, input cleanup and native H.264 color round-trip checks passed");return 0;
 }catch(const std::exception& e){fprintf(stderr,"%s\n",e.what());return 1;}}
-int main(int argc,const char* argv[]){@autoreleasepool{if(argc==6 && !strcmp(argv[1],"--virtual-display-owner"))return dm::mac::displayOwner(unsigned(strtoul(argv[2],nullptr,10)),unsigned(strtoul(argv[3],nullptr,10)),unsigned(strtoul(argv[4],nullptr,10)),unsigned(strtoul(argv[5],nullptr,10)));if(argc>1 && !strcmp(argv[1],"--display-list"))return dm::mac::displayList();if(argc>1 && !strcmp(argv[1],"--virtual-display-check"))return dm::mac::displayCheck();if(argc>1 && !strcmp(argv[1],"--self-test"))return checks();[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];App* app=[App new];NSApp.delegate=app;
-    if(argc>1 && !strcmp(argv[1],"--ui-smoke"))dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(!resourceSourceMenuCheck() || !app.window || !app.video || !app.address || !app.connectButton.enabled || !app.resources.view || app.resources.active)exit(1);[app.window setContentSize:NSMakeSize(800,680)];[app.window.contentView layoutSubtreeIfNeeded];auto fits=[&](NSView* view){return NSContainsRect(app.window.contentView.bounds,[view convertRect:view.bounds toView:app.window.contentView]);};if(app.resources.view.frame.size.height<139||app.video.frame.size.height<239||!fits(app.resources.view)||!fits(app.video)||!fits(app.address)||!fits(app.routes)){NSLog(@"Resource UI layout did not fit compact window");exit(1);}puts("macOS AppKit startup/compact-layout/shutdown passed");[NSApp terminate:nil];});
+int main(int argc,const char* argv[]){@autoreleasepool{
+    bool legacy=false;
+    for(int i=1;i<argc;++i)if(!strcmp(argv[i],"--legacy"))legacy=true;
+    const bool uiSmoke=argc>1&&!strcmp(argv[1],"--ui-smoke");
+    // Helper commands must remain separate from normal app startup.
+    if(argc==6 && !strcmp(argv[1],"--virtual-display-owner"))return dm::mac::displayOwner(unsigned(strtoul(argv[2],nullptr,10)),unsigned(strtoul(argv[3],nullptr,10)),unsigned(strtoul(argv[4],nullptr,10)),unsigned(strtoul(argv[5],nullptr,10)));if(argc>1 && !strcmp(argv[1],"--display-list"))return dm::mac::displayList();if(argc>1 && !strcmp(argv[1],"--virtual-display-check"))return dm::mac::displayCheck();if(argc>1 && !strcmp(argv[1],"--self-test"))return checks();
+    // --devices is a compatibility alias for the default workspace.
+    if(!legacy&&!uiSmoke)return runPeerWorkspace();
+    [NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];App* app=[App new];NSApp.delegate=app;
+    if(uiSmoke)dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(!resourceSourceMenuCheck() || !app.window || !app.video || !app.address || !app.connectButton.enabled || !app.resources.view || app.resources.active)exit(1);[app.window setContentSize:NSMakeSize(800,680)];[app.window.contentView layoutSubtreeIfNeeded];auto fits=[&](NSView* view){return NSContainsRect(app.window.contentView.bounds,[view convertRect:view.bounds toView:app.window.contentView]);};if(app.resources.view.frame.size.height<139||app.video.frame.size.height<239||!fits(app.resources.view)||!fits(app.video)||!fits(app.address)||!fits(app.routes)){NSLog(@"Resource UI layout did not fit compact window");exit(1);}puts("macOS AppKit startup/compact-layout/shutdown passed");[NSApp terminate:nil];});
     [NSApp run];return 0;}}

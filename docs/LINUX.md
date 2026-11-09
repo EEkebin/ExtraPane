@@ -1,5 +1,21 @@
 # Linux hosting, client and AppImage work
 
+## Devices workspace on the development branch
+
+The Devices workspace opens with Nearby devices and starts local discovery
+automatically. Expand **Connect by address** for IPv4/localhost, port, pairing
+code and interface selection. Direct connections remain available when multicast
+is unavailable or when connecting through a manually forwarded address.
+
+On Share, supported resources are available by default. Pairing alone does not
+start capture. Red power marks actual use of the exact resource and identifies
+its consumers; stopping one resource preserves the others. Disconnecting all
+active shares leaves the listener/catalog available. Gateway sharing remains
+opt-in. See [workspace testing](DEVICE-WORKSPACE-TESTING.md)
+for the current flow; older server/client instructions below describe the legacy
+mode. macOS/Linux validation of this latest increment remains pending.
+
+
 ## Resource-sharing development branch (2026-11-07)
 
 The current development branch adds the shared grouped client UI, independent

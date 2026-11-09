@@ -19,7 +19,7 @@ inline std::vector<LocalAddress> localAddresses(){
     for(auto a=list;a;a=a->ifa_next){
         if(!a->ifa_addr || a->ifa_addr->sa_family!=AF_INET ||
            !(a->ifa_flags&IFF_UP) || !(a->ifa_flags&IFF_RUNNING) ||
-           (a->ifa_flags&IFF_LOOPBACK) || !a->ifa_name || std::strncmp(a->ifa_name,"en",2))continue;
+           (a->ifa_flags&IFF_LOOPBACK) || !a->ifa_name)continue;
         char ip[INET_ADDRSTRLEN]{};
         if(!inet_ntop(AF_INET,&reinterpret_cast<sockaddr_in*>(a->ifa_addr)->sin_addr,ip,sizeof(ip)) || !ipv4(ip))continue;
         if(std::none_of(result.begin(),result.end(),[&](const auto& entry){return entry.address==ip;}))

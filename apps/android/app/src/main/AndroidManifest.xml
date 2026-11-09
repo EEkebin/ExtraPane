@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -17,7 +18,10 @@
         <service android:name=".CameraShareService" android:exported="false" android:foregroundServiceType="camera" />
         <service android:name=".MicrophoneShareService" android:exported="false" android:foregroundServiceType="microphone" />
         <service android:name=".SpeakerService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
-        <activity android:name=".MainActivity" android:exported="true"
+        <activity android:name=".MainActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|keyboard|uiMode"
+            android:resizeableActivity="true" />
+        <activity android:name=".PeerActivity" android:exported="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|keyboard|uiMode"
             android:resizeableActivity="true">
             <intent-filter>

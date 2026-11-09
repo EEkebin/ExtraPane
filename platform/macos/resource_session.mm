@@ -26,10 +26,12 @@ void ResourceSession::run(){@autoreleasepool{
         auto choice=*selected;
         if(kind==resource::Kind::Camera&&options_.width){require(choice.width==options_.width&&choice.height==options_.height&&choice.fps==options_.fps,"Camera mode changed; select its source again");}
         if(callbacks_.status)callbacks_.status("Connecting...");
-        auto admission=acquireAdmission(options_.target,options_.code,static_cast<unsigned>(options_.kind),[this]{return cancelled_.load();});
+        std::shared_ptr<AdmissionLease> admission;std::string credential;
+        if(options_.nativeTicket){auto ticket=dm::access::channelCredential(options_.code);require(ticket&&ticket->kind==static_cast<unsigned>(options_.kind)&&options_.target.address=="127.0.0.1","Invalid scoped native resource ticket");credential=options_.code;}else{admission=acquireAdmission(options_.target,options_.code,static_cast<unsigned>(options_.kind),[this]{return cancelled_.load();});credential=admission->credential;}
+        struct WipeCredential{std::string& value;~WipeCredential(){std::fill(value.begin(),value.end(),0);}}wipeCredential{credential};
         std::fill(options_.code.begin(),options_.code.end(),0);options_.code.clear();
-        auto cancelled=[this,&admission]{return cancelled_.load()||!admission->alive();};
-        auto stream=std::make_shared<Transport>(options_.target.address.c_str(),options_.target.local.c_str(),options_.target.port,admission->credential);
+        auto cancelled=[this,&admission]{return cancelled_.load()||(admission&&!admission->alive());};
+        auto stream=std::make_shared<Transport>(options_.target.address.c_str(),options_.target.local.c_str(),options_.target.port,credential);
         {std::lock_guard lock(mutex_);stream_=stream;}require(!cancelled(),"Connection cancelled");stream->connect();
         auto read=[&](std::span<uint8_t> output){require(!cancelled(),"Server admission ended");auto bytes=stream->read(output.size(),45);std::copy(bytes.begin(),bytes.end(),output.begin());};
         auto write=[&](std::span<const uint8_t> bytes){require(!cancelled(),"Server admission ended");stream->write(bytes);};

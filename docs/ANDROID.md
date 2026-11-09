@@ -1,5 +1,46 @@
 # Android client
 
+## Audio route names and selection
+
+The audio inventory lists physical routes by purpose: **Earpiece**, **Loudspeaker**,
+built-in microphones, and connected headset/USB/Bluetooth/HDMI outputs. It excludes
+Android's telephony, remote-submix, alarm-only safe-speaker and other internal
+ports. Identical built-in loudspeaker aliases are collapsed; distinct external
+devices retain separate choices. Native port IDs remain routing identities but
+are no longer shown as unexplained input/output numbers.
+
+Earpiece playback requests communication usage on its own AudioTrack; ExtraPane
+does not take over global call routing or communication mode. Android may reject
+that route under its device/audio policy. Playback checks the actual routed device
+and ends with an error if Android selects a different one. This is not a guarantee
+that every phone supports every route, or that two routes can play independently
+at once. See Android's [audio device types](https://developer.android.com/reference/android/media/AudioDeviceInfo)
+and [preferred versus actual routing](https://developer.android.com/reference/android/media/AudioTrack#getPreferredDevice()).
+
+## Current Devices workspace
+
+Development builds open the Devices workspace by default. Its navigation menu
+separates Devices, Share, Connections and About. Share lists resources in
+collapsible Monitors, Cameras, Speakers and Microphones groups. USB is shown as
+unavailable on Android. Connections groups active resources independently;
+changing pages or collapsing a group must not disconnect them.
+Resources are available by default, subject to Android permissions and support.
+Local resource power buttons turn red only during actual use; they disconnect
+that resource's sessions. Available resources do not show a red power button.
+Connections identifies the resources and peers involved.
+
+Android advertises while its foreground workspace is open and remembers paired
+devices. On another computer, discover the phone and pair, then request a camera,
+microphone, speaker or display resource. Pairing and listing alone do not start
+capture. Permission-required resources provide a local permission action; denied
+permissions are never bypassed. Disconnecting active uses leaves resources
+available for later requests. Android does not yet provide the desktop workspace's
+resource-consuming browser or system-wide virtual devices.
+
+This workspace shares only while its activity is in the foreground; backgrounding
+stops its sessions. **Legacy connections** under About opens the previous workflow.
+The sections below describe that older client workflow unless stated otherwise.
+
 The existing Android display receiver uses protocol 9 with Windows or Linux hosts. Development on `feat/shared-resources` adds combined display, camera and microphone connections described below. Android display hosting, system-audio playback and on-screen keyboard forwarding remain unimplemented.
 
 ## Architecture
@@ -45,7 +86,7 @@ Pinned tools: Gradle 8.13 (wrapper SHA-256 verified), Android Gradle Plugin 8.13
 ```powershell
 ./scripts/build-android.ps1 -Checks
 adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n io.github.eekebin.extrapane/.MainActivity
+adb shell am start -n io.github.eekebin.extrapane/.PeerActivity
 ```
 
 The build script never installs or launches on a device. Debug APKs use a local development key. Release APKs use a persistent project signing key stored in GitHub encrypted secrets. See packaging below. No secrets or SDK installations are checked into the repo. The generated Gradle wrapper and its verification hash are tracked.
@@ -290,3 +331,22 @@ Its bounded jitter reserve starts at 40 ms and increases after starvation, up to
 80 ms. Removing/changing the selected route ends the session instead of silently
 switching outputs. See [Speakers](SPEAKERS.md) for setup and remaining device tests.
 This is a selectable remote playback device, not automatic system-audio mirroring.
+
+### Back navigation
+
+The system Back gesture/button closes the navigation drawer first, exits fullscreen
+next, then returns through visited workspace pages. Re-selecting a page or toggling
+fullscreen does not add history. At the first page, Back exits only while idle;
+active resources keep the workspace open with a reminder to stop sharing.
+Page navigation does not stop resource sessions.
+
+Drag right across empty page space to pull the navigation drawer along with your
+finger. Drag left on the open drawer to close it. Release settles the drawer based
+on its position and fling direction; a short drag can return it to its starting side. Swipes starting
+on controls, selectable text or the remote display remain with those views.
+Vertical scrolling, multiple fingers and the system edge-Back gesture are not
+repurposed. The hamburger button remains available.
+
+Paired device cards expand or collapse from their header. The device name stays
+visible; address details and Forget are inside the collapsible area. This does not
+change pairing or sessions, and each device retains its state through refresh.

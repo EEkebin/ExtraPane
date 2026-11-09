@@ -1,8 +1,11 @@
 ﻿name: Shared resource core
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'core/session/**'
+      - 'core/peers/**'
+      - 'cmake/Peers.cmake'
       - 'core/access/**'
       - 'apps/group-session/**'
       - 'tests/group_admission_check.cpp'
@@ -50,6 +53,8 @@ on:
     branches: [main]
     paths:
       - 'core/session/**'
+      - 'core/peers/**'
+      - 'cmake/Peers.cmake'
       - 'core/access/**'
       - 'apps/group-session/**'
       - 'tests/group_admission_check.cpp'
@@ -106,7 +111,7 @@ jobs:
       - name: Build camera source and checks
         run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane_camera_setup extrapane-camera-setup-check extrapane-resources extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check ExtraPane.Microphone extrapane-microphone-check extrapane-usb-inventory-check extrapane-usb-storage-check extrapane-usb-host-backend-check extrapane-usb-recovery-check extrapane_usb_runner extrapane_usb_tunnel extrapane_usb extrapane_usb_recovery_tool dm-view ExtraPane.Service ExtraPane.Session extrapane-group-admission-check --parallel 2
       - name: Check synthetic frames, local IPC and unregistered COM activation
-        run: ctest --test-dir out/camera-checks -C Release -R "camera-|resource-.*-config|microphone-|usb-inventory|usb-storage|usb-host-backend|usb-recovery|usb-source-config|usb-receiver-config|usb-config-reject|grouped-admission" --output-on-failure
+        run: ctest --test-dir out/camera-checks -C Release -R "camera-|resource-.*-config|microphone-|usb-inventory|usb-storage|usb-host-backend|usb-recovery|usb-source-config|usb-receiver-config|usb-config-|grouped-admission" --output-on-failure
   microphone-endpoint:
     runs-on: windows-2025
     timeout-minutes: 15
@@ -143,7 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Configure in-memory security checks
-        run: cmake -S . -B out/resource-security -DDM_ACCESS_ONLY=ON -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B out/resource-security -DDM_ACCESS_ONLY=ON -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_PEERS_TESTS=ON -DEXTRAPANE_PEER_AUTH_TESTS=ON -DEXTRAPANE_PEER_TRANSPORT_TESTS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build out/resource-security --config Release --parallel 2
       - name: Check admission and encrypted control

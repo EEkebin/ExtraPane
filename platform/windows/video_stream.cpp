@@ -25,7 +25,12 @@ std::mutex display_lifecycle;
 using Clock = std::chrono::steady_clock;
 auto deadline() { return Clock::now() + std::chrono::seconds(5); }
 }
-void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::function<std::wstring(bool&)>& acquire_monitor,bool* listener_ready,net::TcpStream* accepted,unsigned monitor_slot,security::TlsStream* admitted) {
+SharedScreen share_screen(std::uint32_t id,const std::wstring& source,bool allow_input) {
+    if(!id||source.empty())throw std::invalid_argument("Choose an explicit screen to share");
+    for(const auto& monitor:display::active_monitors())if(monitor.source==source&&!monitor.device_path.empty())return {id,monitor.device_path,allow_input};
+    throw std::invalid_argument("Selected screen is unavailable");
+}
+void host_video(const net::Options& options, const std::string& pair, unsigned frames, unsigned fps, wire::Codec codec, const std::wstring& source, bool extend,bool allow_input,unsigned width,unsigned height,bool keep_layout,bool client_mode,const std::function<std::wstring(bool&)>& acquire_monitor,bool* listener_ready,net::TcpStream* accepted,unsigned monitor_slot,security::TlsStream* admitted,std::span<const SharedScreen> shared_screens,bool existing_only) {
     if(allow_input && !extend && source.empty())throw std::invalid_argument("Input requires an explicit --display target or --extend");
     if((extend || !source.empty()) && codec!=wire::Codec::h264) throw std::invalid_argument("Selected/extended display requires H264");
     if(extend && !source.empty()) throw std::invalid_argument("Choose --extend or --display, not both");
@@ -42,6 +47,9 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     std::array<std::uint8_t, wire::request.size()> request{};
     stream.read(request, deadline());
     const auto preference=wire::take_client_display(request);
+    const auto screen=wire::take_screen_request(request);
+    const bool existing_screen=screen.mode==wire::DisplayMode::existing_screen;
+    if(existing_only&&!existing_screen)throw std::runtime_error("This grant permits only the selected existing screen");
     if(request[9]>2)throw std::runtime_error("Unknown quality mode");
     QualityController quality(static_cast<Quality>(request[9]));request[9]=0;
     if(request[7]>1)throw std::runtime_error("Unknown input permission request");
@@ -52,13 +60,31 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     if(text_focus_requested&&(!control||!(requested_caps&input::touch_cap)))throw std::runtime_error("Text-focus hints require granted touch input");
     if(requested_caps>input::all_caps || control!=(requested_caps!=0))throw std::runtime_error("Invalid receiver input capabilities");
     if (request != wire::request) throw std::runtime_error("Unsupported video/input request");
-    if(control && !allow_input)throw std::runtime_error("Host did not grant --allow-input permission");
+    std::wstring permitted_source=source;
+    std::wstring permitted_identity;
+    if(existing_screen) {
+        const SharedScreen* permission=nullptr;
+        for(const auto& offered:shared_screens)if(offered.id==screen.screen_id){
+            if(permission)throw std::runtime_error("Duplicate shared screen identity");permission=&offered;
+        }
+        if(!permission||permission->identity.empty())throw std::runtime_error("The selected screen is not offered for sharing");
+        permitted_source.clear();
+        for(const auto& monitor:display::active_monitors())if(monitor.device_path==permission->identity){permitted_source=monitor.source;break;}
+        if(permitted_source.empty())throw std::runtime_error("The shared screen is disconnected");
+        permitted_identity=permission->identity;allow_input=permission->allow_input;extend=false;client_mode=false;keep_layout=false;
+        if(preference.exact_mode)throw std::runtime_error("Existing-screen sharing cannot configure a virtual monitor");
+        const auto actual=display::current_mode(permitted_source);
+        width=actual.width;height=actual.height;fps=std::min(preference.hz?preference.hz:fps,std::clamp(actual.hz,1u,360u));
+        (void)wire::encode_offer({width,height,fps,frames,codec});
+    }
+    if(const auto scoped_input=stream.authorized_display_input();scoped_input.has_value())allow_input=allow_input&&*scoped_input;
+    if(control && !allow_input)throw std::runtime_error("The selected display has not granted remote input");
     if(client_mode && !extend)throw std::runtime_error("Client display matching requires extension");
     if(client_mode && !preference.width)throw std::runtime_error("Client did not supply its display mode");
     const unsigned profile_width=client_mode?preference.width:width,profile_height=client_mode?preference.height:height;
     struct MonitorDelete {void operator()(display::VirtualMonitor* p) const {std::lock_guard lock(display_lifecycle);delete p;}};
     std::unique_ptr<display::VirtualMonitor,MonitorDelete> virtual_monitor;
-    auto selected_source=source;
+    auto selected_source=permitted_source;
     display::Mode client_choice{};
     if(extend) {
         std::lock_guard lock(display_lifecycle);
@@ -92,9 +118,9 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
     if(!selected_source.empty()) std::wosyncstream(std::wcout)<<L"CAPTURE_SOURCE "<<selected_source<<L" extended="<<extend<<std::endl;
     const unsigned target_fps=fps;
     std::optional<display::Mode> mode;
-    std::wstring identity;
+    std::wstring identity=permitted_identity;
     if(!selected_source.empty()) {
-        for(const auto& monitor:display::active_monitors())if(monitor.source==selected_source)identity=monitor.device_path;
+        if(identity.empty())for(const auto& monitor:display::active_monitors())if(monitor.source==selected_source)identity=monitor.device_path;
         mode=display::current_mode(selected_source);
         if(extend){width=mode->width;height=mode->height;}
     }
@@ -115,7 +141,7 @@ void host_video(const net::Options& options, const std::string& pair, unsigned f
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 if(current!=display::current_mode(selected_source))throw std::runtime_error("Display mode is still settling");
                 mode=current;
-                if(extend){width=current.width;height=current.height;fps=std::min(target_fps,std::clamp(current.hz,1u,360u));}
+                if(extend||existing_screen){width=current.width;height=current.height;fps=std::min(target_fps,std::clamp(current.hz,1u,360u));}
             }
             capture=std::make_unique<DesktopCapture>(selected_source,width,height);
             frame=codec==wire::Codec::h264?capture->next_gpu():capture->next();
@@ -288,11 +314,11 @@ void serve_video(const net::Options& requested,const std::string& pair,bool allo
         });}catch(const std::exception& error){--pending_handshakes;session->done=true;std::osyncstream(std::cout)<<"CLIENT_REJECTED Cannot start display worker: "<<error.what()<<std::endl;}
     }
 }
-void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display,Quality quality,const std::function<void(StreamStats)>& statistics,const std::function<void()>& editable_touch) {
+void receive_video(const net::Options& options, const std::string& pair, const std::function<void(Frame)>& sink,std::optional<unsigned> decoder_adapter,const std::function<std::vector<input::Event>()>& input_source,const std::function<void(unsigned)>& input_grant,wire::ClientDisplay client_display,Quality quality,const std::function<void(StreamStats)>& statistics,const std::function<void()>& editable_touch,wire::ScreenRequest screen) {
     auto socket = net::connect_stream(options);
     security::TlsStream stream(std::move(socket), false, pair);
     stream.handshake(deadline());
-    auto request=wire::request;request[9]=static_cast<std::uint8_t>(quality);if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}if(editable_touch&&input_source&&(request[8]&input::touch_cap))request[10]=2;wire::set_client_display(request,client_display);stream.write(request, deadline());
+    auto request=wire::request;request[9]=static_cast<std::uint8_t>(quality);if(input_source){request[7]=1;request[8]=static_cast<std::uint8_t>(input::receiver_capabilities());}if(editable_touch&&input_source&&(request[8]&input::touch_cap))request[10]=2;wire::set_client_display(request,client_display);wire::set_screen_request(request,screen);stream.write(request, deadline());
     wire::OfferBytes offer_bytes{};
     // Authenticated host may need to enumerate/start its session-owned driver.
     stream.read(offer_bytes, Clock::now()+std::chrono::seconds(45));

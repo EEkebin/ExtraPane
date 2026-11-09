@@ -18,7 +18,8 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
         ULONG server=0;if(!GetNamedPipeServerProcessId(pipe,&server)||server!=pid)throw std::runtime_error("Launcher channel identity mismatch");
         instance=CreateMutexW(nullptr,FALSE,L"Local\\SideScreen.DriverRuntime");if(!instance||GetLastError()==ERROR_ALREADY_EXISTS)throw std::runtime_error("ExtraPane driver is already running");
         if(bind!=L"auto"){ipv4(bind);bool local=false;for(const auto& nic:dm::net::interfaces())if(nic.up&&wide(nic.address)==bind)local=true;if(!local)throw std::runtime_error("Selected interface is no longer connected");}
-        firewall(true,port,require_code,bind);rule=true;
+        // A loopback-only peer media backend needs no inbound LAN firewall rule.
+        if(bind!=L"127.0.0.1"){firewall(true,port,require_code,bind);rule=true;}
         std::vector<std::wstring> args{L"host",L"--lan",L"--bind",bind,L"--parent-pid",std::to_wstring(GetCurrentProcessId()),L"--allow-screen",L"--extend",L"--serve",L"--keep-layout",L"--client-mode",L"--frames",debug?L"3600":L"0",L"--timeout-ms",L"0"};if(input)args.push_back(L"--allow-input");
         args.insert(args.end(),{L"--port",std::to_wstring(port)});if(require_code)args.push_back(L"--require-code");
         engine.start((directory()/L"dm-view.exe").wstring(),args,true);

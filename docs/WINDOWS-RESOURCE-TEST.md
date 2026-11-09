@@ -105,7 +105,7 @@ allows only one exporter process per source PC. Linux/macOS new media
 resources and raw USB are not covered by this Windows milestone. Android camera
 and microphone source code/APK are present but require their own physical checks.
 The combined portable package contains setup helpers; drivers still require
-explicit machine-wide setup. The current development installer bundles receiving components; the new live-resource and unified-uninstall changes still require end-to-end user testing. Choose Server + Client on the receiving desktop and Client only on the source laptop.
+explicit machine-wide setup. The current development installer prepares all supported components without a role choice; install the same package on both PCs. Live-resource and unified-uninstall changes still require end-to-end user testing.
 
 ## Live camera mirroring and device pickers
 

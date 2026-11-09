@@ -1,0 +1,257 @@
+# Devices workspace: acceptance checks
+
+This guide is for the development preview on `feat/device-discovery`. It is not
+evidence that these checks have passed on physical devices. Keep the existing
+Server/Client workflow available until this preview has been accepted.
+
+## Start the preview
+
+Install the matching build on each test computer when you are ready. On Windows,
+**Full installation (receive and share)** includes the managed receiving components.
+The computer whose desktop will be extended needs the virtual-display driver.
+**Share only** can offer its physical devices and serve as a display destination.
+Do not run the legacy interface and the preview against the same resources together.
+
+In builds after `pre.92.1`, open ExtraPane normally. From the Windows installation
+directory:
+
+```powershell
+.\ExtraPane.exe
+```
+
+Open the Linux AppImage normally. On macOS:
+
+```sh
+open -a ExtraPane
+```
+
+Desktop `--legacy` opens the older interface; `--devices` remains supported.
+Use a build newer than `pre.92.1`: that build defaults to the old interface and
+its Windows package cannot load the new page because of a resource-path error.
+Android opens device sharing normally, with **Legacy connections** for the older
+workflow. This preview shares only while its activity is in the foreground; backgrounding stops
+sharing and capture. Android cannot consume virtual camera/microphone endpoints.
+
+## Navigation and resource groups
+
+Resources are grouped into Monitors, Cameras, Speakers, Microphones and USB.
+Click or tap a group header to expand or collapse it. Collapsing a group must
+retain its selections and active sessions. Within Monitors, extending a desktop
+and viewing an existing screen remain separate actions.
+On Devices these appear under **Use as an extra monitor** and **Share an existing
+screen**. The first offers this device as a receiving screen: choose
+**Custom resolution** or a named monitor whose mode supplies the initial settings.
+The second sends an already-existing screen's picture. A monitor may appear once
+in each section because these are different uses of the same hardware. Resource
+names use readable monitor labels rather than raw Windows display paths; the
+resource identities and saved sharing choices are unchanged.
+
+On Android, use the top-left menu for Devices, Resources and About.
+Check portrait and landscape layouts: the toolbar and bottom controls must stay
+clear of system bars, and resource labels must wrap without hiding actions.
+Switch pages while multiple resources are active; navigation must not stop them.
+The phone's Devices page manages pairing and saved/connected peers. Resources
+shows its available resources and active streams; request those resources from
+the other computer. Devices also contains provider permissions and availability settings. Android resource consumption remains limited to the
+older workflow available through About's Legacy connections action.
+
+For Android audio, expect recognizable route names such as Loudspeaker, Earpiece,
+Built-in microphone and connected headset/USB names, rather than internal output
+numbers. Verify the actual selected output with playback; an advertised route is
+not proof the device's audio policy permits playback through it. Unplugging a
+selected headset must not redirect its session to the loudspeaker.
+
+## First connection: extend the desktop
+
+1. On the laptop that will show the extra screen, open **Devices**, check its
+   connected local network address. Supported resources are available automatically;
+   no per-resource enable or separate Start sharing action is needed.
+   Keep **Require pairing** enabled. Offering the destination alone must not create
+   a virtual monitor or start a stream.
+2. On the desktop being extended, open **Devices**. Press **Search nearby** to search for new devices. Select the laptop, or use manual address entry and enter its
+   IPv4 address and port. Choose Automatic route, or the intended local interface
+   on a multihomed computer. Click Connect, then enter the laptop's displayed
+   PIN or password in the masked pairing dialog.
+3. Pair, open **Resources**, and add a monitor row. Choose Virtual monitor, then
+   Custom or a named monitor preset; set its resolution and refresh target. The desktop creates the virtual
+   monitor; the laptop opens the receiver window.
+4. Verify picture, supported input, fullscreen and monitor arrangement. Disconnect
+   only that resource. Its window and virtual monitor should close, while unrelated
+   resources continue.
+
+Refresh targets up to 360 FPS are requests, not guaranteed throughput. Native OS,
+driver, encoder and display limits still apply. **Existing screen** is a separate,
+screen-capture offer; it must not create a virtual monitor. Input appears only
+where the provider advertises support and requires Allow input to be selected.
+
+## Device cards
+
+Click an available device header to collapse or expand its resource groups. Collapse
+one device while another stays expanded; refresh its catalog and confirm the
+collapsed state stays with the same device. Active video/audio/camera/USB sessions
+must continue unchanged. Paired devices manage availability automatically; use
+resource power buttons to stop media, or Forget to remove trust. Android
+paired-device cards also collapse their details without forgetting or disconnecting
+the peer.
+
+## Independent resources and lifecycle
+
+- Add camera, microphone or speakers where both devices support the required native
+  integration. Verify the resulting device in a receiving application, not just an
+  ExtraPane status label. Advertising a camera or microphone must not activate it.
+- Stop one resource while another is active. Pending connections must be individually
+  cancellable. Disconnect all must disappear after all pending/active resources end.
+- Disconnect the last active local resource: its power returns to Available while
+  the listener and advertisement remain available. Disconnect all shared resources
+  stops incoming uses only, preserving unrelated outgoing uses. Pair without
+  starting a resource: no camera LED, microphone capture, virtual monitor or USB
+  ownership change should occur.
+- Use one of two cameras and confirm only the exact camera turns red on both peers.
+  Its provider must identify the consumer. Add another consumer to the same source
+  where supported, then stop one session and verify the remaining use stays red.
+- Select **Refresh resources** after attaching/removing hardware. Existing unchanged
+  connections should survive a label or mode refresh; removed sources must stop.
+- Close the main window during active work and restore it from the tray. Use Exit
+  for full shutdown. With no work active, normal close should quit.
+
+## Pairing and network behavior
+
+- Restart with a saved peer available and verify automatic availability without a
+  code. A uniquely matching saved address/port pins the expected identity; an
+  identity mismatch must fail.
+- Stop/start sharing within the same app process: the code stays unchanged. Restart
+  the app: the code changes, while remembered-device trust remains.
+- Forget an online peer: its current access ends and both saved entries are removed.
+  Repeat with the other peer offline: local access ends immediately, remote removal
+  shows pending, and completes when that peer returns. Do not report pending as success.
+- Test `localhost` or `127.0.0.1` separately for self-extension. Pairing still applies;
+  the same computer needs the actual virtual-display integration.
+- A brief network interruption may restore authenticated non-USB resources, bounded
+  to five attempts within 30 seconds. Cancel must prevent restoration. USB must never
+  reattach automatically. Do not unplug storage merely to test generic reconnect.
+
+Cross-network connections use a manually reachable/forwarded TCP port on the offering
+device. There is no UPnP. Gateway testing requires a third device: enable the gateway
+explicitly, verify only its directly paired resources appear, and verify disabling it
+ends relayed sessions. Gateway mode is off by default and supports one hop.
+
+The endpoint-encryption replacement has isolated checks; do not treat pre.109.1
+as confidential against its gateway. Physical acceptance requires pairing the two
+end devices independently through the gateway, without activating any resources.
+Verify that either end can subsequently offer and use supported resources and that
+an old gateway cannot cause fallback to the former credential-forwarding protocol.
+Disabling the gateway or forgetting either endpoint must terminate affected use.
+
+USB has a separate exclusive ownership/eject path. Test it only after the simpler
+resources, using expendable test data and the normal eject action. If enumeration or
+return fails, preserve the exact error and logs rather than repeatedly reattaching.
+
+Record the package version, OS, offered resource, destination address/interface,
+exact error and whether other resources continued. Track results in
+[IMPLEMENTATION-CHECKLIST.md](IMPLEMENTATION-CHECKLIST.md).
+
+
+## Pairing updates and compatibility
+
+An ordinary installer Update or signed Android replacement install should preserve
+pairing identity and trust. Uninstalling or clearing application data does not.
+Do not disable identity checks or silently replace a saved key when connection fails.
+
+Bilateral Forget uses a revocation-only authentication mode. Both peers need a
+supporting build; an older peer rejects it and remote removal remains pending.
+Manually forget on that older peer if it cannot be updated. Clear pending removal
+locally only after reviewing the warning: this does not confirm remote removal,
+and is useful when the remote app was removed or its trust data was reset. The private trust store
+migrates to version 2 while preserving existing pairs; older application builds
+cannot read that upgraded store. Do not downgrade over it or delete it to hide an
+upgrade error. Windows uses DPAPI encryption; POSIX permissions protect the store
+but are not OS-keychain encryption.
+
+### Repeatable monitor acceptance
+
+- Add two Custom virtual monitors and two rows using the same named preset. Each
+  must start and stop independently, with its own receiving window.
+- Change a preset while idle; its advertised dimensions/refresh should populate.
+  Refresh the catalog and collapse/reopen the group without losing row selections.
+- View one existing screen, then try it again in another row. The duplicate must
+  be rejected while the first is pending or active; after stopping it, retry succeeds.
+- Where Allow input is supported, leave it off first, then enable it for a new
+  session. Verify coordinates on the selected screen and release of owned input
+  on focus loss/disconnect. Never infer input support from video alone.
+
+### Devices / Resources navigation
+
+- Devices: press Search nearby; no search starts at launch. After pairing, the
+  peer disappears from Nearby and appears in the saved/connected device list.
+- Saved peers stay in Paired devices with Resources and Forget, without Connected
+  badges or a duplicate Connected devices list.
+  Resource power controls remain on Resources.
+- Resources: expand a device card, then a resource group, and use its power
+  button. Moving pages or collapsing cards must preserve active resources.
+- About: Running version must match the installed package version.
+
+
+### Remembered peers and first camera startup
+
+- Restart the app with a paired peer available. Its control connection and catalog
+  should appear without pressing Connect; no camera or microphone should activate.
+- Open a camera as the first resource on a newly connected peer. Delayed setup or
+  a rejected camera must not remove the device or its other resources. A retry
+  should be possible without reconnecting/re-pairing the device.
+- Forget must remove the peer from automatic reconnect candidates immediately,
+  even while remote unpairing is pending. Pending credentials must not open resources.
+- New-device Nearby search remains manual; automatic reconnect never pairs an
+  unknown device or bypasses a changed saved identity.
+
+
+### Discovery and About presentation
+
+- Press the refresh icon next to Nearby devices. It spins with three bouncing
+  dots during the explicit search. Cards should appear as results arrive, not
+  only when the scan completes. Repeated clicks must not create duplicate scans.
+- Search completion/failure stops the animation. Paired peers stay out of Nearby.
+- Cards use a neutral computer glyph because current discovery metadata does not
+  identify the OS or device class. Names are displayed as plain text.
+- About shows the current version, a smoothly scaled logo, product information
+  and project links. Resize the window and check wrapping/scrolling. Device
+  connection status should not appear as About content.
+
+
+### Pairing-code modal
+
+- Connect to a new Nearby device requiring pairing: a modal shows the selected
+  device and accepts a masked PIN or password with a neutral placeholder. There
+  is no inline credential field on Devices. Test a wrong credential: it should
+  report incorrect/expired credentials, while network failure remains distinct.
+- Watch the local code/countdown for 20 seconds: the generated code changes and the
+  circle resets. Already-paired devices and active resources must stay available.
+- Save a custom password with spaces and Unicode, restart, and verify it still
+  pairs. It must not reappear in the local field or PIN label. Switch back to
+  generated codes and confirm the countdown resumes.
+- Pair once with reverse discovery unavailable: both resource catalogs should
+  appear without asking for the other device's PIN or exposing a second port.
+- Cancel or close the dialog: no connection is started and the code is cleared.
+  Reopen it and confirm the old value is absent. Invalid text cannot submit.
+- Change the discovery list while a dialog is open: submission must retain its
+  selected identity, address, port and interface, not whichever card appears next.
+- Connect to a Nearby device advertising pairing disabled: its card clearly says
+  unverified, and Connect proceeds without a code dialog. Manual unpaired access
+  likewise uses the explicitly selected Connect without pairing option.
+- Saved identities never downgrade to unverified access because a discovery flag
+  or checkbox changed. Pending pairing removal blocks new pairing until resolved.
+- Check Android rotation/background/dismissal: no duplicate request or retained
+  code; cancelling the modal does not close the app or stop other resources.
+
+
+### Pairing-focused device presentation
+
+- A saved peer appears once in Paired devices, with no Connected/Disconnected or
+  checking-connection badge. Its entry and Resources action survive a temporary
+  control-link interruption.
+- Nearby discovery remains for new pairings. Deliberately unpaired access appears
+  separately as unverified, without being relabeled as a saved pairing.
+- Resource power remains green until that resource is requested, then reflects its
+  pending/active state. Stopping one resource does not remove the pairing or stop
+  unrelated resources. Pairing/background catalogs alone must not activate capture.
+- Generic device-connection footer messages disappear; real errors and active
+  camera, microphone, speaker, display and USB status must remain visible.

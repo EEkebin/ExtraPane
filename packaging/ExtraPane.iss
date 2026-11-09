@@ -7,8 +7,8 @@
 #define HasCamera FileExists(SourceDir + "\ExtraPane.CameraSetup.exe")
 #define HasUsb FileExists(SourceDir + "\ExtraPane.UsbSetup.exe")
 #define HasUsbHost FileExists(SourceDir + "\ExtraPane.UsbHostSetup.exe")
-#if !HasUsbHost
-#error Mandatory USB source component is missing from the installer payload
+#if !HasDriver || !HasCamera || !HasUsb || !HasUsbHost
+#error Full ExtraPane installation requires display, camera, audio/USB receiving and USB source components
 #endif
 [Setup]
 ; Stable identity recognizes installations made under the previous name.
@@ -97,7 +97,6 @@ var
   MaintenanceStatusFile, UninstallStatusFile: String;
   MaintenancePendingBefore, MaintenancePendingAfter: String;
   MaintenanceNeedsRestart: Boolean;
-  RoleChoice: TInputOptionWizardPage;
   DriverConsent: TOutputMsgWizardPage;
   DriverConsentAccepted: Boolean;
   StandardNextLeft, StandardNextWidth, StandardBackLeft: Integer;
@@ -164,6 +163,12 @@ begin
   if ExistingInstall and WizardSilent and (MaintenanceMode = 'update') and not UpdateAvailable then begin
     Result := False; SuppressibleMsgBox('Update requires an installer newer than the installed ExtraPane. Use /MAINTENANCE=restore only for an explicit clean reinstall.', mbError, MB_OK, IDOK); Exit;
   end;
+  { /SERVER=1 remains a harmless compatibility alias. Never silently turn an
+    explicit historical no-driver deployment into a machine driver installation. }
+  if (MaintenanceMode <> 'uninstall') and
+     (ExpandConstant('{param:SERVER|1}') <> '1') then begin
+    Result := False; SuppressibleMsgBox('ExtraPane now installs all managed components. Remove the obsolete /SERVER option and provide /ACCEPTDEVELOPMENTCERT=1 for silent setup. No client-only installation is available.', mbError, MB_OK, IDOK); Exit;
+  end;
   Result := StopRunningExtraPane;
   if not Result then
     SuppressibleMsgBox('ExtraPane could not finish shutting down. Close ExtraPane and stop its driver, then run Setup again.', mbError, MB_OK, IDOK);
@@ -184,18 +189,9 @@ begin
   if MaintenanceMode = 'restore' then MaintenanceChoice.SelectedValueIndex := 1;
   if MaintenanceMode = 'uninstall' then MaintenanceChoice.SelectedValueIndex := 2;
   MaintenanceChoice.CheckListBox.OnClickCheck := @MaintenanceChanged;
-  RoleChoice := CreateInputOptionPage(MaintenanceChoice.ID, 'How will you use this PC?',
-    'All choices install the same ExtraPane app.',
-    'Client only needs no virtual-display driver. Server + Client can also host displays and requires that driver.', True, False);
-  RoleChoice.Add('Client only');
-  RoleChoice.Add('Server + Client (requires administrator permission to install the driver)');
-  RoleChoice.SelectedValueIndex := 0;
-  if ExpandConstant('{param:SERVER|}') = '1' then RoleChoice.SelectedValueIndex := 1
-  else if (ExpandConstant('{param:SERVER|}') = '') and
-    (GetPreviousData('ServerInstall', '0') = '1') then RoleChoice.SelectedValueIndex := 1;
-  DriverConsent := CreateOutputMsgPage(RoleChoice.ID, 'Required server driver',
-    'Server setup includes a machine-wide virtual-display driver.',
-    'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver is managed by the ExtraPane uninstaller. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.' + #13#10 + #13#10 + 'Select I agree - Next to install the driver and trust its development certificate. Otherwise, go Back and choose Client only.');
+  DriverConsent := CreateOutputMsgPage(MaintenanceChoice.ID, 'Required virtual-display driver',
+    'ExtraPane includes the components needed to offer and use resources.',
+    'The driver is development signed, not Microsoft release signed. Setup adds its public code-signing certificate to this PC''s Trusted Root and Trusted Publishers stores. The driver is managed by the ExtraPane uninstaller. Secure Boot, Memory Integrity and test-signing mode are not changed. Windows policy can still reject driver loading.' + #13#10 + #13#10 + 'Select I agree - Next to install ExtraPane and trust its development certificate. Otherwise, cancel setup.');
   StandardBackLeft := WizardForm.BackButton.Left;
   StandardNextLeft := WizardForm.NextButton.Left;
   StandardNextWidth := WizardForm.NextButton.Width;
@@ -205,8 +201,8 @@ end;
 procedure RegisterPreviousData(PreviousDataKey: Integer);
 begin
   if IsUninstallMaintenance then Exit;
-  if RoleChoice.SelectedValueIndex = 1 then SetPreviousData(PreviousDataKey, 'ServerInstall', '1')
-  else SetPreviousData(PreviousDataKey, 'ServerInstall', '0');
+  { Historical role data is normalized for older upgrade readers only. }
+  SetPreviousData(PreviousDataKey, 'ServerInstall', '1');
   if CameraInstalled then SetPreviousData(PreviousDataKey, 'CameraInstall', '1')
   else SetPreviousData(PreviousDataKey, 'CameraInstall', '0');
 end;
@@ -216,13 +212,12 @@ begin
   if IsUninstallMaintenance then begin Result := 'Remove ExtraPane, its managed components and current-user settings.'; Exit; end;
   Result := MemoDirInfo + NewLine + NewLine;
   if ExistingInstall and (MaintenanceMode = 'restore') then Result := 'Restore: completely remove the existing installation and settings, then reinstall.' + NewLine + NewLine + Result;
-  if RoleChoice.SelectedValueIndex = 1 then Result := Result + 'Use: Server + Client (virtual-display driver required)'
-  else Result := Result + 'Use: Client only (no virtual-display driver)';
+  Result := Result + 'ExtraPane: offer and use resources (all managed components included)';
 #if HasCamera
-  if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the machine-wide camera receiving component.';
+  Result := Result + NewLine + 'Includes the machine-wide camera receiving component.';
 #endif
 #if HasUsb
-  if RoleChoice.SelectedValueIndex = 1 then Result := Result + NewLine + 'Includes the microphone receiving component. Existing compatible installations are preserved.';
+  Result := Result + NewLine + 'Includes the microphone receiving component. Existing compatible installations are preserved.';
 #endif
 
   Result := Result + NewLine + NewLine + MemoGroupInfo + NewLine + MemoTasksInfo;
@@ -231,8 +226,7 @@ end;
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := ((PageID = MaintenanceChoice.ID) and not ExistingInstall) or
-    ((PageID = DriverConsent.ID) and (RoleChoice.SelectedValueIndex <> 1)) or
-    (IsUninstallMaintenance and ((PageID = RoleChoice.ID) or (PageID = DriverConsent.ID) or (PageID = wpInfoBefore) or (PageID = wpSelectTasks)));
+    (IsUninstallMaintenance and ((PageID = DriverConsent.ID) or (PageID = wpInfoBefore) or (PageID = wpSelectTasks)));
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -319,13 +313,13 @@ begin
   end;
   if ExistingInstall and (MaintenanceMode = 'update') and not UpdateAvailable then begin Result := 'This installer is not newer than the installed version. Select Restore for a clean reinstall.'; Exit; end;
   if IsUninstallMaintenance then begin Result := RemoveExistingInstallation(NeedsRestart); Exit; end;
-  if (RoleChoice.SelectedValueIndex = 1) and not DriverInstalled then begin
+  if not DriverInstalled then begin
     if not DriverConsentAccepted then begin
-      Result := 'Server setup requires development certificate consent. Silent installs need /SERVER=1 /ACCEPTDEVELOPMENTCERT=1.';
+      Result := 'ExtraPane setup requires development certificate consent. Silent installs need /ACCEPTDEVELOPMENTCERT=1.';
       Exit;
     end;
 #if !HasDriver
-    Result := 'This setup does not contain the required display-driver package. Server setup cannot continue.';
+    Result := 'This setup does not contain the required display-driver package. Setup cannot continue.';
 #endif
   end;
   if Result <> '' then Exit;
@@ -334,18 +328,18 @@ begin
     if Result <> '' then Exit;
   end;
 #if HasCamera
-  if (Result = '') and (RoleChoice.SelectedValueIndex = 1) and not CameraInstalled then begin
+  if (Result = '') and not CameraInstalled then begin
     ExtractTemporaryFile('ExtraPane.CameraSetup.exe');
     if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.CameraSetup.exe'),
       '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'Camera component setup could not start or administrator permission was canceled.'
     else if (Code <> 0) and (Code <> 3010) then
-      Result := 'The camera component could not be installed (exit ' + IntToStr(Code) + '). Existing foreign registrations are not overwritten. Retry or choose Client only.'
+      Result := 'The camera component could not be installed (exit ' + IntToStr(Code) + '). Existing foreign registrations are not overwritten. Resolve the reported issue and retry setup.'
     else begin CameraInstalled := True; if Code = 3010 then NeedsRestart := True; end;
   end;
 #endif
 #if HasUsb
-  if (Result = '') and (RoleChoice.SelectedValueIndex = 1) and not MicrophoneInstalled then begin
+  if (Result = '') and not MicrophoneInstalled then begin
     ExtractTemporaryFile('ExtraPane.UsbSetup.exe');
     if not ShellExec('runas', ExpandConstant('{tmp}\ExtraPane.UsbSetup.exe'), '--install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
       Result := 'Microphone setup could not start or administrator permission was canceled.'
@@ -418,8 +412,8 @@ begin
     if ComponentRestart then WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 + 'Restart Windows to finish removing loaded files.';
   end;
   if (CurPageID = wpFinished) and DriverInstallFailed then begin
-    WizardForm.FinishedHeadingLabel.Caption := 'Server driver installation failed';
-    WizardForm.FinishedLabel.Caption := 'ExtraPane remains installed for repair or removal, but the server driver is not ready. Check Program Files\ExtraPane\Components\Display\driver-setup.log and run this installer again to repair it. No boot-security settings were changed.';
+    WizardForm.FinishedHeadingLabel.Caption := 'Display driver installation failed';
+    WizardForm.FinishedLabel.Caption := 'ExtraPane remains installed for repair or removal, but the display driver is not ready. Check Program Files\ExtraPane\Components\Display\driver-setup.log and run this installer again to repair it. No boot-security settings were changed.';
   end;
 end;
 
@@ -454,13 +448,13 @@ begin
     if CurStep = ssDone then RemoveDir(ExpandConstant('{app}'));
     Exit;
   end;
-  if (CurStep = ssPostInstall) and (RoleChoice.SelectedValueIndex = 1) then begin
+  if (CurStep = ssPostInstall) then begin
     { Files and the main uninstall record exist before any driver changes. A
       failed driver install leaves this app available for repair/uninstall. }
     DriverInstalled := RunDisplayManager('Install', Code);
     DriverInstallFailed := not DriverInstalled;
     if DriverInstallFailed then
-      SuppressibleMsgBox('The server driver could not be installed (exit ' + IntToStr(Code) + '). ' + ComponentError + #13#10 + 'ExtraPane is retained for repair or uninstall. See Program Files\ExtraPane\Components\Display\driver-setup.log.', mbError, MB_OK, IDOK);
+      SuppressibleMsgBox('The display driver could not be installed (exit ' + IntToStr(Code) + '). ' + ComponentError + #13#10 + 'ExtraPane is retained for repair or uninstall. See Program Files\ExtraPane\Components\Display\driver-setup.log.', mbError, MB_OK, IDOK);
   end;
   if (CurStep <> ssDone) or DriverInstallFailed then Exit;
   if DriverInstalled then RetireManagedDriverEntry

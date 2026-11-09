@@ -31,6 +31,8 @@ ApplicationWindow {
     palette.toolTipBase: "#253349"
     palette.toolTipText: "#edf1f8"
     palette.placeholderText: "#aab8cc"
+    readonly property bool peerMode: typeof peers !== "undefined"
+    Loader { anchors.fill: parent; active: root.peerMode; source: active ? "qrc:/PeerWorkspace.qml" : "" }
     readonly property bool multiClient: typeof receiver.connectionRuntime !== "undefined"
     property bool windowsClient: receiver.platformLabel === "Windows"
     property bool sidebarCollapsed: false
@@ -57,7 +59,7 @@ ApplicationWindow {
     property int page: Qt.application.arguments.indexOf("--client") >= 0 ? 1 : 0
     onPageChanged: receiver.releaseInput()
     footer: TabBar {
-        visible: root.width < 700 && !root.fullscreen
+        visible: !root.peerMode && root.width < 700 && !root.fullscreen
         height: visible ? implicitHeight : 0
         currentIndex: root.page
         Repeater {
@@ -80,7 +82,7 @@ ApplicationWindow {
         revealToolbar()
     }
     function revealToolbar() { toolbarVisible = true; hideToolbar.restart() }
-    Shortcut { sequence: "Ctrl+Shift+Q"; onActivated: { if (root.multiClient) receiver.connectionRuntime.disconnectAll(); else receiver.disconnectFromServer() } }
+    Shortcut { sequence: "Ctrl+Shift+Q"; onActivated: { if (root.peerMode) peers.disconnectAll(); else if (root.multiClient) receiver.connectionRuntime.disconnectAll(); else receiver.disconnectFromServer() } }
     Shortcut { sequence: "F11"; onActivated: root.toggleFullscreen() }
     Shortcut { enabled: !root.windowsClient; sequence: "F10"; onActivated: root.pauseInput() }
     Shortcut { enabled: !root.windowsClient; sequence: "F8"; onActivated: root.toggleInput() }
@@ -91,6 +93,7 @@ ApplicationWindow {
         onTriggered: { if (!root.inputPaused && !settingsMenu.opened && !toolbarHover.hovered) root.toolbarVisible = false; else restart() }
     }
     RowLayout {
+        visible: !root.peerMode
         anchors.fill: parent; spacing: 0
         Rectangle {
             id: sidebar
