@@ -225,7 +225,18 @@ void release_absent(const std::wstring& id){
     if(!result.available)throw std::runtime_error(result.reason);
     std::cout<<"{\"absentOwnershipReleased\":"<<json(utf8(id))<<",\"diskTouched\":false,\"cleanEjectClaimed\":false,\"auditRetained\":true}\n";
 }
+void restore_returned(){
+    // Generic exports have exact binding leases, not disk journals. This is an
+    // explicit elevated cleanup path; inventory and --list remain read-only.
+    // The runner rejects active exports and preserves foreign bindings. An
+    // absent physical device does not prevent release of our own stale lease.
+    auto runner=native_host_runner();
+    const auto result=runner->cleanup_generic();
+    if(!result.available)throw std::runtime_error(result.reason);
+    std::cout<<"{\"genericOwnershipRestored\":true,\"diskTouched\":false}\n";
+}
 void prepare_uninstall(){
+    restore_returned(); // Before backend removal, independently of disk journals.
     for(const auto& item:pending_recoveries()){
         require(item.record&&item.error.empty(),"Malformed recovery journal retained for inspection");
         if(absent_release_policy(*item.record).available){
@@ -256,10 +267,12 @@ int wmain(int argc,wchar_t** argv){
         if(argc==4&&std::wstring_view(argv[1])==L"--recover-interrupted"&&std::wstring_view(argv[3])==L"--acknowledge-unflushed-receiver"){recover_interrupted(argv[2]);return 0;}
         if(argc==3&&std::wstring_view(argv[1])==L"--release-absent"){release_absent(argv[2]);return 0;}
         if(argc==2&&std::wstring_view(argv[1])==L"--prepare-uninstall"){prepare_uninstall();return 0;}
+        if(argc==2&&std::wstring_view(argv[1])==L"--restore-returned"){restore_returned();return 0;}
         if(argc==2&&std::wstring_view(argv[1])==L"--help"){
             std::cout<<"ExtraPane.UsbRecovery --list\nExtraPane.UsbRecovery --inspect <journal-id> (read-only)\nExtraPane.UsbRecovery --recover <journal-id>\nExtraPane.UsbRecovery --reconcile-online (retire never-exported already-online journals only)\n"
                 <<"ExtraPane.UsbRecovery --recover-interrupted <journal-id> --acknowledge-unflushed-receiver\n"
                 <<"ExtraPane.UsbRecovery --release-absent <journal-id> (release exact inactive absent ownership; no disk writes)\nExtraPane.UsbRecovery --prepare-uninstall\n"
+                <<"ExtraPane.UsbRecovery --restore-returned (release inactive generic USB ownership; no disk writes)\n"
                 <<"Ordinary recovery requires administrator rights, a verified local disk and durable eject/release evidence.\n"
                 <<"Interrupted return is an explicit operator-only action for a v2 bound journal after both endpoints stop. It cannot prove receiver writes were flushed and retains a protected acknowledgment audit; it never claims a clean eject.\n";return 0;
         }

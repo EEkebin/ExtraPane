@@ -1,5 +1,39 @@
 # Resource-sharing implementation checklist
 
+## Active increment: generic USB device forwarding
+
+- [x] Audit pinned USB/IP transfer support and separate non-storage ownership from
+  storage quarantine; preserve prior work on `feat/device-discovery` and develop
+  this increment on `feat/usb-device-forwarding`.
+- [x] Add conservative physical HID/audio inventory and explicit unavailable reasons.
+- [x] Implement exact owned non-storage export, import, return and abandoned-binding
+  cleanup without disk recovery requirements or forced driver replacement.
+- [x] Integrate USB resource selection and versioned kind negotiation; reject unsafe
+  storage/generic fallback and incompatible native helpers.
+- [x] Verify synthetic lifecycle, protocol, ownership and isolated builds; update docs.
+- [ ] Build and deliver matching Windows/Android packages after verification.
+- [ ] With user permission, verify actual USB mouse/keyboard and headset transfer,
+  release, disconnect, unplug and crash recovery on physical devices.
+
+Implementation is in progress. Pinned backends implement interrupt and isochronous
+transfers, but this is not a physical compatibility result. No USB device has been
+bound, detached or imported for this increment. Raw USB on other platforms remains
+unsupported. Existing storage safety rules remain separate and unchanged.
+
+Initial isolated evidence: native USB helper and Qt app compile; Qt offscreen
+checks pass. Offer tests cover legacy-version rejection, malformed kind/reserved
+fields and receipt identity. Generic policy/lifecycle checks exercise selection
+changes, binding/start/release failures and exact import-port parsing. Tunnel
+checks cover bidirectional flow and idle pacing. Patched pinned exporter AOT
+compilation succeeded without running it. Guarded installer migration compiled
+and policy checks passed: only the exact previous payload can upgrade, unchanged
+drivers and inactive ownership records are preserved, active exporters block
+replacement, and a verified interrupted replacement can resume. Android's 14 host
+checks, Java compilation and lint passed. Final package verification is pending.
+Generic receiver uses exact virtual-port to
+PnP driver-key mapping rather than the pinned driver's broken serial override;
+the physical mapping remains an acceptance gate. Composite devices are excluded.
+
 ## Active increment: pairing dialog labels
 
 - [x] Show the selected device name in Pair with NAME; smaller address/port below.

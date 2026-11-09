@@ -12,7 +12,7 @@ struct Fake:Process {
  std::string drain()override{auto out=std::move(child->output);child->output.clear();return out;}bool running()const override{return child->live;}void stop()noexcept override{child->live=false;}
 };
 int main(){try{
- for(const auto& operation:{"list-cameras","list-microphones","list-speakers","list-storage"}){Command inventoryCommand{"inventory.exe",{operation},false,false,false};require(native_arguments(inventoryCommand,123)==std::vector<std::string>{operation},"inventory must not get unsupported parent argument");}
+ for(const auto& operation:{"list-cameras","list-microphones","list-speakers","list-storage","list-usb"}){Command inventoryCommand{"inventory.exe",{operation},false,false,false};require(native_arguments(inventoryCommand,123)==std::vector<std::string>{operation},"inventory must not get unsupported parent argument");}
  require(native_arguments({"source.exe",{"send"}},123)==std::vector<std::string>({"send","--parent-pid","123"}),"source lost parent lifetime protection");
  std::vector<std::shared_ptr<Child>> children;Factory factory=[&]{auto c=std::make_shared<Child>();children.push_back(c);return std::make_unique<Fake>(c);};
  std::vector<Source> inventory{{{"camera","Camera",peers::Kind::camera,true,false,""},"private-camera"},{{"screen","Screen",peers::Kind::existing_screen,true,false,""},"\\\\?\\DISPLAY#private-screen"}};

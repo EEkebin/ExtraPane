@@ -6,6 +6,7 @@ param(
     [switch]$IncludeCamera,
     [switch]$IncludeMicrophone,
     [switch]$IncludeUsb,
+    [string]$UsbHostSource = 'out/usb-host/corresponding-source',
     [string]$MicrophoneEndpoint = 'out/microphone-endpoint/release/extrapane-microphone-endpoint.exe'
 )
 $ErrorActionPreference = 'Stop'
@@ -51,9 +52,16 @@ if ($IncludeUsb) {
     $nativeOutputs['extrapane_usb_host_setup'] = 'ExtraPane.UsbHostSetup.exe'
     $nativeOutputs['extrapane_usb_recovery_tool'] = 'ExtraPane.UsbRecovery.exe'
     $nativeOutputs['extrapane_usb_setup'] = 'ExtraPane.UsbSetup.exe'
-    $usbSource = Join-Path $projectRoot 'out/usb-host/corresponding-source'
+    $usbSource = Join-Path $projectRoot $UsbHostSource
     foreach ($required in @('usbipd-upstream.tar','usbipd-loopback.patch','build-usb-host.ps1','BUILD.json','COPYING.md')) {
         if (-not (Test-Path -LiteralPath (Join-Path $usbSource $required))) { throw "Missing USB host corresponding source: $required" }
+    }
+    $sourceInfo = Get-Content -LiteralPath (Join-Path $usbSource 'BUILD.json') -Raw | ConvertFrom-Json
+    $bundledPatch = (Get-FileHash -LiteralPath (Join-Path $usbSource 'usbipd-loopback.patch') -Algorithm SHA256).Hash
+    $currentPatch = (Get-FileHash -LiteralPath (Join-Path $projectRoot 'patches/usbipd-loopback.patch') -Algorithm SHA256).Hash
+    if ($bundledPatch -ne $currentPatch -or $bundledPatch -ne $sourceInfo.patchSha256 -or
+        (Get-FileHash -LiteralPath (Join-Path $usbSource 'usbipd-upstream.tar') -Algorithm SHA256).Hash -ne $sourceInfo.sourceSha256) {
+        throw 'USB corresponding source does not match the pinned patch and source archive.'
     }
 }
 function Get-ConfiguredCMake([string]$BuildPath, [string]$ExpectedSource) {

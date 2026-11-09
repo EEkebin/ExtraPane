@@ -21,7 +21,7 @@ std::string unhex(const std::string& text){if(text.empty()||text.size()%2||text.
 std::vector<std::string> split(const std::string& text,char separator){std::vector<std::string> result;std::size_t start=0;for(;;){auto end=text.find(separator,start);result.push_back(text.substr(start,end==text.npos?end:end-start));if(end==text.npos)break;start=end+1;}return result;}
 std::vector<Source> devices(Factory factory,Kind kind){
     const std::array<std::string,5> exe{"","ExtraPane.Resources.exe","ExtraPane.Microphone.exe","ExtraPane.Usb.exe","ExtraPane.Speakers.exe"};
-    const std::array<std::string,5> command{"","list-cameras","list-microphones","list-storage","list-speakers"};
+    const std::array<std::string,5> command{"","list-cameras","list-microphones","list-usb","list-speakers"};
     const std::array<std::string,5> prefix{"","CAMERA","MICROPHONE","USB","SPEAKER"};const auto i=static_cast<unsigned>(kind);
     auto process=factory();if(!process)fail("Missing native inventory process");std::string output;
     try{process->start({exe[i],{command[i]},false,false,false});const auto until=Clock::now()+std::chrono::seconds(10);

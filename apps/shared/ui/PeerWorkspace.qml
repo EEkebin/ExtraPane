@@ -453,6 +453,7 @@ Item {
                             property var items: workspace.groupedRows(peers.offers, modelData)
                             title: modelData.title; symbol: modelData.icon; count: items.length
                             groupKey: "peerOffers_"+modelData.key; visible: count>0
+                            Label { visible: offerGroup.modelData.key==="usb"; text: "USB forwarding is exclusive: the physical device moves to the other computer until disconnected. Use Camera or Microphone sharing to keep those devices local."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
                             Repeater {
                                 model: offerGroup.items
                                 delegate: ColumnLayout {
@@ -702,6 +703,7 @@ Item {
                                     groupKey: "peerCatalog_"+peerDevice.modelData.connection+"_"+modelData.key
                                     stateKey: "catalog_"+peerDevice.deviceKey+"_"+modelData.key
                                     visible: items.length>0
+                                    Label { visible: catalogGroup.modelData.key==="usb"; text: "USB forwarding takes exclusive control on the other computer. Device drivers and compatibility still apply."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: "#9eacc2" }
                                     MonitorRows { connectionId:String(peerDevice.modelData.connection); items:catalogGroup.modelData.key==="monitors"?catalogGroup.items:[]; visible:catalogGroup.modelData.key==="monitors" }
                                     Repeater {
                                         model: catalogGroup.modelData.key==="monitors" ? [] : catalogGroup.items

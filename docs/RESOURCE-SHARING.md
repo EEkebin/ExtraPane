@@ -247,8 +247,12 @@ mono PCM16 over the encrypted connection; Opus and sample-rate conversion remain
 future work. Camera and microphone capture do not detach the physical source,
 although applications and drivers may impose their own simultaneous-use limits.
 
-Windows USB sharing is restricted to eligible, uniquely identified removable
-storage. The source requires the managed USB host component; the recipient uses
+The delivered Windows USB implementation targets eligible, uniquely identified
+removable storage. The `feat/usb-device-forwarding` increment separately adds
+non-storage HID/audio forwarding; it is not yet hardware-validated or delivered.
+It does not use disk offline/quarantine state for non-storage devices. Composite
+devices remain unavailable until all functions can be verified before import.
+The source requires the managed USB host component; the recipient uses
 the managed USB/IP client component also used by the microphone endpoint. These
 are internal components of the same app package. USB controls request explicit
 administrator permission; ordinary camera/microphone capture does not.

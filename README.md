@@ -19,6 +19,12 @@ The development build also adds [Speakers](docs/SPEAKERS.md): a Windows server
 playback device that sends audio to a selected Windows or Android client output.
 This new path has isolated checks; physical playback verification is pending.
 
+The USB development branch adds actual Windows-to-Windows USB forwarding for
+eligible non-composite mice, keyboards and audio devices. This is exclusive
+device forwarding, separate from microphone/speaker streaming. It is not yet
+physically validated; composite devices are unavailable and each Windows source
+currently exports one USB device at a time. See [USB support and limits](docs/USB.md).
+
 The `feat/device-discovery` branch is developing a device-oriented interface with
 automatic resource availability, LAN discovery, direct-address connections and remembered
 pairing. This redesign is not yet a tested replacement for the existing Server /
@@ -148,12 +154,10 @@ The release workflow produces a Windows installer and portable ZIP, a Linux x86_
 
 ### Installer
 
-Run `ExtraPane-<version>-Setup-win-x64.exe` and select how this PC will be used:
-
-| Setup choice | What it installs |
-| --- | --- |
-| **Share only** | The app and USB source support. Offer local cameras, microphones, speakers, storage and display destinations; receiving virtual-device components are omitted. |
-| **Full installation** | Receive and share resources: the app, virtual-display driver, camera component, audio/USB receiving components and USB source support. Driver installation requires explicit certificate consent and administrator permission. |
+Run `ExtraPane-<version>-Setup-win-x64.exe`. Current development installers install
+the complete app and managed display, camera, audio and USB components so this PC
+can offer and use resources. There is no role selection. Older packages may still
+offer Share only or Full installation.
 
 When ExtraPane is already installed, setup offers **Update**, **Restore**, and
 **Uninstall**. Update is available only when the installer version is newer and
@@ -162,7 +166,12 @@ settings, then installs the bundled version again. Uninstall removes them withou
 reinstalling. Both removal choices preserve independently installed shared drivers
 and stop if the registered uninstaller cannot finish cleanup.
 
-Both roles include USB source support automatically. Full installation requires administrator permission and explicit certificate consent through the driver page's **I agree - Next** button. If driver installation fails after the app is copied, setup reports failure and retains ExtraPane for repair or removal. Share only does not hide the Server page; to host later, rerun setup as Full installation. The main installer manages the display driver directly, and Windows Apps lists one ExtraPane uninstall entry.
+Installation requires administrator permission and explicit certificate consent
+through the driver page's **I agree - Next** button. If driver installation fails
+after the app is copied, setup reports failure and retains ExtraPane for repair
+or removal. The main installer manages the display driver directly, and Windows
+Apps lists one ExtraPane uninstall entry. Installation does not activate resources
+or detach USB devices.
 
 The app is registered in Windows **Settings > Apps > Installed apps**. Setup offers a desktop shortcut and a checked **Launch ExtraPane** option on its Finish page. Silent setup does not launch the app. Updating requests that running ExtraPane instances shut down and waits for their server helpers to stop before replacing files.
 
@@ -170,7 +179,10 @@ The app is registered in Windows **Settings > Apps > Installed apps**. Setup off
 
 Extract the entire ZIP and run `ExtraPane.exe`. Keep the accompanying files together.
 
-For a Windows server, use the matching installer with **Full installation** to prepare the managed display, camera, microphone and USB components before running a portable copy. Extracting a ZIP does not install drivers. The older standalone `ExtraPane.DriverSetup.exe` belongs to previous display-only packages.
+Use the matching Windows installer to prepare the managed display, camera, audio
+and USB components before running a portable copy. Extracting a ZIP does not
+install drivers. The older standalone `ExtraPane.DriverSetup.exe` belongs to
+previous display-only packages.
 
 ### Driver signing and Windows policy
 

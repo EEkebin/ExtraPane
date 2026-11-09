@@ -9,7 +9,23 @@ struct ReuseCheck {
     void verify(int stage){calls.push_back(stage);if(fail==stage)throw std::runtime_error("verification refused");}
     void payload(){verify(1);}void ownership(){verify(2);}void registration(){verify(3);}void monitor(){verify(4);}
 };
+struct MigrationCheck {
+    int fail=0;std::vector<int> calls;
+    void stage(int n){calls.push_back(n);if(n==fail)throw std::runtime_error("migration refused");}
+    void payload(){stage(1);}void ownership(){stage(2);}void idle(){stage(3);}void replace(){stage(4);}
+};
 int main(){using namespace extrapane::usb_monitor;
+{
+ using namespace extrapane::usb_host_setup;
+ auto current=previous_payload;current[0]=L"new-reviewed-build";auto installed=previous_payload;
+ if(!reviewed_migration_payload(installed,current,true))throw std::runtime_error("exact previous package must migrate");
+ installed[0]=current[0];if(!reviewed_migration_payload(installed,current,true))throw std::runtime_error("interrupted executable replacement must resume");
+ if(reviewed_migration_payload(installed,current,false))throw std::runtime_error("unknown manifest accepted");
+ for(std::size_t i=0;i<8;++i){auto altered=previous_payload;altered[i]=L"foreign";if(reviewed_migration_payload(altered,current,true))throw std::runtime_error("changed installed file accepted");}
+ for(std::size_t i=1;i<8;++i){auto altered=current;altered[i]=L"different-driver";if(reviewed_migration_payload(previous_payload,altered,true))throw std::runtime_error("driver migration not separately reviewed");}
+ MigrationCheck success;migrate_reviewed_backend(success);if(success.calls!=std::vector<int>{1,2,3,4})throw std::runtime_error("migration order");
+ for(int stage=1;stage<4;++stage){MigrationCheck rejected;rejected.fail=stage;bool threw=false;try{migrate_reviewed_backend(rejected);}catch(...){threw=true;}if(!threw||rejected.calls.size()!=stage)throw std::runtime_error("migration mutated before verification");}
+}
 // This executes the same install dispatch used by the Windows setup helper.
 // No bind/recovery-empty/mutation operation is available to the reuse branch.
 ReuseCheck absent;absent.marker=false;

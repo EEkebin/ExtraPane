@@ -1,5 +1,7 @@
 #include <dm/usb_runner.hpp>
 #include <dm/usb_recovery.hpp>
+#include <dm/usb_generic_lease.hpp>
+#include <optional>
 #include <windows.h>
 #include <cfgmgr32.h>
 #include <shlobj.h>
@@ -137,7 +139,7 @@ void require_absent_node(const std::wstring& instance){
     check(status==CR_NO_SUCH_DEVNODE,"USB source is present or its absence cannot be verified; absent release refused");
 }
 class NativeRunner final:public HostRunner {
-    Process server_;HANDLE claim_=nullptr;std::wstring instance_,owned_;fs::path exe_;
+    Process server_;HANDLE claim_=nullptr;std::wstring instance_,owned_;fs::path exe_;std::optional<GenericLease> generic_;
     template<class F>Availability attempt(F&& f){try{f();return {true,{}};}catch(const winrt::hresult_error&){return {false,"Malformed USB backend data or missing Windows JSON runtime"};}catch(const std::exception& e){return {false,e.what()};}}
     void no_server(){Handle mutex(OpenMutexW(SYNCHRONIZE,FALSE,L"Global\\usbipd-{A8256F62-728F-49B0-82BB-E5E48F83D28F}"));if(mutex.value)throw std::runtime_error("An independent USB host service is running; leave it unchanged and stop it explicitly before sharing");check(GetLastError()==ERROR_FILE_NOT_FOUND,"Cannot verify USB host service ownership");}
     void check_absent(const std::wstring& instance,const std::wstring& binding,bool allow_binding){
@@ -162,6 +164,46 @@ public:
     Availability reserve(const std::wstring& instance)override{return attempt([&]{check(!claim_&&instance_valid(instance),"Invalid USB claim");const auto ready_state=ready();check(ready_state.available,ready_state.reason.c_str());no_server();auto normalized=instance;std::transform(normalized.begin(),normalized.end(),normalized.begin(),[](wchar_t c){return static_cast<wchar_t>(towupper(c));});const auto bytes=std::span(reinterpret_cast<const unsigned char*>(normalized.data()),normalized.size()*sizeof(wchar_t));const auto name=L"Global\\ExtraPane.UsbSource."+sha256(bytes);const auto handle=CreateMutexW(nullptr,FALSE,name.c_str());check(handle!=nullptr,"Cannot reserve selected USB source");if(GetLastError()==ERROR_ALREADY_EXISTS){CloseHandle(handle);throw std::runtime_error("Selected USB source is owned by another session");}claim_=handle;instance_=instance;});}
     Availability bind(const std::string& bus)override{return attempt([&]{check(claim_&&bus_valid(bus)&&owned_.empty(),"USB claim missing or already bound");no_server();const auto all=devices();const auto found=std::find_if(all.begin(),all.end(),[&](const HostDevice& d){return same(d.instance_id,instance_)&&d.bus_id==bus;});check(found!=all.end()&&found->binding_id.empty()&&!found->attached&&!found->forced&&registry_binding(instance_).empty(),"Selected USB identity changed or belongs to another binding");command(exe_,{L"extrapane-bind",L"--busid",as_wide(bus),L"--instance-id",instance_});owned_=registry_binding(instance_);check(!owned_.empty(),"USB bind did not produce an owned registry identity");});}
     Availability unbind(const std::wstring& guid)override{return attempt([&]{check(claim_&&!owned_.empty()&&same(canonical_guid(guid),owned_)&&same(registry_binding(instance_),owned_),"Refusing to remove an unowned USB binding");check(!running(),"Stop the owned exporter before unbinding");command(exe_,{L"unbind",L"--guid",owned_});check(registry_binding(instance_).empty(),"Owned USB binding was not removed");owned_.clear();});}
+    Availability bind_generic(const std::string& bus)override{return attempt([&]{
+        check(claim_&&bus_valid(bus)&&owned_.empty()&&!generic_,"Generic USB claim missing or already bound");no_server();
+        const auto all=devices();const auto found=std::find_if(all.begin(),all.end(),[&](const HostDevice& d){return same(d.instance_id,instance_)&&d.bus_id==bus;});
+        check(found!=all.end()&&!found->forced&&!found->attached&&found->binding_id.empty()&&registry_binding(instance_).empty()&&registry_binding(instance_,true).empty(),"Generic USB source changed or belongs to another session");
+        generic_=GenericLease{generic_lease_guid(),instance_,bus};save_generic_lease(*generic_);
+        command(exe_,{L"extrapane-bind",L"--busid",as_wide(bus),L"--instance-id",instance_,L"--owned-guid",generic_->guid});
+        check(same(registry_binding(instance_),generic_->guid)&&same(private_binding_instance(generic_->guid),instance_),"Generic USB binding differs from durable lease");
+        owned_=generic_->guid;
+    });}
+    Availability release_generic()override{return attempt([&]{
+        if(!generic_)return;check(claim_&&same(instance_,generic_->instance)&&!running(),"Stop generic export before releasing its binding");no_server();
+        const auto leases=generic_leases();check(std::find(leases.begin(),leases.end(),*generic_)!=leases.end(),"Generic USB lease changed");
+        Key binding;const auto bindingPath=L"SOFTWARE\\ExtraPane\\UsbHost\\Devices\\"+canonical_guid(generic_->guid);
+        const auto opened=RegOpenKeyExW(HKEY_LOCAL_MACHINE,bindingPath.c_str(),0,KEY_QUERY_VALUE|KEY_WOW64_64KEY,&binding.value);
+        check(opened==ERROR_SUCCESS||opened==ERROR_FILE_NOT_FOUND,"Cannot inspect exact generic binding");bool exists=opened==ERROR_SUCCESS;std::wstring actual;
+        if(exists){wchar_t value[4096]{};DWORD bytes=sizeof(value);const auto read=RegGetValueW(binding.value,nullptr,L"InstanceId",RRF_RT_REG_SZ,nullptr,value,&bytes);check(read==ERROR_SUCCESS||read==ERROR_FILE_NOT_FOUND,"Generic binding instance is malformed");if(read==ERROR_SUCCESS)actual=value;}
+        bool forced=false,foreign=false;
+        if(!actual.empty()&&same(actual,instance_)){for(const auto& d:devices())if(same(d.instance_id,instance_))forced|=d.forced;foreign=!registry_binding(instance_,true).empty();}
+        const auto action=generic_lease_action(*generic_,actual,exists,false,forced,foreign);
+        check(action!=GenericLeaseAction::refuse,"Generic USB device ownership changed; foreign state was preserved");
+        if(action==GenericLeaseAction::release_binding){
+            if(actual.empty()){
+                // A crash between key creation and InstanceId persistence left
+                // no usable binding. Only the durable random-GUID intent owns it.
+                RegCloseKey(binding.value);binding.value=nullptr;
+                check(RegDeleteKeyExW(HKEY_LOCAL_MACHINE,bindingPath.c_str(),KEY_WOW64_64KEY,0)==ERROR_SUCCESS,"Cannot retire incomplete owned binding");
+            }else{
+                check(same(registry_binding(instance_),generic_->guid),"Generic binding changed before cleanup");
+                owned_=generic_->guid;const auto removed=unbind(owned_);check(removed.available,removed.reason.c_str());
+            }
+        }
+        retire_generic_lease(*generic_);generic_.reset();owned_.clear();
+    });}
+    Availability cleanup_generic()override{return attempt([&]{
+        check(!claim_&&!running(),"Cannot clean generic leases during export");const auto pending=generic_leases();if(pending.empty())return;const auto readyState=ready();check(readyState.available,readyState.reason.c_str());no_server();
+        for(const auto& lease:pending){
+            const auto reserved=reserve(lease.instance);check(reserved.available,reserved.reason.c_str());generic_=lease;
+            const auto released=release_generic();release();check(released.available,released.reason.c_str());
+        }
+    });}
     Availability adopt_ejected_binding(const Disk& disk,const PendingRecovery& selected)override{return attempt([&]{
         check(claim_&&owned_.empty()&&!running()&&same(instance_,disk.usb_instance_id),"Recovery adoption requires an exclusive reservation for this exact USB source");no_server();
         const auto available=ready();check(available.available,available.reason.c_str());
@@ -222,6 +264,21 @@ public:
             for(auto name:{L"usbip.exe",L"libusbip.dll",L"resources.dll"}){verify_security(root/name);const auto hash=sha256(read_file(root/name));expected+=winrt::to_string(hash)+"\n";}
             check(std::string(data.begin(),data.end())==expected,"Managed USB client hash/ownership mismatch");check(registry_key(L"SYSTEM\\CurrentControlSet\\Services\\usbip2_ude"),"USB/IP client driver missing");exe_=root/L"usbip.exe";return {true,{}};
         }catch(const std::exception& e){return {false,e.what()};}
+    }
+    unsigned attach_generic(std::uint16_t port,const std::string& bus)override{
+        check(!owned_&&port&&bus_valid(bus),"Invalid generic USB attachment scope");const auto state=ready();check(state.available,state.reason.c_str());
+        auto output=command(exe_,{L"--tcp-port",std::to_wstring(port),L"attach",L"--remote",L"127.0.0.1",L"--bus-id",as_wide(bus),L"--once",L"--terse"});
+        while(!output.empty()&&(output.back()=='\r'||output.back()=='\n'))output.pop_back();
+        check(!output.empty()&&output.size()<=3&&std::all_of(output.begin(),output.end(),[](char c){return c>='0'&&c<='9';}),"USB attach returned no exact owned port");
+        const auto value=std::stoul(output);check(value>=1&&value<=255,"Invalid owned USB port");owned_=static_cast<unsigned>(value);local_=port;bus_=bus;serial_.clear();return owned_;
+    }
+    bool verify_owned_generic(unsigned port,std::uint16_t local,const std::string& bus,bool active=true)override{
+        if(!owned_||port!=owned_||local!=local_||bus!=bus_||!serial_.empty())return false;
+        return matches_generic_import_port(command(exe_,{L"port",std::to_wstring(port)}),port,local,bus,active);
+    }
+    void detach_generic(unsigned port,std::uint16_t local,const std::string& bus)override{
+        check(verify_owned_generic(port,local,bus,false),"Generic USB attachment ownership changed; preserved");
+        command(exe_,{L"detach",L"--port",std::to_wstring(port)});owned_=0;
     }
     unsigned attach(std::uint16_t port,const std::string& bus,const std::string& serial)override{
         check(!owned_&&port&&bus_valid(bus)&&serial.size()==15&&std::all_of(serial.begin(),serial.end(),[](char c){return (c>='0'&&c<='9')||(c>='A'&&c<='Z');}),"Invalid USB attachment scope");const auto state=ready();check(state.available,state.reason.c_str());

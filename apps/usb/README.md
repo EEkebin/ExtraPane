@@ -4,11 +4,18 @@
 only after an explicit user action. Builds and `--check-config` do not enumerate,
 connect, eject, offline, bind or install devices.
 
-The source is a locally selected, dedicated removable storage device. It must
+The storage source is a locally selected, dedicated removable storage device. It must
 have a unique physical USB identity and storage serial, complete disk/volume
 inventory, and no boot/system/paging volume or other owner. Composite devices,
-keyboards, cameras, license devices, ambiguous identities and devices already
+camera interfaces, license devices, ambiguous identities and devices already
 bound by another USB application are unavailable.
+
+The generic USB increment adds a separate Windows path for explicitly classified
+non-composite HID/audio devices. It uses an exact binding lease, not volume locks
+or disk-offline recovery. Hubs, controllers, unknown functions, storage-containing
+devices and composite devices remain unavailable through this path. Physical
+compatibility and interrupted-return testing are still pending. Media microphone
+and speaker sharing remains independent of raw USB headset forwarding.
 
 The receiver gets an actual imported USB device, not a shared network folder.
 The device cannot remain mounted for normal use on the source during export.
@@ -55,7 +62,8 @@ still require physical-device validation; none were exercised by isolated builds
 
 ## Internal protocol and launcher
 
-`list-storage` is an explicit read-only inventory action. It emits bounded lines:
+`list-usb` is an explicit read-only inventory action; `list-storage` remains a
+compatibility alias. It emits bounded lines:
 `USB_DEVICE_V1<TAB>hex UTF-8 opaque ID<TAB>label<TAB>available or reason`, ending
 with `USB_LIST_DONE`. IDs are local inventory identities, never paths selected
 by a network peer.

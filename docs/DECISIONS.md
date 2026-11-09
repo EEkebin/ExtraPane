@@ -1,5 +1,28 @@
 # Decisions, assumptions, and evidence
 
+## Generic USB forwarding (2026-11-08)
+
+Extend ExtraPane's USB resources to actual Windows USB mice, keyboards and audio
+devices, using the maintained pinned USB/IP backends through the existing
+authenticated encrypted transport. This is ExtraPane integration, not a new
+proprietary USB driver. A physical device is exclusively assigned to one receiver
+while in use. Composite devices move together; only fully classified supported
+functions may enter the non-storage path. Hubs, controllers, unknown functions,
+foreign-owned bindings and devices containing storage are excluded from that path.
+
+Keep media camera/microphone/speaker sharing separate: those features do not
+deliberately detach the physical device. Keep storage's volume locking and recovery
+separate from HID/audio ownership. Generic forwarding must use durable exact-device
+binding ownership, close its exporter on termination, and clean up only its own
+binding, including when the device is absent. Never force-replace a local device
+driver or clear an unrelated application's binding to make sharing succeed.
+
+The first implementation is Windows-to-Windows. Upstream support for interrupt
+and isochronous transfers is evidence for feasibility, not proof of headset
+compatibility or latency. Physical transfer, return, unplug and interrupted-session
+tests remain acceptance gates. Other platforms must not advertise raw USB support
+merely because their existing media-sharing paths work.
+
 ## Pairing dialog presentation (2026-11-08)
 
 Show Pair with NAME, followed by the selected address and port in smaller text,
