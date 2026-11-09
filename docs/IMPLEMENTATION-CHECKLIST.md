@@ -25,7 +25,7 @@ mean every device combination has been validated.
 - [x] Windows USB forwarding and bounded ownership return implementation.
 - [x] Surface orphaned-driver uninstall helper repaired; removal precheck passes.
 - [x] Unified Windows installer and portable package; Linux AppImage, Android APK, macOS Universal ZIP/DMG builds.
-- [x] Matching 2026.11.09-pre.107.1 Windows installers delivered to both desktops; Android APK installed and version verified.
+- [x] Matching 2026.11.09-pre.108.1 Windows installers delivered to both desktops; Android APK installed and version verified.
 
 ### Current validation and remaining work
 
@@ -1195,7 +1195,7 @@ logic but was not physically retested. Native host SHA256:
   the unpaired option. Unpaired nearby devices are visibly unverified.
 - [x] Cancel clears code without a connection; invalid codes remain local;
   submission uses the frozen target/interface; pending removals block re-pairing.
-- [ ] Isolated UI/Android checks and matching Windows/Android package delivery.
+- [x] Isolated UI/Android checks and matching Windows/Android package delivery.
 
 
 Pairing-modal verification: shared Qt offscreen checks pass for required/open
@@ -1208,3 +1208,19 @@ Core admission also rechecks saved trust when an open handshake completes, so a
 pairing created while the modal/handshake was in flight cannot be downgraded.
 Deterministic concurrent-trust tests and five related loopback checks passed.
 No physical media or input tests were run for this UI increment.
+
+
+### Pairing-modal pre.108.1 delivery
+
+- [x] Committed/pushed `cdb7745` on `feat/device-discovery`; no merge/release publication.
+- [x] Matching **2026.11.09-pre.108.1** Windows/Android packages built from clean
+  source. Windows exact version/build metadata, driver hashes, extracted portable
+  UI smoke, payload and checksum checks passed. Installer copied to both Desktops;
+  Surface host key and both destination hashes verified. No Windows install run.
+  Installer SHA256: `2bfc94f64ff5a7cdab623635aef52c39d0a225a1aa981b35bb93d89d7936d3dc`.
+- [x] Android streamed install succeeded and version/code10801 confirmed. Pinned
+  signer, release settings, both ABIs and alignment verified.
+  APK SHA256: `9c01c89bad7d84623c29faa2be8df75216426ff78ee4ae8a2da1562e777efe7f`.
+- [ ] Hosted run `42542690583` is queued behind the previous run. pre.107 hosted
+  Linux, Android and both macOS jobs passed; its Windows job is still running.
+  Native macOS modal compilation and physical UI acceptance remain pending.
