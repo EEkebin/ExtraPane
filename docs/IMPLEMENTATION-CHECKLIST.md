@@ -1272,7 +1272,7 @@ No transport/media lifecycle was changed and no physical stream test was run.
   through its gateway, blocks pending removal, skips the code for saved identity,
   and does not start media. Offscreen UI checks passed; core integration pending.
 - [x] Verify lifecycle, compatibility and isolated security checks; update guides.
-- [ ] Build and deliver matching Windows/Android packages. Physical verification
+- [x] Build and deliver matching Windows/Android packages. Physical verification
   remains a separate gate; no driver installation is authorized by compilation.
 
 ### Unified full Windows installation — 2026-11-08
@@ -1298,3 +1298,21 @@ No transport/media lifecycle was changed and no physical stream test was run.
 - [x] Auth and session checks passed. Wire/policy, private trust store, RPC framing/flow control and loopback media checks all passed; new RPC assertions cover exact endpoint identity payload lengths, empty cancellation/close payloads and fixed-width ready grants.
 - [x] Bounded retirement handles late endpoint replies, canceled handshakes, completed tunnel tokens and closed streams without stopping unrelated gateway resources.
 - [ ] Remaining acceptance gates: real cross-network/native media tests, malicious relay interception/replay testing and physical platform behavior. Credential confidentiality currently follows the nested authenticated TLS implementation and review; synthetic payload tests are not a packet-level hostile-gateway audit. Unavailable/offline endpoints leave bilateral removal pending until an authenticated route returns.
+
+### Complete-install and endpoint-encryption delivery - pre.110.1
+
+- [x] Built matching **2026.11.09-pre.110.1** Windows/Android packages from clean
+  `b4663eed91bc859e090ac8710ca540208af539f5`. Windows app/native version fields,
+  extracted portable UI and component manifests passed. Android's 13 host suites,
+  integrated compile/lint, pinned signing certificate, release flags, both ABIs
+  and 16-KB alignment passed; installed version code is 11001.
+- [x] Windows installer copied to this Desktop and the Surface Desktop at
+  `10.0.20.143`; saved SSH host identity and both SHA256 copies verified.
+  Installer SHA256: `7cb38a112ae83632caa3f517ce817813b0d0142404fb5acb371e85ff90851c2a`.
+- [x] Android streamed replacement install succeeded and version was confirmed.
+  APK SHA256: `5107007a0d93d68698031880fc224a172e4f028071dec9a9a3e6eb9e5b60f0c2`.
+- [ ] Hosted run `42546310429` is building Windows, Android, Linux and both macOS
+  architectures. Prior run `42543989485` finished successfully on every platform.
+  This feature-branch run does not publish a release or merge to main.
+- [ ] User acceptance remains pending: neither Windows installer was run, no
+  drivers/security settings changed and no physical media test was performed.

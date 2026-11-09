@@ -61,8 +61,8 @@ address as the end device's direct address.
 Synthetic checks cover independent endpoint pairing, wrong-code rejection without
 media activation, reverse catalog access, data delivery, gateway shutdown and
 bilateral Forget through a live gateway. Service, presence, asynchronous startup,
-reconnect and self-connection regression checks also pass. Package checks are
-still in progress. Physical multi-device gateway verification and independent
+reconnect and self-connection regression checks also pass. Windows and Android
+pre.110.1 packages passed isolated build and package checks. Physical multi-device gateway verification and independent
 cryptographic review remain pending. This change is not in pre.109.1.
 
 Endpoint confidentiality concerns the relayed session. A gateway that is separately
