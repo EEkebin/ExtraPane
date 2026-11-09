@@ -11,7 +11,7 @@
 - [x] Integrate USB resource selection and versioned kind negotiation; reject unsafe
   storage/generic fallback and incompatible native helpers.
 - [x] Verify synthetic lifecycle, protocol, ownership and isolated builds; update docs.
-- [ ] Build and deliver matching Windows/Android packages after verification.
+- [x] Build and deliver matching Windows/Android packages after verification.
 - [ ] With user permission, verify actual USB mouse/keyboard and headset transfer,
   release, disconnect, unplug and crash recovery on physical devices.
 
@@ -33,6 +33,20 @@ checks, Java compilation and lint passed. Final package verification is pending.
 Generic receiver uses exact virtual-port to
 PnP driver-key mapping rather than the pinned driver's broken serial override;
 the physical mapping remains an acceptance gate. Composite devices are excluded.
+
+Delivered **2026.11.09-pre.113.1** from clean source
+`a84ba5b357ee1b7d77d439519942ae8e91c43332` on `feat/usb-device-forwarding`
+(draft PR 16 into `feat/device-discovery`; neither branch merged to main).
+Windows installer copied to this Desktop and the Surface Desktop with matching
+SHA256 `db830ecd478c10a816c7e626bc9509c0210bbfa530f30a35601b77389a795798`;
+saved Surface SSH identity verified. Extracted UI, component checks, exact versions,
+clean metadata and updated USB backend/corresponding-source hashes passed.
+Android streamed install succeeded and versionCode 11301/versionName confirmed;
+APK SHA256 `399e0ffd9798fc3b387d854364fbf14e27c16021d6e3cf0a87639b847dc017ce`.
+Signing identity, release flags, both ABIs and 16-KB alignment were verified.
+Hosted all-platform run `42553036819` is still in progress. No Windows installer
+was executed, and no physical USB forwarding test was performed. Android raw USB
+support remains unavailable; its package is the matching-version companion build.
 
 ## Active increment: pairing dialog labels
 
