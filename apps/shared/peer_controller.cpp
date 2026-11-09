@@ -23,7 +23,8 @@ QString token(std::uint64_t value){return QString::number(value);}
 PeerController::PeerController(Service::Hooks hooks,QString path,QObject* parent):QObject(parent),directory_(this),timer_(this){
     announcementInstance_=QRandomGenerator::global()->generate64()|1;
     name_=QSysInfo::machineHostName();if(name_.isEmpty())name_="ExtraPane device";
-    QSettings settings;pairingRequired_=settings.value("peers/pairingRequired",true).toBool(); // Offers are opt-in on every app startup.
+    QSettings settings;pairingRequired_=settings.value("peers/pairingRequired",true).toBool(); // Stored restrictions survive inventory refresh and application restart.
+    const auto disabled=settings.value("peers/disabledOffers").toStringList();disabledOffers_=QSet<QString>(disabled.begin(),disabled.end());
     // TrustStore creates and verifies the leaf with its own user-private ACL /
     // mode. Qt's default directory permissions are not suitable for that leaf.
     if(!QDir().mkpath(QFileInfo(path).absolutePath()))throw std::runtime_error("Cannot create device settings parent directory");
@@ -48,7 +49,7 @@ QVariantList PeerController::networkAddresses()const{
     }return result;
 }
 QVariantList PeerController::offers()const{QVariantList result;for(const auto& offer:inventory_){
-    auto item=offerMap(offer);const auto id=QString::fromStdString(offer.id);item["enabled"]=enabled_.contains(id);
+    auto item=offerMap(offer);const auto id=QString::fromStdString(offer.id);item["enabled"]=enabled_.contains(id);item["shareAllowed"]=!disabledOffers_.contains(id);
     unsigned count=0;QStringList users;
     for(const auto& value:connections_){const auto row=value.toMap();if(!row.value("incoming").toBool()||row.value("resource").toString()!=id||row.value("owner").toString()!=hex(service_->identity()))continue;
         ++count;for(const auto& device:devices_){const auto peer=device.toMap();if(peer.value("connection")==row.value("connection")){const auto name=peer.value("name").toString();if(!users.contains(name))users.append(name);}}
@@ -58,7 +59,7 @@ QVariantList PeerController::offers()const{QVariantList result;for(const auto& o
 QVariantList PeerController::remembered()const{QVariantList result;if(!service_)return result;for(const auto& device:service_->remembered())result.push_back(QVariantMap{{"id",hex(device.id)},{"name",device.name.empty()?hex(device.id).left(12):QString::fromStdString(device.name)},{"address",QString::fromStdString(device.address_hint)},{"port",device.port_hint},{"pendingForget",false}});for(const auto& device:service_->pending_forgets())result.push_back(QVariantMap{{"id",hex(device.id)},{"name",QString::fromStdString(device.name)},{"address",QString::fromStdString(device.address_hint)},{"port",device.port_hint},{"pendingForget",true}});return result;}
 void PeerController::setLocalOffers(std::vector<Offer> offers){
     inventory_=std::move(offers);
-    if(automaticAvailability_)for(const auto& offer:inventory_)if(offer.available)enabled_.insert(QString::fromStdString(offer.id));
+    if(automaticAvailability_)for(const auto& offer:inventory_)if(offer.available&&!disabledOffers_.contains(QString::fromStdString(offer.id)))enabled_.insert(QString::fromStdString(offer.id));
     for(auto it=enabled_.begin();it!=enabled_.end();) {
         const bool available=std::any_of(inventory_.begin(),inventory_.end(),[&](const auto& offer){return QString::fromStdString(offer.id)==*it&&offer.available;});
         if(!available)it=enabled_.erase(it);else ++it;
@@ -82,7 +83,7 @@ void PeerController::startAvailableSharing(QString bind,unsigned port){
             if(!connections_.empty()||!pending_.empty())throw std::invalid_argument("Disconnect active resources before changing the listening address");
             stopSharing();
         }
-        enabled_.clear();for(const auto& offer:inventory_)if(offer.available)enabled_.insert(QString::fromStdString(offer.id));
+        enabled_.clear();for(const auto& offer:inventory_)if(offer.available&&!disabledOffers_.contains(QString::fromStdString(offer.id)))enabled_.insert(QString::fromStdString(offer.id));
         service_->offers(selectedOffers());beginSharing(bind,port);emit changed();
     }catch(const std::exception& e){error(QString::fromUtf8(e.what()));}
 }
@@ -95,14 +96,23 @@ void PeerController::disconnectIncomingAll(){
 void PeerController::enableOffer(QString id,bool enabled){setOfferSharing(id,enabled,bindAddress_,configuredPort_);}
 void PeerController::setOfferSharing(QString id,bool enabled,QString bind,unsigned port){
     const auto found=std::find_if(inventory_.begin(),inventory_.end(),[&](const auto& offer){return QString::fromStdString(offer.id)==id;});
-    if(found==inventory_.end()||(enabled&&!found->available)){error("This resource is unavailable");return;}
-    if(enabled_.contains(id)==enabled)return;
+    if(found==inventory_.end()){error("This resource is unavailable");return;}
+    if(automaticAvailability_){
+        if(enabled)disabledOffers_.remove(id);else disabledOffers_.insert(id);
+        if(enabled&&found->available)enabled_.insert(id);else enabled_.remove(id);
+        auto disabled=disabledOffers_.values();std::sort(disabled.begin(),disabled.end());QSettings().setValue("peers/disabledOffers",disabled);
+        service_->offers(selectedOffers());if(sharing_)announce(listenPort_);emit changed();return;
+    }
+    if(enabled&&!found->available){error("This resource is unavailable");return;}
+    if(enabled_.contains(id)==enabled&&disabledOffers_.contains(id)==!enabled)return;
     const bool starting=enabled&&!sharing_&&!sharingStarting_;
     try{
         if(starting)beginSharing(bind,port);
         if(enabled)enabled_.insert(id);else enabled_.remove(id);
         service_->offers(selectedOffers());
-        if(enabled_.isEmpty()&&!gatewayEnabled_){stopSharing();return;}
+        if(enabled)disabledOffers_.remove(id);else disabledOffers_.insert(id);
+        auto disabled=disabledOffers_.values();std::sort(disabled.begin(),disabled.end());QSettings().setValue("peers/disabledOffers",disabled);
+        if(!automaticAvailability_&&enabled_.isEmpty()&&!gatewayEnabled_){stopSharing();return;}
         if(sharing_)announce(listenPort_);emit changed();
     }catch(const std::exception& e){
         if(enabled)enabled_.remove(id);else enabled_.insert(id);

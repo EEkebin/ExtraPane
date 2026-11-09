@@ -1,5 +1,19 @@
 # Decisions, assumptions, and evidence
 
+## Local device card and sharing restrictions (2026-11-08)
+
+Devices starts with This device, followed by a collapsed card whose header shows
+the local hostname and current pairing code. Network settings and local resource
+groups are inside the card. Resource device cards and type groups start collapsed;
+refreshing catalogs must preserve the user's expansion choices.
+
+Each local resource has a separate Share permission switch. The power button
+indicates actual use and stops active sessions; it is not a permission setting.
+Supported resources remain available by default unless explicitly disabled.
+Disabling Share withdraws that resource and ends its active use, without stopping
+other resources or unpairing devices. Restrictions survive inventory refresh and
+app restart. OS permissions and hardware availability remain separate constraints.
+
 ## Mutual peers, complete installation and gateway encryption (2026-11-08)
 
 Both paired devices can offer and use resources simultaneously. Provider and

@@ -85,7 +85,7 @@ private:
     bool loopbackSharing_=false;
     std::uint64_t announcementInstance_=0,announcementSequence_=0;
     std::vector<extrapane::peers::Offer> inventory_;
-    QSet<QString> enabled_;
+    QSet<QString> enabled_,disabledOffers_;
     QVariantList devices_,connections_;
     QHash<QString,QVariantMap> pending_;
     QHash<QString,QVariantMap> connectionEndpoints_;

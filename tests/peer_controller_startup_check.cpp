@@ -38,7 +38,7 @@ struct PeerControllerEventCheck {
         controller.setOfferSharing("camera",true,"localhost",0);
         require(!controller.sharingStarting()&&controller.enabled_.empty(),"Invalid port enabled sharing");
         QTcpServer reservation;require(reservation.listen(QHostAddress::LocalHost,0),"Cannot reserve loopback port");
-        const auto port=reservation.serverPort();
+        auto port=reservation.serverPort();
         controller.setOfferSharing("camera",true,"localhost",port);
         require(!controller.sharingStarting()&&controller.enabled_.empty(),"Occupied port left offer enabled");reservation.close();
         controller.setOfferSharing("camera",true,"localhost",port);
@@ -48,8 +48,11 @@ struct PeerControllerEventCheck {
         require(!controller.sharingStarting()&&!controller.sharing()&&controller.enabled_.empty(),"Last offer did not cancel pending start");
         Service::Event stale{Service::EventKind::listening,{},port};stale.sharing_generation=staleGeneration;
         controller.applyEvent(stale);require(!controller.sharing(),"Late listener revived cancelled sharing");
-        controller.setGatewaySharing(true,"localhost",port);
-        require(controller.gatewayEnabled()&&controller.sharingStarting(),"Gateway-only sharing did not start");
+        // A canceled acceptor releases its socket asynchronously. Keep testing
+        // the same endpoint, with a bounded wait for that release.
+        QElapsedTimer release;release.start();
+        do {controller.setGatewaySharing(true,"localhost",port);if(!controller.sharingStarting())QThread::msleep(5);}while(!controller.sharingStarting()&&release.elapsed()<3000);
+        if(!controller.gatewayEnabled()||!controller.sharingStarting())throw std::runtime_error(("Gateway-only sharing did not start: "+controller.status()).toStdString());
         controller.applyEvent(stale);require(!controller.sharing(),"Old listener accepted by new start");
         QElapsedTimer deadline;deadline.start();while(!controller.sharing()&&deadline.elapsed()<3000){QThread::msleep(5);controller.poll();}
         require(controller.sharing()&&!controller.sharingStarting(),"Listener acknowledgement not applied");
@@ -57,7 +60,8 @@ struct PeerControllerEventCheck {
         controller.setOfferSharing("mic",false,{},0);
         require(controller.sharing()&&controller.gatewayEnabled(),"Last local offer stopped explicit gateway");
         controller.setGatewaySharing(false,{},0);require(!controller.sharing(),"Last gateway did not stop sharing");
-        controller.setOfferSharing("mic",true,"localhost",port);controller.setGatewaySharing(true,{},0);
+        release.restart();do {controller.setOfferSharing("mic",true,"localhost",port);if(!controller.sharingStarting())QThread::msleep(5);}while(!controller.sharingStarting()&&release.elapsed()<3000);
+        require(controller.sharingStarting(),"Same-port listener did not release");controller.setGatewaySharing(true,{},0);
         controller.connections_.push_back(QVariantMap{{"incoming",false},{"connection","555"}});
         controller.stopSharing();
         require(controller.enabled_.empty()&&!controller.gatewayEnabled()&&!controller.sharingStarting(),"Stop all retained selected sharing");
@@ -77,6 +81,17 @@ struct PeerControllerEventCheck {
         controller.devices_.push_back(QVariantMap{{"connection","77"},{"incoming",true}});require(!controller.active(),"Idle authenticated catalog link retains app in tray");controller.devices_.clear();
         auto offer=[&](const char* id){for(const auto& row:controller.offers())if(row.toMap().value("id")==id)return row.toMap();return QVariantMap{};};
         require(!offer("front").value("inUse").toBool(),"Idle offer incorrectly red");
+        controller.enableOffer("front",false);
+        require(!offer("front").value("enabled").toBool()&&offer("rear").value("enabled").toBool(),"Disabling one offer changed sibling policy");
+        const auto inventory=controller.inventory_;controller.setLocalOffers({});controller.setLocalOffers(inventory);
+        require(!offer("front").value("enabled").toBool(),"Refresh or reconnecting hardware reset opt-out");
+        controller.enableOffer("missing",false);require(!offer("missing").value("shareAllowed").toBool(),"Unavailable resource could not be restricted");
+        controller.enableOffer("missing",true);require(offer("missing").value("shareAllowed").toBool()&&!offer("missing").value("enabled").toBool(),"Unavailable resource preference advertised unsupported media");
+        controller.enableOffer("rear",false);require(controller.sharing(),"Disabling final offer stopped automatic listener");
+        controller.startAvailableSharing("localhost",port);require(controller.enabled_.empty(),"Repeated startup ignored restrictions");
+        controller.enableOffer("front",true);controller.enableOffer("rear",true);
+        require(controller.enabled_.size()==2&&!QSettings().value("peers/disabledOffers").toStringList().contains("front"),"Explicit re-enable did not clear saved restriction");
+
         Service::Event event{};event.kind=Service::EventKind::granted;event.context.incoming=true;event.context.connection=21;event.context.grant=1;event.context.kind=Kind::camera;event.resource=rpc::Open{controller.service_->identity(),"front"};controller.applyEvent(event);
         event.context.connection=22;event.context.grant=2;controller.applyEvent(event);
         require(offer("front").value("sessionCount")==2&&!offer("rear").value("inUse").toBool(),"Fanout or same-kind exact resource activity incorrect");
@@ -84,6 +99,7 @@ struct PeerControllerEventCheck {
         const auto generation=controller.sharingGeneration_;controller.disconnectIncomingAll();require(controller.sharingGeneration_==generation&&controller.sharing(),"Disconnect incoming all withdrew availability");
         controller.connections_.clear();controller.devices_.clear();controller.pending_.clear();
         controller.setLocalOffers({{"new", "New camera", Kind::camera, true}});require(controller.enabled_.size()==1&&controller.enabled_.contains("new")&&controller.sharing(),"Updated inventory not automatically available");
+        controller.enableOffer("new",false);
         controller.setLocalOffers({});require(controller.sharing(),"Empty inventory stopped discoverable device");controller.setGatewaySharing(true,{},0);controller.setGatewaySharing(false,{},0);require(controller.sharing(),"Disabling gateway withdrew empty automatic availability");
         controller.stopSharing();
     }
@@ -138,6 +154,9 @@ int main(int argc,char** argv){QCoreApplication app(argc,argv);app.setOrganizati
         extrapane::peers::TrustStore store(std::filesystem::u8path(path.toUtf8().toStdString()));
 #endif
         if(store.identity()!=identity)throw std::runtime_error("Startup replaced local identity");PeerControllerEventCheck::run(controller);PeerControllerEventCheck::sharing(controller);PeerControllerEventCheck::availability(controller);}
+        {PeerController controller({},path);controller.setLocalOffers({{"new","Saved disabled camera",extrapane::peers::Kind::camera,true},{"added","New microphone",extrapane::peers::Kind::microphone,true}});
+        QTcpServer reservation;if(!reservation.listen(QHostAddress::LocalHost,0))throw std::runtime_error("Port reservation failed");auto port=reservation.serverPort();reservation.close();controller.startAvailableSharing("localhost",port);
+        for(const auto& value:controller.offers()){auto row=value.toMap();if(row.value("enabled").toBool()!=(row.value("id")=="added"))throw std::runtime_error("Restart lost restriction or disabled new resource");}}
         std::cout<<"Qt peer startup and resource sharing lifecycle pass with isolated loopback listeners, no media\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

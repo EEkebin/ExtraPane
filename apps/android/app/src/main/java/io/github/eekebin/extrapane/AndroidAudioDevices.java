@@ -16,6 +16,13 @@ final class AndroidAudioDevices {
         }
         return AudioRouteCatalog.entries(routes,input,Build.MODEL);
     }
+    static String sharingKey(Context context,int id,boolean input){
+        for(AudioDeviceInfo device:context.getSystemService(AudioManager.class).getDevices(input?AudioManager.GET_DEVICES_INPUTS:AudioManager.GET_DEVICES_OUTPUTS))if(device.getId()==id){
+            String address=device.getAddress(),product=String.valueOf(device.getProductName());
+            return ResourceSharing.audioKey(input,device.getType(),address,product);
+        }
+        return (input?"microphone:":"speaker:")+"unavailable:"+id;
+    }
     private static AudioRouteCatalog.Kind kind(int type){
         return switch(type){
             case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> AudioRouteCatalog.Kind.EARPIECE;

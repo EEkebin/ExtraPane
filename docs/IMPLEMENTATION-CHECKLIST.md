@@ -1,5 +1,29 @@
 # Resource-sharing implementation checklist
 
+## Active increment: local device card and resource restrictions
+
+- [x] Put This device first with a collapsed hostname/pairing-code card.
+- [x] Start Resources device cards and type groups collapsed; preserve expansion
+  across inventory/catalog refreshes.
+- [x] Add persistent per-resource Share permission switches, independent of
+  active-use power controls; withdrawal stops only affected sessions.
+- [x] Verify shared desktop and Android with isolated checks; native macOS source
+  reviewed, with compilation/physical validation pending.
+- [ ] Build and deliver matching Windows/Android packages; do not run Windows
+  installers or physical media tests as an incidental verification step.
+
+Verification: Qt offscreen layout and resource routing checks passed, including
+default collapse and expansion preservation across model refresh/reconnection.
+Default Devices screenshot reviewed. Controller checks cover opt-outs across
+restart, inventory disappearance/reappearance, offline/unavailable preferences,
+sibling isolation and explicit re-enable. Core policy withdrawal check and Windows
+app compilation passed. Android's 14 host suites and final integrated compile/lint
+passed. Android audio restrictions use type/address/product identity rather than
+transient route numbers; indistinguishable routes share a conservative opt-out.
+Windows named monitor presets retain their existing DISPLAYn IDs, which can change
+after display-topology changes; a newly identified resource defaults to allowed.
+No physical media, driver installation or system-setting changes were performed.
+
 This is the working checklist for the shared ExtraPane app and device-sharing
 features. Update it after every completed increment, in the same change as the
 implementation. A checked implementation item does not imply physical-device or

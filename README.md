@@ -55,6 +55,12 @@ power indicates actual use of that exact resource and shows who is using it.
 Disconnecting one resource preserves the others; disconnecting all active shares
 leaves the device discoverable and ready for a new request.
 
+The local device card is at the top of Devices, with its hostname and
+pairing code visible while collapsed. Use the persistent **Share**
+switch to stop offering a resource, independently of its active-use
+power button. Resource cards and groups start collapsed. See the checklist for
+implementation and delivery status.
+
 **Devices** manages pairing and saved devices. Press **Search nearby** to run a
 short LAN search for new devices; paired devices are excluded. Use manual address entry for
 an IPv4 address or localhost, port and optional interface. **Connect** opens a
