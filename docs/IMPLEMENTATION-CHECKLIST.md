@@ -1,6 +1,6 @@
 # Resource-sharing implementation checklist
 
-## Release preparation: 2026.11.09
+## Stable release and delivery: 2026.11.09
 
 - [x] Remove verified suffixes and gateway-route description lines from device and
   resource cards. Mutual pairing remains authenticated in both directions.
@@ -15,13 +15,31 @@
 - [x] Add hash-verified public release-asset download fallbacks for MbedTLS,
   USB/IP and Gradle; explicitly pin the AppImage runtime. Actual API downloads,
   checksums, fresh CMake configuration and fallback/corruption checks passed.
-- [ ] Verify final CI, merge the stacked branches into main, and publish the
-  stable release with Windows, Linux, Android and Universal macOS packages.
+- [x] Final core CI passed all eight jobs on Windows, Linux and macOS
+  (`42567602811`); merged PRs 16, 15 and 17 into main.
+- [x] Stable Android and Universal macOS packaging passed. Linux compiled but
+  encountered another GitHub HTTP504 downloading linuxdeploy; added immutable
+  API URLs for the exact existing linuxdeploy/Qt-plugin hashes and verified both.
+- [x] Published [The Swap Meet Update, v2026.11.09](https://github.com/EEkebin/ExtraPane/releases/tag/v2026.11.09)
+  from `692669d75672cffe46dd2e76c603e21c712ceed1`. Release run
+  [42568843977](https://github.com/EEkebin/ExtraPane/actions/runs/42568843977)
+  passed Windows, Android, Linux and both macOS architectures, then publication.
+  All seven platform assets and SHA256SUMS.txt are present; asset digests agree.
+- [x] Copied the matching Windows installer to this Desktop and Surface Desktop
+  (`10.0.20.143`), verifying the saved SSH host key and both file checksums.
+  Installer SHA256: `a2dfa481581c8699dc104b5c0f7fb0e82806b54ed4d8ca8a959eb3e5e53f94ac`.
+- [x] Stream-installed Android and confirmed version `2026.11.09`, code `12201`.
+  APK SHA256: `9f920f37afb8a52d3e3f7d67cbeddea8661b0540a6faef85a40ace1bfb782ac3`.
+- [x] Deleted the three merged feature branches locally and remotely after
+  verifying every branch was an ancestor of main.
+- [ ] Physical acceptance remains pending. Neither Windows installer was run;
+  no drivers, display layouts or security settings were changed during delivery.
 
 Targeted Qt layout/routing, native auth/rotation/rate-limit, listener and private
 store checks pass. Android UI compilation/lint and host checks pass. Full final
-CI remains pending. The preceding pre.116.1 platform build passed all four
-platforms; its separate core CI failures are addressed in this increment.
+core CI passed all jobs. Stable packaging and publication passed. The
+preceding pre.116.1 platform build passed all four platforms; its separate core
+CI failures were addressed and verified in this increment.
 
 ## Active increment: pairing credentials and mutual resource availability
 
