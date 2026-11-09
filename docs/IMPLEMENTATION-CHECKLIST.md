@@ -7,7 +7,7 @@
 - [x] Surface native failure details instead of silently returning the power
   button to green after a premature connection toast.
 - [x] Verify actual protocol greetings through the shared routing check.
-- [ ] Build and deliver matching Windows/Android packages.
+- [x] Build and deliver matching Windows/Android packages.
 
 User acceptance of pre.114.1 found that USB connects briefly in the peer workspace
 then ends before the mouse leaves the Surface. The shared receiver still matched
@@ -27,6 +27,22 @@ Native runtime, authenticated loopback failure propagation/redaction, Qt startup
 and UI checks pass. Provider errors reach the requesting peer through the existing
 rejection message; native credentials are withheld from diagnostics. The initial
 toast says "Resource connection requested" rather than claiming device readiness.
+
+Delivery: **2026.11.09-pre.115.1**, clean source
+`d135fb4749960197786407be25d54ea0e2e369a9`. Windows installer/portable extraction,
+UI startup and embedded component checks pass. Installer copied and SHA-256
+verified on both this Desktop and Surface Desktop (`10.0.20.143`); neither was
+executed. Android's 16 host checks, release build/lint, both ABIs, pinned signer
+and alignment checks pass. APK stream-installed; version/code `11501` confirmed.
+
+- Windows installer SHA-256:
+  `07ea3decbd92fbe303e38fa1e6fdc499def9dbd5d055fc0fa778c999c9d97157`
+- Android APK SHA-256:
+  `665565dbee20be54fec18a1eb34765f0d04dcfe7f8703f093dbbb2eab8121b11`
+- [All-platform CI](https://github.com/EEkebin/ExtraPane/actions/runs/42563269836)
+  remains running at delivery. The previous run passed Windows/Linux/Android and
+  failed macOS compilation; that syntax fix is included here. Installed-app USB
+  acceptance awaits the user's retry on both updated Windows installations.
 
 ## Active increment: automatic hardware updates and composite USB
 
