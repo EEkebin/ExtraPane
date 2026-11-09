@@ -117,12 +117,18 @@ selected physical screen instead; a second simultaneous view of that same screen
 on the same receiving computer is blocked. Windows existing-screen input is opt-in
 through **Allow input**, where the provider advertises support.
 
-Pairing is enabled by default. Enter the other device's six-digit code on the
+Pairing is enabled by default. Enter the other device's PIN or password on the
 first connection using the Connect dialog; remembered devices subsequently prove
 their saved secret without prompting again. Nearby devices with pairing disabled
 are labeled unverified and connect without a code dialog. A manual address defaults
 to pairing unless Connect without pairing is explicitly selected.
-Codes stay fixed for the app/service process lifetime, including sharing restarts.
+Generated six-digit codes refresh every minute; the circular countdown shows when
+another code will appear. Under This device, choose a fixed custom PIN/password
+instead if preferred. Entries are masked and accept text up to 1024 UTF-8 bytes.
+Custom credentials stay fixed until changed and are stored in protected local
+settings. Rotation never interrupts paired devices or active resources.
+One pairing makes both devices' shared resources available, including over the
+existing authenticated connection when reverse discovery is unavailable.
 Disabling pairing requires an explicit unverified connection. Discovery is only a
 hint, never proof of identity. Direct IPv4, `localhost` and `127.0.0.1` work without
 multicast; loopback alone does not bypass authentication.

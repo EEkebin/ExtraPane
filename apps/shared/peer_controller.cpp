@@ -35,12 +35,18 @@ PeerController::PeerController(Service::Hooks hooks,QString path,QObject* parent
     const auto privatePath=std::filesystem::u8path(path.toUtf8().toStdString());
 #endif
     service_=std::make_unique<Service>(Service::Options{privatePath,name_.toStdString(),{},pairingRequired_},std::move(hooks));
+    pairingStatus_=service_->pairing_status();
     QSet<QString> known;for(const auto& saved:service_->remembered())known.insert(hex(saved.id));for(const auto& saved:service_->pending_forgets())known.insert(hex(saved.id));directory_.knownDevices(std::move(known));
     connect(&directory_,&DeviceDirectory::knownRoute,this,[this](const QString& id,const QString& address,unsigned port){if(service_)service_->observe_route(identity(id),address.toStdString(),static_cast<std::uint16_t>(port));});
     connect(&timer_,&QTimer::timeout,this,&PeerController::poll);timer_.start(25);
 }
 PeerController::~PeerController(){shutdown();}
-QString PeerController::pairingCode()const{return service_&&pairingRequired_?QString::fromStdString(service_->pairing_code()):QString{};}
+QString PeerController::pairingCode()const{return QString::fromStdString(pairingStatus_.code);}
+bool PeerController::setPairingPassword(QString password){try{
+    auto bytes=password.toUtf8();if(bytes.size()>1024||bytes.contains(char(0)))throw std::invalid_argument("Use a PIN or password of at most 1024 UTF-8 bytes");
+    service_->set_pairing_password(bytes.toStdString());bytes.fill(char(0));password.fill(QChar(0));
+    pairingStatus_=service_->pairing_status();emit pairingChanged();emit toast(pairingStatus_.custom?"Custom PIN or password saved":"Rotating pairing code enabled");return true;
+}catch(const std::exception& e){error(QString::fromUtf8(e.what()));return false;}}
 void PeerController::error(const QString& message){status_=message;emit changed();emit toast(message);}
 std::vector<Offer> PeerController::selectedOffers()const{std::vector<Offer> result;for(const auto& offer:inventory_)if(enabled_.contains(QString::fromStdString(offer.id)))result.push_back(offer);return result;}
 QVariantList PeerController::networkAddresses()const{
@@ -167,14 +173,14 @@ void PeerController::stopSharing(){
     service_->offers({});service_->gateway(false);service_->stop();status_="Sharing stopped";emit changed();
 }
 void PeerController::connectDevice(QString host,unsigned port,QString code,QString expected,QString local,bool open){try{
-    const auto destination=address(host);if(!port||port>65535)throw std::invalid_argument("Enter a port between 1 and 65535");if(!code.isEmpty()&&(code.size()!=6||std::any_of(code.begin(),code.end(),[](auto c){return c<'0'||c>'9';})))throw std::invalid_argument("Enter the six-digit pairing code");
+    const auto destination=address(host);if(!port||port>65535)throw std::invalid_argument("Enter a port between 1 and 65535");if(code.toUtf8().size()>1024||code.contains(QChar(0)))throw std::invalid_argument("Enter a PIN or password of at most 1024 UTF-8 bytes");
     Service::ConnectOptions options{destination.toStdString(),static_cast<std::uint16_t>(port),local.isEmpty()?std::string{}:address(local).toStdString(),expected.isEmpty()?DeviceId{}:identity(expected),code.toStdString(),open};
     const auto id=service_->connect(std::move(options));connectionEndpoints_.insert(token(id),{{"address",destination},{"port",port}});status_="Connecting to "+destination+":"+QString::number(port);emit changed();
 }catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
 void PeerController::disconnectDevice(QString connection){try{service_->disconnect(connection.toULongLong());}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
 void PeerController::connectVia(QString gateway,QString endpoint,QString code){try{
     bool valid=false;const auto route=gateway.toULongLong(&valid);if(!valid||!route)throw std::invalid_argument("Gateway is unavailable");
-    if(!code.isEmpty()&&(code.size()!=6||std::any_of(code.begin(),code.end(),[](auto c){return c<'0'||c>'9';})))throw std::invalid_argument("Enter the six-digit pairing code");
+    if(code.toUtf8().size()>1024||code.contains(QChar(0)))throw std::invalid_argument("Enter a PIN or password of at most 1024 UTF-8 bytes");
     service_->connect_via(route,identity(endpoint),code.toStdString());status_="Authenticating device through gateway...";emit changed();
 }catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
 void PeerController::forgetDevice(QString id){try{service_->forget(identity(id));}catch(const std::exception& e){error(QString::fromUtf8(e.what()));}}
@@ -196,7 +202,10 @@ void PeerController::announce(unsigned port){
     if(loopbackSharing_){directory_.withdraw();return;}
     if(!directory_.transportActive())directory_.start(interfaceIndex_);Announcement announcement;announcement.device=service_->identity();announcement.instance=announcementInstance_;announcement.sequence=++announcementSequence_;announcement.name=name_.toStdString();announcement.port=static_cast<std::uint16_t>(port);announcement.pairing_required=pairingRequired_;for(const auto& offer:selectedOffers())if(offer.available)announcement.offered_kinds|=1u<<static_cast<unsigned>(offer.kind);directory_.advertise(announcement);
 }
-void PeerController::poll(){if(!service_)return;for(auto& event:service_->poll())applyEvent(event);}
+void PeerController::poll(){if(!service_)return;
+    const auto next=service_->pairing_status();if(next.code!=pairingStatus_.code||next.custom!=pairingStatus_.custom||next.remaining_seconds!=pairingStatus_.remaining_seconds){pairingStatus_=next;emit pairingChanged();}
+    for(auto& event:service_->poll())applyEvent(event);
+}
 void PeerController::applyEvent(Service::Event& event){
     const auto connection=token(event.context.connection);const auto grant=token(event.context.grant);
     switch(event.kind){

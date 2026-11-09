@@ -121,6 +121,9 @@ Item {
             devices[item.owner]={identity:item.owner,name:item.ownerName||"Device"}
         return Object.values(devices)
     }
+    function validPairingSecret(value) {
+        try { return value.length>0&&value.indexOf("\u0000")<0&&encodeURIComponent(value).replace(/%[A-F\d]{2}/gi,"x").length<=1024 } catch(error) { return false }
+    }
     Dialog {
         id: pairingDialog; objectName: "peerPairingDialog"
         property var target: ({})
@@ -140,7 +143,7 @@ Item {
         onClosed: { code.clear();code.invalid=false;target=({});submitted=false }
         function submit() {
             if(submitted||!visible||(!target.address&&!target.gateway))return
-            code.invalid=!/^\d{6}$/.test(code.text)
+            code.invalid=!workspace.validPairingSecret(code.text)
             if(code.invalid){code.forceActiveFocus();return}
             submitted=true
             const frozen=target
@@ -150,13 +153,13 @@ Item {
         }
         contentItem: ColumnLayout {
             spacing: 14
-            Label { text:"Pairing Code";color:"#eef4ff";Layout.fillWidth:true }
-            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; Layout.preferredHeight:52; Accessible.name: "Pairing Code"; maximumLength: 6; echoMode: TextInput.Password; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: pairingDialog.submit()
+            Label { text:"PIN or password";color:"#eef4ff";Layout.fillWidth:true }
+            Field { id: code; objectName: "peerCode"; Layout.fillWidth: true; Layout.preferredHeight:52; Accessible.name: "PIN or password"; maximumLength: 1024; echoMode: TextInput.Password; inputMethodHints: Qt.ImhHiddenText | Qt.ImhNoPredictiveText; onAccepted: pairingDialog.submit()
                 leftPadding:14;rightPadding:14;topPadding:10;bottomPadding:10
                 background:Rectangle { color:"#111f32";radius:6;border.width:code.activeFocus||code.invalid?2:1;border.color:code.invalid?"#ff6978":code.activeFocus?"#80b8ff":"#48617e" }
-                Text { text:"XXXXXX";visible:code.text.length===0;color:"#9eacc2";anchors.left:parent.left;anchors.leftMargin:14;anchors.verticalCenter:parent.verticalCenter;font:code.font }
+                Text { text:"Enter PIN or password";visible:code.text.length===0;color:"#9eacc2";anchors.left:parent.left;anchors.leftMargin:14;anchors.verticalCenter:parent.verticalCenter;font:code.font }
             }
-            Label { text: "Enter exactly six digits."; color: "#ff6978"; visible: code.invalid }
+            Label { text: "Enter a PIN or password (up to 1024 UTF-8 bytes)."; color: "#ff6978"; visible: code.invalid }
             RowLayout { Layout.alignment: Qt.AlignRight
                 Action { objectName:"peerPairingCancel"; text:"Cancel"; onClicked:pairingDialog.close() }
                 Action { objectName:"peerPairingSubmit"; text:"Pair"; enabled:!pairingDialog.submitted; onClicked:pairingDialog.submit() }
@@ -420,7 +423,17 @@ Item {
                                 contentItem:RowLayout { spacing:12
                                     AppIcon { symbol:"chevron";rotation:workspace.localExpanded?90:0;Layout.preferredWidth:18;Layout.preferredHeight:18 }
                                     Label { text:peers.deviceName;textFormat:Text.PlainText;font.pixelSize:18;Layout.fillWidth:true;elide:Text.ElideRight }
-                                    Label { objectName:"peerLocalPairingCode"; text:peers.pairingRequired?"Pairing code: "+peers.pairingCode:"Pairing disabled";font.pixelSize:18 }
+                                    Label { objectName:"peerLocalPairingCode"; text:!peers.pairingRequired?"Pairing disabled":peers.pairingCustom?"Custom PIN or password":"Pairing code: "+peers.pairingCode;font.pixelSize:18 }
+                                    Canvas {
+                                        objectName:"peerPairingCountdown"; Layout.preferredWidth:36;Layout.preferredHeight:36
+                                        visible:peers.pairingRequired&&!peers.pairingCustom
+                                        property real progress: (peers.pairingSeconds||0)/60
+                                        Behavior on progress { enabled: (peers.pairingSeconds||0)<59; NumberAnimation {duration:850} }
+                                        onProgressChanged:requestPaint()
+                                        onPaint: { const ctx=getContext("2d");ctx.clearRect(0,0,width,height);ctx.lineWidth=3;ctx.strokeStyle="#334a65";ctx.beginPath();ctx.arc(width/2,height/2,15,0,2*Math.PI);ctx.stroke();ctx.strokeStyle="#80b8ff";ctx.lineCap="round";ctx.beginPath();ctx.arc(width/2,height/2,15,-Math.PI/2,-Math.PI/2+2*Math.PI*progress);ctx.stroke() }
+                                        Label { anchors.centerIn:parent;text:String(peers.pairingSeconds||0);font.pixelSize:11;color:"#b8d7ff" }
+                                        Accessible.name:"Pairing code refreshes in "+(peers.pairingSeconds||0)+" seconds"
+                                    }
                                 }
                             }
                             ColumnLayout { objectName:"peerLocalBody";Layout.fillWidth:true;visible:workspace.localExpanded;spacing:14
@@ -448,7 +461,19 @@ Item {
                     }
                     Label { text: "Share makes a resource available to paired devices. The red power button stops its current streams."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     CheckBox { text: "Require pairing"; checked: peers.pairingRequired; onToggled: peers.pairingRequired=checked }
-                    Label { textFormat: Text.PlainText; visible: peers.pairingRequired; text: "The code stays the same until ExtraPane restarts. Previously paired devices use their saved identity."; color: "#9eacc2"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    ColumnLayout {
+                        visible:peers.pairingRequired;Layout.fillWidth:true;spacing:10
+                        ComboBox { id:pairingMode;objectName:"peerPairingMode";Layout.fillWidth:true;model:["Rotating code","Custom PIN or password"];currentIndex:peers.pairingCustom?1:0
+                            onActivated: { customPairing.clear();if(currentIndex===0&&!peers.setPairingPassword(""))currentIndex=peers.pairingCustom?1:0 }
+                        }
+                        RowLayout { visible:pairingMode.currentIndex===1;Layout.fillWidth:true
+                            Field { id:customPairing;objectName:"peerCustomPairingPassword";Layout.fillWidth:true;placeholderText:peers.pairingCustom?"Enter a replacement PIN or password":"Enter PIN or password";echoMode:TextInput.Password;maximumLength:1024;inputMethodHints:Qt.ImhHiddenText|Qt.ImhNoPredictiveText
+                                onAccepted: if(text.length&&peers.setPairingPassword(text))clear()
+                            }
+                            Action { objectName:"peerSavePairingPassword";text:"Save";enabled:customPairing.text.length>0;onClicked:if(peers.setPairingPassword(customPairing.text))customPairing.clear() }
+                        }
+                        Label { text:peers.pairingCustom?"Your custom PIN or password stays in effect until you change it. Previously paired devices keep their access.":"The code refreshes every minute. Previously paired devices and active resources stay connected.";color:"#9eacc2";wrapMode:Text.WordWrap;Layout.fillWidth:true }
+                    }
                     Repeater {
                         model: workspace.resourceGroups
                         delegate: ResourceGroup {

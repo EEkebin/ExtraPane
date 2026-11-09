@@ -30,9 +30,12 @@ public:
     Service(const Service&)=delete;
     DeviceId identity()const;
     std::string pairing_code()const;
+    struct PairingStatus {std::string code;bool custom=false;unsigned remaining_seconds=0;};
+    PairingStatus pairing_status()const;
+    void set_pairing_password(std::string); // Empty resets to a new generated PIN.
     std::vector<RememberedDevice> remembered()const;
     std::vector<RememberedDevice> pending_forgets()const;
-    // Start/stop sharing preserves process-lifetime pairing code. stop withdraws
+    // Start/stop sharing preserves the pairing configuration. stop withdraws
     // local offers/incoming use; independent outgoing resources remain active.
     // Methods enqueue bounded commands; poll drains UI events.
     // Returned generation identifies the matching asynchronous listening event.

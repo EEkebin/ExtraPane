@@ -108,9 +108,25 @@ void bilateral_forget(const std::filesystem::path& path){
   denied=false;try{connection.send({rpc::Operation::catalog,7,{}},deadline());connection.receive(deadline());}catch(...){denied=true;}require(denied,"Revocation channel exposed catalog");
  }
 }
+void mutual_resources_without_discovery(const std::filesystem::path& path){
+ Service accepting({path/"mutual-accepting","Laptop",{{"camera","Laptop camera",Kind::camera,true}},true},{});
+ Service initiating({path/"mutual-initiating","Desktop",{{"speaker","Desktop speakers",Kind::speaker,true}},true},{});
+ accepting.auto_connect(true);initiating.auto_connect(true);accepting.start("127.0.0.1",0);initiating.start("127.0.0.1",0);
+ const auto until=std::chrono::steady_clock::now()+12s;auto wait=[&]{require(std::chrono::steady_clock::now()<until,"Mutual resources unavailable without discovery");std::this_thread::sleep_for(2ms);};
+ std::uint16_t port=0;while(!port){for(const auto& e:accepting.poll())if(e.kind==Service::EventKind::listening)port=e.port;wait();}
+ initiating.connect({"127.0.0.1",port,{},accepting.identity(),accepting.pairing_code(),false});bool forward=false,reverse=false;
+ while(!forward||!reverse){
+  for(const auto& e:initiating.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::catalog&&e.context.peer==accepting.identity())for(const auto& catalog:e.catalogs)for(const auto& offer:catalog.offers)if(offer.id=="camera")forward=true;}
+  for(const auto& e:accepting.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::catalog&&e.context.peer==initiating.identity()){require(!e.context.incoming,"Reverse catalog not usable for resource requests");for(const auto& catalog:e.catalogs)for(const auto& offer:catalog.offers)if(offer.id=="speaker")reverse=true;}}
+  wait();
+ }
+ require(accepting.remembered().size()==1&&initiating.remembered().size()==1,"Mutual availability created extra pairing");
+ require(accepting.remembered()[0].address_hint.empty()&&accepting.remembered()[0].port_hint==0,"Reverse tunnel invented a remote listening endpoint");
+}
 int main(int argc,char** argv){auto path=std::filesystem::temp_directory_path()/("extrapane-presence-check-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));std::filesystem::create_directory(path);
 std::atomic<bool> release=false,entered=false;std::atomic<unsigned> preparations=0;
 try{
+ if(argc>1&&std::string(argv[1])=="--mutual"){mutual_resources_without_discovery(path);std::filesystem::remove_all(path);return 0;}
  if(argc>1&&std::string(argv[1])=="--changed-route"){changed_paired_route(path);std::filesystem::remove_all(path);return 0;}
  legacy_cancel(path);bilateral_forget(path);duplicate_screens(path);no_pairing_downgrade(path);open_admission_race(path);
  auto wait=[](auto predicate){const auto deadline=std::chrono::steady_clock::now()+5s;while(!predicate()){require(std::chrono::steady_clock::now()<deadline,"Presence check timed out");std::this_thread::sleep_for(2ms);}};

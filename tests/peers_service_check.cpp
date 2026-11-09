@@ -26,6 +26,8 @@ try{
 #ifdef _WIN32
 WSADATA w{};check(!WSAStartup(MAKEWORD(2,2),&w),"WSA startup");
 #endif
+{Service settings({directory/"pairing-settings","Settings test",{},true},{});const auto initial=settings.pairing_status();check(!initial.custom&&initial.code.size()==6&&initial.remaining_seconds==60,"Generated status");settings.set_pairing_password(" permanent pass ! ");check(settings.pairing_status().custom&&settings.pairing_status().code.empty()&&settings.pairing_code().empty(),"Custom secret leaked through status");}
+{Service reopened({directory/"pairing-settings","Settings test",{},true},{});check(reopened.pairing_status().custom&&reopened.pairing_code().empty(),"Custom secret was not restored");reopened.set_pairing_password("");check(!reopened.pairing_status().custom&&reopened.pairing_status().remaining_seconds==60,"Generated reset");}
 const auto end=std::chrono::steady_clock::now()+15s;
 auto waiting=[&]{check(std::chrono::steady_clock::now()<end,"Service test deadline");std::this_thread::sleep_for(1ms);};
 Socket dest=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);auto address=addr(0);check(!bind(dest,reinterpret_cast<sockaddr*>(&address),sizeof(address))&&!listen(dest,4),"fake destination bind");
@@ -48,7 +50,7 @@ clientHooks.ready=[](const auto&,const auto&,auto){};
 {
 Service host({directory/"host","Fake host",{{"camera","Fake camera",Kind::camera,true,false,""}},true},hostHooks);
 Service client({directory/"client","Fake client",{},true},clientHooks);
-const auto originalCode=host.pairing_code();host.start("127.0.0.1",0);std::uint16_t port=0;
+auto originalCode=host.pairing_code();host.start("127.0.0.1",0);std::uint16_t port=0;
 while(!port){for(auto& event:host.poll())if(event.kind==Service::EventKind::listening)port=event.port;waiting();}
 auto connect=[&](std::string code){auto id=client.connect({"localhost",port,"127.0.0.1",host.identity(),std::move(code),false});bool connected=false;while(!connected){for(auto& e:client.poll()){if(e.kind==Service::EventKind::error)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::connected&&e.context.connection==id)connected=true;}host.poll();waiting();}return id;};
 auto id=connect(originalCode);auto catalog=client.catalog(id);bool catalogSeen=false;
@@ -56,6 +58,7 @@ while(!catalogSeen){for(auto& e:client.poll()){if(e.kind==Service::EventKind::er
 auto request=client.open(id,{host.identity(),"camera",false});Service::Token grant=0;Socket received=invalid;
 while(!grant||received==invalid){for(auto& e:client.poll()){if(e.kind==Service::EventKind::error||e.kind==Service::EventKind::disconnected)throw std::runtime_error(e.detail);if(e.kind==Service::EventKind::granted&&e.context.request==request)grant=e.context.grant;}if(received==invalid)received=accept(dest,nullptr,nullptr);host.poll();waiting();}
 nonblock(received);std::string actual;while(actual.size()<24){char buffer[64];int n=recv(received,buffer,sizeof(buffer),0);if(n>0)actual.append(buffer,n);waiting();}check(actual==std::string("authorized native bytes",24),"native media delivery");
+host.set_pairing_password("New configured password !");check(host.pairing_status().custom&&stops==0,"Password change stopped active media");host.set_pairing_password("");originalCode=host.pairing_code();
 // Authenticated hotplug hint causes an immediate catalog pull without a user
 // refresh request, while the existing camera grant remains alive.
 host.offers({{"camera","Fake camera",Kind::camera,true,false,""},{"mic","New microphone",Kind::microphone,true,false,""}});

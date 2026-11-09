@@ -22,10 +22,10 @@ struct Exchange {
     bssl::UniquePtr<SPAKE2_CTX> ctx;
     std::array<uint8_t,SPAKE2_MAX_MSG_SIZE> message{};
     size_t size=0;
-    Exchange(bool server,const std::string& code):ctx(SPAKE2_CTX_new(server?spake2_role_bob:spake2_role_alice,
+    Exchange(bool server,const std::string& code,bool peer=false):ctx(SPAKE2_CTX_new(server?spake2_role_bob:spake2_role_alice,
         reinterpret_cast<const uint8_t*>(server?serverName:clientName),server?sizeof(serverName)-1:sizeof(clientName)-1,
         reinterpret_cast<const uint8_t*>(server?clientName:serverName),server?sizeof(clientName)-1:sizeof(serverName)-1)){
-        need(ctx && (validCode(code)||(code.size()==64&&std::all_of(code.begin(),code.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');}))));need(SPAKE2_generate_msg(ctx.get(),message.data(),&size,message.size(),reinterpret_cast<const uint8_t*>(code.data()),code.size())==1);need(size==32);
+        need(ctx && (peer?(!code.empty()&&code.size()<=1024):(validCode(code)||(code.size()==64&&std::all_of(code.begin(),code.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');})))));need(SPAKE2_generate_msg(ctx.get(),message.data(),&size,message.size(),reinterpret_cast<const uint8_t*>(code.data()),code.size())==1);need(size==32);
     }
 };
 }
@@ -144,17 +144,23 @@ void Stream::server(Gate& gate){auto& s=*state_;need(!s.attempted);s.attempted=t
 }
 void Stream::peer_client(const std::string& secret,std::span<const uint8_t> transcript){
     auto& s=*state_;need(!s.attempted);s.attempted=true;need(!transcript.empty()&&transcript.size()<=4096);
-    Exchange exchange(false,secret);s.writeRaw(std::span(exchange.message).first(exchange.size));
+    Exchange exchange(false,secret,true);s.writeRaw(std::span(exchange.message).first(exchange.size));
     std::array<uint8_t,32> peer{};s.readRaw(peer);s.derive(exchange,peer,false,transcript);
     s.writeRaw(s.proof(false));std::array<uint8_t,32> proof{};s.readRaw(proof);const auto expected=s.proof(true);
-    need(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())==0);s.ready=true;
+    if(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())!=0)throw PeerConfirmationError();s.ready=true;
 }
-void Stream::peer_server(const std::string& secret,std::span<const uint8_t> transcript){
+void Stream::peer_server(const std::string& secret,std::span<const uint8_t> transcript,const std::function<void()>& before_confirmation){
     auto& s=*state_;need(!s.attempted);s.attempted=true;need(!transcript.empty()&&transcript.size()<=4096);
-    std::array<uint8_t,32> peer{};s.readRaw(peer);Exchange exchange(true,secret);
+    std::array<uint8_t,32> peer{};s.readRaw(peer);Exchange exchange(true,secret,true);
     s.writeRaw(std::span(exchange.message).first(exchange.size));s.derive(exchange,peer,true,transcript);
     std::array<uint8_t,32> proof{};s.readRaw(proof);const auto expected=s.proof(false);
-    need(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())==0);s.writeRaw(s.proof(true));s.ready=true;
+    if(CRYPTO_memcmp(proof.data(),expected.data(),proof.size())!=0){
+        // A deliberately invalid confirmation lets the requester distinguish a
+        // wrong secret from a transport interruption without revealing a key.
+        std::array<uint8_t,32> invalid{};s.writeRaw(invalid);throw PeerConfirmationError();
+    }
+    try{if(before_confirmation)before_confirmation();}catch(const PeerConfirmationError&){std::array<uint8_t,32> invalid{};s.writeRaw(invalid);throw;}
+    s.writeRaw(s.proof(true));s.ready=true;
 }
 std::optional<unsigned> Stream::authorized_kind()const{return state_->kind;}
 std::optional<bool> Stream::authorized_display_input()const{return state_->display_input;}

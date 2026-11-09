@@ -16,9 +16,14 @@ final class PairingAttempt {
         this.gateway=gateway;this.identity=identity;address="";local="";port=0;open=false;codeRequired=true;
     }
     static PairingAttempt via(long gateway,String identity){return new PairingAttempt(gateway,identity);}
+    static boolean validSecret(String value){
+        if(value==null||value.isEmpty()||value.length()>1024||value.indexOf('\0')>=0)return false;
+        for(int i=0;i<value.length();++i){char c=value.charAt(i);if(Character.isHighSurrogate(c)){if(++i>=value.length()||!Character.isLowSurrogate(value.charAt(i)))return false;}else if(Character.isLowSurrogate(c))return false;}
+        return value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=1024;
+    }
     boolean submit(String code) {
         if(finished)return false;
-        if(codeRequired&&(code==null||!code.matches("[0-9]{6}")))throw new IllegalArgumentException("Enter the six-digit pairing code");
+        if(codeRequired&&!validSecret(code))throw new IllegalArgumentException("Enter a PIN or password (up to 1024 UTF-8 bytes)");
         if(!codeRequired&&code!=null&&!code.isEmpty())throw new IllegalArgumentException("This connection does not use a pairing code");
         finished=true;return true;
     }

@@ -1,5 +1,19 @@
 # Decisions, assumptions, and evidence
 
+## Rotating pairing credentials and mutual resources (2026-11-09)
+
+The user replaced the earlier process-lifetime code policy: generated pairing
+codes rotate every 60 seconds, with a visible circular countdown. A custom PIN
+or password is an optional fixed alternative until explicitly changed. Both use
+the same masked, neutral "PIN or password" prompt; discovery does not reveal
+credential mode or length. Input is not restricted to digits or six characters;
+a 1024-byte UTF-8 ceiling bounds processing. Custom secrets use protected local
+storage, not ordinary UI preferences, and are never displayed after saving.
+Rotation must preserve remembered trust and active resource sessions. Wrong
+credential confirmation reports a pairing error; genuine transport failures
+remain distinct. Pairing must expose resources in both directions through the
+authenticated connection, without requiring reverse LAN discovery or another PIN.
+
 ## Hardware updates and listener controls (2026-11-09)
 
 Resource inventories refresh automatically on device changes, with bounded

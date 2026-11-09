@@ -41,6 +41,13 @@ int main(){
     std::filesystem::create_directory(base);
     try{
         const auto folder=base/"private",file=folder/"trust-v1.bin";TrustStore store(folder);const auto self=store.identity();check(valid_id(self));check(store.devices().empty());TrustStore reopened(folder);check(reopened.identity()==self);
+        check(store.pairing_password().empty());const std::string password=" secret ! \xc3\xa9 ";store.set_pairing_password(password);check(reopened.pairing_password()==password&&store.identity()==self);
+#ifdef _WIN32
+        check(bytes(folder/"pairing-v1.bin").find(password)==std::string::npos);
+#endif
+        const auto savedPairing=bytes(folder/"pairing-v1.bin");rejected([&]{store.set_pairing_password(std::string(1025,'x'));});check(bytes(folder/"pairing-v1.bin")==savedPairing);
+        store.set_pairing_password(std::string(1024,'x'));check(reopened.pairing_password()==std::string(1024,'x'));store.set_pairing_password("");check(reopened.pairing_password().empty());
+        auto badPairing=bytes(folder/"pairing-v1.bin");badPairing.back()^=1;overwrite(folder/"pairing-v1.bin",badPairing);rejected([&]{store.pairing_password();});overwrite(folder/"pairing-v1.bin",savedPairing);check(reopened.pairing_password()==password);
         PairSecret secret=id(77);RememberedDevice peer{id(1),"Surface Book","192.0.2.1",43824};store.remember(peer,secret);check(store.secret(id(1))==secret&&reopened.secret(id(1))==secret);check(reopened.devices()[0].name==peer.name);
         peer.address_hint="192.0.2.2";reopened.update_hint(peer);check(store.devices()[0].address_hint=="192.0.2.2");rejected([&]{reopened.remember(peer,secret);});
         const auto original=bytes(file);rejected([&]{store.remember(peer,id(78));});check(bytes(file)==original&&store.secret(id(1))==secret);

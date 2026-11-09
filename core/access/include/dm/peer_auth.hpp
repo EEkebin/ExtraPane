@@ -24,19 +24,27 @@ struct Identity {
     std::optional<Secret> revocation_secret;
     bool newly_paired=false; // Self sessions authenticate without persistent trust.
 };
-// One instance per sharing-process lifetime. Codes never rotate on connection or pairing.
-// Five failed new-pair attempts lock pairing until restart; remembered access still works.
+bool valid_pairing_password(const std::string&);
+struct PairingStatus {std::string code;bool custom=false;unsigned remaining_seconds=0;};
+// Generated PINs rotate every 60 seconds. Attempt budgets are independently
+// windowed; changing the configured secret never resets the attempt budget.
 class Policy {
     struct Attempts {unsigned failures=0;};
-    DeviceId local_;std::atomic_bool required_;bool active_=true;std::string code_;
+    DeviceId local_;std::atomic_bool required_;bool active_=true,custom_=false;std::string code_;
     std::function<access::Clock::time_point()> clock_;access::Clock::time_point window_;
     std::mutex mutex_;std::map<DeviceId,Attempts> attempts_;std::set<DeviceId> pending_;
     unsigned global_failures_=0,pair_failures_=0,pair_pending_=0;
+    access::Clock::time_point rotated_;
+    void refresh_locked();
+    void generate_locked();
 public:
     Policy(DeviceId local,bool pairing_required=true,std::function<access::Clock::time_point()> now=access::Clock::now);
     ~Policy();
     Policy(const Policy&)=delete;
     std::string code();
+    PairingStatus status();
+    void set_password(std::string);
+    void confirm_password(const std::string&);
     bool pairing_available();
     void stop();
     const DeviceId& local()const{return local_;}

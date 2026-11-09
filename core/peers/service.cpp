@@ -80,7 +80,7 @@ struct Service::State {
     std::set<DeviceId> suppressed_routes;
     Clock::time_point last_routes=Clock::now();
     State(Options o,Hooks h):options(std::move(o)),hooks(std::move(h)),store(options.private_directory),auth(store.identity(),options.pairing_required),policy(Catalog{store.identity(),static_cast<std::uint64_t>(now())+1,1,options.name,options.offers}){
-        policy.pairing_required(options.pairing_required);for(const auto& d:store.devices())policy.remember(d.id);
+        auth.set_password(store.pairing_password());policy.pairing_required(options.pairing_required);for(const auto& d:store.devices())policy.remember(d.id);
         retired.reserve(16);native_worker=std::thread([this]{native_run();});
         try{worker=std::thread([this]{run();});}catch(...){ {std::lock_guard lock(native_mutex);native_ending=true;}native_wake.notify_all();native_worker.join();throw;}
     }
@@ -409,13 +409,15 @@ struct Service::State {
     }
     void begin_endpoint(Token token,Token gateway,const DeviceId& owner,std::string code,bool revocation=false){
         auto& link=this->link(gateway);need(!link.via_connection&&link.connection->identity().paired&&link.endpoint_supported,"This gateway does not support authenticated endpoint tunnels");
-        need(valid_id(owner)&&owner!=store.identity()&&owner!=link.connection->remote_id(),"Invalid remote device");
+        const bool reverse=link.incoming&&owner==link.connection->remote_id();
+        need(valid_id(owner)&&owner!=store.identity()&&(reverse||owner!=link.connection->remote_id()),"Invalid remote device");
         need(endpoint_pending.size()<32&&link.tunnels.size()<32,"Endpoint tunnel budget exhausted");
         if(!revocation)for(const auto& peer:store.pending_forgets())need(peer.id!=owner,"Endpoint removal is pending");
-        need((revocation&&store.revocation_secret(owner).has_value())||store.secret(owner).has_value()||dm::access::validCode(code),"Enter the actual endpoint device's pairing code");
+        need((revocation&&store.revocation_secret(owner).has_value())||store.secret(owner).has_value()||dm::peer_auth::valid_pairing_password(code),"Enter the actual endpoint device's PIN or password");
         endpoint_pending.emplace(token,EndpointPending{gateway,0,0,owner,std::move(code),Clock::now(),revocation});
         endpoint_routes[owner]={gateway,token,now()+60000};
-        link.connection->queue({rpc::Operation::endpoint_open,token,Bytes(owner.begin(),owner.end())});
+        const auto visitor=store.identity();
+        link.connection->queue({reverse?rpc::Operation::endpoint_forward:rpc::Operation::endpoint_open,token,reverse?Bytes(visitor.begin(),visitor.end()):Bytes(owner.begin(),owner.end())});
     }
     void endpoint_dial(Token token,Link& outer,Token grant,DeviceId owner,std::string code,bool revocation){
         need(dialing.size()<8,"Endpoint authentication budget exhausted");const auto generation=epoch.load();
@@ -481,6 +483,14 @@ struct Service::State {
         const auto pendingRemoval=store.pending_forgets();
         const auto removing=[&](const DeviceId& owner){return std::any_of(pendingRemoval.begin(),pendingRemoval.end(),[&](const auto& peer){return peer.id==owner;});};
         std::erase_if(endpoint_routes,[&](const auto& entry){return !entry.second.pending&&!store.secret(entry.first)&&!removing(entry.first);});
+        // A newly paired incoming peer has no advertised listening address.
+        // Request its resources through a reverse authenticated tunnel over the
+        // existing link, independent of multicast, firewalls and router ports.
+        for(const auto& [token,link]:links)if(link->incoming&&!link->via_connection&&link->connection->identity().paired&&link->endpoint_supported){
+            const auto owner=link->connection->remote_id();if(!store.secret(owner)||removing(owner))continue;
+            auto [route,inserted]=endpoint_routes.try_emplace(owner,EndpointRoute{token});
+            if(!route->second.pending&&(!links.contains(route->second.via)||route->second.via!=token)){route->second.via=token;route->second.due=0;}
+        }
         // Only authenticated direct-gateway catalogs can supply an endpoint route.
         for(const auto& [token,link]:links)if(!link->via_connection&&link->connection->identity().paired&&link->endpoint_supported)for(const auto& catalog:link->catalog_cache)if(catalog.device!=link->connection->remote_id()&&catalog.device!=store.identity()&&(store.secret(catalog.device)||removing(catalog.device))){auto [route,inserted]=endpoint_routes.try_emplace(catalog.device,EndpointRoute{token});if(!links.contains(route->second.via)){route->second.via=token;route->second.pending=0;route->second.due=0;}}
         std::vector<Token> expired;for(const auto& [id,pending]:endpoint_pending)if(Clock::now()-pending.began>std::chrono::seconds(20))expired.push_back(id);
@@ -488,6 +498,7 @@ struct Service::State {
         if(!auto_connect_enabled)return;
         for(auto& [owner,route]:endpoint_routes){
             if(route.pending||now()<route.due||!store.secret(owner)||!links.contains(route.via)||dialing.size()>=8)continue;
+            if(std::any_of(dial_targets.begin(),dial_targets.end(),[&](const auto& item){return item.second==owner;}))continue;
             bool connected=false;for(const auto& [token,link]:links)if(!link->incoming&&link->connection->identity().paired&&link->connection->remote_id()==owner){connected=true;break;}if(connected)continue;
             route.due=now()+60000;try{begin_endpoint(next(),route.via,owner,{});}catch(...){}
         }
@@ -560,7 +571,13 @@ struct Service::State {
 Service::Service(Options options,Hooks hooks):state_(std::make_unique<State>(std::move(options),std::move(hooks))){}
 Service::~Service(){auto& s=*state_;s.stop_listener();s.auth.stop();s.ending=true;s.wake.notify_all();if(s.worker.joinable())s.worker.join();{std::lock_guard lock(s.native_mutex);s.native_ending=true;}s.native_wake.notify_all();if(s.native_worker.joinable())s.native_worker.join();for(auto& retired:s.retired)if(retired.thread.joinable())retired.thread.join();}
 DeviceId Service::identity()const{return state_->store.identity();}
-std::string Service::pairing_code()const{return state_->auth.code();}
+std::string Service::pairing_code()const{return pairing_status().code;}
+Service::PairingStatus Service::pairing_status()const{const auto status=state_->auth.status();return {status.code,status.custom,status.remaining_seconds};}
+void Service::set_pairing_password(std::string value){
+    struct Wipe{std::string& value;~Wipe(){volatile char* p=value.data();for(std::size_t i=0;i<value.size();++i)p[i]=0;}}wipe{value};
+    if(!value.empty()&&!dm::peer_auth::valid_pairing_password(value))throw std::invalid_argument("Pairing password must be valid UTF-8 and at most 1024 bytes");
+    auto& s=*state_;std::lock_guard lock(s.trust_mutex);s.store.set_pairing_password(value);s.auth.set_password(value);
+}
 std::vector<RememberedDevice> Service::remembered()const{return state_->store.devices();}
 std::vector<RememberedDevice> Service::pending_forgets()const{return state_->store.pending_forgets();}
 Service::Token Service::start(std::string bind,std::uint16_t port){

@@ -69,6 +69,20 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     private EditText port;
     private Button sharing,applyNetwork;
     private CheckBox pairing;
+    private Spinner pairingMode;
+    private EditText pairingPassword;
+    private Button savePairingPassword;
+    private TextView pairingModeStatus;
+    private PairingCountdown pairingCountdown;
+    private boolean pairingSettingsInitialized;
+    private long nextPairingStatus;
+    private final class PairingCountdown extends View {
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private int remaining;
+        PairingCountdown(){super(PeerActivity.this);setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);}
+        void update(int seconds){remaining=Math.max(0,Math.min(60,seconds));invalidate();}
+        @Override protected void onDraw(Canvas canvas){super.onDraw(canvas);float inset=dp(3);RectF bounds=new RectF(inset,inset,getWidth()-inset,getHeight()-inset);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(3));paint.setColor(BORDER);canvas.drawOval(bounds,paint);paint.setColor(ACCENT);paint.setStrokeCap(Paint.Cap.ROUND);canvas.drawArc(bounds,-90,360f*remaining/60,false,paint);}
+    }
     private PowerButton inputAllowed;
     private SurfaceView surface;
     private Button fullscreenButton;
@@ -180,8 +194,8 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         for(String name:new String[]{"Devices","Resources","About"}){LinearLayout section=column();pages.put(name,section);page.addView(section,full());}
         android.content.SharedPreferences sharingPreferences=getSharedPreferences("resource-sharing",MODE_PRIVATE);sharePolicy=new ResourceSharing(new ResourceSharing.Store(){public boolean enabled(String id){return sharingPreferences.getBoolean(id,true);}public void save(String id,boolean enabled){sharingPreferences.edit().putBoolean(id,enabled).apply();}});
         buildDevices();buildResources();buildSharingSettings();buildAbout();buildDrawer();selectPage("Devices");
-        safely(()->{peers=new PeerService(new File(getNoBackupFilesDir(),"peer-trust"),android.os.Build.MODEL);code.setText(peers.pairingCode());refreshInterfaces();refreshOffers();refreshTrusted();});
-        pairing.setOnCheckedChangeListener((v,checked)->{if(peers!=null)safely(()->peers.setPairingRequired(checked));code.setVisibility(checked?View.VISIBLE:View.GONE);});inputAllowed.setOnCheckedChangeListener(checked->{inputAllowed.setContentDescription(checked?"Block input":"Allow input");inputAllowed.setTooltipText(checked?"Block input":"Allow input");inputAllowed.setStateDescription(checked?"Input allowed":"Input blocked");input.enable(checked&&videoActive&&displayEvent!=null&&(displayEvent[14].equals("true")||displayEvent[14].equals("1")));publish();});
+        safely(()->{peers=new PeerService(new File(getNoBackupFilesDir(),"peer-trust"),android.os.Build.MODEL);refreshPairingStatus();refreshInterfaces();refreshOffers();refreshTrusted();});
+        pairing.setOnCheckedChangeListener((v,checked)->{if(peers!=null)safely(()->peers.setPairingRequired(checked));safely(this::refreshPairingStatus);});inputAllowed.setOnCheckedChangeListener(checked->{inputAllowed.setContentDescription(checked?"Block input":"Allow input");inputAllowed.setTooltipText(checked?"Block input":"Allow input");inputAllowed.setStateDescription(checked?"Input allowed":"Input blocked");input.enable(checked&&videoActive&&displayEvent!=null&&(displayEvent[14].equals("true")||displayEvent[14].equals("1")));publish();});
     }
     private boolean containsPoint(View view,float x,float y){android.graphics.Rect bounds=new android.graphics.Rect();return view.getGlobalVisibleRect(bounds)&&bounds.contains((int)x,(int)y);}
     private boolean interactiveAt(View view,float x,float y){
@@ -229,7 +243,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         sectionHeading(content,"This device");LinearLayout localCard=column();localCard.setBackground(rounded(PANEL,BORDER));content.addView(localCard,full());
         LinearLayout localHeader=new LinearLayout(this);localHeader.setGravity(Gravity.CENTER_VERTICAL);localHeader.setPadding(dp(14),dp(12),dp(14),dp(12));localHeader.setMinimumHeight(dp(64));localHeader.setClickable(true);localHeader.setFocusable(true);
         TextView localName=label(android.os.Build.MODEL,19);localName.setTypeface(null,Typeface.BOLD);localHeader.addView(localName,new LinearLayout.LayoutParams(0,-2,1));
-        code=label("",19);code.setLetterSpacing(.1f);code.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);code.setContentDescription("Pairing code");code.setTextIsSelectable(true);code.setPadding(dp(8),0,dp(12),0);localHeader.addView(code);
+        code=label("",19);code.setLetterSpacing(.1f);code.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);code.setContentDescription("Pairing code");code.setTextIsSelectable(true);code.setPadding(dp(8),0,dp(12),0);localHeader.addView(code);pairingCountdown=new PairingCountdown();localHeader.addView(pairingCountdown,new LinearLayout.LayoutParams(dp(24),dp(24)));
         ImageView localArrow=new ImageView(this);localArrow.setImageDrawable(new LineIcon("chevron"));localHeader.addView(localArrow,new LinearLayout.LayoutParams(dp(24),dp(24)));localCard.addView(localHeader,full());
         localDeviceBody=column();localDeviceBody.setPadding(dp(16),dp(8),dp(16),dp(12));localDeviceBody.setVisibility(View.GONE);localCard.addView(localDeviceBody,full());
         localHeader.setContentDescription(android.os.Build.MODEL+", device settings");localHeader.setStateDescription("Collapsed");localHeader.setOnClickListener(view->{boolean expanded=localDeviceBody.getVisibility()!=View.VISIBLE;localDeviceBody.setVisibility(expanded?View.VISIBLE:View.GONE);localArrow.animate().rotation(expanded?90:0).setDuration(160).start();localHeader.setStateDescription(expanded?"Expanded":"Collapsed");});
@@ -242,7 +256,12 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         interfaces.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){if(position>=interfaceValues.size())return;String value=interfaceValues.get(position);boolean changed=!value.equals(addressSelection);addressSelection=value;updateNetworkFields();if(changed&&!configuringNetwork&&!value.equals("custom"))applyNetworkSettings();}});
         portMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){updateNetworkFields();if(position==0&&!configuringNetwork)applyNetworkSettings();}});
         updateNetworkFields();
-        pairing=check("Require pairing code");pairing.setChecked(true);setup.addView(pairing,full());
+        pairing=check("Require pairing");pairing.setChecked(true);setup.addView(pairing,full());
+        setup.addView(note("Pairing credential"));pairingMode=networkSpinner();pairingMode.setAdapter(networkAdapter(List.of("Generated code","Custom PIN or password")));setup.addView(pairingMode,full());
+        pairingPassword=deviceField("Enter new PIN or password","",false);configureSecretField(pairingPassword);setup.addView(pairingPassword,full());
+        savePairingPassword=button("Use generated code",this::savePairingCredential);setup.addView(savePairingPassword);
+        pairingModeStatus=note("Generated codes change every 60 seconds.");setup.addView(pairingModeStatus,full());
+        pairingMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){pairingPassword.setVisibility(position==1?View.VISIBLE:View.GONE);savePairingPassword.setText(position==1?"Save PIN or password":"Use generated code");if(position==0)pairingPassword.setText("");}});
         content.addView(button("Pair by address",()->connectDialog("","","",false)));
         sectionHeading(content,"Paired devices");trustedRows=column();content.addView(trustedRows,full());
         unpairedSection=column();sectionHeading(unpairedSection,"Unpaired devices");unpairedRows=column();unpairedSection.addView(unpairedRows,full());unpairedSection.setVisibility(View.GONE);content.addView(unpairedSection,full());
@@ -341,21 +360,43 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         if(pairingDialog!=null)return;
         LinearLayout form=column();form.setPadding(dp(24),dp(12),dp(24),dp(12));form.setBackgroundColor(BG);
         form.addView(note(description));
-        EditText secret=deviceField("XXXXXX","",true);secret.setContentDescription("Pairing Code");
-        secret.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        secret.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
-        secret.setSaveEnabled(false);
-        form.addView(label("Pairing Code",16));form.addView(secret,full());if(attempt.gateway>0)form.addView(note("Enter the code shown on the device you are pairing with, not the forwarding device."));
+        EditText secret=deviceField("Enter PIN or password","",false);secret.setContentDescription("PIN or password");configureSecretField(secret);
+        form.addView(label("PIN or password",16));form.addView(secret,full());if(attempt.gateway>0)form.addView(note("Enter the PIN or password for the device you are pairing with, not the forwarding device."));
         android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle(displayName==null||displayName.isBlank()?"Pair with device":"Pair with "+displayName).setView(form).setPositiveButton("Pair",null).setNegativeButton("Cancel",null).create();
         pairingDialog=dialog;
         dialog.setOnDismissListener(ignored->{attempt.cancel();secret.setText("");if(pairingDialog==dialog)pairingDialog=null;});
         dialog.setOnShowListener(ignored->dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
             String entered=secret.getText().toString();
-            if(attempt.codeRequired&&!entered.matches("[0-9]{6}")){secret.setError("Enter the six-digit pairing code");secret.requestFocus();return;}
+            if(attempt.codeRequired&&!PairingAttempt.validSecret(entered)){secret.setError("Enter a PIN or password (up to 1024 UTF-8 bytes)");secret.requestFocus();return;}
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setEnabled(false);
             try {submitPairing(attempt,entered);}catch(Exception error){status(error.getMessage()==null?"Device connection failed":error.getMessage());}
             finally {secret.setText("");dialog.dismiss();}
         }));dialog.show();
+    }
+    private void configureSecretField(EditText field){
+        field.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        field.setSaveEnabled(false);field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        field.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+    }
+    private void savePairingCredential(){
+        if(peers==null)return;
+        boolean custom=pairingMode.getSelectedItemPosition()==1;
+        String value=custom?pairingPassword.getText().toString():"";
+        if(custom&&!PairingAttempt.validSecret(value)){pairingPassword.setError("Enter a PIN or password (up to 1024 UTF-8 bytes)");pairingPassword.requestFocus();return;}
+        try{peers.setPairingPassword(value);pairingPassword.setText("");refreshPairingStatus();Toast.makeText(this,custom?"Custom PIN or password saved":"Generated pairing code enabled",Toast.LENGTH_SHORT).show();}
+        catch(Exception error){status(error.getMessage()==null?"Pairing settings could not be saved":error.getMessage());}
+    }
+    private void refreshPairingStatus()throws Exception{
+        if(peers==null)return;
+        PeerService.PairingStatus state=peers.pairingStatus();
+        if(!pairingSettingsInitialized){pairingSettingsInitialized=true;pairingMode.setSelection(state.custom()?1:0);}
+        boolean visible=pairing.isChecked()&&!state.custom();
+        code.setVisibility(visible?View.VISIBLE:View.GONE);pairingCountdown.setVisibility(visible?View.VISIBLE:View.GONE);
+        String shown=state.custom()?"":state.code();if(!code.getText().toString().equals(shown))code.setText(shown);
+        code.setContentDescription("Pairing code "+shown+", changes in "+state.remainingSeconds()+" seconds");
+        pairingCountdown.update(state.remainingSeconds());
+        String message=state.custom()?"Custom PIN or password is set. Saved credentials are not displayed.":"Generated codes change every 60 seconds.";
+        if(!pairingModeStatus.getText().toString().equals(message))pairingModeStatus.setText(message);
     }
     private void submitPairing(PairingAttempt attempt,String code) throws Exception {
         if(!foreground||peers==null||!attempt.submit(code))return;
@@ -559,7 +600,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         if(peers!=null){safely(()->peers.offers(new String[0][]));safely(()->peers.stop());}
         for(Runnable cancel:new ArrayList<>(cancellations.values()))cancel.run();cancellations.clear();activeRows.clear();for(ResourceGroup group:activeGroups.values())group.body.removeAllViews();updateConnectionGroups();pendingDisplay=null;displayEvent=null;videoActive=false;displayKey=null;input.enable(false);videoArea.setVisibility(View.GONE);updateSharingControls();status("Device unavailable while ExtraPane is paused");
     }
-    private final Runnable poll=new Runnable(){public void run(){if(!foreground||peers==null)return;safely(()->{for(String[] event:peers.poll())event(event);});if(android.os.SystemClock.elapsedRealtime()>=nextInventoryRefresh){nextInventoryRefresh=android.os.SystemClock.elapsedRealtime()+15000;scheduleInventoryRefresh();}if(android.os.SystemClock.elapsedRealtime()>=nextListenAttempt){nextListenAttempt=android.os.SystemClock.elapsedRealtime()+3000;safely(PeerActivity.this::maintainAvailability);observeKnownPeers();}handler.postDelayed(this,30);}};
+    private final Runnable poll=new Runnable(){public void run(){if(!foreground||peers==null)return;safely(()->{for(String[] event:peers.poll())event(event);});if(android.os.SystemClock.elapsedRealtime()>=nextPairingStatus){nextPairingStatus=android.os.SystemClock.elapsedRealtime()+1000;safely(PeerActivity.this::refreshPairingStatus);}if(android.os.SystemClock.elapsedRealtime()>=nextInventoryRefresh){nextInventoryRefresh=android.os.SystemClock.elapsedRealtime()+15000;scheduleInventoryRefresh();}if(android.os.SystemClock.elapsedRealtime()>=nextListenAttempt){nextListenAttempt=android.os.SystemClock.elapsedRealtime()+3000;safely(PeerActivity.this::maintainAvailability);observeKnownPeers();}handler.postDelayed(this,30);}};
     private void event(String[] event)throws Exception{if(event.length<15)return;switch(event[0]){
         case "listening" -> {if(!foreground||event.length<=18||!sharingLifecycle.confirm(Long.parseLong(event[18])))return;listeningPort=Integer.parseInt(event[6]);updateOfferStates();status("Listening on "+sharingAddress+":"+event[6]+(listenerNotice.isEmpty()?"":". "+listenerNotice));listenerNotice="";refreshBeacon();}
         case "native-ready" -> {try{startNative(event);}catch(Exception e){ended(event,e.getMessage()==null?"Resource could not start":e.getMessage());}}
@@ -591,7 +632,7 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
     @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(!focused)input.reset();}
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(foreground)safely(()->{refreshOffers();ensureListening();});}
     @Override protected void onResume(){super.onResume();foreground=true;listenFailed=false;watchInventory();if(peers!=null)safely(()->{peers.setForeground(true);peers.setAutoConnect(true);refreshInterfaces();refreshOffers();ensureListening();});handler.post(poll);}
-    @Override protected void onPause(){unwatchInventory();if(pairingDialog!=null)pairingDialog.dismiss();cancelSearch();cancelDrawerAnimation();drawerSwipe.cancel();drawerSwipeConsumed=false;if(drawerVelocity!=null){drawerVelocity.recycle();drawerVelocity=null;}if(drawer!=null)setDrawerProgress(drawerOpen?1:0);foreground=false;handler.removeCallbacks(poll);if(peers!=null)safely(()->{peers.setAutoConnect(false);peers.setForeground(false);});stopSharing();super.onPause();}
+    @Override protected void onPause(){if(pairingPassword!=null)pairingPassword.setText("");unwatchInventory();if(pairingDialog!=null)pairingDialog.dismiss();cancelSearch();cancelDrawerAnimation();drawerSwipe.cancel();drawerSwipeConsumed=false;if(drawerVelocity!=null){drawerVelocity.recycle();drawerVelocity=null;}if(drawer!=null)setDrawerProgress(drawerOpen?1:0);foreground=false;handler.removeCallbacks(poll);if(peers!=null)safely(()->{peers.setAutoConnect(false);peers.setForeground(false);});stopSharing();super.onPause();}
     @Override protected void onStop(){foreground=false;handler.removeCallbacks(poll);stopSharing();super.onStop();}
     @Override protected void onDestroy(){unwatchInventory();handler.removeCallbacks(poll);if(peers!=null){PeerService closing=peers;peers=null;new Thread(closing::close,"ExtraPane peer shutdown").start();}super.onDestroy();}
 }

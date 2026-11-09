@@ -1,5 +1,30 @@
 # Resource-sharing implementation checklist
 
+## Active increment: pairing credentials and mutual resource availability
+
+- [x] Rotate generated codes every minute without interrupting paired devices.
+- [x] Add protected fixed custom PIN/password settings and neutral masked prompts.
+- [x] Display circular countdowns on desktop, Android and macOS.
+- [x] Distinguish incorrect credential confirmation from transport errors.
+- [x] Make one pairing provide resource availability in both directions, including
+  when a reverse direct/discovery route is absent.
+- [x] Verify authentication boundaries and UI transitions.
+- [ ] Build and deliver matching packages; complete all-platform CI.
+
+The user clarified that the pairing field should hide entered characters, not
+that typing freezes. Custom secrets remain fixed; generated credentials rotate.
+No further physical connections or driver changes are part of isolated checks.
+
+Verification: auth checks cover generated-code rotation at 59.999/60 seconds,
+wrong/custom/Unicode passwords, expiry during confirmation, strict UTF-8 and size
+limits, rate-limit reset and settings-change non-bypass. Store checks cover
+private persistence, corruption rejection and Windows DPAPI plaintext absence.
+Service checks retain active grants across credential changes. Mutual-resource
+and existing gateway regressions pass without reverse discovery/address hints.
+Qt app, offscreen prompt/countdown/masking and controller persistence/reset checks
+pass. Android's 16 host suites, both native ABIs, Java compilation and lint pass.
+macOS controls are implemented; full platform compilation remains for CI.
+
 ## Active increment: USB routing through the installed peer workspace
 
 - [x] Update unified receiver routing to recognize the current kind-bound USB
@@ -40,8 +65,8 @@ and alignment checks pass. APK stream-installed; version/code `11501` confirmed.
 - Android APK SHA-256:
   `665565dbee20be54fec18a1eb34765f0d04dcfe7f8703f093dbbb2eab8121b11`
 - [All-platform CI](https://github.com/EEkebin/ExtraPane/actions/runs/42563269836)
-  remains running at delivery. The previous run passed Windows/Linux/Android and
-  failed macOS compilation; that syntax fix is included here. Installed-app USB
+  completed successfully on Windows, Linux, Android and both macOS architectures.
+  The prior macOS syntax failure is resolved. Installed-app USB
   acceptance awaits the user's retry on both updated Windows installations.
 
 ## Active increment: automatic hardware updates and composite USB

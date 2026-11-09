@@ -2,8 +2,14 @@
 
 ## Devices workspace (development branch)
 
-The current workspace defaults to pairing. Its six-digit code lasts for the app
-process, and a password-authenticated exchange bound to the TLS channel establishes
+The current workspace defaults to pairing. Generated six-digit codes rotate every
+60 seconds; an optional fixed custom PIN/password replaces automatic generation.
+Custom secrets accept valid UTF-8 up to 1024 bytes and use the same private storage
+protections as remembered trust (Windows DPAPI; user-private files on POSIX).
+They are not advertised or returned to the UI after saving. Five failed new-pair
+attempts are allowed per minute across identities; pending handshakes count against
+the budget. Rotation does not revoke already-paired keys or active sessions.
+A password-authenticated exchange bound to the TLS channel establishes
 a random remembered key. Later sessions prove that key and pin the peer identity.
 Discovery supplies route candidates, not trusted identities. Pairing grants access
 to advertised resources; capture starts only on a resource request. Optional
