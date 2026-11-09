@@ -15,6 +15,8 @@ public:
         bool input=true;
         unsigned interfaceIndex=0;
         unsigned port=43824;QString code;
+        dm::video::wire::ScreenRequest screen;
+        bool existingScreenInput=false;
     };
     Receiver(Options options,InputQueue& input,Media& media,QObject* parent=nullptr);
 signals:

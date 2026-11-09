@@ -14,8 +14,8 @@
 #include <mutex>
 
 namespace dm::security {
-namespace {std::shared_ptr<access::Gate> accessGate;std::string accessCode;}
-void set_access_client(std::string code){if(!access::validCode(code))throw std::invalid_argument("Access code must contain exactly six digits");accessCode=std::move(code);}
+namespace {std::shared_ptr<access::Gate> accessGate;std::string accessCode;std::mutex accessCodeMutex;}
+void set_access_client(std::string code){if(!access::validCredential(code))throw std::invalid_argument("Access credential is malformed");std::lock_guard lock(accessCodeMutex);SecureZeroMemory(accessCode.data(),accessCode.size());accessCode=std::move(code);}
 std::shared_ptr<access::Gate> enable_access_host(){accessGate=std::make_shared<access::Gate>();return accessGate;}
 
 namespace {
@@ -90,8 +90,10 @@ struct TlsStream::State {
         return true;
     }
 };
-TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair_name)
+TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair_name,std::optional<std::string> credential)
     : state_(std::make_unique<State>(std::move(socket))) {
+    struct EraseCredential{std::optional<std::string>& value;~EraseCredential(){if(value)SecureZeroMemory(value->data(),value->size());}}eraseCredential{credential};
+    if(credential&&!credential->empty()&&!access::validCredential(*credential))throw std::invalid_argument("Access credential is malformed");
     server_=server;
     std::lock_guard lock(crypto_mutex);
     if (psa_crypto_init() != PSA_SUCCESS) throw std::runtime_error("Initialize system-backed crypto failed");
@@ -119,19 +121,42 @@ TlsStream::TlsStream(net::TcpStream socket, bool server, const std::string& pair
         mbedtls_ssl_set_bio(&state_->ssl, &state_->socket, send_callback, recv_callback, nullptr);
     } catch (...) { erase(); throw; }
     erase();
+    if(!server_){if(credential)credential_=*credential;else{std::lock_guard accessLock(accessCodeMutex);credential_=accessCode;}}
 }
-TlsStream::~TlsStream() = default;
+TlsStream::~TlsStream(){SecureZeroMemory(credential_.data(),credential_.size());if(control_gate_&&control_)control_gate_->close_control(control_);}
+bool TlsStream::open_control(){
+    if(!server_||control_)throw std::runtime_error("Invalid control admission");
+    if(!protected_)return false;
+    if(!accessGate)throw std::runtime_error("Control gate unavailable");
+    control_gate_=accessGate;control_=protected_->open_control(*control_gate_);return true;
+}
+std::vector<access::ChannelCredential> TlsStream::control_channels(unsigned kind,std::optional<bool> display_input){
+    if(!server_||kind>4)throw std::runtime_error("Invalid control resource");
+    if(!protected_)return {};
+    if(!control_gate_||!control_)throw std::runtime_error("Control not admitted");
+    return control_gate_->control_channels(1u<<kind,control_,display_input);
+}
+std::vector<access::ChannelCredential> TlsStream::issue_channels(unsigned mask){
+    if(!server_||!accessGate||!protected_)throw std::runtime_error("Grouped admission requires a one-time access code");
+    return protected_->issue_channels(*accessGate,mask);
+}
+std::optional<bool> TlsStream::authorized_display_input()const{return protected_?protected_->authorized_display_input():std::optional<bool>{};}
+void TlsStream::require_resource(unsigned kind)const{
+    if(protected_){const auto allowed=protected_->authorized_kind();if(allowed&&*allowed!=kind)throw std::runtime_error("Grouped credential does not authorize this resource");}
+}
+void TlsStream::cancel() noexcept { state_->socket.cancel(); }
 void TlsStream::handshake(Deadline deadline) {
+    struct Erase{std::string& value;~Erase(){SecureZeroMemory(value.data(),value.size());value.clear();}}erase{credential_};
     for (;;) {
         check_deadline(deadline);
         const int result = [&]{std::lock_guard lock(crypto_mutex);return mbedtls_ssl_handshake(&state_->ssl);}();
         if (result == 0) break;
         if (!state_->retry(result, deadline)) tls_error("TLS authentication failed", result);
     }
-    if((server_ && accessGate) || (!server_ && !accessCode.empty())){
+    if((server_ && accessGate) || (!server_ && !credential_.empty())){
         access_deadline_=std::chrono::steady_clock::now()+std::chrono::seconds(10);
         protected_=std::make_unique<access::Stream>([this](std::span<uint8_t> bytes){read_raw(bytes,access_deadline_);},[this](std::span<const uint8_t> bytes){write_raw(bytes,access_deadline_);});
-        if(server_)protected_->server(*accessGate);else protected_->client(accessCode);
+        if(server_)protected_->server(*accessGate);else protected_->client(credential_);
     }
 }
 void TlsStream::write_raw(std::span<const std::uint8_t> bytes, Deadline deadline) {
@@ -194,6 +219,13 @@ void session_check(const net::Options& options, const std::string& pair_name, bo
 }
 
 namespace dm::security {
-void TlsStream::read(std::span<uint8_t> bytes,std::chrono::steady_clock::time_point deadline){access_deadline_=deadline;if(protected_)protected_->read(bytes);else read_raw(bytes,deadline);}
+void TlsStream::peek(std::span<uint8_t> bytes,std::chrono::steady_clock::time_point deadline){
+    access_deadline_=deadline;
+    prefix_.peek(bytes,[&](auto data){if(protected_)protected_->read(data);else read_raw(data,deadline);});
+}
+void TlsStream::read(std::span<uint8_t> bytes,std::chrono::steady_clock::time_point deadline){
+    access_deadline_=deadline;
+    prefix_.read(bytes,[&](auto data){if(protected_)protected_->read(data);else read_raw(data,deadline);});
+}
 void TlsStream::write(std::span<const uint8_t> bytes,std::chrono::steady_clock::time_point deadline){access_deadline_=deadline;if(protected_)protected_->write(bytes);else write_raw(bytes,deadline);}
 }

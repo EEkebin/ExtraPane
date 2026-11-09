@@ -17,6 +17,7 @@ Environment:
 
 #include "Driver.h"
 #include "Driver.tmh"
+#include <algorithm>
 
 using namespace std;
 using namespace Microsoft::IndirectDisp;
@@ -38,15 +39,23 @@ static const struct IndirectSampleMonitor s_SampleMonitors[] =
             0x01,0x24,0x01,0x04,0x80,0x00,0x00,0x78,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
             0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,
             0x01,0x01,0x01,0x01,0x01,0x01,0x81,0x0E,0x00,0x72,0x51,0xD0,0x1E,0x20,0x6E,0x28,
-            0x55,0x00,0x00,0x00,0x00,0x00,0x00,0x1E,0x00,0x00,0x00,0xFC,0x00,0x44,0x4D,0x20,
-            0x4C,0x41,0x4E,0x20,0x44,0x69,0x73,0x70,0x6C,0x61,0x00,0x00,0x00,0xFF,0x00,0x44,
+            0x55,0x00,0x00,0x00,0x00,0x00,0x00,0x1E,0x00,0x00,0x00,0xFC,0x00,0x45,0x78,0x74,
+            0x72,0x61,0x50,0x61,0x6E,0x65,0x0A,0x20,0x20,0x20,0x00,0x00,0x00,0xFF,0x00,0x44,
             0x4D,0x30,0x30,0x30,0x30,0x30,0x30,0x30,0x30,0x30,0x30,0x31,0x00,0x00,0x00,0x10,
-            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xEF
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x06
         },
         { { 1280, 720, 30 }, { 1280, 720, 60 }, { 1920, 1080, 60 }, { 3000, 2000, 60 } },
         0
     }
 };
+static vector<IndirectSampleMonitor::SampleMonitorMode> InstanceModes(const ExtraPane::DisplayRequest::Request& requested)
+{
+    vector<IndirectSampleMonitor::SampleMonitorMode> modes;
+    if(ExtraPane::DisplayRequest::Valid(requested))modes.push_back({requested.Width,requested.Height,requested.Hz});
+    for(const auto& mode:s_SampleDefaultModes)
+        if(none_of(modes.begin(),modes.end(),[&](const IndirectSampleMonitor::SampleMonitorMode& item){return item.Width==mode.Width&&item.Height==mode.Height&&item.VSync==mode.VSync;}))modes.push_back(mode);
+    return modes;
+}
 
 #pragma endregion
 
@@ -227,11 +236,19 @@ NTSTATUS IddSampleDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT pDeviceInit)
         return Status;
     }
 
+    ExtraPane::DisplayRequest::Request requested={};
+    WDF_DEVICE_PROPERTY_DATA property;WDF_DEVICE_PROPERTY_DATA_INIT(&property,&ExtraPane::DisplayRequest::Property);
+    ULONG required=0;DEVPROPTYPE type=0;
+    Status=WdfDeviceQueryPropertyEx(Device,&property,sizeof(requested),&requested,&required,&type);
+    if(Status==STATUS_NOT_FOUND||Status==STATUS_OBJECT_NAME_NOT_FOUND)requested={};
+    else if(!NT_SUCCESS(Status))return Status;
+    else if(type!=DEVPROP_TYPE_BINARY||required!=sizeof(requested)||(!ExtraPane::DisplayRequest::Valid(requested)&&!ExtraPane::DisplayRequest::Default(requested)))return STATUS_INVALID_PARAMETER;
     Status = IddCxDeviceInitialize(Device);
+    if(!NT_SUCCESS(Status))return Status;
 
     // Create a new device context object and attach it to the WDF device object
     auto* pContext = WdfObjectGet_IndirectDeviceContextWrapper(Device);
-    pContext->pContext = new IndirectDeviceContext(Device);
+    pContext->pContext = new IndirectDeviceContext(Device,requested);
 
     return Status;
 }
@@ -445,10 +462,12 @@ void SwapChainProcessor::RunCore()
 
 #pragma region IndirectDeviceContext
 
-IndirectDeviceContext::IndirectDeviceContext(_In_ WDFDEVICE WdfDevice) :
-    m_WdfDevice(WdfDevice)
+IndirectDeviceContext::IndirectDeviceContext(_In_ WDFDEVICE WdfDevice,const ExtraPane::DisplayRequest::Request& requested) :
+    m_WdfDevice(WdfDevice),m_Modes(InstanceModes(requested))
 {
     m_Adapter = {};
+    copy(begin(s_SampleMonitors[0].pEdidBlock),end(s_SampleMonitors[0].pEdidBlock),m_Edid.begin());
+    if(ExtraPane::DisplayRequest::Valid(requested))ExtraPane::DisplayRequest::EncodeDescriptor(m_Edid.data(),requested);
 }
 
 IndirectDeviceContext::~IndirectDeviceContext()
@@ -474,9 +493,9 @@ void IndirectDeviceContext::InitAdapter()
     AdapterCaps.EndPointDiagnostics.TransmissionType = IDDCX_TRANSMISSION_TYPE_WIRED_OTHER;
 
     // Declare your device strings for telemetry (required)
-    AdapterCaps.EndPointDiagnostics.pEndPointFriendlyName = L"DM LAN Display";
-    AdapterCaps.EndPointDiagnostics.pEndPointManufacturerName = L"DM Project";
-    AdapterCaps.EndPointDiagnostics.pEndPointModelName = L"DM Virtual Monitor Prototype";
+    AdapterCaps.EndPointDiagnostics.pEndPointFriendlyName = L"ExtraPane LAN Display";
+    AdapterCaps.EndPointDiagnostics.pEndPointManufacturerName = L"ExtraPane";
+    AdapterCaps.EndPointDiagnostics.pEndPointModelName = L"ExtraPane Virtual Monitor";
 
     // Declare your hardware and firmware versions (required)
     IDDCX_ENDPOINT_VERSION Version = {};
@@ -538,7 +557,7 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
     else
     {
         MonitorInfo.MonitorDescription.DataSize = IndirectSampleMonitor::szEdidBlock;
-        MonitorInfo.MonitorDescription.pData = const_cast<BYTE*>(s_SampleMonitors[ConnectorIndex].pEdidBlock);
+        MonitorInfo.MonitorDescription.pData = m_Edid.data();
     }
 
     // ==============================
@@ -563,7 +582,7 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
     {
         // Create a new monitor context object and attach it to the Idd monitor object
         auto* pMonitorContextWrapper = WdfObjectGet_IndirectMonitorContextWrapper(MonitorCreateOut.MonitorObject);
-        pMonitorContextWrapper->pContext = new IndirectMonitorContext(MonitorCreateOut.MonitorObject);
+        pMonitorContextWrapper->pContext = new IndirectMonitorContext(MonitorCreateOut.MonitorObject,m_Modes);
 
         // Tell the OS that the monitor has been plugged in
         IDARG_OUT_MONITORARRIVAL ArrivalOut;
@@ -571,8 +590,8 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
     }
 }
 
-IndirectMonitorContext::IndirectMonitorContext(_In_ IDDCX_MONITOR Monitor) :
-    m_Monitor(Monitor)
+IndirectMonitorContext::IndirectMonitorContext(_In_ IDDCX_MONITOR Monitor,const vector<IndirectSampleMonitor::SampleMonitorMode>& modes) :
+    m_Monitor(Monitor),m_Modes(modes)
 {
 }
 
@@ -647,95 +666,42 @@ NTSTATUS IddSampleAdapterCommitModes(IDDCX_ADAPTER AdapterObject, const IDARG_IN
 _Use_decl_annotations_
 NTSTATUS IddSampleParseMonitorDescription(const IDARG_IN_PARSEMONITORDESCRIPTION* pInArgs, IDARG_OUT_PARSEMONITORDESCRIPTION* pOutArgs)
 {
-    // ==============================
-    // TODO: In a real driver, this function would be called to generate monitor modes for an EDID by parsing it. In
-    // this sample driver, we hard-code the EDID, so this function can generate known modes.
-    // ==============================
-
-    pOutArgs->MonitorModeBufferOutputCount = IndirectSampleMonitor::szModeList;
-
-    if (pInArgs->MonitorModeBufferInputCount < IndirectSampleMonitor::szModeList)
+    if(pInArgs->MonitorDescription.Type!=IDDCX_MONITOR_DESCRIPTION_TYPE_EDID||pInArgs->MonitorDescription.DataSize!=IndirectSampleMonitor::szEdidBlock||!pInArgs->MonitorDescription.pData)return STATUS_INVALID_PARAMETER;
+    const auto* bytes=static_cast<const BYTE*>(pInArgs->MonitorDescription.pData);
+    ExtraPane::DisplayRequest::Request requested={};
+    if(memcmp(bytes,s_SampleMonitors[0].pEdidBlock,IndirectSampleMonitor::szEdidBlock)!=0)
     {
-        // Return success if there was no buffer, since the caller was only asking for a count of modes
-        return (pInArgs->MonitorModeBufferInputCount > 0) ? STATUS_BUFFER_TOO_SMALL : STATUS_SUCCESS;
+        // The parse callback has no monitor context. A bounded private text
+        // descriptor carries only this device's validated mode request.
+        if(memcmp(bytes,s_SampleMonitors[0].pEdidBlock,108)!=0||!ExtraPane::DisplayRequest::DecodeDescriptor(bytes,requested))return STATUS_INVALID_PARAMETER;
     }
-    else
-    {
-        // In the sample driver, we have reported some static information about connected monitors
-        // Check which of the reported monitors this call is for by comparing it to the pointer of
-        // our known EDID blocks.
-
-        if (pInArgs->MonitorDescription.DataSize != IndirectSampleMonitor::szEdidBlock)
-            return STATUS_INVALID_PARAMETER;
-
-        DWORD SampleMonitorIdx = 0;
-        for(; SampleMonitorIdx < ARRAYSIZE(s_SampleMonitors); SampleMonitorIdx++)
-        {
-            if (memcmp(pInArgs->MonitorDescription.pData, s_SampleMonitors[SampleMonitorIdx].pEdidBlock, IndirectSampleMonitor::szEdidBlock) == 0)
-            {
-                // Copy the known modes to the output buffer
-                for (DWORD ModeIndex = 0; ModeIndex < IndirectSampleMonitor::szModeList; ModeIndex++)
-                {
-                    pInArgs->pMonitorModes[ModeIndex] = CreateIddCxMonitorMode(
-                        s_SampleMonitors[SampleMonitorIdx].pModeList[ModeIndex].Width,
-                        s_SampleMonitors[SampleMonitorIdx].pModeList[ModeIndex].Height,
-                        s_SampleMonitors[SampleMonitorIdx].pModeList[ModeIndex].VSync,
-                        IDDCX_MONITOR_MODE_ORIGIN_MONITORDESCRIPTOR
-                    );
-                }
-
-                // Set the preferred mode as represented in the EDID
-                pOutArgs->PreferredMonitorModeIdx = s_SampleMonitors[SampleMonitorIdx].ulPreferredModeIdx;
-
-                return STATUS_SUCCESS;
-            }
-        }
-
-        // This EDID block does not belong to the monitors we reported earlier
-        return STATUS_INVALID_PARAMETER;
-    }
+    const auto modes=InstanceModes(requested);
+    pOutArgs->MonitorModeBufferOutputCount=static_cast<UINT>(modes.size());pOutArgs->PreferredMonitorModeIdx=0;
+    if(!pInArgs->pMonitorModes)return STATUS_SUCCESS;
+    if(pInArgs->MonitorModeBufferInputCount<modes.size())return pInArgs->MonitorModeBufferInputCount?STATUS_BUFFER_TOO_SMALL:STATUS_SUCCESS;
+    for(UINT i=0;i<modes.size();++i)pInArgs->pMonitorModes[i]=CreateIddCxMonitorMode(modes[i].Width,modes[i].Height,modes[i].VSync,
+        i==0&&ExtraPane::DisplayRequest::Valid(requested)?IDDCX_MONITOR_MODE_ORIGIN_DRIVER:IDDCX_MONITOR_MODE_ORIGIN_MONITORDESCRIPTOR);
+    return STATUS_SUCCESS;
 }
 
 _Use_decl_annotations_
 NTSTATUS IddSampleMonitorGetDefaultModes(IDDCX_MONITOR MonitorObject, const IDARG_IN_GETDEFAULTDESCRIPTIONMODES* pInArgs, IDARG_OUT_GETDEFAULTDESCRIPTIONMODES* pOutArgs)
 {
-    UNREFERENCED_PARAMETER(MonitorObject);
-
-    // ==============================
-    // TODO: In a real driver, this function would be called to generate monitor modes for a monitor with no EDID.
-    // Drivers should report modes that are guaranteed to be supported by the transport protocol and by nearly all
-    // monitors (such 640x480, 800x600, or 1024x768). If the driver has access to monitor modes from a descriptor other
-    // than an EDID, those modes would also be reported here.
-    // ==============================
-
-    if (pInArgs->DefaultMonitorModeBufferInputCount < ARRAYSIZE(s_SampleDefaultModes))
-    {
-        pOutArgs->DefaultMonitorModeBufferOutputCount = ARRAYSIZE(s_SampleDefaultModes);
-        return pInArgs->DefaultMonitorModeBufferInputCount ? STATUS_BUFFER_TOO_SMALL : STATUS_SUCCESS;
-    }
-    else
-    {
-        for (DWORD ModeIndex = 0; ModeIndex < ARRAYSIZE(s_SampleDefaultModes); ModeIndex++)
-        {
-            pInArgs->pDefaultMonitorModes[ModeIndex] = CreateIddCxMonitorMode(
-                s_SampleDefaultModes[ModeIndex].Width,
-                s_SampleDefaultModes[ModeIndex].Height,
-                s_SampleDefaultModes[ModeIndex].VSync,
-                IDDCX_MONITOR_MODE_ORIGIN_DRIVER
-            );
-        }
-
-        pOutArgs->DefaultMonitorModeBufferOutputCount = ARRAYSIZE(s_SampleDefaultModes);
-        pOutArgs->PreferredMonitorModeIdx = 0;
-    }
-
+    auto* wrapper=WdfObjectGet_IndirectMonitorContextWrapper(MonitorObject);
+    if(!wrapper||!wrapper->pContext)return STATUS_INVALID_PARAMETER;
+    const auto& modes=wrapper->pContext->Modes();
+    pOutArgs->DefaultMonitorModeBufferOutputCount=static_cast<UINT>(modes.size());pOutArgs->PreferredMonitorModeIdx=0;
+    if(!pInArgs->pDefaultMonitorModes)return STATUS_SUCCESS;
+    if(pInArgs->DefaultMonitorModeBufferInputCount<modes.size())return pInArgs->DefaultMonitorModeBufferInputCount?STATUS_BUFFER_TOO_SMALL:STATUS_SUCCESS;
+    for(UINT i=0;i<modes.size();++i)pInArgs->pDefaultMonitorModes[i]=CreateIddCxMonitorMode(modes[i].Width,modes[i].Height,modes[i].VSync);
     return STATUS_SUCCESS;
 }
 
 _Use_decl_annotations_
 NTSTATUS IddSampleMonitorQueryModes(IDDCX_MONITOR MonitorObject, const IDARG_IN_QUERYTARGETMODES* pInArgs, IDARG_OUT_QUERYTARGETMODES* pOutArgs)
 {
-    UNREFERENCED_PARAMETER(MonitorObject);
+    auto* wrapper=WdfObjectGet_IndirectMonitorContextWrapper(MonitorObject);
+    if(!wrapper||!wrapper->pContext)return STATUS_INVALID_PARAMETER;
 
     vector<IDDCX_TARGET_MODE> TargetModes;
 
@@ -743,10 +709,11 @@ NTSTATUS IddSampleMonitorQueryModes(IDDCX_MONITOR MonitorObject, const IDARG_IN_
     // monitor's descriptor and instead are based on the static processing capability of the device. The OS will
     // report the available set of modes for a given output as the intersection of monitor modes with target modes.
 
-    for (const auto& Mode : s_SampleDefaultModes)
+    for (const auto& Mode : wrapper->pContext->Modes())
         TargetModes.push_back(CreateIddCxTargetMode(Mode.Width, Mode.Height, Mode.VSync));
 
     pOutArgs->TargetModeBufferOutputCount = (UINT) TargetModes.size();
+    if(!pInArgs->pTargetModes)return STATUS_SUCCESS;
 
     if (pInArgs->TargetModeBufferInputCount >= TargetModes.size())
     {

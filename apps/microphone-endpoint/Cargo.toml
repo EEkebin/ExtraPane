@@ -1,0 +1,13 @@
+[package]
+name = "extrapane-microphone-endpoint"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+
+[[bin]]
+name = "extrapane-microphone-endpoint"
+path = "src/main.rs"
+
+[dependencies]
+usbip-audio = { git = "https://github.com/network-audio/usbip-audio", rev = "58032ab0664ffec1d0c178f40a3a69359c21f597" }

@@ -13,6 +13,8 @@ app=root/'out/build/macos/platform/macos/ExtraPane.app'
 binary=app/'Contents/MacOS/ExtraPane'
 subprocess.run(['lipo',str(binary),'-verify_arch','arm64','x86_64'],check=True)
 resources=app/'Contents/Resources';resources.mkdir(exist_ok=True)
+documentation=resources/'Documentation';documentation.mkdir(exist_ok=True)
+shutil.copy2(root/'docs/MACOS.md',documentation/'MACOS.md')
 for dependency,relative in [('boringssl','boringssl-src'),('mbedtls','mbedtls-src'),('tf-psa-crypto','mbedtls-src/tf-psa-crypto')]:
     license_file=root/'out/build/macos/_deps'/relative/'LICENSE'
     if not license_file.exists(): raise RuntimeError('Missing TLS dependency license: '+str(license_file))

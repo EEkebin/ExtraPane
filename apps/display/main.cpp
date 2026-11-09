@@ -15,7 +15,7 @@ int main(int argc,char** argv) {
                 dm::display::configure_virtual(monitor.source,{static_cast<unsigned>(values[0]),static_cast<unsigned>(values[1]),static_cast<unsigned>(values[5]),static_cast<unsigned>(values[2]),values[3],values[4]});
                 std::cout<<"DM_MODE_APPLIED"<<std::endl;return 0;
             }
-            throw std::runtime_error("No independent DM display is active");
+            throw std::runtime_error("No independent ExtraPane display is active");
         }
         if(argc==2 && std::string_view(argv[1])=="list") {
             const auto monitors=dm::display::active_monitors();
@@ -34,7 +34,7 @@ int main(int argc,char** argv) {
         }
         std::cout<<"dm-display list                 Read current active monitor identities\n"
                    "dm-display attach <seconds>     Explicit device activation test; requires staged signed driver and administrator\n"
-                   "dm-display pattern <seconds>    Show a diagnostic window on an active DM monitor; waits up to 35 seconds\n";
+                   "dm-display pattern <seconds>    Show a diagnostic window on an active ExtraPane monitor; waits up to 35 seconds\n";
         return argc==2 && std::string_view(argv[1])=="--help" ? 0 : 1;
     } catch(const std::exception& error) { std::cerr<<"error: "<<error.what()<<'\n';return 1; }
 }

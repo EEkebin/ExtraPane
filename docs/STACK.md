@@ -1,5 +1,11 @@
 # Stack decision
 
+Current migration direction (2026-11-07): shared Qt Quick/QML interface with the
+existing C++20 native engines. See [RESOURCE-SHARING.md](RESOURCE-SHARING.md).
+The Windows WinUI, macOS AppKit and Android interfaces remain active until their
+replacement adapters pass parity checks. Historical choices below describe the
+existing release and do not imply that the migration is already complete.
+
 Selected 2026-11-01 under the user's instruction to choose the best fit. Native networking, TLS pairing, and a GPU-resident raw-pixel H264 path are tested on both Surface Book 2 GPUs at 720p30. WinUI 3 setup windows, native input and an installed development virtual driver now run on both machines; native 3000x2000/60 is measured. Audio and production driver distribution remain pending. Compressed network buffers still use CPU memory.
 
 ## Selected stack

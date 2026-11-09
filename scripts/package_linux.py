@@ -19,7 +19,8 @@ from release_version import current
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = {'linuxdeploy', 'linuxdeploy-plugin-qt', 'linuxdeploy-plugin-gstreamer.sh'}
 REQUIRED_PLUGINS = ('app', 'coreelements', 'playback', 'typefindfunctions',
-                    'videoparsersbad', 'opengl', 'qml6', 'videoconvertscale', 'videorate', 'pipewire', 'openh264')
+                    'videoparsersbad', 'opengl', 'qml6', 'videoconvertscale', 'videorate', 'pipewire', 'openh264',
+                    'videofilter', 'video4linux2', 'audioconvert', 'audioresample', 'pulseaudio')
 DECODER_PLUGINS = ('va', 'vaapi', 'nvcodec', 'v4l2codecs')
 
 
@@ -49,9 +50,9 @@ def main():
     lock = json.loads(args.tools_lock.read_text())
     if lock.get('schema') != 1 or set(lock.get('tools', {})) != TOOLS:
         raise SystemExit('Invalid tool lock; use packaging/linux/tools.example.json as the schema.')
-    for name, tool in lock['tools'].items():
-        path = Path(tool['path'])
-        if not path.is_absolute() or not path.is_file() or not re.fullmatch('[a-fA-F0-9]{64}', tool['sha256']):
+    for name, tool in [*lock['tools'].items(), ('runtime-x86_64', lock.get('runtime', {}))]:
+        path = Path(tool.get('path', ''))
+        if not path.is_absolute() or not path.is_file() or not re.fullmatch('[a-fA-F0-9]{64}', tool.get('sha256', '')):
             raise SystemExit(f'Supply the reviewed tool path and SHA256 for {name}.')
         if digest(path).lower() != tool['sha256'].lower():
             raise SystemExit(f'Tool hash mismatch: {name}')
@@ -127,7 +128,7 @@ def main():
             'sys.stdout.write(text);sys.stderr.write(result.stderr);sys.exit(result.returncode)\n')
         qmake_proxy.chmod(0o755)
         # This records the build inputs; it is not a runtime validation claim.
-        record = {'version': version, 'tools': lock['tools'],
+        record = {'version': version, 'tools': lock['tools'], 'runtime': lock['runtime'],
                   'plugins': {p.name: digest(p) for p in plugins}, 'validation': 'not performed by packaging'}
         (appdir/'usr/share/doc/extrapane/package-inputs.json').write_text(json.dumps(record, indent=2)+'\n')
         env = dict(os.environ)
@@ -135,7 +136,8 @@ def main():
                    QMAKE=str(qmake_proxy), QML_SOURCES_PATHS=str(qml_scan), NO_STRIP='1',
                    EXTRA_PLATFORM_PLUGINS=';'.join(p.name for p in (Path(subprocess.check_output([str(args.qmake), '-query', 'QT_INSTALL_PLUGINS'], text=True).strip())/'platforms').glob('*wayland*.so')),
                    GSTREAMER_PLUGINS_DIR=str(bundled_plugins), GSTREAMER_HELPERS_DIR=str(helpers),
-                   APPIMAGE_EXTRACT_AND_RUN='1', OUTPUT=str(stage/output.name), VERSION=version)
+                   APPIMAGE_EXTRACT_AND_RUN='1', OUTPUT=str(stage/output.name), VERSION=version,
+                   LDAI_RUNTIME_FILE=lock['runtime']['path'])
         subprocess.run([str(tools/'linuxdeploy'), '--appdir', str(appdir),
                         '--plugin', 'gstreamer', '--plugin', 'qt'],
                        cwd=stage, env=env, check=True)

@@ -1,0 +1,155 @@
+﻿name: Shared resource core
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/session/**'
+      - 'core/peers/**'
+      - 'cmake/Peers.cmake'
+      - 'core/access/**'
+      - 'apps/group-session/**'
+      - 'tests/group_admission_check.cpp'
+      - 'core/protocol/include/dm/prefix_buffer.hpp'
+      - 'platform/windows/unified_host.cpp'
+      - 'platform/windows/include/dm/unified_host.hpp'
+      - 'apps/service/**'
+      - 'apps/view/main.cpp'
+      - 'platform/windows/video_stream.cpp'
+      - 'tests/session_route_check.cpp'
+      - 'apps/microphone*/**'
+      - 'apps/usb*/**'
+      - 'platform/windows/microphone*.cpp'
+      - 'platform/windows/usb*.cpp'
+      - 'platform/windows/include/dm/microphone*.hpp'
+      - 'platform/windows/include/dm/usb*.hpp'
+      - 'cmake/Microphone*.cmake'
+      - 'cmake/Usb*.cmake'
+      - 'tests/microphone*_check.cpp'
+      - 'tests/usb*_check.cpp'
+      - 'tests/session_check.cpp'
+      - 'tests/channel_check.cpp'
+      - 'tests/media_check.cpp'
+      - 'tests/resource_security_check.cpp'
+      - 'tests/camera_*_check.cpp'
+      - 'tests/camera_protocol_check.cpp'
+      - 'apps/camera-setup/**'
+      - 'apps/resources/**'
+      - 'cmake/*Camera*.cmake'
+      - 'platform/windows/camera*.cpp'
+      - 'platform/windows/resource_session.cpp'
+      - 'platform/windows/include/dm/resource_session.hpp'
+      - 'platform/windows/network.cpp'
+      - 'platform/windows/tls.cpp'
+      - 'platform/windows/include/dm/network.hpp'
+      - 'platform/windows/include/dm/tls.hpp'
+      - 'platform/windows/camera_source.def'
+      - 'platform/windows/h264.cpp'
+      - 'platform/windows/include/dm/h264.hpp'
+      - 'platform/windows/include/dm/nv12.hpp'
+      - 'platform/windows/include/dm/camera*.hpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/shared-core.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/session/**'
+      - 'core/peers/**'
+      - 'cmake/Peers.cmake'
+      - 'core/access/**'
+      - 'apps/group-session/**'
+      - 'tests/group_admission_check.cpp'
+      - 'core/protocol/include/dm/prefix_buffer.hpp'
+      - 'platform/windows/unified_host.cpp'
+      - 'platform/windows/include/dm/unified_host.hpp'
+      - 'apps/service/**'
+      - 'apps/view/main.cpp'
+      - 'platform/windows/video_stream.cpp'
+      - 'tests/session_route_check.cpp'
+      - 'apps/microphone*/**'
+      - 'apps/usb*/**'
+      - 'platform/windows/microphone*.cpp'
+      - 'platform/windows/usb*.cpp'
+      - 'platform/windows/include/dm/microphone*.hpp'
+      - 'platform/windows/include/dm/usb*.hpp'
+      - 'cmake/Microphone*.cmake'
+      - 'cmake/Usb*.cmake'
+      - 'tests/microphone*_check.cpp'
+      - 'tests/usb*_check.cpp'
+      - 'tests/session_check.cpp'
+      - 'tests/channel_check.cpp'
+      - 'tests/media_check.cpp'
+      - 'tests/resource_security_check.cpp'
+      - 'tests/camera_*_check.cpp'
+      - 'tests/camera_protocol_check.cpp'
+      - 'apps/camera-setup/**'
+      - 'apps/resources/**'
+      - 'cmake/*Camera*.cmake'
+      - 'platform/windows/camera*.cpp'
+      - 'platform/windows/resource_session.cpp'
+      - 'platform/windows/include/dm/resource_session.hpp'
+      - 'platform/windows/network.cpp'
+      - 'platform/windows/tls.cpp'
+      - 'platform/windows/include/dm/network.hpp'
+      - 'platform/windows/include/dm/tls.hpp'
+      - 'platform/windows/camera_source.def'
+      - 'platform/windows/h264.cpp'
+      - 'platform/windows/include/dm/h264.hpp'
+      - 'platform/windows/include/dm/nv12.hpp'
+      - 'platform/windows/include/dm/camera*.hpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/shared-core.yml'
+permissions:
+  contents: read
+jobs:
+  windows-camera:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Configure camera compilation and hardware-free checks
+        run: cmake -S . -B out/camera-checks -DBUILD_TESTING=OFF -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_MICROPHONE_TESTS=ON
+      - name: Build camera source and checks
+        run: cmake --build out/camera-checks --config Release --target extrapane_camera_stream extrapane_camera_setup extrapane-camera-setup-check extrapane-resources extrapane-camera-format-check extrapane-camera-source-check extrapane-camera-pipe-check extrapane-camera-endpoint-check extrapane-camera-activation-check extrapane-camera-receiver-check ExtraPane.Microphone extrapane-microphone-check extrapane-usb-inventory-check extrapane-usb-storage-check extrapane-usb-host-backend-check extrapane-usb-recovery-check extrapane_usb_runner extrapane_usb_tunnel extrapane_usb extrapane_usb_recovery_tool dm-view ExtraPane.Service ExtraPane.Session extrapane-group-admission-check --parallel 2
+      - name: Check synthetic frames, local IPC and unregistered COM activation
+        run: ctest --test-dir out/camera-checks -C Release -R "camera-|resource-.*-config|microphone-|usb-inventory|usb-storage|usb-host-backend|usb-recovery|usb-source-config|usb-receiver-config|usb-config-|grouped-admission" --output-on-failure
+  microphone-endpoint:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Select pinned Rust compiler
+        run: rustup toolchain install 1.88.0 --profile minimal
+      - name: Check bounded PCM endpoint logic without devices
+        run: cargo +1.88.0 test --locked --manifest-path apps/microphone-endpoint/Cargo.toml --jobs 2
+      - name: Build endpoint without installing a driver
+        run: cargo +1.88.0 build --locked --release --manifest-path apps/microphone-endpoint/Cargo.toml --jobs 2
+  lifecycle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Configure isolated core
+        run: cmake -S core/session -B out/session-checks -DEXTRAPANE_SESSION_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build out/session-checks --config Release --parallel 2
+      - name: Check lifecycle and envelope validation
+        run: ctest --test-dir out/session-checks -C Release --output-on-failure
+  encrypted-control:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Configure in-memory security checks
+        run: cmake -S . -B out/resource-security -DDM_ACCESS_ONLY=ON -DEXTRAPANE_RESOURCE_SECURITY_TESTS=ON -DEXTRAPANE_PEERS_TESTS=ON -DEXTRAPANE_PEER_AUTH_TESTS=ON -DEXTRAPANE_PEER_TRANSPORT_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build out/resource-security --config Release --parallel 2
+      - name: Check admission and encrypted control
+        run: ctest --test-dir out/resource-security -C Release --output-on-failure

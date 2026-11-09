@@ -9,7 +9,7 @@ VersionInfoVersion={#GetEnv("EXTRAPANE_NUMERIC_VERSION")}
 VersionInfoProductTextVersion={#Version}
 AppPublisher=EEkebin
 AppPublisherURL=https://github.com/EEkebin/ExtraPane
-DefaultDirName={autopf}\SideScreen Driver
+DefaultDirName={autopf}\ExtraPane\Components\Display
 UsePreviousAppDir=no
 DisableDirPage=yes
 DisableProgramGroupPage=yes
@@ -26,6 +26,9 @@ SolidCompression=yes
 WizardStyle=modern
 CloseApplications=no
 RestartApplications=no
+[Registry]
+; Internal component: removal is orchestrated by the main ExtraPane uninstaller.
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\SideScreen.VirtualDisplayDriver_is1"; ValueType: dword; ValueName: "SystemComponent"; ValueData: "1"; Flags: uninsdeletevalue
 [Files]
 Source: "{#Package}\*"; DestDir: "{app}\package"; Flags: ignoreversion
 Source: "manage-driver.ps1"; DestDir: "{app}"; Flags: ignoreversion
@@ -69,8 +72,8 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  if CompareText(ExpandConstant('{app}'), ExpandConstant('{autopf}\SideScreen Driver')) <> 0 then
-    Result := 'The driver manager must be installed in Program Files\SideScreen Driver.'
+  if CompareText(ExpandConstant('{app}'), ExpandConstant('{autopf}\ExtraPane\Components\Display')) <> 0 then
+    Result := 'The driver manager must be installed in Program Files\ExtraPane\Components\Display.'
   else if not Consent.Values[0] then
     Result := 'Development certificate consent is required.'
   else if not StopRunningExtraPane then
@@ -91,7 +94,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and not RunManager('Install') then begin
     DriverInstallFailed := True;
-    RaiseException('The server driver could not be installed. See Program Files\SideScreen Driver\driver-setup.log and Windows\INF\setupapi.dev.log. No boot-security settings were changed.');
+    RaiseException('The server driver could not be installed. See Program Files\ExtraPane\Components\Display\driver-setup.log and Windows\INF\setupapi.dev.log. No boot-security settings were changed.');
   end;
 end;
 
@@ -105,7 +108,7 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
   if (CurPageID = wpFinished) and DriverInstallFailed then begin
     WizardForm.FinishedHeadingLabel.Caption := 'Server driver installation failed';
-    WizardForm.FinishedLabel.Caption := 'The driver is not ready for hosting. Check Program Files\SideScreen Driver\driver-setup.log, correct the reported problem, and run driver setup again. The driver manager remains installed for repair or removal.';
+    WizardForm.FinishedLabel.Caption := 'The driver is not ready for hosting. Check Program Files\ExtraPane\Components\Display\driver-setup.log, correct the reported problem, and run driver setup again. The driver manager remains installed for repair or removal.';
   end;
 end;
 

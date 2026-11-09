@@ -20,6 +20,7 @@ import javax.net.ssl.*;
 final class ClientSession extends Thread {
     interface Listener {
         void status(String message);
+        void connected();
         void format(int width,int height,int caps,String decoder);
         void statistics(String text);
         void ended(String reason);
@@ -28,25 +29,31 @@ final class ClientSession extends Thread {
     private final String address,local;private String accessCode;private final int port;
     private final Network network;
     private final Surface surface;
-    private final int width,height,hz,requested,scale;
+    private final int width,height,hz,requested,scale;private final boolean exactMode;private final long existingScreenId;
     private final Listener listener;
     private volatile boolean cancelled;
-    private volatile Socket socket;
+    private volatile String admissionLost;private boolean reportedConnected;
+    private volatile Socket socket;private final SocketCancellation socketCancellation=new SocketCancellation();
     private Decoder decoder;
-    ClientSession(String address,String local,Network network,Surface surface,int width,int height,int hz,int caps,int scale,InputQueue input,Listener listener,int port,String accessCode){
-        super("ExtraPane connection");this.port=port;this.accessCode=accessCode;this.address=address;this.local=local;this.network=network;this.surface=surface;
-        this.width=width;this.height=height;this.hz=hz;this.requested=caps;this.scale=scale;this.input=input;this.listener=listener;
+    ClientSession(String address,String local,Network network,Surface surface,int width,int height,int hz,int caps,int scale,InputQueue input,Listener listener,int port,String accessCode,boolean exactMode){
+        this(address,local,network,surface,width,height,hz,caps,scale,input,listener,port,accessCode,exactMode,0,false);
     }
-    void cancel(){cancelled=true;input.grant(0);Socket s=socket;if(s!=null)try{s.close();}catch(IOException ignored){}interrupt();}
+    ClientSession(String address,String local,Network network,Surface surface,int width,int height,int hz,int caps,int scale,InputQueue input,Listener listener,int port,String accessCode,boolean exactMode,long existingScreenId,boolean existingScreenInput){
+        super("ExtraPane connection");if(existingScreenId<0||existingScreenId>0xffffffffL||(existingScreenId!=0&&exactMode))throw new IllegalArgumentException("Invalid existing-screen mode");this.existingScreenId=existingScreenId;this.exactMode=exactMode;this.port=port;this.accessCode=accessCode;this.address=address;this.local=local;this.network=network;this.surface=surface;
+        this.width=width;this.height=height;this.hz=hz;this.requested=existingScreenId!=0&&!existingScreenInput?0:caps;this.scale=scale;this.input=input;this.listener=listener;
+    }
+    void cancel(){cancelled=true;input.grant(0);socketCancellation.close(socket);interrupt();}
     private void status(String text){Log.i("ExtraPane",text);listener.status(text);}
     static InetAddress ipv4(String text)throws IOException{
+        text=ConnectionValidation.normalizedAddress(text);
         String[] pieces=text.split("\\.",-1);if(pieces.length!=4)throw new IOException("Enter a numeric server IPv4 address");
         byte[] bytes=new byte[4];for(int i=0;i<4;i++){if(!pieces[i].matches("[0-9]{1,3}"))throw new IOException("Invalid IPv4 address");int v=Integer.parseInt(pieces[i]);if(v>255)throw new IOException("Invalid IPv4 address");bytes[i]=(byte)v;}
-        InetAddress a=InetAddress.getByAddress(bytes);if(a.isAnyLocalAddress() || a.isLoopbackAddress() || a.isMulticastAddress() || (bytes[0]&255)>=224)throw new IOException("Use a reachable LAN IPv4 address");return a;
+        InetAddress a=InetAddress.getByAddress(bytes);if(a.isAnyLocalAddress() || (bytes[0]&255)==0 || a.isMulticastAddress() || (bytes[0]&255)>=224)throw new IOException("Use a reachable LAN IPv4 address");return a;
     }
     private byte[] read(DataInputStream in,int size)throws IOException{if(cancelled)throw new IOException("Disconnected");byte[] b=new byte[size];in.readFully(b);return b;}
-    @Override public void run(){String ending="Disconnected";AccessChannel accessChannel=null;
+    @Override public void run(){String ending="Disconnected";AccessChannel accessChannel=null;AdmissionBroker.Lease admissionLease=null;
         try{
+            admissionLease=AdmissionBroker.acquire(address,port,local,network,accessCode,0,()->{admissionLost="Server admission ended";cancel();},()->cancelled);accessCode=admissionLease.credential;
             status("Connecting to "+address+"…");InetAddress peer=ipv4(address);
             Socket raw=new Socket();socket=raw;
             if(cancelled)throw new IOException("Disconnected");
@@ -67,8 +74,10 @@ final class ClientSession extends Thread {
             DataInputStream in=new DataInputStream(tls.getInputStream());OutputStream out=tls.getOutputStream();
             if(!accessCode.isEmpty()){status("Authenticating access code?");java.util.Timer deadline=new java.util.Timer(true);deadline.schedule(new java.util.TimerTask(){public void run(){try{tls.close();}catch(IOException ignored){}}},10000);
                 try{accessChannel=new AccessChannel(in,out,accessCode);}finally{deadline.cancel();}accessCode="";in=new DataInputStream(accessChannel.input);out=accessChannel.output;}
-            out.write(Protocol.request(width,height,hz,requested,scale));tls.setSoTimeout(45000);
-            long[] offer=Protocol.offer(read(in,32));prepare(offer,out);tls.setSoTimeout(15000);
+            out.write(existingScreenId!=0?Protocol.existingScreenRequest(existingScreenId,requested,scale):exactMode?Protocol.customRequest(width,height,hz,requested,scale):Protocol.request(width,height,hz,requested,scale));tls.setSoTimeout(45000);
+            long[] offer=Protocol.offer(read(in,32));
+            if(!ConnectionValidation.initialDisplayMode(exactMode,width,height,hz,offer))throw new IOException("Server cannot provide the requested custom display resolution and frame rate");
+            prepare(offer,out);tls.setSoTimeout(15000);
             long sequence=0,previous=0,frames=0,bytes=0,start=SystemClock.elapsedRealtime();
             while(!cancelled && (offer[3]==0 || sequence<offer[3])){
                 long[] frame=Protocol.frame(read(in,24));
@@ -88,13 +97,13 @@ final class ClientSession extends Thread {
             }
             if(!cancelled && offer[3]!=0){decoder.awaitOutput(sequence);out.write(new byte[]{'D','O','N','E'});ending="Server diagnostic session completed";}
         }catch(Exception error){if(!cancelled){ending=error.getMessage()==null?error.getClass().getSimpleName():error.getMessage();Log.e("ExtraPane","Connection failed",error);}}
-        finally{accessCode="";if(accessChannel!=null)accessChannel.close();input.grant(0);if(socket!=null)try{socket.close();}catch(IOException ignored){}if(decoder!=null)decoder.close();listener.ended(ending);}
+        finally{accessCode="";if(accessChannel!=null)accessChannel.close();input.grant(0);if(socket!=null)try{socket.close();}catch(IOException ignored){}if(decoder!=null)decoder.close();if(admissionLease!=null)admissionLease.close();listener.ended(admissionLost!=null?admissionLost:ending);}
     }
     private void prepare(long[] offer,OutputStream out)throws Exception{
         if(offer[4]!=2 || (offer[5]&~requested)!=0)throw new IOException("Unsupported codec or input grant");
         input.grant(0);if(decoder!=null)decoder.close();decoder=new Decoder((int)offer[0],(int)offer[1],surface);
         input.grant((int)offer[5]);listener.format((int)offer[0],(int)offer[1],(int)offer[5],decoder.name);
-        out.write(Protocol.READY);status("Connected · TLS 1.3 · "+decoder.name);
+        out.write(Protocol.READY);if(!reportedConnected){reportedConnected=true;listener.connected();}status("Connected · TLS 1.3 · "+decoder.name);
     }
     private final class Decoder implements AutoCloseable {
         final MediaCodec codec;

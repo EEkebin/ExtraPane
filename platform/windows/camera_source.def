@@ -1,0 +1,4 @@
+LIBRARY "ExtraPane.CameraSource.dll"
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

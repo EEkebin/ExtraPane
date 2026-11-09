@@ -1,5 +1,33 @@
 # Linux hosting, client and AppImage work
 
+## Devices workspace on the development branch
+
+The Devices workspace opens with Nearby devices and starts local discovery
+automatically. Expand **Connect by address** for IPv4/localhost, port, pairing
+code and interface selection. Direct connections remain available when multicast
+is unavailable or when connecting through a manually forwarded address.
+
+On Share, supported resources are available by default. Pairing alone does not
+start capture. Red power marks actual use of the exact resource and identifies
+its consumers; stopping one resource preserves the others. Disconnecting all
+active shares leaves the listener/catalog available. Gateway sharing remains
+opt-in. See [workspace testing](DEVICE-WORKSPACE-TESTING.md)
+for the current flow; older server/client instructions below describe the legacy
+mode. macOS/Linux validation of this latest increment remains pending.
+
+
+## Resource-sharing development branch (2026-11-07)
+
+The current development branch adds the shared grouped client UI, independent
+display windows, camera/microphone sending and receiving, and tray lifetime while
+hosting or connected. The listener handles independent resource sessions; actual
+display creation still depends on the desktop portal. These changes supersede the
+single-client and close-to-exit limits in the historical validation below.
+See [Linux resource prerequisites and limits](LINUX-RESOURCES.md) and
+[platform parity status](PLATFORM-PARITY.md). Camera/microphone sources can share
+one capture pipeline across destinations; USB remains unimplemented. Native builds and packaging are checked in
+GitHub; combined resources and virtual endpoints still require device validation.
+
 ## Current implementation and validation (2026-11-03)
 
 The user authorized Linux hosting, native input and packaging work, and confirmed Linux-host to Windows-client **video and mouse/keyboard delivery**. Windows-host to Linux-client video, input, reconnect, fullscreen and repaired toolbar contrast were also confirmed.
@@ -68,3 +96,44 @@ CI uses the pinned Arch snapshot described in RELEASING.md, records package vers
 ## Access-code connections
 
 Code-enabled builds add a TCP port (default 43824) and optional six-digit access code on the Client page. Use matching releases. Enable Require access code before starting the server; Generate new code admits another connection without disconnecting existing sessions. See [access-code setup and security](ACCESS-CODES.md) for expiry, retry limits and reachable internet endpoints. No-code mode is still restricted to trusted-network use.
+
+## Resource UI integration (development branch, 2026-11-07)
+
+The development Linux app now uses the same grouped, repeatable connection model
+as Windows. A row retains its effective destination while active; each display
+has its own receiver window, input queue and decoder. Custom width/height and
+1?360 target FPS are requested through the shared display protocol. Native mode
+uses the selected local monitor (the receiver's default target remains capped at
+60 FPS). These are requested rates, not measured delivery guarantees.
+
+Camera and microphone rows use native GStreamer source workers. Enumeration runs
+outside the UI thread and selectors report missing sources/plugins. A shared
+native capture pipeline feeds bounded queues for each destination. Microphone
+mute is per destination; camera mirror applies to the shared source. USB rows
+remain unavailable rather than exporting storage without an ownership backend.
+
+Protected destinations maintain one authenticated control connection and request
+a separate kind-bound ticket for each resource. Canceled requests and stale
+callbacks cannot be applied to a later connection generation. The pending ticket
+queue is bounded to64; established resources are not limited by that queue.
+Use matching server builds that support the control protocol.
+
+The main window stays available through the tray while hosting or sending/receiving
+resources. Double-click restores it. If a desktop has no system tray, closing the
+last window while active restores the app instead of silently stopping its work.
+Receiver windows have touch-accessible controls, F11 fullscreen, F10 controls,
+F8 input pause, and Ctrl+Shift+Q to disconnect only that window.
+
+Isolated Qt tests under `tests/linux_ui` cover receiver-window controls and the
+admission worker's cancellation, queue bounds and malformed control replies using
+a fake transport and the real credential parser. They pass on the Windows build
+host with Qt6.8.3. Native Linux compilation, AppImage startup and actual media
+interoperability remain separate gates; these checks do not open devices.
+
+Native source and receiving endpoint prerequisites are detailed in [Linux resources](LINUX-RESOURCES.md).
+
+The Windows microphone receiver now has a jitter-buffer implementation for all
+source platforms. Linux microphone receiving still uses its bounded PipeWire
+queue; clock-paced jitter buffering with safe mute invalidation remains a
+separate implementation and live-validation gate. See the receiving microphone
+section of [Linux resources](LINUX-RESOURCES.md) for the current limits.

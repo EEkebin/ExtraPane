@@ -1,3 +1,4 @@
+#include <strings.h>
 #include <algorithm>
 #include "transport.hpp"
 #import <Foundation/Foundation.h>
@@ -7,7 +8,7 @@
 #include <cstring>
 #include <chrono>
 namespace dm::mac {
-bool ipv4(const char* value){in_addr a{};if(inet_pton(AF_INET,value,&a)!=1)return false;auto n=ntohl(a.s_addr);return n && (n>>24)!=127 && (n>>24)<224;}
+bool ipv4(const char* value){in_addr a{};if(inet_pton(AF_INET,strcasecmp(value,"localhost")==0?"127.0.0.1":value,&a)!=1)return false;auto n=ntohl(a.s_addr);return (n>>24)>0 && (n>>24)<224;}
 static std::string errorText(nw_error_t error){
     if(!error)return "Connection closed";
     NSError* detail=CFBridgingRelease(nw_error_copy_cf_error(error));
@@ -19,7 +20,7 @@ static void wait(const std::shared_ptr<Completion>& c,int seconds){
     if(c->failed)throw std::runtime_error(c->message.empty()?"Connection closed or network operation failed":c->message);
 }
 Transport::Transport(const char* peer,const char* local,unsigned port,std::string code):code_(std::move(code)){
-    if(!port||port>65535||(!code_.empty()&&!access::validCode(code_)))throw std::runtime_error("Invalid port or six-digit access code");
+    if(!port||port>65535||(!code_.empty()&&!access::validCredential(code_)))throw std::runtime_error("Invalid port or access credential");
     if(!ipv4(peer) || (*local && !ipv4(local)))throw std::runtime_error("Enter a reachable numeric LAN IPv4 address");
     queue_=dispatch_queue_create("io.github.eekebin.extrapane.network",DISPATCH_QUEUE_SERIAL);
     auto params=nw_parameters_create_secure_tcp(^(nw_protocol_options_t tls){
@@ -33,11 +34,11 @@ Transport::Transport(const char* peer,const char* local,unsigned port,std::strin
         // Deliberate product automatic-LAN policy, scoped to this connection.
         sec_protocol_options_set_verify_block(security,^(sec_protocol_metadata_t,sec_trust_t,sec_protocol_verify_complete_t complete){NSLog(@"ExtraPane: automatic-LAN certificate callback");complete(true);},queue_);
     },^(nw_protocol_options_t tcp){nw_tcp_options_set_no_delay(tcp,true);});
-    if(*local)nw_parameters_set_local_endpoint(params,nw_endpoint_create_host(local,"0"));
-    connection_=nw_connection_create(nw_endpoint_create_host(peer,std::to_string(port).c_str()),params);
+    if(*local)nw_parameters_set_local_endpoint(params,nw_endpoint_create_host(strcasecmp(local,"localhost")==0?"127.0.0.1":local,"0"));
+    connection_=nw_connection_create(nw_endpoint_create_host(strcasecmp(peer,"localhost")==0?"127.0.0.1":peer,std::to_string(port).c_str()),params);
     nw_connection_set_queue(connection_,queue_);
 }
-Transport::~Transport(){cancel();}
+Transport::~Transport(){cancel();std::fill(code_.begin(),code_.end(),0);}
 void Transport::cancel(){nw_connection_cancel(connection_);}
 void Transport::connect(){
     auto done=std::make_shared<Completion>();auto once=std::make_shared<std::atomic_bool>(false);

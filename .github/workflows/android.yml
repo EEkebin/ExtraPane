@@ -22,10 +22,10 @@ jobs:
     env:
       EXTRAPANE_VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6.2.0
         with:
           distribution: temurin
           java-version: '21'
@@ -36,6 +36,29 @@ jobs:
           "$sdkmanager" 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
           test "$GITHUB_RUN_ATTEMPT" -lt 100
           echo "EXTRAPANE_ANDROID_VERSION_CODE=$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
+      - name: Check admission lifecycle and configuration without devices
+        run: |
+          mkdir -p out/android-host-checks
+          source=apps/android/app/src/main/java/io/github/eekebin/extrapane
+          javac -d out/android-host-checks apps/android/tests/stubs/*.java "$source/ListenerSettings.java" apps/android/tests/ListenerSettingsCheck.java "$source/InventorySnapshots.java" apps/android/tests/InventorySnapshotsCheck.java "$source/ResourceSharing.java" apps/android/tests/ResourceSharingCheck.java "$source/PairingAttempt.java" apps/android/tests/PairingAttemptCheck.java "$source/AdmissionBroker.java" "$source/SocketCancellation.java" "$source/ConnectionValidation.java" "$source/CaptureRegistry.java" "$source/CaptureAttempt.java" "$source/DeviceCaptureLease.java" "$source/CaptureFanout.java" "$source/FanoutPackets.java" "$source/CameraPackets.java" "$source/SpeakerProtocol.java" "$source/SpeakerJitter.java" "$source/AudioRouteCatalog.java" "$source/SharingLifecycle.java" "$source/PageHistory.java" "$source/DrawerSwipe.java" "$source/ProviderSessions.java" "$source/NearbyPeers.java" apps/android/tests/NearbyPeersCheck.java apps/android/tests/ProviderSessionsCheck.java apps/android/tests/DrawerSwipeCheck.java apps/android/tests/PageHistoryCheck.java apps/android/tests/SharingLifecycleCheck.java apps/android/tests/AudioRouteCatalogCheck.java apps/android/tests/SpeakerCheck.java apps/android/tests/AdmissionBrokerCheck.java apps/android/tests/ConnectionValidationCheck.java apps/android/tests/CaptureRegistryCheck.java apps/android/tests/CaptureFanoutCheck.java apps/android/tests/SocketCancellationCheck.java
+          java -cp out/android-host-checks io.github.eekebin.extrapane.ListenerSettingsCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.InventorySnapshotsCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.ResourceSharingCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.PairingAttemptCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.AdmissionBrokerCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.ConnectionValidationCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.CaptureRegistryCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.CaptureFanoutCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.SocketCancellationCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.SpeakerCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.ProviderSessionsCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.NearbyPeersCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.DrawerSwipeCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.PageHistoryCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.SharingLifecycleCheck
+          java -cp out/android-host-checks io.github.eekebin.extrapane.AudioRouteCatalogCheck
+      - name: Cache verified Gradle distribution
+        run: python3 scripts/prepare_android_gradle.py
       - name: Build and lint
         working-directory: apps/android
         run: bash gradlew assembleDebug assembleDebugAndroidTest lintDebug assembleRelease --no-daemon --console=plain
@@ -51,7 +74,7 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE"
           trap 'rm -f "$ANDROID_KEYSTORE"' EXIT
           python3 scripts/package_android.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: inputs.sign
         with:
           name: ExtraPane-Android-${{ inputs.version }}
@@ -59,7 +82,7 @@ jobs:
             out/dist-android/*.apk
             out/dist-android/*.apk.sha256
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: ${{ !inputs.sign }}
         with:
           name: ExtraPane-Android-development-${{ inputs.version }}

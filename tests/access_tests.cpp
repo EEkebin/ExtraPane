@@ -5,6 +5,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <atomic>
+#include <memory>
+#include <set>
 using namespace dm::access;
 void check(bool ok){if(!ok)throw std::runtime_error("Access check failed");}
 template<class F> void rejects(F f){bool rejected=false;try{f();}catch(const std::exception&){rejected=true;}check(rejected);}
@@ -42,6 +44,44 @@ int main(){try{
     // revoke an already authenticated stream.
     code=gate.generate();Pair established;check(established.authenticate(gate,code));Pair replay;check(!replay.authenticate(gate,code));gate.generate();
     established.client.write(Bytes{42});Bytes single(1);established.server.read(single);check(single[0]==42);
+    // More than sixteen independently authenticated control sessions may stay
+    // admitted. Consumed media tickets must not count as outstanding backlog.
+    Gate many;
+    std::vector<std::unique_ptr<Pair>> sessions;
+    std::set<uint64_t> controls;
+    for(int index=0;index<40;++index){
+        auto session=std::make_unique<Pair>();check(session->authenticate(many,many.generate()));
+        const auto control=session->server.open_control(many);check(controls.insert(control).second);
+        rejects([&]{session->server.open_control(many);});
+        const auto channels=many.control_channels(15,control);check(channels.size()==4);
+        for(const auto& channel:channels){
+            const auto ticket=many.begin_channel(channel.id,channel.kind);
+            many.consume_channel(channel.id,channel.kind,ticket.generation);
+            rejects([&]{many.begin_channel(channel.id,channel.kind);});
+        }
+        sessions.push_back(std::move(session));
+    }
+    // Regeneration has not revoked older controls; each can request again.
+    for(const auto control:controls){
+        const auto channels=many.control_channels(1,control);check(channels.size()==1);
+        const auto ticket=many.begin_channel(channels[0].id,0);
+        many.consume_channel(channels[0].id,0,ticket.generation);
+    }
+    // Keep the 128 unused-ticket safety bound, independent of active controls.
+    std::vector<ChannelCredential> backlog;
+    auto controlIt=controls.begin();
+    for(int index=0;index<32;++index,++controlIt){
+        const auto channels=many.control_channels(15,*controlIt);
+        backlog.insert(backlog.end(),channels.begin(),channels.end());
+    }
+    rejects([&]{many.control_channels(15,*controlIt);});
+    for(size_t index=0;index<4;++index){
+        const auto& channel=backlog[index];const auto ticket=many.begin_channel(channel.id,channel.kind);
+        many.consume_channel(channel.id,channel.kind,ticket.generation);
+    }
+    check(many.control_channels(15,*controlIt).size()==4);
+    for(const auto control:controls){many.close_control(control);rejects([&]{many.control_channels(1,control);});}
+    rejects([&]{many.begin_channel(backlog.back().id,backlog.back().kind);});
     // Reject replayed, reordered, oversized and truncated records. A failed
     // stream stays unusable, preventing nonce/state reuse after an exception.
     for(int mode=0;mode<4;++mode){

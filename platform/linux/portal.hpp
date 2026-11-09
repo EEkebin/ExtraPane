@@ -16,8 +16,8 @@ class Portal final:public QObject {
 public:
     explicit Portal(std::function<bool()> cancelled);
     ~Portal() override;
-    static QString unavailable();
-    void start(bool input);
+    static QString unavailable(bool existing=false,bool input=true);
+    void start(bool input,bool existing=false);
     void inject(const dm::input::Event& event);
     void release();
     bool closed() const {return closed_;}

@@ -4,11 +4,150 @@
 
 <img src="assets/branding/icon.png" alt="ExtraPane icon" width="96" align="right">
 
-ExtraPane uses another device as an extra monitor over Wi-Fi or Ethernet. Windows and Linux can host; a macOS host preview is in development with an initial M3 Pro session reported working. Windows, Linux and Android clients are implemented, with a macOS Universal client preview verified for Windows-host video and mouse/keyboard on an M3 Pro. Mouse, keyboard, touch and pen availability depends on the client and host; see the platform guides below.
+ExtraPane connects your computers and Android devices so they can share displays,
+cameras, microphones, speakers and supported USB devices. Pair once, then use
+resources in either direction. Each resource has its own connection control.
 
 [Project website](https://eekebin.github.io/ExtraPane/) | [Download latest release](https://github.com/EEkebin/ExtraPane/releases/latest) | [Report an issue](https://github.com/EEkebin/ExtraPane/issues) | [Build status](https://github.com/EEkebin/ExtraPane/actions/workflows/prerelease.yml)
 
-The desktop app contains Server, Client, Settings and About pages. A PC can perform either role. Windows servers support up to four clients; the Linux host currently supports one. Android is currently a client only. The macOS development preview adds hosting on macOS 13+, with Universal ZIP/DMG packaging verified; broader host hardware validation remains pending.
+The app opens **Devices** for pairing and local sharing preferences, and
+**Resources** for using another device's hardware. Choose a virtual monitor to
+extend the other computer's desktop, or view one of its existing screens.
+Windows, Linux and macOS support display hosting and receiving; Android receives
+displays and shares supported camera, microphone and speaker resources.
+Capabilities depend on the platform, installed components and permissions. See
+[Windows requirements](#requirements), [Linux](docs/LINUX.md),
+[macOS](docs/MACOS.md) and [Android](docs/ANDROID.md) for details.
+
+[Speakers](docs/SPEAKERS.md) creates a Windows playback device that sends audio to
+a selected Windows or Android output. It is separate from microphone forwarding.
+Physical playback validation is still pending. Other hardware-specific validation
+limits are recorded in the [implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md).
+
+Windows-to-Windows USB forwarding is available for
+eligible mice, keyboards and audio devices, including composites whose complete
+configuration descriptors contain only supported HID/audio functions. This is
+exclusive device forwarding, separate from microphone/speaker streaming. A USB
+mouse was imported from the Surface, safely ejected, and automatically returned
+to its local driver in the repeat hardware test after a return-race fix. Other
+hardware and crash recovery still need physical testing. Bluetooth, hubs, unknown
+functions and storage-containing composites are excluded; each Windows source
+currently exports one USB device at a time. See [USB support and limits](docs/USB.md).
+
+## Devices and resources
+
+Use the [device acceptance guide](docs/DEVICE-WORKSPACE-TESTING.md) for detailed
+checks. Build verification does not replace physical media and driver testing.
+Desktop `--legacy` and Android's **Legacy connections** keep the older
+Server/Client interface available; normal launch uses the peer workspace.
+
+Devices are peers: a computer can offer its camera while using another device's
+speakers. Supported resources are available by default while ExtraPane is open.
+Discover a device, pair using its displayed code, then select a resource to use.
+Available paired devices refresh their resource lists in the background.
+This does not activate a camera, microphone, monitor or USB device. Devices shows
+saved pairings without a separate Connected badge; resource power buttons show
+what is actually in use.
+Use resource power buttons to stop individual streams; saved devices manage their
+availability automatically. Forget removes trust locally and requests removal on
+the other device; offline remote removal is shown as pending.
+OS permissions and receiving-device support still apply.
+
+The device workspace listens on all local IPv4 addresses (`0.0.0.0`) at port
+`43824` by default. Choose a connected adapter address or **Custom** to restrict
+the listener, and choose the default port or a custom port. Preset selections
+apply immediately; custom fields use **Apply**. Changing the listener preserves
+existing resource sessions; if the new bind fails, ExtraPane attempts to restore
+the previous listener and reports the error. This does not configure port forwarding.
+
+Hardware inventories refresh automatically and changes are sent to paired peers,
+so plugging in or removing a device updates its resource list without a manual
+refresh. Active transfers retain their selected resource identity during expected
+driver transitions instead of being disconnected by the inventory refresh.
+
+Under **This device** on Devices, resources show Available until another device requests them. Red
+power indicates actual use of that exact resource and shows who is using it.
+Disconnecting one resource preserves the others; disconnecting all active shares
+leaves the device discoverable and ready for a new request.
+
+The local device card is at the top of Devices, with its hostname and
+pairing code visible while collapsed. Use the persistent **Share**
+switch to stop offering a resource, independently of its active-use
+power button. Resource cards and groups start collapsed. See the checklist for
+implementation and delivery status.
+
+**Devices** manages pairing and saved devices. Press **Search nearby** to run a
+short LAN search for new devices; paired devices are excluded. Use manual address entry for
+an IPv4 address or localhost, port and optional interface. **Connect** opens a
+pairing-code dialog when needed; the code is no longer entered on the Devices page. This also
+works on static-IP LANs and when multicast discovery is unavailable. Across networks,
+the address/port must already be reachable; discovery does not cross the internet.
+Open **Resources** to browse a paired device's available resources. Green power
+connects a resource; red power stops it without interrupting other resources.
+
+Each available device has a bordered, collapsible card in Resources. Collapsing it hides
+its resource controls without disconnecting or changing any active resource.
+
+Resources are organized into collapsible **Monitors**, **Cameras**, **Speakers**,
+**Microphones** and **USB** groups. Android uses a navigation drawer for Devices,
+Resources and About. Its audio choices identify physical routes such as
+Loudspeaker, Earpiece and connected headsets instead of internal Android port
+numbers. Actual route availability depends on Android's audio policy.
+Remote resource rows use green power buttons to connect and red power buttons to
+disconnect. Local resource power buttons turn red only while another device is
+using that resource; capture starts only on an authorized request. Desktop and Android navigation use hamburger menus.
+
+A **display destination** is the device that shows an extended desktop. The
+computer using that destination creates the virtual monitor and needs its native
+virtual-display support. Choose the destination's advertised monitor mode or a
+custom resolution/refresh rate. **Existing screen** instead captures an existing
+monitor; it does not create an extended desktop.
+
+In Resources, add monitor rows and choose **Virtual monitor** with **Custom** or
+a named monitor preset. Both Custom and named presets can be reused for separate
+virtual monitors. Each row has its own power control. **Existing screen** views the
+selected physical screen instead; a second simultaneous view of that same screen
+on the same receiving computer is blocked. Windows existing-screen input is opt-in
+through **Allow input**, where the provider advertises support.
+
+Pairing is enabled by default. Enter the other device's PIN or password on the
+first connection using the Connect dialog; remembered devices subsequently prove
+their saved secret without prompting again. Nearby devices with pairing disabled
+are labeled unverified and connect without a code dialog. A manual address defaults
+to pairing unless Connect without pairing is explicitly selected.
+Generated six-digit codes refresh every 20 seconds; the circular countdown shows when
+another code will appear. Under This device, choose a fixed custom PIN/password
+instead if preferred. Entries are masked and accept text up to 1024 UTF-8 bytes.
+Custom credentials stay fixed until changed and are stored in protected local
+settings. Rotation never interrupts paired devices or active resources.
+One pairing makes both devices' shared resources available, including over the
+existing authenticated connection when reverse discovery is unavailable.
+Disabling pairing requires an explicit unverified connection. Discovery is only a
+hint, never proof of identity. Direct IPv4, `localhost` and `127.0.0.1` work without
+multicast; loopback alone does not bypass authentication.
+
+For another network, manually forward the chosen TCP port to the sharing device
+and enter its reachable address and code. There is no UPnP. Optional gateway
+sharing is off by default: an authenticated trusted visitor can use explicitly
+offered resources from devices paired with the gateway, through one relay hop.
+This does not expose arbitrary network services or recursively discover networks.
+This branch adds independent pairing between the two end devices and an encrypted
+endpoint tunnel through the gateway. Both devices can offer and use resources;
+these are not fixed server/client roles. Earlier builds through pre.109.1 expose
+native admission credentials to their gateway and do not provide that guarantee.
+The replacement requires upgraded peers and is still undergoing verification.
+See [connection security](docs/SECURITY.md) for guarantees and remaining work.
+
+Windows, Linux and macOS use native platform adapters with different endpoint
+capabilities; Android currently offers supported local resources while foregrounded.
+The preview does not imply that every OS can receive every resource type. See the
+[implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md) and platform guides
+for unsupported paths and verification limits.
+
+The development Windows installer prepares all supported ExtraPane components in
+one installation, without Client only or Viewer only choices. The same app can
+offer and use resources at the same time. Development-driver certificate consent
+is still required; installation does not start capture or export USB storage.
 
 ## Requirements
 
@@ -20,7 +159,7 @@ The following requirements apply to Windows. See [Linux setup](docs/LINUX.md), [
 - The ExtraPane virtual-display driver on each PC that will act as a server. Driver setup and starting the server require administrator permission.
 - A touchscreen or compatible pen on the client to use those input features.
 
-The downloads include the app's WinUI runtime. Users do not need Python, SSH, Visual Studio or a Vulkan SDK.
+Current Windows development packages include the Qt runtime and native helpers. Users do not need Python, SSH, Visual Studio or a Vulkan SDK.
 
 ## Install
 
@@ -30,14 +169,24 @@ The release workflow produces a Windows installer and portable ZIP, a Linux x86_
 
 ### Installer
 
-Run `ExtraPane-<version>-Setup-win-x64.exe` and select how this PC will be used:
+Run `ExtraPane-<version>-Setup-win-x64.exe`. Current development installers install
+the complete app and managed display, camera, audio and USB components so this PC
+can offer and use resources. There is no role selection. Older packages may still
+offer Share only or Full installation.
 
-| Setup choice | What it installs |
-| --- | --- |
-| **Client only** | The per-user ExtraPane app. No driver or certificate changes. |
-| **Server + Client** | The same app, plus the required machine-wide virtual-display driver. Driver installation asks for explicit certificate consent and administrator permission. |
+When ExtraPane is already installed, setup offers **Update**, **Restore**, and
+**Uninstall**. Update is available only when the installer version is newer and
+keeps your settings. Restore removes ExtraPane-owned components and current-user
+settings, then installs the bundled version again. Uninstall removes them without
+reinstalling. Both removal choices preserve independently installed shared drivers
+and stop if the registered uninstaller cannot finish cleanup.
 
-Server + Client setup stops if the required driver installation fails or administrator permission is canceled. You can retry or return to Client only. Client only does not hide the Server page; to host later, rerun setup as Server + Client or run the bundled `ExtraPane.DriverSetup.exe`.
+Installation requires administrator permission and explicit certificate consent
+through the driver page's **I agree - Next** button. If driver installation fails
+after the app is copied, setup reports failure and retains ExtraPane for repair
+or removal. The main installer manages the display driver directly, and Windows
+Apps lists one ExtraPane uninstall entry. Installation does not activate resources
+or detach USB devices.
 
 The app is registered in Windows **Settings > Apps > Installed apps**. Setup offers a desktop shortcut and a checked **Launch ExtraPane** option on its Finish page. Silent setup does not launch the app. Updating requests that running ExtraPane instances shut down and waits for their server helpers to stop before replacing files.
 
@@ -45,7 +194,10 @@ The app is registered in Windows **Settings > Apps > Installed apps**. Setup off
 
 Extract the entire ZIP and run `ExtraPane.exe`. Keep the accompanying files together.
 
-A portable **server** must first run the included `ExtraPane.DriverSetup.exe` and complete the driver setup. A portable **client** does not need it. The driver is installed on Windows; it does not become portable just because the app runs from a ZIP.
+Use the matching Windows installer to prepare the managed display, camera, audio
+and USB components before running a portable copy. Extracting a ZIP does not
+install drivers. The older standalone `ExtraPane.DriverSetup.exe` belongs to
+previous display-only packages.
 
 ### Driver signing and Windows policy
 
@@ -63,13 +215,24 @@ For a connection across networks, the server address and port must already be re
 
 ## Connect
 
-1. On the PC whose desktop you want to extend, open **Server** and select **Start Driver**. Approve the helper's administrator prompt.
-2. On the second PC, open **Client**, enter one of the server's listed IPv4 addresses, and select **Connect**.
-3. Move a window to the new display. Use Windows **Settings > System > Display** to arrange monitors or change resolution and orientation.
+1. On the receiving/hosting PC, open **Server** and select **Start server**. Approve the helper's administrator prompt when required.
+2. On the other device, open **Client** and enter the server's IPv4 address and port (default `43824`). Supply its access code if required.
+3. Add the resources you want to share, select their source/settings, and use each row's green power button to connect. Display extends the server desktop onto the client; camera and microphone send the client's capture to the server.
+4. Use a row's red power button to stop it, or **Disconnect all** to stop every resource. Stopping the last resource also closes its remaining admission connection; idle Disconnect all controls are hidden.
 
-Start Driver begins listening. It creates an extended monitor only after a valid client connects. The client supplies its preferred resolution and refresh rate; the current driver offers 720p, 1080p and 3000x2000 modes, with streaming capped at a 60 FPS target. Actual delivered frame rate depends on hardware and network conditions.
+**Single server** supplies one destination to all rows. With it disabled, rows
+can target different servers. Resource groups expand/collapse without ending
+connections. The Windows/Linux sidebar slides between labels and an icon rail;
+its arrow points toward the available expand/collapse action.
 
-Windows layout changes are retained. Disconnecting a client removes only that client's monitor; the server continues listening and other clients stay connected. Stop Driver or the server tray's Exit command ends its sessions and removes their monitors.
+A virtual monitor is created only when a display resource connects. Display rows
+default to a custom 1920x1080 monitor at 60 FPS; matching a local monitor is
+optional. Custom target rates up to 360 FPS must pass driver, encoder and receiver
+validation. This is a requested rate, not a throughput guarantee.
+
+Use Windows **Settings > System > Display** to arrange monitors or change
+orientation. Disconnecting one display removes only its monitor; the server and
+other clients stay running. **Stop server** or tray **Exit** ends owned sessions.
 
 The address lists show connected physical network adapters, excluding loopback addresses. The server does not need the client's address. There is no automatic discovery or pairing step.
 
@@ -84,11 +247,11 @@ Connections use TLS encryption, but the automatic LAN mode does not authenticate
 | Show the toolbar | F10, hover briefly at the top center, or swipe down from the small top-center strip |
 | Pause or resume remote input | F8 |
 | Show connection statistics | Toolbar > Settings > Show statistics |
-| Stop hosting | Server > Stop Driver, or tray > Exit |
+| Stop hosting | Server > Stop server, or tray > Exit |
 
 The preview is resizable and supports maximize, minimize and fullscreen. Top-right taps go to the remote application. Pen events do not open the toolbar.
 
-Closing the main app window keeps the app in the tray only while its server is running. Client-only and idle windows exit normally. Normal sessions have no test pattern or timeout; Debug is off by default and enables bounded diagnostic sessions.
+On the shared Windows/Linux desktop interface, closing the main window keeps the app in the tray while a server or client resource is active. With no active work it exits normally. Double-click the tray icon to restore the window. Normal sessions have no test pattern or timeout; Debug is off by default and enables bounded diagnostic sessions.
 
 ## Settings
 
@@ -106,32 +269,45 @@ Mouse, keyboard, multi-touch and exposed pen pressure, tilt, buttons, inversion 
 
 Windows has one shared cursor and keyboard focus. Multiple clients extend the same desktop; they are not independent user sessions. Input cleanup releases session-owned keys, buttons and contacts on disconnect.
 
-Not implemented: system audio, microphone forwarding, Windows+K/Miracast, IPv6 transport, automatic client reconnection, ARM64/macOS builds, and DLSS/upscaling/frame generation. Custom LAN connections do not appear in Windows Cast.
+Not implemented: system audio, Windows+K/Miracast, IPv6 transport, automatic client reconnection, Windows ARM64 builds, and DLSS/upscaling/frame generation. Microphone sharing is available in the device-sharing development branch described below. macOS packages contain Intel and Apple Silicon binaries. Custom LAN connections do not appear in Windows Cast.
 
 ## Uninstall
 
-- Uninstall **ExtraPane** to remove the per-user app. Its uninstaller offers **Remove saved settings on this PC**, unchecked by default. Settings are also used by portable copies.
-- Uninstall **ExtraPane Virtual Display Driver** separately to remove driver packages and certificate entries that its installer added. Administrator permission is required. Stop sessions first; other users and portable servers on this PC also depend on this driver.
-- Pre-existing driver packages and certificate trust are preserved. Development drivers installed with older manual scripts are not automatically adopted or removed.
+Uninstall **ExtraPane** from Windows Installed apps. The single uninstaller removes
+its managed display, camera, microphone and USB-source components, then clears
+current-account settings and the known legacy pairing. Administrator permission
+is required. Independently installed/shared drivers and pre-existing certificate
+trust are preserved; files and registrations with changed or unproven ownership
+are not deleted.
 
-The driver uninstaller keeps its files and ownership records if removal fails so you can retry. See [driver installation](docs/DRIVER-INSTALLATION.md) for logs, silent options and recovery.
+You do not need to reconnect a missing USB card just to update the application.
+The installer reuses an exact verified compatible USB backend without changing
+its bindings or recovery records. During uninstall, the USB helper can retire
+verified inactive ownership for an absent device, keeping an audit record; this
+is not a clean-eject claim and does not write to a replacement card. A live export,
+foreign registration or ambiguous ownership still stops removal with a useful
+message, while keeping the cleanup helpers available. See [USB lifecycle and
+setup](docs/USB.md) and [driver installation](docs/DRIVER-INSTALLATION.md).
+
+The latest development cleanup also handles verified owned removal-pending USB
+stubs and stopped, disabled orphan services whose driver image is missing.
+Unrelated/shared drivers remain protected. Component-success popups are suppressed;
+actionable failures and a required final restart can still be reported. A passing
+removal precheck is not proof that the complete uninstall has finished.
 
 ## Build and verification
 
-An Android client is in development. Its first Pixel 8a test received a Windows extended desktop using hardware H.264 decoding; picture and physical touch were user-verified. Android hosting, pen, audio and on-screen keyboard forwarding are not implemented in this slice. See [Android build and validation](docs/ANDROID.md).
+The Android client's first Pixel 8a test received a Windows extended desktop using hardware H.264 decoding; picture and physical touch were user-verified. Native stylus and physical-keyboard forwarding are implemented, with hardware-specific validation still needed. Android hosting, system-audio playback and on-screen keyboard forwarding remain unimplemented. See [Android build and validation](docs/ANDROID.md).
 
-Linux x64 development builds can receive a Windows desktop and host a Linux virtual monitor through KDE's Wayland desktop portal. Both directions, including mouse and keyboard input, have been verified in an Arch VM. Linux hosting currently supports one client and uses software H.264 encoding; the portal controls monitor dimensions. Native Linux client touch/pen capture has synthetic checks, but physical devices remain unverified. Published downloads remain Windows-only while AppImage deployment is being validated. See [Linux setup, capabilities and validation](docs/LINUX.md).
+Linux x64 builds can receive a Windows desktop and host a Linux virtual monitor through KDE's Wayland desktop portal. Both directions, including mouse and keyboard input, have been verified in an Arch VM. The last device-validated Linux host supports one display client and uses software H.264 encoding; the portal controls monitor dimensions. Native Linux client touch/pen capture has synthetic checks, but physical devices remain unverified. AppImage packaging and extracted-app startup checks pass in GitHub builds. See [Linux setup, capabilities and validation](docs/LINUX.md).
 
-The implementation uses C++20, native Windows graphics/input APIs, and C++/WinRT with WinUI 3. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.
+The current desktop development interface uses Qt/QML over C++20 native engines; Android and macOS use native frontends. The earlier WinUI interface remains in the repository. Install Visual Studio C++ desktop tools, CMake, the Windows SDK, Python 3, and Inno Setup 6. Driver build scripts restore hash-pinned Microsoft SDK/WDK packages into the build directory.
 
-```powershell
-./scripts/build-apps.ps1
-./scripts/build-driver.ps1
-./scripts/package-driver.ps1
-./scripts/build-driver-installer.ps1
-python scripts/package_apps.py
-./scripts/package-installers.ps1
-```
+The current package pipeline is [Build and release](.github/workflows/prerelease.yml),
+with a [Windows shared-UI job](.github/workflows/windows-shared.yml) and separate
+Linux, Android and macOS jobs. Follow the pinned prerequisites and commands in
+[resource-sharing development](docs/RESOURCE-SHARING.md); the older
+`build-apps.ps1` pipeline builds the historical WinUI application.
 
 Outputs go to `out/dist`. Driver packaging creates a new development signing identity and refuses to overwrite an existing frozen package. Build scripts do not install the driver or trust its certificate.
 
@@ -154,3 +330,32 @@ Tags use UTC calendar dates, for example `v2026.11.03-pre.31.1`. Stable releases
 Created by [EEkebin](https://github.com/EEkebin). Third-party dependencies and notices are listed in [third_party](third_party/README.md) and included in the downloads. The driver derives from Microsoft's indirect-display sample and includes its license and attribution.
 
 A project-wide open-source license has not been selected. Third-party components retain their own licenses. ExtraPane is independent of Microsoft.
+
+## Device-sharing development
+
+The `feat/shared-resources` branch adds grouped, independent display, camera,
+microphone and USB connections. These changes are not yet a published release.
+
+- Windows includes camera/microphone receiving components and exclusive removable
+  USB storage sharing. Installation, recovery and combined-device tests remain
+  part of the acceptance checks.
+- Linux and Android can share compatible camera/microphone capture with several
+  destinations. Linux virtual receiving endpoints require the documented system
+  prerequisites; USB integration remains unfinished on both platforms.
+- macOS adds native camera/microphone sending and repeated resource rows. Universal
+  builds cover Intel and Apple Silicon. Virtual camera/microphone receiving, USB,
+  same-source fanout and multiple client display windows remain unfinished.
+
+Windows microphone reception now uses a 40 ms startup reserve, adapting up to
+80 ms after starvation, with bounded storage and short transition fades. This
+benefits every source platform sending to Windows. Isolated timing tests pass;
+the reported phone-microphone/three-display workload still needs a device retest.
+Linux's equivalent clock-paced jitter buffer remains pending. See the
+[microphone endpoint notes](apps/microphone-endpoint/README.md).
+
+Windows and Linux use the shared Qt interface in this development work. Android
+and macOS still use their native frontends; shared-UI parity is not complete.
+Isolated checks and package builds do not establish physical capture or delivery
+to receiving applications. See the [implementation checklist](docs/IMPLEMENTATION-CHECKLIST.md),
+[resource design and development build commands](docs/RESOURCE-SHARING.md) and
+[Windows verification guide](docs/WINDOWS-RESOURCE-TEST.md) for evidence and test gates.

@@ -1,7 +1,9 @@
+#include <dm/branding.hpp>
 #include <windows.h>
 #include <swdevice.h>
 #include <cfgmgr32.h>
 #include <dm/display.hpp>
+#include "../../drivers/idd/ModeRequest.h"
 #include <chrono>
 #include <algorithm>
 #include <cmath>
@@ -97,7 +99,7 @@ Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsi
     DEVMODEW m{};m.dmSize=sizeof(m);
     for(DWORD i=0;EnumDisplaySettingsW(source.c_str(),i,&m);++i) {
         if(m.dmDisplayOrientation>3 || m.dmPelsWidth>4096 || m.dmPelsHeight>4096 ||
-           m.dmPelsWidth%2 || m.dmPelsHeight%2 || m.dmDisplayFrequency>60 || !m.dmDisplayFrequency ||
+           m.dmPelsWidth%2 || m.dmPelsHeight%2 || m.dmDisplayFrequency>360 || !m.dmDisplayFrequency ||
            static_cast<unsigned long long>(m.dmPelsWidth)*m.dmPelsHeight>8847360)continue;
         const auto native_width=(m.dmDisplayOrientation&1)?m.dmPelsHeight:m.dmPelsWidth;
         const auto native_height=(m.dmDisplayOrientation&1)?m.dmPelsWidth:m.dmPelsHeight;
@@ -105,25 +107,29 @@ Mode closest_mode(const std::wstring& source,unsigned width,unsigned height,unsi
             const auto w=rotation?native_height:native_width,h=rotation?native_width:native_height;
             const double aspect=std::abs(std::log((double(w)/h)/(double(width)/height)));
             const double size=std::abs(std::log((double(w)*h)/(double(width)*height)));
-            const double rate=std::abs(double(m.dmDisplayFrequency)-std::min(hz,60u))/60;
+            const double rate=std::abs(double(m.dmDisplayFrequency)-std::min(hz,360u))/60;
             const double candidate=aspect*8+size+rate;
             if(candidate<score){score=candidate;best={w,h,m.dmDisplayFrequency,rotation,0,0};}
         }
     }
-    if(!best.width)throw std::runtime_error("No compatible mode in the installed DM display driver");
+    if(!best.width)throw std::runtime_error("No compatible mode in the installed ExtraPane display driver");
     return best;
 }
 void configure_virtual(const std::wstring& source,const Mode& value) {
     bool owned=false;for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
-    if(!owned || value.width<2 || value.height<2 || value.width>4096 || value.height>4096 || value.rotation>3 || value.hz<1 || value.hz>60)throw std::runtime_error("Invalid DM mode configuration");
+    if(!owned || value.width<2 || value.height<2 || value.width>4096 || value.height>4096 || value.rotation>3 || value.hz<1 || value.hz>360)throw std::runtime_error("Invalid ExtraPane display mode configuration");
     DEVMODEW mode{};mode.dmSize=sizeof(mode);
     mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION|DM_POSITION;
     mode.dmPelsWidth=value.width;mode.dmPelsHeight=value.height;mode.dmDisplayFrequency=value.hz;mode.dmDisplayOrientation=value.rotation;mode.dmPosition={value.x,value.y};
-    if(ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)!=DISP_CHANGE_SUCCESSFUL || ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)throw std::runtime_error("Windows rejected the DM mode");
+    if(ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)!=DISP_CHANGE_SUCCESSFUL || ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)throw std::runtime_error("Windows rejected the ExtraPane display mode");
 }
 void select_layout_profile(const std::wstring& profile) {
     if(profile.find_first_not_of(L"0123456789.-")!=std::wstring::npos)throw std::invalid_argument("Invalid layout profile");
     layout_name=profile.empty()?L"Layout":L"Layout-"+profile;
+}
+void select_client_layout_profile(const std::wstring& peer,unsigned slot) {
+    if(peer.empty()||slot<1)throw std::invalid_argument("Invalid client display layout slot");
+    select_layout_profile(peer+L"-"+std::to_wstring(slot));
 }
 void remember_mode(const std::wstring& source,unsigned profile_width,unsigned profile_height) {
     const auto mode=current_mode(source);
@@ -160,9 +166,9 @@ bool restore_mode(const std::wstring& source,unsigned profile_width,unsigned pro
 void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,unsigned fps,const std::vector<Monitor>& baseline) {
     bool owned=false;
     for(const auto& monitor:active_monitors())if(monitor.source==source && monitor.dm_virtual)owned=true;
-    if(!owned)throw std::runtime_error("Mode changes require an independent DM virtual monitor");
+    if(!owned)throw std::runtime_error("Mode changes require an independent ExtraPane virtual monitor");
     DEVMODEW mode{};mode.dmSize=sizeof(mode);
-    if(!EnumDisplaySettingsW(source.c_str(),ENUM_CURRENT_SETTINGS,&mode))throw std::runtime_error("Cannot read DM display mode");
+    if(!EnumDisplaySettingsW(source.c_str(),ENUM_CURRENT_SETTINGS,&mode))throw std::runtime_error("Cannot read ExtraPane display mode");
     mode.dmPelsWidth=width;mode.dmPelsHeight=height;mode.dmDisplayFrequency=fps;mode.dmDisplayOrientation=DMDO_DEFAULT;
     mode.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_DISPLAYFREQUENCY|DM_DISPLAYORIENTATION;
     if(!baseline.empty()) {
@@ -171,7 +177,7 @@ void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,
     }
     if(ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,CDS_TEST,nullptr)!=DISP_CHANGE_SUCCESSFUL ||
        ChangeDisplaySettingsExW(source.c_str(),&mode,nullptr,0,nullptr)!=DISP_CHANGE_SUCCESSFUL)
-        throw std::runtime_error("Requested DM resolution/refresh is unavailable in the installed driver");
+        throw std::runtime_error("Requested ExtraPane resolution/refresh is unavailable in the installed driver");
     restore_monitors(baseline);
     const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);
     unsigned stable=0;
@@ -182,7 +188,7 @@ void set_virtual_mode(const std::wstring& source,unsigned width,unsigned height,
         } else stable=0;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }while(std::chrono::steady_clock::now()<until);
-    throw std::runtime_error("DM display mode did not stabilize");
+    throw std::runtime_error("ExtraPane display mode did not stabilize");
 }
 struct VirtualMonitor::State {
     std::vector<Monitor> baseline;
@@ -200,7 +206,10 @@ struct VirtualMonitor::State {
         SetEvent(state.event);
     }
 };
-VirtualMonitor::VirtualMonitor(unsigned slot):state_(std::make_unique<State>()) {
+VirtualMonitor::VirtualMonitor(unsigned slot,Mode desired):state_(std::make_unique<State>()) {
+    const bool custom=desired.width||desired.height||desired.hz;
+    ExtraPane::DisplayRequest::Request request{1,desired.width,desired.height,desired.hz};
+    if(custom&&!ExtraPane::DisplayRequest::Valid(request))throw std::invalid_argument("Custom virtual display mode requires even dimensions 2..4096, at most 8847360 pixels and 1..360 Hz");
     auto& s=*state_;s.slot=slot;if(slot)s.baseline=active_monitors();
     if(!s.event) throw std::runtime_error("Cannot create device completion event");
     // Slot zero retains the diagnostic identity; server slots are independent adapters.
@@ -209,11 +218,15 @@ VirtualMonitor::VirtualMonitor(unsigned slot):state_(std::make_unique<State>()) 
     info.pszInstanceId=instance.c_str();
     info.pszzHardwareIds=L"DMIndirectDisplay\0";
     info.pszzCompatibleIds=L"DMIndirectDisplay\0";
-    info.pszDeviceDescription=L"DM LAN Virtual Display";
+    info.pszDeviceDescription=branding::virtual_display;
     info.CapabilityFlags=SWDeviceCapabilitiesRemovable|SWDeviceCapabilitiesSilentInstall|SWDeviceCapabilitiesDriverRequired;
-    check(SwDeviceCreate(L"DM",L"HTREE\\ROOT\\0",&info,0,nullptr,State::created,&s,&s.device),"Create DM virtual display (requires administrator and staged driver)");
-    if(WaitForSingleObject(s.event,10000)!=WAIT_OBJECT_0) throw std::runtime_error("DM device creation timed out");
-    check(s.result,"Enumerate DM virtual display");
+    DEVPROPERTY property{};property.CompKey.Key=ExtraPane::DisplayRequest::Property;property.CompKey.Store=DEVPROP_STORE_SYSTEM;
+    property.Type=DEVPROP_TYPE_BINARY;property.BufferSize=sizeof(request);property.Buffer=&request;
+    // Explicitly overwrite a prior slot's custom request when returning to the
+    // default mode list; PnP may retain properties on a removed device instance.
+    check(SwDeviceCreate(L"DM",L"HTREE\\ROOT\\0",&info,1,&property,State::created,&s,&s.device),"Create ExtraPane virtual display (requires administrator and staged driver)");
+    if(WaitForSingleObject(s.event,10000)!=WAIT_OBJECT_0) throw std::runtime_error("ExtraPane device creation timed out");
+    check(s.result,"Enumerate ExtraPane virtual display");
 }
 VirtualMonitor::~VirtualMonitor(){
     if(!state_->slot || state_->path.empty())return;
@@ -245,6 +258,6 @@ std::wstring VirtualMonitor::wait_for_source() {
         if(!found){previous.clear();stable=0;}
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     } while(std::chrono::steady_clock::now()<until);
-    throw std::runtime_error("No active independent DM monitor appeared. Check the signed driver/device status and select Extend for DM LAN Display in Windows Display settings.");
+    throw std::runtime_error("No active independent ExtraPane monitor appeared. Check the driver/device status and select Extend for the ExtraPane display in Windows Display settings.");
 }
 }

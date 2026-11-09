@@ -1,6 +1,9 @@
 #include <windows.h>
 #include <windowsx.h>
+#include <shellapi.h>
+#pragma comment(lib,"shell32.lib")
 #include <dm/display.hpp>
+#include <dm/branding.hpp>
 #include <dwmapi.h>
 #pragma comment(lib,"dwmapi.lib")
 #include <d3d11.h>
@@ -13,8 +16,10 @@
 #include <dm/video_opengl.hpp>
 #include <dm/input.hpp>
 #include <atomic>
+#include <algorithm>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <thread>
 #include <stdexcept>
 #include <iostream>
@@ -24,32 +29,57 @@
 namespace dm::video {
 namespace {
 struct PreviewWindow {
+    PreviewWindow(){DWORD value=1,size=sizeof(value);if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\ExtraPane\\ExtraPane",L"AutomaticRemoteKeyboard",RRF_RT_REG_DWORD,nullptr,&value,&size)==ERROR_SUCCESS)auto_keyboard.store(value!=0);}
     Renderer requested=Renderer::d3d11;
-    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr,stats=nullptr;bool show_statistics=false;std::atomic<Quality> quality{Quality::native};std::atomic<bool> menu_open{false},minimized{false};bool fullscreen=false,edge_gesture=false;
+    input::ReceiverInput* input=nullptr;HWND hwnd=nullptr,bar=nullptr,handle=nullptr,stats=nullptr;bool show_statistics=false;std::atomic_bool auto_keyboard=true;std::atomic<Quality> quality{Quality::native};std::atomic<bool> menu_open{false},minimized{false};bool fullscreen=false,edge_gesture=false;
     UINT32 gesture_id=0;POINT gesture_start{};ULONGLONG edge_hover=0;
     WINDOWPLACEMENT saved{sizeof(saved)};ULONGLONG last_reveal=0;
     int scale(int n)const{return MulDiv(n,static_cast<int>(GetDpiForWindow(hwnd)),96);}
     bool reveal_area(POINT p)const{RECT r{};GetClientRect(hwnd,&r);return p.y>=0&&p.y<scale(8)&&abs(p.x-r.right/2)<scale(48);}
     void release_input(){input->message(hwnd,WM_KILLFOCUS,0,0);input->message(hwnd,WM_SETFOCUS,0,0);}
-    void position_bar(){if(!bar)return;RECT r{};GetClientRect(hwnd,&r);POINT p{(r.right-scale(450))/2,scale(8)};ClientToScreen(hwnd,&p);SetWindowPos(bar,HWND_TOP,p.x,p.y,scale(450),scale(42),SWP_NOACTIVATE);}
+    void position_bar(){
+        if(!bar)return;RECT r{};GetClientRect(hwnd,&r);const int width=std::min(scale(540),static_cast<int>(r.right));
+        POINT p{(r.right-width)/2,scale(8)};ClientToScreen(hwnd,&p);SetWindowPos(bar,HWND_TOP,p.x,p.y,width,scale(48),SWP_NOACTIVATE);
+        for(int i=0;i<6;++i)SetWindowPos(GetDlgItem(bar,i+1),nullptr,i*width/6,0,(i+1)*width/6-i*width/6,scale(48),SWP_NOZORDER|SWP_NOACTIVATE);
+        if(handle){POINT grip{(r.right-scale(126))/2,0};ClientToScreen(hwnd,&grip);SetWindowPos(handle,HWND_TOP,grip.x,grip.y,scale(126),scale(32),SWP_NOACTIVATE);SetWindowPos(GetDlgItem(handle,7),nullptr,0,0,scale(126),scale(32),SWP_NOZORDER|SWP_NOACTIVATE);}
+    }
+    void hide_bar(){ShowWindow(bar,SW_HIDE);if(handle&&!IsIconic(hwnd))ShowWindow(handle,SW_SHOWNOACTIVATE);}
+    void keyboard(){
+        // The streamed desktop is not a local editable control. Launch Windows'
+        // explicit accessibility keyboard; do not fake TSF focus or synthesize a
+        // system-wide shortcut that could instead be forwarded to the host.
+        SetForegroundWindow(hwnd);SetFocus(hwnd);wchar_t system[MAX_PATH]{};
+        const auto count=GetSystemDirectoryW(system,MAX_PATH);
+        if(!count||count>=MAX_PATH){std::cout<<"KEYBOARD_UNAVAILABLE Cannot locate the Windows system directory."<<std::endl;return;}
+        const std::wstring path=std::wstring(system)+L"\\osk.exe";
+        const auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,L"open",path.c_str(),nullptr,nullptr,SW_SHOWNORMAL));
+        if(result<=32){std::cout<<"KEYBOARD_UNAVAILABLE Windows could not open On-Screen Keyboard ("<<result<<")."<<std::endl;MessageBoxW(hwnd,L"Windows could not open On-Screen Keyboard. You can open it from Windows Settings > Accessibility > Keyboard.",L"ExtraPane keyboard",MB_OK|MB_ICONINFORMATION);}
+        else std::cout<<"KEYBOARD_REQUESTED Windows On-Screen Keyboard"<<std::endl;
+        reveal();
+    }
     void settings(){
-        menu_open.store(true);auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING|(show_statistics?MF_CHECKED:0),10,L"Show statistics");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+        menu_open.store(true);auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING|(show_statistics?MF_CHECKED:0),10,L"Show statistics");AppendMenuW(menu,MF_STRING|(auto_keyboard.load()?MF_CHECKED:0),11,L"Automatic server keyboard (next connection)");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
         AppendMenuW(menu,MF_STRING|MF_DISABLED,0,L"Stream resolution - next connection only (not saved)");
         const wchar_t* modes[]={L"Native resolution (default)",L"75% resolution - lower bandwidth",L"50% resolution - lowest bandwidth"};
         for(unsigned i=0;i<3;++i)AppendMenuW(menu,MF_STRING|(static_cast<unsigned>(quality.load())==i?MF_CHECKED:0),20+i,modes[i]);
         RECT r{};GetWindowRect(GetDlgItem(bar,5),&r);SetForegroundWindow(hwnd);const auto command=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTALIGN,r.right,r.bottom,0,hwnd,nullptr);DestroyMenu(menu);menu_open.store(false);PostMessageW(hwnd,WM_NULL,0,0);
+        if(command==11){
+            const DWORD enabled=auto_keyboard.load()?0:1;HKEY key=nullptr;LSTATUS result=RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\ExtraPane\\ExtraPane",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr);
+            if(result==ERROR_SUCCESS){result=RegSetValueExW(key,L"AutomaticRemoteKeyboard",0,REG_DWORD,reinterpret_cast<const BYTE*>(&enabled),sizeof(enabled));RegCloseKey(key);}
+            if(result==ERROR_SUCCESS)auto_keyboard.store(enabled!=0);else std::cout<<"KEYBOARD_SETTING_FAILED "<<result<<std::endl;
+        }
         if(command==10){show_statistics=!show_statistics;ShowWindow(stats,show_statistics?SW_SHOWNOACTIVATE:SW_HIDE);}
         if(command>=20&&command<=22){quality.store(static_cast<Quality>(command-20));std::cout<<"NEXT_STREAM_SCALE "<<(command-20)<<std::endl;}
         reveal();
     }
-    void reveal(){last_reveal=GetTickCount64();position_bar();ShowWindow(bar,SW_SHOWNOACTIVATE);}
+    void reveal(){last_reveal=GetTickCount64();position_bar();if(handle)ShowWindow(handle,SW_HIDE);ShowWindow(bar,SW_SHOWNOACTIVATE);}
     void toggle(){release_input();if(!fullscreen){GetWindowPlacement(hwnd,&saved);MONITORINFO m{sizeof(m)};GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&m);SetWindowLongPtrW(hwnd,GWL_STYLE,WS_POPUP|WS_VISIBLE);SetWindowPos(hwnd,nullptr,m.rcMonitor.left,m.rcMonitor.top,m.rcMonitor.right-m.rcMonitor.left,m.rcMonitor.bottom-m.rcMonitor.top,SWP_FRAMECHANGED|SWP_NOZORDER);fullscreen=true;}else{SetWindowLongPtrW(hwnd,GWL_STYLE,WS_OVERLAPPEDWINDOW|WS_VISIBLE);SetWindowPlacement(hwnd,&saved);SetWindowPos(hwnd,nullptr,0,0,0,0,SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER);fullscreen=false;}SetWindowTextW(GetDlgItem(bar,3),fullscreen?L"Windowed":L"Fullscreen");reveal();}
 };
 constexpr UINT toolbar_command=WM_APP+42;
 LRESULT CALLBACK bar_proc(HWND hwnd,UINT message,WPARAM wparam,LPARAM lparam){
     if(message==WM_COMMAND){SendMessageW(GetWindow(hwnd,GW_OWNER),toolbar_command,LOWORD(wparam),0);return 0;}
     if(message==WM_MOUSEACTIVATE)return MA_NOACTIVATE;
-    if(message==WM_DRAWITEM){auto* item=reinterpret_cast<DRAWITEMSTRUCT*>(lparam);const auto brush=CreateSolidBrush(item->itemState&ODS_SELECTED?RGB(65,65,70):RGB(32,32,36));FillRect(item->hDC,&item->rcItem,brush);DeleteObject(brush);SetBkMode(item->hDC,TRANSPARENT);SetTextColor(item->hDC,RGB(245,245,245));wchar_t label[32]{};GetWindowTextW(item->hwndItem,label,32);auto font=reinterpret_cast<HFONT>(SendMessageW(item->hwndItem,WM_GETFONT,0,0));auto old=SelectObject(item->hDC,font);DrawTextW(item->hDC,label,-1,&item->rcItem,DT_CENTER|DT_VCENTER|DT_SINGLELINE);SelectObject(item->hDC,old);return TRUE;}
+    if(message==WM_DRAWITEM){auto* item=reinterpret_cast<DRAWITEMSTRUCT*>(lparam);const auto brush=CreateSolidBrush(item->CtlID==4?(item->itemState&ODS_SELECTED?RGB(143,29,42):RGB(179,38,53)):(item->itemState&ODS_SELECTED?RGB(65,65,70):RGB(32,32,36)));FillRect(item->hDC,&item->rcItem,brush);DeleteObject(brush);SetBkMode(item->hDC,TRANSPARENT);SetTextColor(item->hDC,RGB(245,245,245));wchar_t label[32]{};GetWindowTextW(item->hwndItem,label,32);auto font=reinterpret_cast<HFONT>(SendMessageW(item->hwndItem,WM_GETFONT,0,0));auto old=SelectObject(item->hDC,font);DrawTextW(item->hDC,label,-1,&item->rcItem,DT_CENTER|DT_VCENTER|DT_SINGLELINE);SelectObject(item->hDC,old);return TRUE;}
     if(message==WM_ERASEBKGND){RECT r{};GetClientRect(hwnd,&r);FillRect(reinterpret_cast<HDC>(wparam),&r,GetSysColorBrush(COLOR_BTNFACE));return 1;}
     return DefWindowProcW(hwnd,message,wparam,lparam);
 }
@@ -68,9 +98,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
             if(!(lparam&(1LL<<30))){if(wparam==VK_F9)DestroyWindow(hwnd);else if(wparam==VK_F11)state->toggle();else state->reveal();}return 0;
         }
         if(message==WM_KEYUP && (wparam==VK_F9||wparam==VK_F10||wparam==VK_F11))return 0;
-        if(message==toolbar_command){state->release_input();if(wparam==1)ShowWindow(hwnd,SW_MINIMIZE);if(wparam==2){if(state->fullscreen)state->toggle();ShowWindow(hwnd,IsZoomed(hwnd)?SW_RESTORE:SW_MAXIMIZE);}if(wparam==3)state->toggle();if(wparam==4)DestroyWindow(hwnd);if(wparam==5)state->settings();return 0;}
-        if(message==WM_MOVE||message==WM_SIZE) {state->position_bar();state->minimized.store(IsIconic(hwnd)!=FALSE);if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);state->release_input();}}
-        if(message==WM_TIMER){POINT p{};GetCursorPos(&p);RECT r{};GetWindowRect(state->bar,&r);if(IsIconic(hwnd))ShowWindow(state->bar,SW_HIDE);else if(GetTickCount64()-state->last_reveal>2500&&!PtInRect(&r,p))ShowWindow(state->bar,SW_HIDE);POINT local=p;ScreenToClient(hwnd,&local);if(state->edge_hover&&state->reveal_area(local)&&GetTickCount64()-state->edge_hover>=600){state->reveal();state->edge_hover=0;}return 0;}
+        if(message==toolbar_command){state->release_input();if(wparam==1)ShowWindow(hwnd,SW_MINIMIZE);if(wparam==2){if(state->fullscreen)state->toggle();ShowWindow(hwnd,IsZoomed(hwnd)?SW_RESTORE:SW_MAXIMIZE);}if(wparam==3)state->toggle();if(wparam==4)DestroyWindow(hwnd);if(wparam==5)state->settings();if(wparam==6)state->keyboard();if(wparam==7)state->reveal();return 0;}
+        if(message==WM_MOVE||message==WM_SIZE) {state->position_bar();state->minimized.store(IsIconic(hwnd)!=FALSE);if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);ShowWindow(state->handle,SW_HIDE);state->release_input();}}
+        if(message==WM_TIMER){POINT p{};GetCursorPos(&p);RECT r{};GetWindowRect(state->bar,&r);if(IsIconic(hwnd)){ShowWindow(state->bar,SW_HIDE);ShowWindow(state->handle,SW_HIDE);}else if(!state->menu_open.load()&&GetTickCount64()-state->last_reveal>4000&&!PtInRect(&r,p))state->hide_bar();POINT local=p;ScreenToClient(hwnd,&local);if(state->edge_hover&&state->reveal_area(local)&&GetTickCount64()-state->edge_hover>=600){state->reveal();state->edge_hover=0;}return 0;}
         if(message==WM_MOUSEMOVE){
             const bool promoted=(GetMessageExtraInfo()&0xFFFFFF00)==0xFF515700;
             POINT p{GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam)};
@@ -90,8 +120,14 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
 void check(HRESULT hr, const char* message) { if (FAILED(hr)) throw std::runtime_error(message); }
 struct DestroyWindowOnExit { HWND hwnd; ~DestroyWindowOnExit() { if (IsWindow(hwnd)) DestroyWindow(hwnd); } };
 }
-void preview_video(const net::Options& options, const std::string& pair,std::optional<unsigned> decoder_adapter,bool control,bool fullscreen,Quality quality,Renderer renderer) {
+void preview_video(const net::Options& options, const std::string& pair,std::optional<unsigned> decoder_adapter,bool control,bool fullscreen,Quality quality,Renderer renderer,PreviewOptions preview) {
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    struct MonitorChoice {std::wstring name;HMONITOR handle=nullptr;} choice{preview.monitor};
+    if(!choice.name.empty()){
+        EnumDisplayMonitors(nullptr,nullptr,[](HMONITOR monitor,HDC,LPRECT,LPARAM context)->BOOL{auto& choice=*reinterpret_cast<MonitorChoice*>(context);MONITORINFOEXW info{};info.cbSize=sizeof(info);if(GetMonitorInfoW(monitor,&info)&&_wcsicmp(info.szDevice,choice.name.c_str())==0){choice.handle=monitor;return FALSE;}return TRUE;},reinterpret_cast<LPARAM>(&choice));
+        if(!choice.handle)throw std::runtime_error("The selected local monitor is disconnected; select an attached monitor");
+    }
+    if((preview.width==0)!=(preview.height==0)||preview.width>4096||preview.height>4096||(preview.width&&(preview.width<2||preview.height<2||preview.width%2||preview.height%2))||preview.fps>360)throw std::invalid_argument("Unsupported custom display mode");
     input::ReceiverInput input_capture(control);
     PreviewWindow state;state.input=&input_capture;state.quality.store(quality);state.requested=renderer;
     WNDCLASSW cls{};
@@ -102,17 +138,25 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     cls.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     cls.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(101));
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Register preview window failed");
-    const HWND hwnd = CreateWindowExW(0, cls.lpszClassName, control?L"DM Display ? F8 pauses input ? F11 fullscreen":L"DM Display ? View only ? F11 fullscreen", WS_OVERLAPPEDWINDOW,
+    const HWND hwnd = CreateWindowExW(0, cls.lpszClassName, control?branding::display_title:branding::display_view_title, WS_OVERLAPPEDWINDOW,
                                      CW_USEDEFAULT, CW_USEDEFAULT, 960, 600, nullptr, nullptr, cls.hInstance, &state);
     if (!hwnd) throw std::runtime_error("Create preview window failed");
     DestroyWindowOnExit window{hwnd};
-    if(!RegisterHotKey(hwnd,1,MOD_CONTROL|MOD_SHIFT|MOD_NOREPEAT,'Q'))std::cout<<"DISCONNECT_SHORTCUT focused-window-only"<<std::endl;
+    // Keep disconnect scoped to the focused receiver when several windows run.
+    if(choice.handle){MONITORINFO panel{sizeof(panel)};if(!GetMonitorInfoW(choice.handle,&panel))throw std::runtime_error("Selected monitor information unavailable");const int width=std::min(960L,panel.rcWork.right-panel.rcWork.left),height=std::min(600L,panel.rcWork.bottom-panel.rcWork.top);SetWindowPos(hwnd,nullptr,panel.rcWork.left+(panel.rcWork.right-panel.rcWork.left-width)/2,panel.rcWork.top+(panel.rcWork.bottom-panel.rcWork.top-height)/2,width,height,SWP_NOZORDER|SWP_NOACTIVATE);}
     WNDCLASSW toolbar{};toolbar.lpfnWndProc=bar_proc;toolbar.hInstance=cls.hInstance;toolbar.lpszClassName=L"DMDisplayToolbar";toolbar.hCursor=cls.hCursor;
     RegisterClassW(&toolbar);
-    state.bar=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,toolbar.lpszClassName,L"Display controls",WS_POPUP,0,0,state.scale(450),state.scale(42),hwnd,nullptr,cls.hInstance,nullptr);
+    state.bar=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,toolbar.lpszClassName,L"Display controls",WS_POPUP,0,0,state.scale(540),state.scale(48),hwnd,nullptr,cls.hInstance,nullptr);
     const DWORD corners=2;DwmSetWindowAttribute(state.bar,33,&corners,sizeof(corners));
-    const wchar_t* labels[]={L"Minimize",L"Maximize",L"Fullscreen",L"Close",L"Settings"};
-    for(int i=0;i<5;++i){auto button=CreateWindowW(L"BUTTON",labels[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,state.scale(i*90),0,state.scale(90),state.scale(40),state.bar,reinterpret_cast<HMENU>(static_cast<INT_PTR>(i+1)),cls.hInstance,nullptr);SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);}
+    const wchar_t* labels[]={L"Minimize",L"Maximize",L"Fullscreen",L"Close",L"Settings",L"Keyboard"};
+    for(int i=0;i<6;++i){auto button=CreateWindowW(L"BUTTON",labels[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,state.scale(i*90),0,state.scale(90),state.scale(48),state.bar,reinterpret_cast<HMENU>(static_cast<INT_PTR>(i+1)),cls.hInstance,nullptr);SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);}
+    // A visible, touch-sized central handle replaces the hidden eight-pixel
+    // gesture as the primary way back to controls. Remote top corners remain
+    // completely available; keyboard shortcuts and the narrow gesture still work.
+    state.handle=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,toolbar.lpszClassName,L"ExtraPane display controls handle",WS_POPUP,0,0,state.scale(126),state.scale(32),hwnd,nullptr,cls.hInstance,nullptr);
+    auto grip=CreateWindowW(L"BUTTON",L"Controls  \x25BE",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,0,0,state.scale(126),state.scale(32),state.handle,reinterpret_cast<HMENU>(7),cls.hInstance,nullptr);
+    SendMessageW(grip,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+    DwmSetWindowAttribute(state.handle,33,&corners,sizeof(corners));
     WNDCLASSW statistics_class{};statistics_class.lpfnWndProc=stats_proc;statistics_class.hInstance=cls.hInstance;statistics_class.lpszClassName=L"ExtraPaneStatistics";RegisterClassW(&statistics_class);
     state.stats=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_LAYERED|WS_EX_TRANSPARENT,statistics_class.lpszClassName,L"Waiting for stream statistics...",WS_POPUP,0,0,state.scale(440),state.scale(150),hwnd,nullptr,cls.hInstance,nullptr);
     SetLayeredWindowAttributes(state.stats,0,235,LWA_ALPHA);SendMessageW(state.stats,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);
@@ -122,8 +166,9 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
     auto native=display::current_mode(panel.szDevice);
     // EnumDisplaySettings reports 59 for common 59.94 Hz panels; target 60 frames.
     if(native.hz==59)native.hz=60;
-    const wire::ClientDisplay preference{native.width,native.height,native.hz};
-    std::cout<<"CLIENT_DISPLAY "<<native.width<<'x'<<native.height<<'@'<<native.hz<<std::endl;
+    const bool custom=preview.width||preview.fps;
+    const wire::ClientDisplay preference{preview.width?preview.width:native.width,preview.height?preview.height:native.height,preview.fps?preview.fps:std::min(native.hz,60u),custom && preview.screen.mode!=wire::DisplayMode::existing_screen};
+    std::cout<<"CLIENT_DISPLAY "<<preference.width<<'x'<<preference.height<<'@'<<preference.hz<<std::endl;
     ShowWindow(hwnd, SW_SHOWNORMAL);
     // Test launcher hides its PowerShell parent; explicitly show the native preview.
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -153,7 +198,7 @@ void preview_video(const net::Options& options, const std::string& pair,std::opt
                 if (cancel.load()) throw std::runtime_error("Video preview closed by user");
                 std::lock_guard guard(mutex);
                 if(latest){++dropped_total;}latest = std::move(frame); // A single latest frame, never an unbounded UI queue.
-            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,quality,[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;});
+            },decoder_adapter,control?std::function<std::vector<input::Event>()>([&]{return input_capture.drain();}):std::function<std::vector<input::Event>()>{},[&](unsigned caps){if(!caps){std::lock_guard guard(mutex);latest.reset();}input_capture.grant(caps);std::cout<<"INPUT_CAPTURE caps="<<caps<<" digitizer="<<GetSystemMetrics(SM_DIGITIZER)<<" pen_axes=per-sample-validity"<<std::endl;},preference,quality,[&](StreamStats stats){std::lock_guard guard(mutex);stream_stats=stats;},state.auto_keyboard.load()?std::function<void()>([]{std::cout<<"KEYBOARD_EDITABLE_TOUCH host keyboard requested"<<std::endl;}):std::function<void()>{},preview.screen);
         } catch (...) { error = std::current_exception(); }
         done.store(true);
     });

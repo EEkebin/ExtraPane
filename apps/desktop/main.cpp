@@ -172,7 +172,7 @@ void firewall(bool add, const std::wstring &local = L"", const std::wstring &pee
         const bool owned = app && _wcsicmp(app, exe.c_str()) == 0;
         SysFreeString(app);
         if (!owned)
-            throw std::runtime_error("A different DM firewall rule exists; its application path needs review.");
+            throw std::runtime_error("A conflicting legacy ExtraPane firewall rule exists; its application path needs review.");
         check(rules->Remove(name));
     }
     if (!add)
@@ -323,7 +323,7 @@ struct App
                            CLEARTYPE_QUALITY, 0, L"Segoe UI");
         title_font = CreateFontW(scaled(-28), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
                                  CLEARTYPE_QUALITY, 0, L"Segoe UI");
-        auto title = control(L"STATIC", host ? L"DM  /  Host" : L"DM  /  Receiver", 0, 24, 20, 600, 38);
+        auto title = control(L"STATIC", host ? L"ExtraPane  /  Host" : L"ExtraPane  /  Receiver", 0, 24, 20, 600, 38);
         SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(title_font), TRUE);
         control(L"STATIC",
                 host ? L"Use another computer as an extended display over your LAN."
@@ -460,7 +460,7 @@ struct App
         }
         active = true;
         enabled(true);
-        status(host ? L"Waiting for the receiver. Open DM Receiver and click Connect." : L"Connecting to host...");
+        status(host ? L"Waiting for the receiver. Open ExtraPane Receiver and click Connect." : L"Connecting to host...");
     }
     void poll()
     {
@@ -549,7 +549,7 @@ struct App
         }
         else if (id == Forget)
         {
-            if (MessageBoxW(window, L"Forget this computer's saved DM pairing?", L"DM pairing",
+            if (MessageBoxW(window, L"Forget this computer's saved ExtraPane pairing?", L"ExtraPane pairing",
                             MB_YESNO | MB_ICONQUESTION) == IDYES)
             {
                 dm::security::revoke_pairing("dm-lan");
@@ -619,7 +619,7 @@ LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
             app->status(wide(e.what()));
             app->log(wide(e.what()));
         }
-        MessageBoxW(window, wide(e.what()).c_str(), L"DM", MB_OK | MB_ICONERROR);
+        MessageBoxW(window, wide(e.what()).c_str(), L"ExtraPane", MB_OK | MB_ICONERROR);
         if (message == WM_CREATE)
             return -1;
     }
@@ -637,7 +637,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int)
         {
             if (mutex)
                 CloseHandle(mutex);
-            throw std::runtime_error("This DM app is already open.");
+            throw std::runtime_error("This ExtraPane app is already open.");
         }
         struct Close
         {
@@ -655,11 +655,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int)
         cls.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         cls.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
         RegisterClassW(&cls);
-        const auto window = CreateWindowExW(0, cls.lpszClassName, host ? L"DM Host" : L"DM Receiver",
+        const auto window = CreateWindowExW(0, cls.lpszClassName, host ? L"ExtraPane Host" : L"ExtraPane Receiver",
                                             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT,
                                             CW_USEDEFAULT, scaled(710), scaled(720), nullptr, nullptr, instance, &app);
         if (!window)
-            throw std::runtime_error("Cannot create DM window");
+            throw std::runtime_error("Cannot create ExtraPane window");
         ShowWindow(window, SW_SHOWNORMAL);
         SetWindowPos(window, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
         if (std::wstring_view(arguments).starts_with(L"--start"))
@@ -691,7 +691,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int)
     }
     catch (const std::exception &e)
     {
-        MessageBoxW(nullptr, wide(e.what()).c_str(), L"DM", MB_OK | MB_ICONERROR);
+        MessageBoxW(nullptr, wide(e.what()).c_str(), L"ExtraPane", MB_OK | MB_ICONERROR);
         if (SUCCEEDED(initialized))
             CoUninitialize();
         return 1;

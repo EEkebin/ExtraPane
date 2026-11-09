@@ -11,5 +11,7 @@
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSLocalNetworkUsageDescription</key><string>Connect to ExtraPane devices on your local network to receive a desktop or share an extended Mac display.</string>
+<key>NSCameraUsageDescription</key><string>Share the camera you select with your connected ExtraPane server.</string>
+<key>NSMicrophoneUsageDescription</key><string>Share the microphone you select with your connected ExtraPane server.</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>

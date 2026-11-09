@@ -1,10 +1,9 @@
 """Fetch verified packaging tools and record the Arch build's dependency notices."""
-import hashlib
 import json
 from pathlib import Path
 import shutil
 import subprocess
-import urllib.request
+from verified_download import fetch_verified
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -12,14 +11,9 @@ def main():
     lock = json.loads((ROOT/'packaging/linux/tools.lock.json').read_text())
     target = ROOT/'out/linux-tools'
     target.mkdir(parents=True, exist_ok=True)
-    for name, entry in lock['tools'].items():
+    for name, entry in [*lock['tools'].items(), ('runtime-x86_64', lock['runtime'])]:
         path = target/name
-        with urllib.request.urlopen(entry['url'], timeout=60) as response, path.open('wb') as output:
-            shutil.copyfileobj(response, output)
-        with path.open('rb') as stream:
-            actual = hashlib.file_digest(stream, 'sha256').hexdigest()
-        if actual != entry['sha256']:
-            raise SystemExit(f'Hash mismatch for {name}; review and update the committed tool lock.')
+        fetch_verified([entry['url'], *([entry['fallback_url']] if 'fallback_url' in entry else [])], path, entry['sha256'])
         path.chmod(0o755)
         entry['path'] = str(path.resolve())
     (target/'tools.lock.json').write_text(json.dumps(lock, indent=2)+'\n')

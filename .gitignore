@@ -19,3 +19,5 @@ __pycache__/
 /apps/android/**/.cxx/
 *.jks
 *.keystore
+
+/apps/microphone-endpoint/target/

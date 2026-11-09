@@ -8,9 +8,20 @@ Linux uses hash-pinned tools from `packaging/linux/tools.lock.json`; changed ups
 
 `Build and release` also provides a `linux_only` validation switch, which skips Windows and never publishes. Platform builds normally run independently after one metadata job. Validation on 2026-11-03: [Linux build, synthetic input, extracted AppImage lifecycle and artifact upload passed](https://github.com/EEkebin/ExtraPane/actions/runs/41724190850). Windows build/package/installer checks passed in the Windows job of run 41722903190; that run's earlier Linux attempt failed before the container-notice fix. The installer fixture now locks the intentionally retained `SideScreen.DriverSetup` mutex. Neither validation run published a release.
 
-App installers remain per-user and offer Client only or Server + Client. Server + Client requires the bundled elevated driver installer and explicit development-certificate consent. Portable downloads also contain `ExtraPane.DriverSetup.exe`. The driver installer is machine-wide and independently registered for uninstall. See [driver installation](DRIVER-INSTALLATION.md) for ownership tracking, failures and trust changes.
+Current installers install under Program Files\ExtraPane and offer **Share only**
+or **Full installation (receive and share)**. Both include USB source support;
+Full installation also prepares the virtual-display, camera and audio/USB receiving
+components. Display certificate consent remains explicit. The main ExtraPane
+uninstaller owns the managed components; there is one Windows Apps entry.
+Portable copies require the matching installer to prepare receiving components.
+See [Windows component installation](DRIVER-INSTALLATION.md).
 
-App updates/uninstall request tray Exit from running instances and wait for app/helper shutdown. The Finish-page launch choice is checked by default and skipped in silent setup. App uninstall optionally removes saved settings and preserves the driver. Driver uninstall removes only recorded installer-owned packages/trust and preserves pre-existing installations. Silent app setup defaults to Client only; server deployment requires `/SERVER=1 /ACCEPTDEVELOPMENTCERT=1` and elevation for the dependency.
+Updates request application/helper shutdown before replacing files. Uninstall
+removes ExtraPane-owned components and current-user settings while preserving
+independently installed shared drivers. Silent setup defaults to Share only;
+`/SERVER=1 /ACCEPTDEVELOPMENTCERT=1` retains its compatibility meaning of Full
+installation with explicit development-certificate consent. No device is exported
+or virtual monitor created by installation.
 
 App and installer signing is not configured. Do not describe these downloads as a production signed-driver installer. The driver installer stages a development-signed package; Microsoft release signing remains future work. CI verifies staging/removal on disposable runners, while actual driver loading and input acceptance require Windows 11 hardware checks.
 

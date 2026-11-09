@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      resource_platforms_only:
+        description: Validate Linux and Android together (never publishes a release)
+        type: boolean
+        default: false
       macos_only:
         description: Validate macOS only (never publishes a release)
         type: boolean
@@ -39,7 +43,7 @@ permissions:
   contents: read
   pull-requests: read
 concurrency:
-  group: release-${{ github.ref }}-${{ github.event_name }}-${{ inputs.linux_only && 'linux' || 'all' }}
+  group: release-${{ github.ref }}-${{ github.event_name }}-${{ inputs.macos_only && 'macos' || inputs.android_only && 'android' || inputs.resource_platforms_only && 'resources' || inputs.linux_only && 'linux' || 'all' }}
   cancel-in-progress: false
 jobs:
   metadata:
@@ -50,10 +54,10 @@ jobs:
       numeric: ${{ steps.metadata.outputs.numeric }}
       publish: ${{ steps.metadata.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
       - name: Release metadata
@@ -82,91 +86,19 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'Cannot verify merged PR'}
             $publish=@($prs | Where-Object {$_.merged_at -and $_.base.ref -eq 'main' -and $_.merge_commit_sha -eq $env:GITHUB_SHA}).Count -gt 0
           }
+          if('${{ inputs.resource_platforms_only }}' -eq 'true'){$publish=$false}
           "publish=$($publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: release-metadata
           path: release-metadata.json
           if-no-files-found: error
   build:
     needs: metadata
-    if: inputs.linux_only != true && inputs.android_only != true && inputs.macos_only != true
-    runs-on: windows-2025
-    timeout-minutes: 45
-    env:
-      EXTRAPANE_VERSION: ${{ needs.metadata.outputs.version }}
-      EXTRAPANE_NUMERIC_VERSION: ${{ needs.metadata.outputs.numeric }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-metadata
-          path: .
-      - name: Check installer behavior before building apps
-        shell: pwsh
-        run: |
-          $stage=Join-Path $env:RUNNER_TEMP 'ExtraPane-installer-check'
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          'Installer test payload' | Set-Content (Join-Path $stage 'README.txt')
-          Copy-Item "$env:WINDIR\System32\where.exe" (Join-Path $stage 'ExtraPane.exe')
-          $env:EXTRAPANE_ROLE='ExtraPane'
-          $env:EXTRAPANE_STAGE=$stage
-          $env:EXTRAPANE_DIST=Join-Path $env:RUNNER_TEMP 'ExtraPane-installer-check-output'
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging/ExtraPane.iss
-          if($LASTEXITCODE -ne 0){throw 'Installer preflight compilation failed'}
-          python -c "import sys,os; from pathlib import Path; sys.path.insert(0,'scripts'); from test_uninstall_data import verify; verify(next(Path(os.environ['EXTRAPANE_DIST']).glob('*.exe')))"
-          if($LASTEXITCODE -ne 0){throw 'Installer preflight behavior failed'}
-      - name: Build apps and run engine tests
-        shell: pwsh
-        run: ./scripts/build-apps.ps1
-      - name: Build and package server driver
-        shell: pwsh
-        run: |
-          ./scripts/build-driver.ps1
-          ./scripts/package-driver.ps1
-          ./scripts/build-driver-installer.ps1
-      - name: Package portable apps
-        run: python scripts/package_apps.py
-      - name: Build installers
-        shell: pwsh
-        run: ./scripts/package-installers.ps1
-      - name: Verify release artifacts
-        run: python scripts/verify_packages.py
-      - name: Verify server install and driver ownership
-        run: python scripts/test_driver_installer.py
-      - name: Preserve driver installer diagnostics on failure
-        if: failure()
-        shell: pwsh
-        run: |
-          $target='out/driver-installer-logs/manager'
-          New-Item -ItemType Directory -Force -Path $target | Out-Null
-          $source='C:/Program Files/SideScreen Driver'
-          if(Test-Path "$source/driver-setup.log") { Copy-Item "$source/driver-setup.log" $target }
-          if(Test-Path "$source/state") { Copy-Item "$source/state/*.json" $target -ErrorAction SilentlyContinue }
-      - name: Upload driver installer diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: driver-installer-diagnostics
-          path: out/driver-installer-logs/
-          if-no-files-found: ignore
-      - name: Include release metadata
-        shell: pwsh
-        run: Copy-Item release-metadata.json out/dist/release-metadata.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ExtraPane-${{ needs.metadata.outputs.version }}
-          path: |
-            out/dist/release-metadata.json
-            out/dist/ExtraPane-${{ needs.metadata.outputs.version }}-*.zip
-            out/dist/ExtraPane-${{ needs.metadata.outputs.version }}-*.exe
-            out/dist/SHA256SUMS.txt
-          if-no-files-found: error
+    if: inputs.resource_platforms_only != true && inputs.linux_only != true && inputs.android_only != true && inputs.macos_only != true
+    uses: ./.github/workflows/windows-shared.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
   linux:
     needs: metadata
     if: inputs.android_only != true && inputs.macos_only != true
@@ -185,33 +117,33 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
   macos:
     needs: metadata
-    if: inputs.linux_only != true && inputs.android_only != true
+    if: inputs.resource_platforms_only != true && inputs.linux_only != true && inputs.android_only != true
     uses: ./.github/workflows/macos.yml
     with:
       version: ${{ needs.metadata.outputs.version }}
   publish:
     needs: [metadata, build, linux, android, macos]
-    if: needs.metadata.outputs.publish == 'true' && inputs.linux_only != true && inputs.android_only != true && inputs.macos_only != true
+    if: needs.metadata.outputs.publish == 'true' && inputs.resource_platforms_only != true && inputs.linux_only != true && inputs.android_only != true && inputs.macos_only != true
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ExtraPane-${{ needs.metadata.outputs.version }}
           path: dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ExtraPane-Linux-${{ needs.metadata.outputs.version }}
           path: dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ExtraPane-Android-${{ needs.metadata.outputs.version }}
           path: dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ExtraPane-macOS-${{ needs.metadata.outputs.version }}
           path: dist

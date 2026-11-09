@@ -47,6 +47,13 @@ def driver_uninstaller():
     assert command.startswith('"')
     return Path(command.split('"')[1])
 
+def driver_entry_exists():
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, DRIVER_KEY, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY):
+            return True
+    except FileNotFoundError:
+        return False
+
 def wait_absent(path):
     for _ in range(100):
         if not path.exists(): return
@@ -57,7 +64,7 @@ def main():
     if os.environ.get('GITHUB_ACTIONS') != 'true':
         raise SystemExit('Driver integration checks are restricted to disposable GitHub runners.')
     root = Path(__file__).resolve().parent.parent
-    folder = Path(os.environ['ProgramFiles']) / 'SideScreen Driver'
+    folder = Path(os.environ['ProgramFiles']) / 'ExtraPane/Components/Display'
     assert not folder.exists(), 'Refusing to overwrite an existing driver installation'
     baseline = ps("@(Get-WindowsDriver -Online -All | Where-Object {$_.ProviderName -eq 'DM Project'}).Count").stdout.strip()
     assert baseline == '0', 'Refusing to touch pre-existing DM driver packages'
@@ -75,10 +82,15 @@ def main():
     run(driver_setup, success=False)
     assert not folder.exists()
     with tempfile.TemporaryDirectory(prefix='ExtraPane-host-install-') as temp:
-        target = Path(temp)/'app'
-        run(installer, '/SERVER=1', f'/DIR={target}', '/TASKS=', success=False)
+        target = Path(os.environ['ProgramFiles'])/'ExtraPane'
+        assert not (target/'ExtraPane.exe').exists(), 'Refusing existing app'
+        run(installer, f'/DIR={target}', '/TASKS=', success=False)
         assert not folder.exists() and not (target/'ExtraPane.exe').exists()
-        # A real manager failure must propagate through both installer layers.
+        # An old explicit no-driver deployment must not silently become full.
+        run(installer, '/SERVER=0', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
+        assert not folder.exists() and not (target/'ExtraPane.exe').exists()
+        # A real manager failure returns failure but leaves the main app and
+        # uninstaller available for repair; no child installer is invoked.
         # Hold the manager's mutex to reject installation before trust/store changes.
         kernel = ctypes.WinDLL('kernel32', use_last_error=True)
         kernel.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
@@ -91,15 +103,17 @@ def main():
         assert lock
         try:
             run(driver_setup, '/ACCEPTDEVELOPMENTCERT=1', success=False)
-            run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
-            assert not (target/'ExtraPane.exe').exists()
+            run(installer, '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=', success=False)
+            assert (target/'ExtraPane.exe').is_file()
+            assert registered_uninstaller(target).is_file()
             assert ps(trust_count).stdout.strip() == '0'
         finally:
             kernel.ReleaseMutex(lock)
             kernel.CloseHandle(lock)
-        run(installer, '/SERVER=1', '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=')
+        run(installer, '/ACCEPTDEVELOPMENTCERT=1', f'/DIR={target}', '/TASKS=')
         assert (target/'ExtraPane.exe').is_file()
-        assert driver_uninstaller().is_file()
+        assert not driver_entry_exists(), 'Duplicate display-driver uninstall registration remains'
+        assert (folder/'manage-driver.ps1').is_file()
         records = list((folder/'state').glob('*.json')); assert len(records) == 1
         record = json.loads(records[0].read_text(encoding='utf-8-sig'))
         assert record['ownedDriver'] and record['addedRoot'] and record['addedTrustedPublisher'] and record['status'] == 'installed'
@@ -118,20 +132,18 @@ def main():
         finally:
             dll.write_bytes(original)
         app_uninstaller = registered_uninstaller(target)
-        run(app_uninstaller)
-        wait_absent(target/'ExtraPane.exe')
-        assert driver_uninstaller().is_file() and ps(trust_count).stdout.strip() == '2'
         # Failed removal must preserve the manager, uninstaller and records.
         backup_dll = folder/'state'/record['catHash']/'DMIndirectDisplay.dll'
         backup_original = backup_dll.read_bytes()
         try:
             backup_dll.write_bytes(backup_original+b'tamper')
-            run(driver_uninstaller(), success=False)
-            assert driver_uninstaller().is_file() and records[0].exists()
+            run(app_uninstaller, success=False)
+            assert app_uninstaller.is_file() and (folder/'manage-driver.ps1').is_file() and records[0].exists()
             assert ps(trust_count).stdout.strip() == '2'
         finally:
             backup_dll.write_bytes(backup_original)
-        run(driver_uninstaller())
+        run(app_uninstaller)
+        wait_absent(target/'ExtraPane.exe')
         wait_absent(folder/'manage-driver.ps1')
         assert ps(trust_count).stdout.strip() == '0'
         assert ps("@(Get-WindowsDriver -Online -All | Where-Object {$_.ProviderName -eq 'DM Project'}).Count").stdout.strip() == '0'
@@ -154,7 +166,7 @@ def main():
             ps(f"& pnputil.exe /delete-driver {quote(oem)} /uninstall; if($LASTEXITCODE){{throw 'Fixture cleanup failed'}}")
         for store in ('Root','TrustedPublisher'):
             ps(f"Remove-Item -LiteralPath 'Cert:\\LocalMachine\\{store}\\{thumb}' -ErrorAction SilentlyContinue")
-    print('DRIVER_INSTALLER passed: consent, required host dependency, staging, idempotency, tamper rejection, separate uninstall, exact ownership preservation. Runtime loading is a separate hardware check.')
+    print('DRIVER_INSTALLER passed: consent, required host dependency, staging, idempotency, tamper rejection, unified uninstall, exact ownership preservation. Runtime loading is a separate hardware check.')
 
 if __name__ == '__main__':
     sys.stdout.reconfigure(errors='backslashreplace')
@@ -162,6 +174,6 @@ if __name__ == '__main__':
         main()
     finally:
         if os.environ.get('GITHUB_ACTIONS') == 'true':
-            log = Path(os.environ['ProgramFiles'])/'SideScreen Driver/driver-setup.log'
+            log = Path(os.environ['ProgramFiles'])/'ExtraPane/Components/Display/driver-setup.log'
             if log.exists():
                 print(log.read_text(encoding='utf-8-sig', errors='replace')[-12000:], flush=True)

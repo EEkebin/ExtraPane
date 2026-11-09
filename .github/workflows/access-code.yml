@@ -16,7 +16,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Configure isolated security checks
         run: cmake -S . -B out/access-check -DDM_ACCESS_ONLY=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build

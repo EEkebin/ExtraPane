@@ -75,3 +75,20 @@ Windows documents timestamp-spacing requirements for [touch injection](https://l
 ## Physical retest
 
 The user subsequently confirmed the repaired session worked perfectly. That run processed 1,632 input events and decoded/presented 600/600 frames at 720p10. This confirms the reported physical-pen failure did not recur in that session; it does not establish every axis/button, physical multi-touch or drawing-app compatibility.
+
+
+## Existing-screen input in the Devices workspace
+
+The Windows existing-screen provider advertises input support in this development
+increment. Allow input is opt-in on the viewing row. The requested permission must
+also pass the exact source grant and the private native display admission ticket;
+view-only requests receive a ticket without input. The host resolves the pinned
+monitor identity and uses its current coordinates for injection. A missing or
+changed screen ends the session instead of choosing another monitor. Native focus,
+disconnect and owned-input release rules still apply. This does not grant access
+to elevated windows or the secure desktop.
+
+Linux/macOS/Android offers must advertise their actual implemented capabilities;
+Windows support is not evidence that other existing-screen paths support input.
+Physical screen-view/input verification for this increment is recorded in the
+implementation checklist.

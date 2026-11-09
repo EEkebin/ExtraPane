@@ -1,5 +1,5 @@
-# Invoked by the elevated, separately registered driver installer/uninstaller.
-param([ValidateSet('Install','Remove','Validate')][string]$Action='Validate')
+# Invoked by the elevated ExtraPane installer/uninstaller (or portable driver setup).
+param([ValidateSet('Install','Remove','Validate','ValidateOwnership')][string]$Action='Validate')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 # Use only this Windows PowerShell installation's built-in modules. Setup may
@@ -11,10 +11,14 @@ $state=Join-Path $PSScriptRoot 'state'
 $log=Join-Path $PSScriptRoot 'driver-setup.log'
 $mutex=$null;$held=$false
 function Write-Log([string]$text){Add-Content -LiteralPath $log -Value ((Get-Date).ToString('o')+' '+$text);Write-Output $text}
+function Get-PackageCertificateName($manifest){
+ if(@($manifest.files.name) -contains 'ExtraPane-Driver.cer'){return 'ExtraPane-Driver.cer'}
+ return 'SideScreen-Driver.cer'
+}
 function Verify-Package([string]$directory){
  $manifest=Get-Content -LiteralPath (Join-Path $directory 'manifest.json') -Raw | ConvertFrom-Json
  if($manifest.schema -ne 1 -or $manifest.certificateThumbprint -notmatch '^[A-Fa-f0-9]{40}$'){throw 'Invalid driver manifest'}
- $certificateName=if(@($manifest.files.name) -contains 'ExtraPane-Driver.cer'){'ExtraPane-Driver.cer'}else{'SideScreen-Driver.cer'}
+ $certificateName=Get-PackageCertificateName $manifest
  $expected=@('DMIndirectDisplay.dll','DMIndirectDisplay.inf','DMIndirectDisplay.cat',$certificateName,'LICENSE','UPSTREAM.md')
  if(@($manifest.files).Count -ne $expected.Count){throw 'Unexpected driver package contents'}
  $seen=@{}
@@ -41,6 +45,37 @@ function Find-ExactDriver([string]$infHash,[string]$catHash){
   (Get-FileHash -LiteralPath $_.OriginalFileName -Algorithm SHA256).Hash -eq $infHash -and (Test-Path -LiteralPath $cat) -and (Get-FileHash -LiteralPath $cat -Algorithm SHA256).Hash -eq $catHash
  })
 }
+# Preserve old removal ownership before the installer changes its directory.
+# Copy only verified journal/package files; never run the old uninstaller, which
+# would uninstall the live driver as part of an application-directory migration.
+function Import-LegacyDriverState {
+ $legacy=Join-Path $env:ProgramW6432 'SideScreen Driver'
+ if(!(Test-Path -LiteralPath $legacy)){return}
+ $legacy=(Resolve-Path -LiteralPath $legacy).Path
+ if($legacy -ne [IO.Path]::GetFullPath((Join-Path $env:ProgramW6432 'SideScreen Driver'))){throw 'Unexpected legacy driver directory'}
+ foreach($entry in @((Get-Item -LiteralPath $legacy))+@(Get-ChildItem -LiteralPath $legacy -Force -Recurse)){
+  if($entry.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Legacy driver directory contains a reparse point'}
+ }
+ $legacyState=Join-Path $legacy 'state'
+ if(!(Test-Path -LiteralPath $legacyState)){return}
+ foreach($file in @(Get-ChildItem -LiteralPath $legacyState -Filter '*.json' -File)){
+  $record=Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+  if($record.schema -ne 1 -or $record.catHash -notmatch '^[A-Fa-f0-9]{64}$' -or $file.BaseName -ne $record.catHash){throw 'Invalid legacy driver ownership record'}
+  $source=Join-Path $legacyState $record.catHash
+  $manifest=Verify-Package $source
+  if($record.thumbprint -ne $manifest.certificateThumbprint -or $record.infHash -ne (Get-FileHash -LiteralPath (Join-Path $source 'DMIndirectDisplay.inf') -Algorithm SHA256).Hash -or $record.catHash -ne (Get-FileHash -LiteralPath (Join-Path $source 'DMIndirectDisplay.cat') -Algorithm SHA256).Hash){throw 'Legacy ownership record does not match package'}
+  $target=Join-Path $state $record.catHash
+  New-Item -ItemType Directory -Path $target -Force | Out-Null
+  foreach($name in @('manifest.json')+@($manifest.files.name)){
+   $from=Join-Path $source $name;$to=Join-Path $target $name
+   if(Test-Path -LiteralPath $to){if((Get-FileHash -LiteralPath $from).Hash -ne (Get-FileHash -LiteralPath $to).Hash){throw 'Conflicting migrated driver payload'}}
+   else {Copy-Item -LiteralPath $from -Destination $to}
+  }
+  $destination=Join-Path $state $file.Name
+  # A destination journal may have progressed after a retry; never overwrite it.
+  if(!(Test-Path -LiteralPath $destination)){Copy-Item -LiteralPath $file.FullName -Destination $destination}
+ }
+}
 function Remove-AddedTrust($record){
  foreach($store in @('Root','TrustedPublisher')){
   $added=if($store -eq 'Root'){$record.addedRoot}else{$record.addedTrustedPublisher}
@@ -55,17 +90,30 @@ try {
  # Inno Setup is a 32-bit process; its child can inherit the x86 ProgramFiles
  # value even when launching 64-bit PowerShell. ProgramW6432 identifies the
  # native Program Files directory in both process environments.
- $expected=[IO.Path]::GetFullPath((Join-Path $env:ProgramW6432 'SideScreen Driver'))
- if([IO.Path]::GetFullPath($PSScriptRoot) -ne $expected){throw 'Driver manager must run from Program Files\SideScreen Driver'}
+ $expected=[IO.Path]::GetFullPath((Join-Path $env:ProgramW6432 'ExtraPane\Components\Display'))
+ if([IO.Path]::GetFullPath($PSScriptRoot) -ne $expected){throw 'Driver manager must run from Program Files\ExtraPane\Components\Display'}
  foreach($dir in @($PSScriptRoot,$state)){
   if((Test-Path -LiteralPath $dir) -and ((Get-Item -LiteralPath $dir).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Driver management directory cannot be a reparse point'}
+ }
+ if($Action -eq 'ValidateOwnership'){
+  $records=@(Get-ChildItem -LiteralPath $state -Filter '*.json' -File)
+  if(!$records.Count){throw 'No current driver ownership records to migrate'}
+  foreach($file in $records){
+   $record=Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+   if($record.schema -ne 1 -or $record.catHash -notmatch '^[A-Fa-f0-9]{64}$' -or $file.BaseName -ne $record.catHash){throw 'Invalid driver ownership record'}
+   $backup=Join-Path $state $record.catHash;$manifest=Verify-Package $backup
+   if($record.thumbprint -ne $manifest.certificateThumbprint -or $record.infHash -ne (Get-FileHash -LiteralPath (Join-Path $backup 'DMIndirectDisplay.inf') -Algorithm SHA256).Hash -or $record.catHash -ne (Get-FileHash -LiteralPath (Join-Path $backup 'DMIndirectDisplay.cat') -Algorithm SHA256).Hash){throw 'Ownership record does not match verified package'}
+  }
+  Write-Output 'DRIVER_OWNERSHIP_VALID';exit 0
  }
  $mutex=[Threading.Mutex]::new($false,'Global\SideScreen.DriverSetup');$held=$mutex.WaitOne(0)
  if(!$held){throw 'Another ExtraPane driver installation is running'}
  if(Get-Process dm-view,dm-display,ExtraPane.Service,SideScreen.Service -ErrorAction SilentlyContinue){throw 'Close ExtraPane sessions and stop the server before changing the driver'}
  New-Item -ItemType Directory -Path $state -Force | Out-Null
  if($Action -eq 'Install'){
+  Import-LegacyDriverState
   $manifest=Verify-Package $package
+  $certificateName=Get-PackageCertificateName $manifest
   $infHash=(Get-FileHash -LiteralPath (Join-Path $package 'DMIndirectDisplay.inf') -Algorithm SHA256).Hash
   $catHash=(Get-FileHash -LiteralPath (Join-Path $package 'DMIndirectDisplay.cat') -Algorithm SHA256).Hash
   $recordPath=Join-Path $state ($catHash+'.json')
@@ -86,7 +134,7 @@ try {
     if(!(Test-Path -LiteralPath $entry)){
      # Record ownership first so an interrupted import is recoverable.
      if($store -eq 'Root'){$record.addedRoot=$true}else{$record.addedTrustedPublisher=$true};Save-Record $record $recordPath
-     Import-Certificate -FilePath (Join-Path $package 'ExtraPane-Driver.cer') -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
+     Import-Certificate -FilePath (Join-Path $package $certificateName) -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
     }
    }
    $signature=Get-AuthenticodeSignature -LiteralPath (Join-Path $package 'DMIndirectDisplay.cat')

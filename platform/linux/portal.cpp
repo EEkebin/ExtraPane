@@ -39,10 +39,10 @@ Portal::~Portal(){
     try{release();}catch(...){}
     if(!session_.path().isEmpty())try{call(session_.path(),"org.freedesktop.portal.Session","Close",{});}catch(...){}
 }
-QString Portal::unavailable(){
-    if(!QGuiApplication::platformName().startsWith("wayland"))return "Hosting requires a Wayland desktop with a virtual-display portal.";
-    try{if(!(portalProperty(cast,"AvailableSourceTypes")&4))return "This desktop portal does not provide virtual monitors.";
-        if((portalProperty(remote,"AvailableDeviceTypes")&3)!=3)return "The desktop portal does not provide mouse and keyboard control.";
+QString Portal::unavailable(bool existing,bool input){
+    if(!QGuiApplication::platformName().startsWith("wayland"))return "Hosting requires a Wayland desktop with a screen-sharing portal.";
+    try{if(!(portalProperty(cast,"AvailableSourceTypes")&(existing?1u:4u)))return existing?"This desktop portal does not support existing-screen sharing.":"This desktop portal does not provide virtual monitors.";
+        if(input&&(portalProperty(remote,"AvailableDeviceTypes")&3)!=3)return "The desktop portal does not provide mouse and keyboard control.";
     }catch(const std::exception& e){return QString::fromUtf8(e.what());}return {};
 }
 void Portal::response(uint code,const QVariantMap& results){responseCode_=code;results_=results;replied_=true;if(loop_)loop_->quit();}
@@ -65,22 +65,23 @@ QVariantMap Portal::request(const QString& interface,const QString& method,QVari
     }catch(...){loop_=nullptr;bus.disconnect(service,handle,"org.freedesktop.portal.Request","Response",this,SLOT(response(uint,QVariantMap)));throw;}
     bus.disconnect(service,handle,"org.freedesktop.portal.Request","Response",this,SLOT(response(uint,QVariantMap)));return results_;
 }
-void Portal::start(bool input){
-    auto result=request(remote,"CreateSession",{},{{"session_handle_token","extrapane_"+QUuid::createUuid().toString(QUuid::Id128)}});
+void Portal::start(bool input,bool existing){
+    const auto sessionInterface=existing&&!input?cast:remote;
+    auto result=request(sessionInterface,"CreateSession",{},{{"session_handle_token","extrapane_"+QUuid::createUuid().toString(QUuid::Id128)}});
     session_=QDBusObjectPath(result.value("session_handle").toString());
     if(session_.path().isEmpty())throw std::runtime_error("Missing portal session");
     QDBusConnection::sessionBus().connect(service,session_.path(),"org.freedesktop.portal.Session","Closed",this,SLOT(sessionClosed()));
     // RemoteDesktop requires at least one device. Only forward negotiated input.
-    request(remote,"SelectDevices",{QVariant::fromValue(session_)},{{"types",portalProperty(remote,"AvailableDeviceTypes")&7u},{"persist_mode",0u}});
-    request(cast,"SelectSources",{QVariant::fromValue(session_)},{{"types",4u},{"multiple",false},{"cursor_mode",2u}});
-    result=request(remote,"Start",{QVariant::fromValue(session_),QString{}},{});
+    if(sessionInterface==remote)request(remote,"SelectDevices",{QVariant::fromValue(session_)},{{"types",portalProperty(remote,"AvailableDeviceTypes")&7u},{"persist_mode",0u}});
+    request(cast,"SelectSources",{QVariant::fromValue(session_)},{{"types",existing?1u:4u},{"multiple",false},{"cursor_mode",2u}});
+    result=request(sessionInterface,"Start",{QVariant::fromValue(session_),QString{}},{});
     devices=input?result.value("devices").toUInt():0;
     const auto streams=result.value("streams").value<QDBusArgument>();streams.beginArray();
-    if(streams.atEnd())throw std::runtime_error("Portal did not create a virtual display");
+    if(streams.atEnd())throw std::runtime_error("Portal did not provide a screen");
     QVariantMap properties;streams.beginStructure();streams>>node>>properties;streams.endStructure();
-    if(!streams.atEnd())throw std::runtime_error("Expected one session-owned virtual display");
+    if(!streams.atEnd())throw std::runtime_error("Expected one portal screen");
     streams.endArray();
-    if(properties.value("source_type").toUInt()!=4)throw std::runtime_error("Portal returned a physical display; extended hosting requires a virtual display");
+    if(properties.value("source_type").toUInt()!=(existing?1u:4u))throw std::runtime_error("Portal returned a different screen type than requested");
     const auto size=properties.value("logical_size",properties.value("size"));
     if(size.canConvert<QDBusArgument>()){const auto pair=size.value<QDBusArgument>();int w=0,h=0;pair.beginStructure();pair>>w>>h;pair.endStructure();if(w>0&&h>0){width=w;height=h;}}
     QDBusReply<QDBusUnixFileDescriptor> fd(call(path,cast,"OpenPipeWireRemote",{QVariant::fromValue(session_),QVariantMap{}}));

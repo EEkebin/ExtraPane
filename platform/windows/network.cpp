@@ -80,7 +80,7 @@ sockaddr_in address(const std::string& text, std::uint16_t port) {
     sockaddr_in value{};
     value.sin_family = AF_INET;
     value.sin_port = htons(port);
-    if (InetPtonA(AF_INET, text.c_str(), &value.sin_addr) != 1) {
+    if (InetPtonA(AF_INET, _stricmp(text.c_str(),"localhost")==0?"127.0.0.1":text.c_str(), &value.sin_addr) != 1) {
         throw std::invalid_argument("Expected an IPv4 literal: " + text);
     }
     const auto host = ntohl(value.sin_addr.s_addr);
@@ -306,6 +306,7 @@ int TcpStream::write_some(std::span<const std::uint8_t> bytes) {
     return count;
 }
 void TcpStream::wait(bool writing, Clock::time_point deadline) { wait_ready(state_->socket, writing, deadline, "secure stream"); }
+void TcpStream::cancel() noexcept { if(state_)::shutdown(state_->socket.get(),SD_BOTH); }
 std::string TcpStream::local_endpoint() const { return endpoint(state_->socket, false); }
 std::string TcpStream::peer_endpoint() const { return endpoint(state_->socket, true); }
 

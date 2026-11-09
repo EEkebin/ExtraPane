@@ -1,5 +1,21 @@
 # macOS preview
 
+## Devices workspace on the development branch
+
+The Devices workspace opens with Nearby devices and starts local discovery
+automatically. Expand **Connect by address** for IPv4/localhost, port, pairing
+code and interface selection. Direct connections remain available when multicast
+is unavailable or when connecting through a manually forwarded address.
+
+On Share, supported resources are available by default. Pairing alone does not
+start capture. Red power marks actual use of the exact resource and identifies
+its consumers; stopping one resource preserves the others. Disconnecting all
+active shares leaves the listener/catalog available. Gateway sharing remains
+opt-in. See [workspace testing](DEVICE-WORKSPACE-TESTING.md)
+for the current flow; older server/client instructions below describe the legacy
+mode. macOS/Linux validation of this latest increment remains pending.
+
+
 The macOS app receives a Windows or Linux host's display using the same protocol 9 and automatic LAN mode. It targets macOS 12 or newer and contains both Apple Silicon (arm64) and Intel (x86_64) code in one Universal app. The development host also creates a real extended Mac monitor on macOS 13 or newer; iOS remains a separate milestone. The host/client Universal ZIP and DMG pass hosted packaging validation on Apple Silicon, with native build/checks also passing on Intel.
 
 ## Install and connect
@@ -77,3 +93,13 @@ For connection diagnostics, the app logs TLS state, negotiated dimensions/grants
 ## Access-code connections
 
 Code-enabled builds add a TCP port (default 43824) and optional six-digit access code on the Client page. Use matching releases. Enable Require access code before starting the server; Generate new code admits another connection without disconnecting existing sessions. See [access-code setup and security](ACCESS-CODES.md) for expiry, retry limits and reachable internet endpoints. No-code mode is still restricted to trusted-network use.
+
+## Resource-sharing development branch (2026-11-07)
+
+The development branch adds native AVFoundation camera/microphone sources and repeatable AppKit resource rows with independent destinations, source selection, microphone mute and grouped disconnect. Display and capture connections reuse one protected admission session per destination rather than consuming the same one-time code repeatedly. Camera sends H.264; microphone sends PCM16 48 kHz mono. Permissions are requested before capture and resources stop independently. Native compilation and actual application delivery remain separate gates; existing display test evidence above does not validate these new paths.
+
+This remains the native AppKit frontend, not the completed shared Qt migration. macOS virtual camera receiving requires a signed Core Media I/O system extension; virtual microphone receiving requires an installed HAL plug-in. Neither is supplied by the current ad-hoc portable ZIP/DMG, and USB remains unavailable. Camera/microphone sending does not install these receiver components or detach physical devices. Intel and Apple Silicon packages remain required. See IMPLEMENTATION-CHECKLIST.md for current build evidence.
+
+Current development limits: the native display helper retains four simultaneous Mac-host virtual displays. Control/admission connections have separate workers and do not consume display slots. The Mac client still has one display receiver window. Camera/microphone rows use independent native captures; shared-source fanout on macOS is not implemented, and hardware may reject simultaneous captures. These limits are not removed by the new resource UI.
+
+Review safeguards: source menus retain stable device IDs even when device names match. Microphone mute is checked per outgoing frame and against capture timestamps across unmute, so delayed callbacks cannot reclassify muted-period samples as live audio. Host handshakes and control-only sessions share a bounded budget of 32 workers; active displays use their separate display slots. These protections have isolated regression checks; physical-device delivery remains a test gate.

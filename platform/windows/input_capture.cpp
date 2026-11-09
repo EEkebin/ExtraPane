@@ -1,3 +1,4 @@
+#include <dm/branding.hpp>
 #include <dm/input.hpp>
 #include <dm/video_layout.hpp>
 #include <windowsx.h>
@@ -94,7 +95,7 @@ bool ReceiverInput::message(HWND window,UINT message,WPARAM wparam,LPARAM lparam
     if(message==WM_SETFOCUS) {s.focused=true;return false;}
     if(message==WM_KILLFOCUS || message==WM_DESTROY || (message==WM_CAPTURECHANGED && s.buttons)) {s.reset();s.focused=GetFocus()==window;return false;}
     if((message==WM_KEYDOWN || message==WM_SYSKEYDOWN || message==WM_KEYUP || message==WM_SYSKEYUP) && wparam==VK_F8) {
-        if(message==WM_KEYDOWN && !(lparam&(1LL<<30))) {s.reset();s.paused=!s.paused;SetWindowTextW(window,s.paused?L"DM control PAUSED - F8 to resume":L"DM control - F8 pauses; close to disconnect");}
+        if(message==WM_KEYDOWN && !(lparam&(1LL<<30))) {s.reset();s.paused=!s.paused;SetWindowTextW(window,s.paused?branding::display_paused_title:branding::display_title);}
         return true;
     }
     if(message==WM_POINTERDOWN && s.caps.load() && !s.paused) {SetFocus(window);s.focused=true;}

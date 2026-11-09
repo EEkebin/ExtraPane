@@ -1,5 +1,6 @@
 """Headless startup/cleanup check; does not claim GPU or LAN streaming coverage."""
 import os
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -17,6 +18,16 @@ with log.open('w') as output, tempfile.TemporaryDirectory(prefix='extrapane-port
     subprocess.run([str(artifact), '--appimage-extract'], cwd=temporary,
                    env=environment, stdout=subprocess.DEVNULL, stderr=output, check=True)
     launcher = Path(temporary)/'squashfs-root/AppRun'
+    factory_check = subprocess.run([str(launcher), '--check-media-factories'],
+                                   cwd='/tmp', env=environment, stdout=subprocess.PIPE,
+                                   stderr=output, timeout=30, check=True)
+    factories = json.loads(factory_check.stdout)
+    if factories.get('schema') != 1 or factories.get('missing') != [] or factories.get('devicesTested') is not False:
+        raise RuntimeError('Portable media factory check returned invalid or missing capabilities')
+    docs = Path(temporary)/'squashfs-root/usr/share/doc/extrapane'
+    for document in ('LINUX.md', 'LINUX-RESOURCES.md', 'PLATFORM-PARITY.md'):
+        if not (docs/document).is_file():
+            raise RuntimeError(f'Missing portable setup documentation: {document}')
     process = subprocess.Popen([str(launcher)], cwd='/tmp', env=environment,
                                stdout=output, stderr=subprocess.STDOUT)
     try:
@@ -31,4 +42,4 @@ with log.open('w') as output, tempfile.TemporaryDirectory(prefix='extrapane-port
         if process.poll() is None:
             process.kill()
             process.wait()
-print('AppImage startup and graceful shutdown passed under Xvfb; no streaming test performed.')
+print('AppImage media factories, setup documentation, startup and graceful shutdown passed; no device or streaming test performed.')

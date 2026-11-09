@@ -66,7 +66,7 @@ LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wparam,LPARAM lparam)
         RECT bar{bar_x,bounds.bottom-50,std::min(bounds.right,bar_x+80),bounds.bottom-10};
         FillRect(dc,&bar,static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
         for(const auto& segment:pattern->strokes) {auto pen=CreatePen(PS_SOLID,segment.width,segment.color);auto old=SelectObject(dc,pen);MoveToEx(dc,segment.from.x,segment.from.y,nullptr);LineTo(dc,segment.to.x,segment.to.y);SelectObject(dc,old);DeleteObject(pen);}
-        const std::wstring text=L"DM independent third monitor / input test\nDraw with mouse, fingers or pen. F8 on laptop pauses control.\nLive counter: "+std::to_wstring(pattern->tick)+L" seconds\n"+pattern->status+L"\nTyped: "+pattern->typed;
+        const std::wstring text=L"ExtraPane independent monitor / input test\nDraw with mouse, fingers or pen. F8 on laptop pauses control.\nLive counter: "+std::to_wstring(pattern->tick)+L" seconds\n"+pattern->status+L"\nTyped: "+pattern->typed;
         SetBkColor(dc,RGB(0,0,0));SetTextColor(dc,RGB(255,255,255));
         RECT caption{24,24,bounds.right-24,bounds.bottom-24};DrawTextW(dc,text.c_str(),-1,&caption,DT_LEFT|DT_TOP);
         EndPaint(window,&paint);return 0;
@@ -83,12 +83,12 @@ void show_display_pattern(unsigned seconds) {
         for(const auto& monitor:dm::display::active_monitors()) if(monitor.dm_virtual) selected=monitor;
         if(selected.source.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    if(selected.source.empty()) throw std::runtime_error("No active DM monitor appeared for the diagnostic window");
+    if(selected.source.empty()) throw std::runtime_error("No active ExtraPane monitor appeared for the diagnostic window");
     const auto instance=GetModuleHandleW(nullptr);
     WNDCLASSW cls{};cls.lpfnWndProc=procedure;cls.hInstance=instance;cls.lpszClassName=L"DMThirdMonitorPattern";cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);
     if(!RegisterClassW(&cls)) throw std::runtime_error("Cannot register diagnostic window");
     Pattern pattern;pattern.seconds=seconds;pattern.source=selected.source;
-    const auto window=CreateWindowExW(0,cls.lpszClassName,L"DM THIRD MONITOR TEST",WS_OVERLAPPEDWINDOW|WS_VISIBLE,selected.left+60,selected.top+60,900,540,nullptr,nullptr,instance,&pattern);
+    const auto window=CreateWindowExW(0,cls.lpszClassName,L"ExtraPane monitor test",WS_OVERLAPPEDWINDOW|WS_VISIBLE,selected.left+60,selected.top+60,900,540,nullptr,nullptr,instance,&pattern);
     if(!window) throw std::runtime_error("Cannot create diagnostic window on the virtual monitor");
     ShowWindow(window,SW_MAXIMIZE);
     SetTimer(window,1,1000,nullptr);

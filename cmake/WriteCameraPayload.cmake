@@ -1,0 +1,5 @@
+if(NOT EXISTS "${PAYLOAD}" OR NOT DEFINED OUTPUT)
+  message(FATAL_ERROR "Camera payload and output path are required")
+endif()
+file(TO_CMAKE_PATH "${PAYLOAD}" payload_path)
+file(WRITE "${OUTPUT}" "101 RCDATA \"${payload_path}\"\n")

@@ -1,5 +1,258 @@
 # Decisions, assumptions, and evidence
 
+## Rotating pairing credentials and mutual resources (2026-11-09)
+
+The user replaced the earlier process-lifetime code policy: generated pairing
+codes rotate every 20 seconds, with a visible circular countdown. A custom PIN
+or password is an optional fixed alternative until explicitly changed. Both use
+the same masked, neutral "PIN or password" prompt; discovery does not reveal
+credential mode or length. Input is not restricted to digits or six characters;
+a 1024-byte UTF-8 ceiling bounds processing. Custom secrets use protected local
+storage, not ordinary UI preferences, and are never displayed after saving.
+Rotation must preserve remembered trust and active resource sessions. Wrong
+credential confirmation reports a pairing error; genuine transport failures
+remain distinct. Pairing must expose resources in both directions through the
+authenticated connection, without requiring reverse LAN discovery or another PIN.
+
+## Hardware updates and listener controls (2026-11-09)
+
+Resource inventories refresh automatically on device changes, with bounded
+reconciliation for missed events. A changed catalog is sent to paired peers;
+unchanged snapshots do not rebuild the interface. Inventory refresh must not end
+an active resource merely because capture or exclusive USB forwarding hides its
+local device. Native session termination and explicit sharing/OS permission
+withdrawal remain authoritative. Remove manual resource-refresh buttons.
+
+The default listener is all IPv4 addresses (`0.0.0.0`) on port `43824`. The address
+menu lists All addresses, each active adapter/address pair, and Custom address.
+Multiple IPv4 addresses on one adapter are separate labeled choices. The port
+menu offers Default (43824) and Custom port. Presets apply immediately; custom
+choices reveal editable fields and an Apply action. Rebinding replaces only the
+listener, preserving existing peer connections and resource sessions. A failed
+bind restores the previous listener where possible and reports the actual state.
+This does not change firewall rules, enable UPnP, or alter outbound destination
+validation. Pairing remains enabled by default.
+
+Composite HID/audio USB devices may be admitted only after validating all
+configuration, interface and alternate-setting descriptors on both endpoints.
+Storage, Bluetooth, hubs and unknown functions remain outside this generic path.
+
+## Generic USB forwarding (2026-11-08)
+
+Extend ExtraPane's USB resources to actual Windows USB mice, keyboards and audio
+devices, using the maintained pinned USB/IP backends through the existing
+authenticated encrypted transport. This is ExtraPane integration, not a new
+proprietary USB driver. A physical device is exclusively assigned to one receiver
+while in use. Composite devices move together; only fully classified supported
+functions may enter the non-storage path. Hubs, controllers, unknown functions,
+foreign-owned bindings and devices containing storage are excluded from that path.
+
+Keep media camera/microphone/speaker sharing separate: those features do not
+deliberately detach the physical device. Keep storage's volume locking and recovery
+separate from HID/audio ownership. Generic forwarding must use durable exact-device
+binding ownership, close its exporter on termination, and clean up only its own
+binding, including when the device is absent. Never force-replace a local device
+driver or clear an unrelated application's binding to make sharing succeed.
+
+The first implementation is Windows-to-Windows. Upstream support for interrupt
+and isochronous transfers is evidence for feasibility, not proof of headset
+compatibility or latency. Physical transfer, return, unplug and interrupted-session
+tests remain acceptance gates. Other platforms must not advertise raw USB support
+merely because their existing media-sharing paths work.
+
+## Pairing dialog presentation (2026-11-08)
+
+Show Pair with NAME, followed by the selected address and port in smaller text,
+then a Pairing Code label and an XXXXXX input placeholder. Snapshot the discovered
+name with the selected endpoint; names remain display metadata, not identity proof.
+For manual addresses without a known name, use Pair with device. Gateway pairing
+names the actual end device and labels the route as Via the gateway, never claiming
+the gateway's address belongs to that end device. Authentication and validation
+rules are unchanged.
+
+## Local device card and sharing restrictions (2026-11-08)
+
+Devices starts with This device, followed by a collapsed card whose header shows
+the local hostname and current pairing code. Network settings and local resource
+groups are inside the card. Resource device cards and type groups start collapsed;
+refreshing catalogs must preserve the user's expansion choices.
+
+Each local resource has a separate Share permission switch. The power button
+indicates actual use and stops active sessions; it is not a permission setting.
+Supported resources remain available by default unless explicitly disabled.
+Disabling Share withdraws that resource and ends its active use, without stopping
+other resources or unpairing devices. Restrictions survive inventory refresh and
+app restart. OS permissions and hardware availability remain separate constraints.
+
+## Mutual peers, complete installation and gateway encryption (2026-11-08)
+
+Both paired devices can offer and use resources simultaneously. Provider and
+consumer describe a particular resource session, never a permanent device role.
+For a virtual monitor, the computer whose desktop is extended still needs the
+virtual-display integration; the other device presents that monitor.
+
+The user approved independent mutual pairing between the two end devices when
+access goes through a gateway. Pair once, then use supported resources in either
+direction, subject to reachability and permissions. A gateway's existing pairings
+do not substitute for this endpoint authentication. Resource setup, admission
+credentials, input and media must remain inside the authenticated endpoint tunnel.
+Older relay protocols must not be used as a silent fallback. The branch now
+implements this using nested TLS and independently authenticated endpoints, with
+isolated checks; physical gateway verification remains pending. The pre.109.1
+build does not provide this guarantee.
+
+Remove the Client only / Viewer only installer choice. One complete ExtraPane
+installation prepares the supported offering and receiving components. Preserve
+explicit development-driver certificate consent and platform capability checks;
+installation must not begin capture or export storage. This supersedes earlier
+installer role-choice decisions below.
+
+## Pairings versus resource usage (2026-11-08)
+
+Devices presents saved pairings, not a separate connected/disconnected state for
+each peer. Remove Connected badges and the duplicate Connected devices section.
+Unpaired access remains explicitly marked unverified and separate from pairings.
+Resource power buttons own stream startup and stop; their active state identifies
+what is actually in use. Pairing or availability refresh must not activate media.
+
+Authenticated discovery/catalog control traffic may run in the background so
+resources can be listed without a manual device connection step. This is not a
+claim that every network socket is closed while resources are idle. Saved device
+entries remain visible and navigation to Resources remains available; unavailable
+resources and real connection errors must still be explained when relevant.
+
+## Pairing-code dialog (2026-11-08)
+
+Connect requests a six-digit code in a modal only for a new pairing. Nearby
+advertisements supply the pairing-required hint. An advertisement with pairing
+disabled is visibly unverified; it does not override a remembered identity.
+Saved devices prove their existing key without asking for the code again.
+
+Direct-address connections cannot know the remote policy from discovery. They
+request pairing by default, with the explicit Connect without pairing option for
+an unpaired endpoint. The dialog pins the selected address, port, identity and
+interface while open. Cancel sends no request and clears the code; invalid input
+stays in the dialog without using an authentication attempt. Pending removal must
+be resolved or explicitly dismissed before a new pairing is attempted.
+
+## Paired devices, monitor rows and bilateral Forget (2026-11-08)
+
+The Devices workspace manages pairing and availability. Saved devices reconnect
+in the background; resource power buttons start and stop media independently.
+There are no manual Connect/Disconnect controls for a saved peer. Initial pairing
+by discovery or direct address remains explicit.
+
+Monitors use repeatable rows. Each virtual-monitor row chooses Custom or a named
+monitor preset, and has its own dimensions, refresh target and session. Both Custom
+and named presets may be reused: a preset configures a new virtual monitor and is
+not an exclusive claim on the physical screen. Only duplicate existing-screen
+views of the same owner/resource on one receiving computer are rejected, including
+pending starts. Existing-screen input is capability-gated and opt-in.
+
+Forget must end local trust immediately and request authenticated removal on the
+other device. Offline remote removal stays visibly pending and retries; it must
+never restore normal access merely to send the removal. A retained revocation
+credential can authorize only removal/acknowledgement, not catalogs or media.
+Acknowledgements and retries are bound to the old pairing key so delayed work
+cannot remove a newer explicit pairing. Older peers that cannot handle bilateral
+Forget require manual removal on that peer; pending is not success.
+
+## Multiple client connections and tray lifetime (2026-11-07)
+
+Latest client interaction: each resource has a green power button to connect and
+a red power button to disconnect; there is no separate Connect to server button.
+Disconnect all stops all rows. A display defaults to a custom virtual monitor (1920x1080 at 60 FPS), with
+no local monitor selection required. Matching a selected local monitor's native
+mode/fullscreen destination is an alternative, not a prerequisite.
+
+Global and per-resource-group Disconnect all buttons are hidden when their scope
+has no active or pending connection. They remain available during connection and
+teardown so users can cancel work; stopping one resource does not stop others.
+The final resource stopping, failing or being cancelled also releases its server
+admission connection. An idle client retains configuration but no server connection;
+retiring helper processes alone do not keep Disconnect all visible.
+
+The Windows shared client uses repeatable resource rows with independent source,
+destination and lifecycle state. Single server mode supplies one destination to
+all rows; Multiple servers mode exposes each row's destination. Running rows
+retain their destination until disconnected. Camera and microphone capture can
+feed several destinations through bounded native queues; USB remains exclusive
+and retains its safe-return rules. See MULTIPLE-RESOURCE-CONNECTIONS.md for
+implementation status and tested limits.
+
+Each display row has its own resizable preview window and fullscreen destination.
+Closing the main window keeps it in the tray while a server or client connection
+is active; with no work it exits. Double-clicking the tray icon restores and
+focuses the main window for either role. Tray Exit requests normal disconnect
+and server stop, including the bounded USB ownership-return policy below.
+
+## Automatic USB return (2026-11-07)
+
+The user superseded the previous indefinite-quarantine policy after an absent
+microSD reader blocked both upgrade and uninstall. Unchecking USB, disconnecting
+or exiting first requests receiver flush/eject. If that fails or the connection
+is lost, the source ends its own transport/exporter, releases only its exact
+binding, proves exclusive local ownership and restores the verified source's
+prior online state. Interrupted return is reported as such: it is not a clean
+eject and cannot recover writes remaining in the receiver's cache. Identity
+changes, foreign ownership or an exporter that cannot be stopped still prevent
+unsafe disk mutation.
+
+An absent source does not need to be plugged in to remove its inactive owned
+binding: archive the unchanged journal, prove device absence and no exporter,
+release the exact private binding, and retire the active journal. No disk is
+opened or modified. This is ownership cleanup, not proof of filesystem health.
+Upgrades may reuse an exactly verified compatible backend without modifying its
+bindings/journals. Uninstall attempts guarded cleanup before removal, with a
+clear error for genuinely unresolved ownership rather than a raw script error.
+Implementation and verification are tracked in IMPLEMENTATION-CHECKLIST.md.
+
+## Live resource selection (2026-11-07)
+
+The client must be able to connect with no resources selected. While connected,
+checking Display, Camera, Microphone or USB starts that resource; unchecking stops
+only that resource. One Disconnect all action clears all selections and closes
+the client session. Source selection remains available for idle resources.
+USB still requires its existing safe eject/recovery lifecycle.
+
+Implement a real persistent control connection, including in automatic LAN mode,
+rather than treating a saved server address as a successful connection. Access-code
+admission happens once for that connection; resource starts use fresh scoped
+credentials. Neither codes nor channel credentials belong in saved settings or
+process arguments. Track implementation and verification in IMPLEMENTATION-CHECKLIST.md.
+
+## Device-sharing completion before testing (2026-11-07)
+
+The user requested camera (including Windows sender controls), microphone and
+USB implementation before any further physical device testing. Isolated builds
+and synthetic checks remain authorized. Track increments in
+IMPLEMENTATION-CHECKLIST.md; do not present the camera-only package as completion
+of this expanded milestone.
+
+Investigate a local USB Audio Class endpoint through the existing signed
+usbip-win2 driver for Windows microphones. This can avoid a new kernel audio
+driver/signing dependency while still exposing a normal recording endpoint.
+The C++20 app and native capture remain unchanged; an isolated Rust helper is a
+concrete integration exception for the MIT usbip-audio library, pinned to
+58032ab0664ffec1d0c178f40a3a69359c21f597. Its upstream tests are not our device
+verification. Managed driver setup, identity, lifecycle and application delivery
+remain gates; never substitute speaker loopback and call it a microphone.
+
+Raw USB storage must remain behind admitted encrypted transport. Stock usbipd-win
+starts an additional listener and persistent bindings, so bundling its installer
+unchanged does not satisfy this design. Require local ownership, complete disk
+classification, source volume locks/dismount, destination eject, and explicit
+recovery after interrupted transfer. Preserve independently installed USB/IP
+components and never detach unrelated virtual ports.
+
+## Shared interface and resources (2026-11-07)
+
+The user approved Qt Quick with native C++ engines, one managed installation and
+one server start/stop control. Clients contribute selected display, camera,
+microphone and USB resources. See [RESOURCE-SHARING.md](RESOURCE-SHARING.md) for
+the approved direction, distribution gates and actual implementation status.
+Existing display applications remain unchanged pending integration and validation.
+
 ## Optional access-code admission (2026-11-03)
 
 The user requested direct reachable IPv4 address, port and six-digit one-time codes on every implemented platform, with forwarding handled outside the app. Retain explicit trusted-LAN mode; code mode uses pinned BoringSSL SPAKE2, key confirmation and authenticated records inside existing TLS before display/input allocation. Hosts share a five-attempt, five-minute, one-use admission gate across interfaces and slots. No automatic regeneration, pairing, discovery, relay or UPnP. See ACCESS-CODES.md for current validation and limits.
@@ -236,3 +489,255 @@ Host/client Universal deployment validation passed in run 41738412800 on both ho
 ## Four-platform release authorization (2026-11-03)
 
 The user deferred iOS before implementation and explicitly requested merging the completed Windows, Linux, Android and macOS work and publishing a release. Consolidate the platform branches, keep all four package jobs required for publication, preserve the existing Android signing identity and Windows upgrade identifiers, and retain the documented preview limitations. No installation on the user's Mac is authorized.
+
+## Server accepts client-selected resources (2026-11-07)
+
+The user reconfirmed that the server starts once without an exclusive resource
+mode. Each client independently selects display, camera and microphone (and
+eligible USB storage), including concurrent display reception and reverse media
+forwarding. One client's choices must not replace server-wide resource settings.
+The current per-mode development dropdowns are temporary test scaffolding, not
+completion of this shared-session requirement. Preserve independent permissions,
+capability failures and stop/mute controls for each resource.
+
+The first server unification keeps existing client wire formats. One TLS listener
+classifies an encrypted, retained prefix and dispatches independent sessions;
+resource-specific components are prepared lazily. There are no separate public
+resource ports. The shared server dropdown is removed. Client checklist/grouped
+admission remains a separate unfinished item; one-use access codes have not been
+silently made reusable to simulate that feature.
+
+## Multi-select Windows client (2026-11-07)
+
+Remove the exclusive client resource dropdown and use the real resource checklist
+for all selections. Each camera/microphone/USB source has independent inventory,
+selection, status and stop controls; display receives while media sources send.
+One Connect action launches the selected resource channels. Failures are isolated
+per resource. A code-protected selection first authorizes once and receives
+one-use, resource-bound child tickets; never silently reuse the six-digit code.
+The current implementation uses separate protected streams, not one multiplexed
+TCP connection. Selection changes require disconnect; stopping/muting individual
+resources does not stop the others.
+
+## Consolidated Windows layout (2026-11-07)
+
+The user requests one ExtraPane installation instead of scattered SideScreen and
+ExtraPane component folders. Use Program Files/ExtraPane for the app and managed
+components, with one visible app entry. Preserve stable internal installation IDs
+for upgrades and retain exact driver ownership records during migration. Independent
+usbipd-win/USBip installations are not ExtraPane-owned and must remain untouched.
+A retained legacy rollback folder is an incomplete cleanup step, not proof of full
+consolidation. Installation, upgrade and unified removal need end-to-end validation.
+
+## Custom Windows display refresh target (2026-11-07)
+
+Custom display targets accept 1-360 FPS/Hz; the default remains 60. This is a requested mode and stream target, not a delivery guarantee. Capture, encoder, decoder, network and presentation hardware must support the requested rate. Driver 0.9 extends the private mode descriptor to three hexadecimal refresh digits, preserving legacy descriptor decoding. Camera and JPEG limits are unchanged.
+
+## Grouped resources and remote keyboard (2026-11-07)
+
+Resource groups collapse without stopping connections and disconnect independently. Hide routine component-presence messages, preserve actionable failures. Windows automatic keyboard requests target the streamed host monitor after confirmed editable touch; use the OS accessibility keyboard, preserve unrelated instances and expose limitations. A complete modern touch keyboard/IME integration is not claimed.
+
+## Desktop shell presentation (2026-11-07)
+
+Open on Server by default without starting it automatically. Use centered resource
+group titles with separate compact icon actions, accessible names and tooltips.
+The desktop navigation can collapse into an icon rail; collapsing navigation or
+a resource group never changes connections. Keep actionable status visible and
+move general usage limits out of the primary connection workflow.
+
+## Installer role and consent flow (2026-11-07)
+
+Role choice is Client only or Server + Client. USB source support is mandatory in both roles, with no checkbox or separate optional setup flow. Driver certificate information remains explicit; the driver page uses an I agree - Next action instead of a checkbox. Silent server deployment still requires /ACCEPTDEVELOPMENTCERT=1. Installation never selects or exports storage automatically.
+
+## Dynamic Windows resource capacity (2026-11-07)
+
+Replace fixed product counts with dynamic endpoint/session allocation and remove
+the Connection limits UI section. Preserve bounded pending admissions, tickets
+and per-recipient queues, plus exact USB ownership and per-device exclusivity.
+Do not advertise unlimited hardware capacity: endpoint/driver allocation may
+fail. The current USB source backend retains its one-exporter-process constraint
+until a coordinated backend/broker redesign preserves its attachment evidence.
+
+## Remote speakers (2026-11-08)
+
+The user confirmed that a client's chosen speaker/headset must appear as a normal
+playback device on the server. This is independent of reverse microphone forwarding
+and does not automatically copy system audio or change global defaults. Add Speakers
+above Microphones, with repeatable connections, per-session mute and volume. Initial
+implementation is a Windows virtual playback endpoint and Windows/Android output;
+unsupported Linux/macOS paths remain explicit. Reuse the managed USB/IP audio backend
+and existing installer ownership rather than introducing a new kernel driver.
+
+## Device discovery and remembered pairing: next branch design
+
+Status: design decisions for `feat/device-discovery`, branched from the preserved
+`feat/shared-resources` baseline. These describe intended behavior, not capabilities
+of the currently shipped app. Do not merge either branch into main until the user
+says the work is ready.
+
+- Devices are equal participants: each may offer local resources and use remote
+  resources concurrently. Proposed primary pages are Devices, Share and Connections,
+  with Settings/About retained. Server/client remain implementation roles.
+- Advertise only resources explicitly enabled for sharing. Advertising does not
+  start camera/microphone capture or export a USB disk. Retain direct IPv4/port and
+  selected-interface access when discovery is unavailable, including static-IP LANs.
+- Pairing codes are optional and enabled by default. Remembered access uses device identity/trust rather than
+  treating a stored short code or IP address as proof of identity. Codes rotate only on a fresh app/sharing-service startup, not on pairing or reconnect. Trust must be revocable, and disabling
+  pairing must be explicit; do not imply peer identity verification in open mode.
+- Default sharing lifecycle (delegated choice): remember offered-resource selections,
+  provide Start sharing / Stop sharing, and start sharing manually by default.
+  Stop sharing withdraws offers and ends sessions using them. Merely offering a
+  resource does not activate it.
+- Keep two explicit display modes: Extend desktop creates a virtual monitor on the
+  computer using another device as its display; Share existing screen captures an
+  already-existing display. Do not call existing-display capture an extended monitor.
+- Virtual monitor configuration retains both matching a selected receiver monitor's
+  native resolution/refresh and custom resolution/target FPS. Selecting a physical
+  monitor remains optional. Hardware/OS limits remain visible.
+- Existing-screen sharing is now in scope; its default is view-only, with input explicitly enabled. Existing virtual-display input semantics remain intact.
+- Brief network loss should trigger bounded retries for non-USB resources, provided
+  permission/trust and resource availability still hold. Never silently fall back to
+  another camera, microphone, screen or output. USB reconnect requires explicit action
+  and remains exclusive; preserve safe ownership-return behavior.
+
+Implementation gates: settle pairing lifetime and existing-screen input defaults;
+then define capability/identity/discovery messages and cross-platform adapters;
+implement device/resource discovery with direct-IP fallback; add trust and revocation;
+connect resource selection to existing media sessions; add existing-screen capture
+and bounded reconnect. Preserve current device-sharing paths while migrating.
+Security checks must cover code replay/rate limits, remembered identity changes,
+revocation and cross-device resource isolation before claiming the new pairing mode
+ready. Physical-device validation remains a separate gate.
+
+## Device discovery implementation authorization
+
+The user authorized implementing this design on the child branch. UPnP is explicitly
+excluded. Manual port forwarding uses the offering device's reachable address/port;
+LAN discovery is optional convenience. The using device initiates a connection to
+the offering device. Media may flow in either direction; the virtual-display driver
+always belongs on the computer whose desktop is extended.
+
+Gateway sharing is disabled by default. The original implementation delegated a
+gateway's access without separate endpoint pairing. The mutual-peer encryption
+decision above supersedes that trust model: the two end devices must authenticate
+each other independently of the gateway. Enforce one gateway hop, ExtraPane-only
+resource sessions, existing resource permissions, bounded queues and immediate
+revocation/stop. Gateway discovery alone is insufficient: relay traffic over an
+authorized session when private destinations cannot be reached directly.
+
+Accept localhost and IPv4 loopback for manual/self connections while excluding
+loopback from LAN address listings. IPv6 support requires an explicit transport
+gate; never treat an unsupported address as a different destination. Self-extension
+still uses the real media pipeline unless a separate local path is implemented.
+
+For manual reconnection, a unique saved address/port may select the remembered
+identity to authenticate. The address is only a lookup hint: the peer must prove
+the saved secret. An explicit selected identity takes precedence. Ambiguous saved
+addresses require choosing a saved device; a failed identity proof never falls
+back to pairing or unverified access automatically.
+
+## Device workspace is the normal launch path
+
+The user clarified that the delivered app should open Devices / Share /
+Connections without a flag. This supersedes the temporary opt-in migration plan.
+Desktop normal startup uses the new workspace; `--devices` remains an alias and
+`--legacy` explicitly opens the older interface. Native helper and diagnostic
+commands retain their dispatch behavior. Android's launcher opens device sharing,
+with explicit Legacy connections navigation. This does not imply physical-device
+acceptance or authorize merging the branch.
+
+## Resource controls and navigation consistency
+
+Resource rows use power buttons, not checkboxes: green enables/offers or connects
+the resource; red disables/withdraws or disconnects it. Action labels distinguish
+offering a resource from starting an active connection. Pairing, input permission
+and gateway preferences remain settings controls. Merely enabling an offer does
+not activate its camera, microphone or other native capture.
+
+Desktop navigation uses a fixed hamburger icon, matching Android. The sidebar
+may slide, but its toggle does not rotate or swap between arrow glyphs.
+
+## Individual resources start sharing; discovery is the default entry
+
+This supersedes the earlier separate Start sharing step. Enabling the first
+resource validates the selected address/port and starts sharing automatically.
+Disabling the last offered resource stops the listener; explicitly enabled gateway
+sharing also counts as an offer. Stop sharing all clears local offers and gateway
+sharing, withdraws advertisements and ends incoming use while preserving outgoing
+resource connections. Startup failure must leave no falsely enabled resource.
+Fresh app startup does not silently restore active offers, and stale listener
+events after stop/restart cannot reactivate sharing. Pairing-code lifetime is unchanged.
+
+Desktop Devices browses Nearby devices by default, with collapsed Connect by address
+as an equally functional direct-IP fallback. Do not label it External: static-IP LAN
+and localhost connections use it too. Discovery is an untrusted local-network hint;
+paired identity is still verified by the authenticated connection. Android automatically
+advertises enabled offers; its current workspace remains a resource provider.
+
+
+## Available resources by default; power represents actual use
+
+This supersedes opt-in resource offers and the first-offer/last-offer listener
+lifecycle above. Normal app startup makes supported local resources discoverable
+and available through an authenticated catalog. Pairing remains enabled by default;
+discovery alone does not grant access. Camera/microphone capture, virtual monitor
+creation and USB ownership begin only after an authorized resource request. OS
+permissions and endpoint capability requirements still apply.
+
+A provider's idle resource is Available, not red. Red power identifies actual
+incoming use of that exact resource and disconnects that resource's users. The
+consumer's corresponding resource is red while connected. Show who uses each
+resource, and preserve unrelated connections when stopping one. Disconnecting all
+active resources leaves the listener/catalog available for subsequent requests.
+Gateway sharing remains a separate, disabled-by-default setting. Android retains
+its foreground-only lifecycle and never resumes old capture sessions simply by
+returning to the app.
+
+
+## Matching Windows build for every Android revision
+
+Every delivered Android revision also produces the matching Windows version,
+even when its changes affect Android only. Deliver the installer to both the
+local and Surface Desktops. Do not finish an Android delivery leaving Windows
+on a previous version. Windows installation remains a user step.
+
+
+## Device management and manual Nearby search (2026-11-08)
+
+Devices manages pairing, saved devices and device-level connections. Nearby is
+for discovering new peers only: the user explicitly starts a bounded search;
+paired and connected identities are excluded. Announcements remain automatic
+while sharing is available, independently of searching. This supersedes earlier
+automatic browsing behavior. Direct address connections remain available.
+
+Connections contains each connected peer's bordered, collapsible resource
+catalog, with independent green/red power controls and active-session controls.
+Connecting or pairing a peer never starts a media resource. A device's Connect
+action disappears once connected. About displays the running build version.
+
+
+## Persistent paired catalogs and Resources navigation (2026-11-08)
+
+Devices now combines pairing/device management with this device's sharing and
+network settings. Resources replaces Connections and contains remote resource
+catalogs, power controls and active streams. This supersedes the separate Share
+page above.
+
+Available remembered peers connect automatically using saved identity proofs;
+these are control/catalog connections only. New-device discovery/pairing remains
+user initiated. Explicit device disconnect suppresses automatic reconnection
+until manual Connect or process restart. A resource stopping, failing or being
+cancelled must not close the device's catalog connection or unrelated resources.
+Existing bounded recovery of an already-active non-USB resource after transport
+loss remains independent of initial catalog auto-connection.
+
+Known-peer LAN announcements may supply an observed source-address route hint;
+they do not authenticate a device or overwrite a trusted saved route until the
+connection proves the saved identity. Unknown-device announcements never cause
+automatic pairing. Network failures retry with a capped backoff; rejected identity
+proofs stop automatic attempts until explicit action.
+
+Pending request cancellation is negotiated using a backwards-compatible control
+probe. New peers can cancel the exact pending provider request. Older peers use
+the existing close-after-late-grant fallback; they do not receive an unknown
+cancellation operation. Update both endpoints for precise pending cancellation.

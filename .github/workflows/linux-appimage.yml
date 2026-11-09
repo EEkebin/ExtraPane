@@ -34,7 +34,7 @@ jobs:
             gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugin-qml6 gst-plugin-pipewire \
             patchelf fuse2 squashfs-tools xorg-server-xvfb xorg-xauth mesa licenses
           pacman -S --noconfirm systemd xz licenses
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Validate version and build
@@ -43,6 +43,11 @@ jobs:
           cmake --preset linux-release -DEXTRAPANE_LINUX_TESTS=ON
           cmake --build --preset linux-release --parallel 2
           QT_QPA_PLATFORM=offscreen out/build/linux-release/platform/linux/extrapane-linux-input-check
+          out/build/linux-release/platform/linux/extrapane-linux-resource-pcm-check
+          out/build/linux-release/platform/linux/extrapane-linux-output-slot-check
+          out/build/linux-release/platform/linux/extrapane-linux-resource-fanout-check
+          out/build/linux-release/platform/linux/ui-checks/extrapane-linux-window-check
+          out/build/linux-release/platform/linux/ui-checks/extrapane-linux-admission-check
       - name: Prepare tools and dependency notices
         run: python scripts/prepare_linux_ci.py
       - name: Package AppImage
@@ -53,7 +58,7 @@ jobs:
           tar -czf "out/dist-linux/ExtraPane-${EXTRAPANE_VERSION}-linux-dependencies.tar.gz" -C out/linux-notices .
       - name: Check portable startup outside build tree
         run: xvfb-run -a python scripts/check_linux_appimage.py "out/dist-linux/ExtraPane-${EXTRAPANE_VERSION}-linux-x86_64.AppImage"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: ExtraPane-Linux-${{ inputs.version }}
           path: |
@@ -61,7 +66,7 @@ jobs:
             out/dist-linux/*.sha256
             out/dist-linux/*-linux-dependencies.tar.gz
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: failure()
         with:
           name: linux-build-diagnostics

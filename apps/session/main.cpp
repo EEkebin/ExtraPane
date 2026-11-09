@@ -17,7 +17,7 @@ unsigned number(const std::string& text, unsigned maximum) {
 int main(int argc, char** argv) {
     try {
         if (argc < 2 || std::string_view(argv[1]) == "--help") {
-            std::cout << "DM authenticated session diagnostic (no video or input)\n"
+            std::cout << "ExtraPane authenticated session diagnostic (no video or input)\n"
                          "  dm-session pair --name <pair> --secret-stdin\n"
                          "  dm-session revoke --name <pair>\n"
                          "  dm-session peers\n"
