@@ -32,7 +32,8 @@ struct Source {
     peers::Offer offer;
     // Local-only UTF-8 device identifier; never accepted from a remote request.
     std::string device;
-    std::string renderer="d3d11";
+    // Empty uses the saved per-user renderer preference at session start.
+    std::string renderer;
     bool mirror=false;
 };
 struct Event {std::uint64_t grant=0;bool active=false,ended=false;std::string detail;};

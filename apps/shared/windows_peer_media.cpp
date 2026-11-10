@@ -7,6 +7,7 @@
 #ifdef _WIN32
 #include "windows_child.hpp"
 #endif
+#include "renderer_preference.hpp"
 namespace extrapane::windows_peer {
 std::vector<std::string> native_arguments(const Command& command,std::uint32_t parent_pid){auto args=command.arguments;if(command.parent_watch&&!command.elevated){if(!parent_pid)throw std::invalid_argument("Missing launcher identity");args.insert(args.end(),{"--parent-pid",std::to_string(parent_pid)});}return args;}
 namespace {
@@ -88,8 +89,9 @@ bool WindowsPeerMediaAdapter::start(const peers::Grant& grant,const peers::rpc::
         }else{
             Command command;command.executable=executable(grant.kind);
             if(grant.kind==Kind::display_destination){
-                if(config.renderer!="d3d11"&&config.renderer!="d3d12"&&config.renderer!="vulkan"&&config.renderer!="opengl")fail("Invalid renderer");
-                command.arguments={"receive","--lan","--renderer",config.renderer};command.graceful=false;if(grant.input)command.arguments.push_back("--control");
+                const auto renderer=config.renderer.empty()?saved_renderer():config.renderer;
+                if(!known_renderer(renderer))fail("Invalid renderer");
+                command.arguments={"receive","--lan","--renderer",renderer};command.graceful=false;if(grant.input)command.arguments.push_back("--control");
                 if(!config.device.empty()){if(!config.device.starts_with("\\\\.\\DISPLAY")||config.device.size()>32||!safe_device(config.device))fail("Invalid display destination");command.arguments.insert(command.arguments.end(),{"--monitor",config.device});}
                 auto w=open.width,h=open.height,hz=open.refresh;if(!w){w=config.offer.width;h=config.offer.height;hz=config.offer.refresh;}
                 if(w||h||hz){if(w<2||w>4096||h<2||h>4096||w%2||h%2||!hz||hz>360)fail("Unsupported native display mode");command.arguments.insert(command.arguments.end(),{"--width",std::to_string(w),"--height",std::to_string(h),"--fps",std::to_string(hz)});}

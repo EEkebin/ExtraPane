@@ -10,6 +10,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #endif
+#include "renderer_preference.hpp"
 namespace extrapane::windows_peer {
 namespace {
 using Service=peers::Service;using Kind=peers::Kind;using Clock=std::chrono::steady_clock;
@@ -115,7 +116,7 @@ Service::Hooks WindowsPeerRuntime::hooks()const{
     };
     hooks.ready=[state](const Service::Context& c,const peers::rpc::Open& request,std::uint16_t port){std::lock_guard lock(state->mutex);auto found=state->uses.find(State::key(c));if(found==state->uses.end())fail("Native grant was not prepared");
         if(c.incoming&&c.kind!=Kind::existing_screen){std::string reason;if(!state->provider.start(state->grant(c,request),request,port,request.native_credential,reason))throw std::runtime_error(reason);}
-        if(!c.incoming&&c.kind==Kind::existing_screen){found->second.screenClient=std::make_unique<ScopedScreenReceiver>(state->factory);found->second.screenClient->start(state->grant(c,request),port,request.native_credential);}
+        if(!c.incoming&&c.kind==Kind::existing_screen){found->second.screenClient=std::make_unique<ScopedScreenReceiver>(state->factory);found->second.screenClient->start(state->grant(c,request),port,request.native_credential,saved_renderer());}
     };
     hooks.stopped=[state](const Service::Context& c){std::lock_guard lock(state->mutex);state->stop(c);};hooks.cancel_request=hooks.stopped;
     hooks.poll=[state]{std::lock_guard lock(state->mutex);std::vector<Service::Context> ended;const auto events=state->provider.poll();const auto lost=state->receiver.poll();

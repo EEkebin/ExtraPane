@@ -14,6 +14,15 @@
 #include <iostream>
 #include <algorithm>
 #include <stdexcept>
+class MockRenderers final:public QQmlPropertyMap {
+ Q_OBJECT
+public:
+ unsigned checks=0;
+ MockRenderers():QQmlPropertyMap(this,nullptr){insert("renderer","d3d11");insert("checking",false);insert("checked",false);insert("message",QString{});
+  insert("options",QVariantList{QVariantMap{{"id","d3d11"},{"label","D3D11 (default)"},{"available",true},{"detail","Default"}},QVariantMap{{"id","d3d12"},{"label","D3D12"},{"available",true},{"detail","Available on Test GPU"}},QVariantMap{{"id","vulkan"},{"label","Vulkan"},{"available",false},{"detail","No driver"}},QVariantMap{{"id","opengl"},{"label","OpenGL"},{"available",true},{"detail","Available on Test GPU"}}});}
+ Q_INVOKABLE void check(){++checks;insert("checked",true);}
+ Q_INVOKABLE bool setRenderer(QString id){for(const auto& v:value("options").toList()){const auto m=v.toMap();if(m["id"]==id&&m["available"].toBool()){insert("renderer",id);return true;}}insert("message","unavailable");return false;}
+};
 class MockPeers final:public QQmlPropertyMap {
  Q_OBJECT
 public:
@@ -63,7 +72,7 @@ int main(int argc,char** argv){qputenv("QT_QPA_PLATFORM","offscreen");qputenv("Q
 #ifdef _WIN32
 app.setFont(QFont("Segoe UI",10));
 #endif
-QQuickStyle::setStyle("Material");try{MockPeers peers;QQmlEngine engine;QStringList warnings;QObject::connect(&engine,&QQmlEngine::warnings,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings<<e.toString();});engine.rootContext()->setContextProperty("peers",&peers);QQmlComponent component(&engine,QUrl("qrc:/PeerWorkspace.qml"));std::unique_ptr<QObject> owned(component.create());if(!owned){for(const auto& e:component.errors())std::cerr<<e.toString().toStdString()<<'\n';throw std::runtime_error("Peer QML failed to load");}auto* root=qobject_cast<QQuickItem*>(owned.get());require(root,"Peer root must be an item");QQuickWindow window;window.setColor(QColor("#0e1727"));window.resize(1100,800);root->setParentItem(window.contentItem());root->setWidth(1100);root->setHeight(800);window.show();for(int n=0;n<20;++n){app.processEvents();QThread::msleep(5);}
+QQuickStyle::setStyle("Material");try{MockPeers peers;QQmlEngine engine;QStringList warnings;QObject::connect(&engine,&QQmlEngine::warnings,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings<<e.toString();});engine.rootContext()->setContextProperty("peers",&peers);MockRenderers renderers;engine.rootContext()->setContextProperty("renderers",&renderers);QQmlComponent component(&engine,QUrl("qrc:/PeerWorkspace.qml"));std::unique_ptr<QObject> owned(component.create());if(!owned){for(const auto& e:component.errors())std::cerr<<e.toString().toStdString()<<'\n';throw std::runtime_error("Peer QML failed to load");}auto* root=qobject_cast<QQuickItem*>(owned.get());require(root,"Peer root must be an item");QQuickWindow window;window.setColor(QColor("#0e1727"));window.resize(1100,800);root->setParentItem(window.contentItem());root->setWidth(1100);root->setHeight(800);window.show();for(int n=0;n<20;++n){app.processEvents();QThread::msleep(5);}
  require(QMetaObject::invokeMethod(named(root,"peerRefreshDiscovery"),"clicked")&&peers.discoveryCalls==1,"Discovery refresh must use guarded controller API");
  peers.directory.insert("scanning",true);for(int i=0;i<10;++i){app.processEvents();QThread::msleep(20);}require(named(root,"peerRefreshDiscovery")->property("iconRotation").toDouble()>0,"Search icon is not animating");require(QMetaObject::invokeMethod(named(root,"peerRefreshDiscovery"),"clicked")&&peers.discoveryCalls==1,"Searching action started a duplicate scan");peers.directory.insert("scanning",false);app.processEvents();require(named(root,"peerRefreshDiscovery")->property("iconRotation").toDouble()==0,"Search icon kept spinning after scan");
  require(!named(root,"peerLocalBody")->property("visible").toBool()&&named(root,"peerLocalPairingCode")->property("visible").toBool()&&named(root,"peerLocalPairingCode")->property("text").toString().contains("123456"),"Collapsed local card must retain pairing code");
@@ -84,6 +93,14 @@ QQuickStyle::setStyle("Material");try{MockPeers peers;QQmlEngine engine;QStringL
   require(QMetaObject::invokeMethod(mode,"activated",Q_ARG(int,0)),"Cannot return to rotating code");app.processEvents();
   require(!peers.value("pairingCustom").toBool()&&mode->property("currentIndex").toInt()==0&&!field->property("visible").toBool(),"Rotating code was not restored");
   peers.insert("pairingCode","123456");peers.insert("pairingSeconds",20);app.processEvents();}
+ {// Renderer picker: shown with the expanded local card, checks support once, saves only available choices.
+  require(named(root,"peerRendererSettings")->property("visible").toBool()&&renderers.checks==1,"Renderer picker hidden or support not checked");
+  auto* choice=named(root,"peerRenderer");require(choice->property("currentIndex").toInt()==0,"Renderer picker not on saved D3D11");
+  require(QMetaObject::invokeMethod(choice,"activated",Q_ARG(int,1)),"Cannot choose D3D12");app.processEvents();
+  require(renderers.value("renderer")=="d3d12"&&choice->property("currentIndex").toInt()==1&&named(root,"peerRendererDetail")->property("text").toString().contains("Test GPU"),"D3D12 choice not saved");
+  require(QMetaObject::invokeMethod(choice,"activated",Q_ARG(int,2)),"Cannot attempt Vulkan");app.processEvents();
+  require(renderers.value("renderer")=="d3d12"&&choice->property("currentIndex").toInt()==1&&named(root,"peerRendererMessage")->property("visible").toBool(),"Unavailable Vulkan was selected");
+  renderers.insert("renderer","d3d11");renderers.insert("message",QString{});app.processEvents();require(choice->property("currentIndex").toInt()==0,"Picker did not follow saved renderer");}
  require(QMetaObject::invokeMethod(named(root,"peerNearby_nearby-device"),"clicked"),"Cannot select nearby peer");app.processEvents();require(named(root,"peerPairingDialog")->property("visible").toBool()&&!root->property("manualExpanded").toBool()&&peers.connectCalls==0,"Nearby pairing must open a modal without connecting or exposing inline fields");
  if(const auto images=qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS");!images.isEmpty()){QDir().mkpath(images);for(int n=0;n<30;++n){app.processEvents();QThread::msleep(10);}require(window.grabWindow().save(images+"/pairing-dialog.png"),"Cannot capture pairing dialog");}
  require(named(root,"peerPairingTitle")->property("text")=="Pair with Nearby computer"&&named(root,"peerPairingSubtitle")->property("text")=="192.0.2.12:43825","Pairing header must show name then endpoint");

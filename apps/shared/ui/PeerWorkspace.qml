@@ -19,6 +19,10 @@ Item {
     readonly property var newNearbyDevices: peers.directory.devices.filter(row =>
         !peers.remembered.some(saved => saved.id===row.id) && !peers.devices.some(device => device.identity===row.id))
     property bool localExpanded: false
+    // Windows-only renderer preference; absent on other platforms.
+    readonly property var rendererSettings: typeof renderers!=="undefined" ? renderers : null
+    // Reads options and renderer so the selection follows both.
+    function rendererIndex() { const r=rendererSettings; if(!r) return 0; const i=r.options.findIndex(o => o.id===r.renderer); return i<0 ? 0 : i }
     property var expandedGroups: ({})
     function toggleGroup(key) { const next=Object.assign({},expandedGroups);next[key]=!next[key];expandedGroups=next }
     property var collapsedDevices: ({})
@@ -481,6 +485,30 @@ Item {
                             Action { objectName:"peerSavePairingPassword";text:"Save";enabled:customPairing.text.length>0;onClicked:if(peers.setPairingPassword(customPairing.text))customPairing.clear() }
                         }
                         Label { text:peers.pairingCustom?"Your custom PIN or password stays in effect until you change it. Previously paired devices keep their access.":"The code refreshes every 20 seconds. Previously paired devices and active resources stay connected.";color:"#9eacc2";wrapMode:Text.WordWrap;Layout.fillWidth:true }
+                    }
+                    ColumnLayout {
+                        objectName:"peerRendererSettings";visible:workspace.rendererSettings!==null;Layout.fillWidth:true;spacing:8
+                        onVisibleChanged: if(visible&&!workspace.rendererSettings.checked&&!workspace.rendererSettings.checking)workspace.rendererSettings.check()
+                        Label { text:"Video renderer";font.weight:Font.DemiBold }
+                        ComboBox {
+                            id:rendererChoice;objectName:"peerRenderer";Layout.fillWidth:true
+                            enabled:workspace.rendererSettings!==null&&!workspace.rendererSettings.checking
+                            model:workspace.rendererSettings?workspace.rendererSettings.options:[];textRole:"label";valueRole:"id"
+                            currentIndex:workspace.rendererIndex()
+                            delegate: ItemDelegate {
+                                required property var modelData;required property int index
+                                width:rendererChoice.width;text:modelData.label;enabled:modelData.available;highlighted:rendererChoice.highlightedIndex===index
+                            }
+                            onActivated: function(index) {
+                                workspace.rendererSettings.setRenderer(valueAt(index))
+                                currentIndex=Qt.binding(function(){return workspace.rendererIndex()})
+                            }
+                        }
+                        Label {
+                            objectName:"peerRendererDetail";Layout.fillWidth:true;wrapMode:Text.WordWrap;color:"#9eacc2"
+                            text:{const r=workspace.rendererSettings;if(!r)return "";if(r.checking)return "Checking which renderers work on this PC...";const o=r.options.find(x=>x.id===r.renderer);return (o?o.detail+". ":"")+"Applies to screens and displays you open next. If the renderer can't start, ExtraPane uses D3D11."}
+                        }
+                        Label { objectName:"peerRendererMessage";visible:text.length>0;text:workspace.rendererSettings?workspace.rendererSettings.message:"";color:"#f0c66e";wrapMode:Text.WordWrap;Layout.fillWidth:true }
                     }
                     Repeater {
                         model: workspace.resourceGroups

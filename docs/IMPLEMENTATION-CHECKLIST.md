@@ -1,5 +1,35 @@
 # Resource-sharing implementation checklist
 
+## Active increment: restore the Windows renderer choice
+
+The WinUI app's Renderer setting (D3D11 default, D3D12, Vulkan, OpenGL) was not
+carried into the shared Qt app on Nov 7. The old client path still read the saved
+value, but the Devices/Resources display and existing-screen receivers always
+used D3D11.
+
+- [x] Add a "Video renderer" picker to the expanded "This device" card on
+  Windows. It runs `dm-view renderer-info` when first shown, disables options the
+  check does not report as available (with the reason), and saves the choice to
+  `HKCU\Software\DM\Receiver\Renderer`.
+- [x] D3D11 stays the default and is always selectable. If the saved renderer is
+  reported unavailable it is replaced with D3D11 and a message says why. dm-view
+  still falls back to D3D11 by itself if a renderer fails at session start.
+- [x] Devices/Resources display-destination and existing-screen receivers now use
+  the saved choice when a session starts (`renderer_preference.hpp`).
+- [x] Linux and macOS do not show the picker. D3D11/D3D12 are Windows APIs and
+  Metal exists only on macOS (including Asahi Linux, which offers OpenGL/Vulkan
+  but not Metal). The macOS receiver presents through `AVSampleBufferDisplayLayer`.
+  The Linux receiver presents through OpenGL only; a Vulkan path is not built.
+- [x] `extrapane-renderer-settings-check` covers defaults, probe parsing and
+  noise, persistence, unavailable-saved fallback, D3D11 staying selectable,
+  invalid stored values and a probe that cannot start (no GPU or registry use).
+  `extrapane-peer-ui-check` covers visibility, one support check, saving an
+  available choice, rejecting an unavailable one and following the saved value.
+  The Windows peer-runtime check passes.
+- [ ] Physical check: renderer support on real GPUs and each renderer in a
+  Devices/Resources screen session. No GPU probe was run during development.
+- [ ] Deliver in the next matching Windows/Android build.
+
 ## Active increment: custom pairing secret selection (desktop)
 
 - [x] Fix the Qt desktop pairing-mode selector snapping back to "Rotating code"

@@ -1,5 +1,6 @@
 #include "windows_controller.hpp"
 #include "peer_controller.hpp"
+#include "renderer_settings.hpp"
 #include "windows_peer_runtime.hpp"
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -119,11 +120,14 @@ int main(int argc,char** argv){
             });inventoryTimer.start(50);
         }catch(const std::exception& e){QMessageBox::critical(nullptr,"ExtraPane",QString::fromUtf8(e.what()));return 1;}
     }
+    // Declared before the engine so QML never outlives it during shutdown.
+    RendererSettings renderers(QCoreApplication::applicationDirPath()+"/dm-view.exe",std::make_unique<QSettings>("HKEY_CURRENT_USER\\Software\\DM\\Receiver",QSettings::NativeFormat));
     QQmlApplicationEngine engine;
     bool qmlFailed=false;
     QObject::connect(&engine,&QQmlEngine::warnings,&app,[&](const QList<QQmlError>&){qmlFailed=true;});
     engine.rootContext()->setContextProperty("receiver",&controller);
     if(peers)engine.rootContext()->setContextProperty("peers",peers.get());
+    engine.rootContext()->setContextProperty("renderers",&renderers);
     engine.load(QUrl("qrc:/Main.qml"));
     if(engine.rootObjects().isEmpty())return 1;
     auto* window=qobject_cast<QWindow*>(engine.rootObjects().first());
