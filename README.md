@@ -311,7 +311,7 @@ Linux, Android and macOS jobs. Follow the pinned prerequisites and commands in
 
 Outputs go to `out/dist`. Driver packaging creates a new development signing identity and refuses to overwrite an existing frozen package. Build scripts do not install the driver or trust its certificate.
 
-CI builds the app and driver, checks packages and installer behavior, and publishes a prerelease after a PR merges into `main`. Driver-store/trust integration tests run only on disposable CI machines. GPU rendering, runtime driver loading, physical input and responsiveness require real hardware checks. See [development](docs/DEVELOPMENT.md), [release maintenance](docs/RELEASING.md), and [driver installation](docs/DRIVER-INSTALLATION.md).
+CI builds every pushed branch (installers and APKs are downloadable run artifacts; `scripts/deliver-dev-build.ps1` installs them for testing), checks packages and installer behavior, and publishes a prerelease only after a PR merges into `main`. Driver-store/trust integration tests run only on disposable CI machines. GPU rendering, runtime driver loading, physical input and responsiveness require real hardware checks. See [development](docs/DEVELOPMENT.md), [release maintenance](docs/RELEASING.md), and [driver installation](docs/DRIVER-INSTALLATION.md).
 
 Tags use UTC calendar dates, for example `v2026.11.03-pre.31.1`. Stable releases use date tags and a descriptive release title. Prereleases remain available until explicitly approved for removal.
 

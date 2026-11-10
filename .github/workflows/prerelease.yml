@@ -1,10 +1,10 @@
 name: Build and release
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  # Every pushed branch gets versioned Windows/Linux/Android/macOS builds as run
+  # artifacts (scripts/deliver-dev-build.ps1 installs them). Their checks also
+  # appear on pull requests through the commit. Only merged PRs on main publish.
   push:
-    branches: [main]
+    branches: ['**']
   workflow_dispatch:
     inputs:
       resource_platforms_only:
@@ -44,7 +44,8 @@ permissions:
   pull-requests: read
 concurrency:
   group: release-${{ github.ref }}-${{ github.event_name }}-${{ inputs.macos_only && 'macos' || inputs.android_only && 'android' || inputs.resource_platforms_only && 'resources' || inputs.linux_only && 'linux' || 'all' }}
-  cancel-in-progress: false
+  # A newer push to the same feature branch supersedes its older build; main is never cancelled.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   metadata:
     runs-on: windows-2025
@@ -81,7 +82,8 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Invalid release metadata'}
           $publish=$false
           if('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ github.ref }}' -eq 'refs/heads/main'){$publish=$true}
-          if('${{ github.event_name }}' -eq 'push'){
+          # Feature branches never publish, even when they point at a merged main commit.
+          if('${{ github.event_name }}' -eq 'push' -and '${{ github.ref }}' -eq 'refs/heads/main'){
             $prs=gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:GITHUB_SHA/pulls" | ConvertFrom-Json
             if($LASTEXITCODE -ne 0){throw 'Cannot verify merged PR'}
             $publish=@($prs | Where-Object {$_.merged_at -and $_.base.ref -eq 'main' -and $_.merge_commit_sha -eq $env:GITHUB_SHA}).Count -gt 0
