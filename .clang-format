@@ -1,0 +1,26 @@
+# C, C++ and Objective-C++ formatting. Run scripts/format.py (or --check in CI).
+BasedOnStyle: LLVM
+Standard: c++20
+IndentWidth: 4
+ObjCBlockIndentWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 120
+AccessModifierOffset: -4
+PointerAlignment: Left
+DerivePointerAlignment: false
+# Windows headers are order-sensitive (winsock2.h before windows.h, initguid.h before devpkey.h).
+SortIncludes: Never
+IncludeBlocks: Preserve
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortLambdasOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Empty
+AllowShortEnumsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBraces: Attach
+NamespaceIndentation: None
+FixNamespaceComments: false
+ReflowComments: false
+InsertNewlineAtEOF: true
+LineEnding: LF

@@ -215,7 +215,11 @@ if(BUILD_TESTING)
   add_test(NAME security-integration COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/security_integration.py" "$<TARGET_FILE:dm-session>")
   set_tests_properties(security-integration PROPERTIES TIMEOUT 40)
   add_test(NAME automatic-lan-sessions COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/lan_sessions.py" "$<TARGET_FILE:dm-view>")
-  set_tests_properties(automatic-lan-sessions PROPERTIES TIMEOUT 40)
+  # Stale since the unified host (2026-11-07): it expects the old 4-session cap and
+  # CLIENT_DISCONNECTED lines, while the host now bounds 32 pending admissions and
+  # reports SERVER_RESOURCE_* events. CI never ran it. Rewrite before re-enabling;
+  # grouped-admission and resource-security cover the current host.
+  set_tests_properties(automatic-lan-sessions PROPERTIES TIMEOUT 40 DISABLED TRUE)
   add_executable(dm-video-tests tests/video_tests.cpp)
   target_link_libraries(dm-video-tests PRIVATE dm_video)
   target_compile_options(dm-video-tests PRIVATE /W4 /WX /permissive- /EHsc /utf-8)

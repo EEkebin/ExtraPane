@@ -1,4 +1,7 @@
-"""No driver/capture: concurrent automatic TLS, capacity and isolated failures."""
+"""No driver/capture: concurrent automatic TLS, capacity and isolated failures.
+
+The unified host stops serving when stdin reaches EOF (launcher control), so
+keep a pipe open; an inherited closed/null stdin made it exit right after LISTENING."""
 import socket, ssl, subprocess, sys, threading, time
 
 exe=sys.argv[1]
@@ -7,7 +10,7 @@ with socket.socket() as probe:
 ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
 ctx.minimum_version=ctx.maximum_version=ssl.TLSVersion.TLSv1_3
-host=subprocess.Popen([exe,'host','--lan','--bind','127.0.0.1','--port',str(port),'--allow-screen','--extend','--serve'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+host=subprocess.Popen([exe,'host','--lan','--bind','127.0.0.1','--port',str(port),'--allow-screen','--extend','--serve'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
 logs=[];clients=[]
 def reader():
     for line in host.stdout:logs.append(line.strip())
