@@ -120,6 +120,14 @@ try {
   if(Test-Path -LiteralPath $recordPath){$record=Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json}
   else {$record=[pscustomobject]@{schema=1;thumbprint=$manifest.certificateThumbprint;infHash=$infHash;catHash=$catHash;addedRoot=$false;addedTrustedPublisher=$false;ownedDriver=$false;publishedInf='';status='starting'}}
   if($record.thumbprint -ne $manifest.certificateThumbprint -or $record.infHash -ne $infHash -or $record.catHash -ne $catHash){throw 'Installation record identity mismatch'}
+  # Fast path for updates: Get-WindowsDriver -Online -All enumerates the whole
+  # driver store through DISM, which is slow. When our record says this exact
+  # package is installed, confirm it from the published INF copy and stop.
+  # Any mismatch falls through to the full enumeration below.
+  if($record.status -eq 'installed' -and $record.publishedInf -match '^oem\d+\.inf$'){
+   $published=Join-Path $env:SystemRoot ('INF\'+$record.publishedInf)
+   if((Test-Path -LiteralPath $published) -and (Get-FileHash -LiteralPath $published -Algorithm SHA256).Hash -eq $infHash){Write-Log "Driver already installed as $($record.publishedInf)";exit 0}
+  }
   $before=@(Find-ExactDriver $infHash $catHash)
   if($before.Count -gt 1){throw 'Ambiguous existing driver package'}
   if($before.Count -eq 1 -and $record.status -eq 'installed'){Write-Log "Driver already installed as $($before[0].Driver)";exit 0}

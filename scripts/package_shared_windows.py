@@ -61,7 +61,12 @@ for name, digest in {
     (qt_license / name).write_bytes(contents)
 if not (qt / 'sbom').is_dir():
     raise RuntimeError('Qt SDK component/license inventory is missing')
-shutil.copytree(qt / 'sbom', qt_license / 'sbom', dirs_exist_ok=True)
+# The SBOM inventory is ~30 MB of uncompressed SPDX text across many files;
+# ship it as one archive (same contents) to keep installs small and fast.
+with zipfile.ZipFile(qt_license / 'sbom.zip', 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as inventory:
+    for path in sorted((qt / 'sbom').rglob('*')):
+        if path.is_file():
+            inventory.write(path, 'sbom/' + path.relative_to(qt / 'sbom').as_posix())
 (notices / 'Qt' / 'SOURCE.txt').write_text(
     'Qt 6.8.3 dynamically linked libraries. Qt is independently licensed.\n'
     'Corresponding upstream sources: https://download.qt.io/archive/qt/6.8/6.8.3/single/\n'

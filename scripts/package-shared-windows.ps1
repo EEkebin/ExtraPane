@@ -114,11 +114,27 @@ if ($IncludeUsb) {
 $previousErrorAction = $ErrorActionPreference
 try {
     $ErrorActionPreference = 'Continue'
-    & (Join-Path $qtPath 'bin/windeployqt.exe') --release --no-translations --verbose 0 --qmldir (Join-Path $projectRoot 'apps/shared/ui') (Join-Path $destinationPath 'ExtraPane.exe')
+    # --no-compiler-runtime: the VC++ DLLs are copied app-locally below; the 18 MB
+    # vc_redist.x64.exe windeployqt would add was never run by the installer.
+    # --no-system-dxc-compiler: dxcompiler/dxil serve Qt Quick's optional D3D12
+    # backend only; Qt Quick uses D3D11 here and dm-view compiles with d3dcompiler_47.
+    & (Join-Path $qtPath 'bin/windeployqt.exe') --release --no-translations --no-compiler-runtime --no-system-dxc-compiler --verbose 0 --qmldir (Join-Path $projectRoot 'apps/shared/ui') (Join-Path $destinationPath 'ExtraPane.exe')
     $deploymentExit = $LASTEXITCODE
 } finally { $ErrorActionPreference = $previousErrorAction }
 if ($deploymentExit -ne 0) { throw 'Qt deployment failed' }
 Get-ChildItem -LiteralPath $crt.FullName -Filter '*.dll' | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $destinationPath }
+# The UI forces the Material style (Basic is its fallback). windeployqt deploys
+# every Quick Controls style; drop the unused ones. The package check launches the
+# extracted app without the SDK, so a missing module still fails the build.
+foreach ($style in 'FluentWinUI3', 'Fusion', 'Imagine', 'Universal', 'Windows') {
+    $dir = Join-Path $destinationPath "qml/QtQuick/Controls/$style"
+    if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
+    Get-ChildItem -LiteralPath $destinationPath -Filter "Qt6QuickControls2$style*.dll" | Remove-Item -Force
+}
+foreach ($unused in 'vc_redist.x64.exe', 'dxcompiler.dll', 'dxil.dll') {
+    $path = Join-Path $destinationPath $unused
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+}
 # windeployqt includes the interactive platform plugin only. The isolated
 # package check explicitly selects offscreen and must not open an error dialog.
 Copy-Item -LiteralPath (Join-Path $qtPath 'plugins/platforms/qoffscreen.dll') -Destination (Join-Path $destinationPath 'platforms/qoffscreen.dll')
