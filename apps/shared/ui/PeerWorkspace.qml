@@ -459,7 +459,7 @@ Item {
                             onModelChanged: Qt.callLater(function(){let found=bind.indexOfValue(bind.selectedPreset);if(found<0){customBind.text=bind.selectedPreset;bind.selectedPreset="custom";found=bind.indexOfValue("custom")}bind.currentIndex=found})
                         }
                         Field { id: customBind; objectName: "peerCustomBind"; visible: bind.currentValue==="custom"; Layout.fillWidth: true; placeholderText: "Local IPv4 address"; text:"127.0.0.1" }
-                        ComboBox { id: portMode; objectName:"peerPortMode"; Layout.fillWidth:true; model:["Default ? 43824","Custom port"]; onActivated:if(currentIndex===0)workspace.applyListening() }
+                        ComboBox { id: portMode; objectName:"peerPortMode"; Layout.fillWidth:true; model:["Default · 43824","Custom port"]; onActivated:if(currentIndex===0)workspace.applyListening() }
                         Field { id: listenPort; objectName: "peerListenPort"; visible:portMode.currentIndex===1; text: "43824"; Layout.fillWidth:true; placeholderText: "Port"; validator: IntValidator { bottom:1; top:65535 } }
                         Action { objectName:"peerApplyListening"; text:"Apply"; visible:bind.currentValue==="custom"||portMode.currentIndex===1; onClicked:workspace.applyListening() }
                     }
