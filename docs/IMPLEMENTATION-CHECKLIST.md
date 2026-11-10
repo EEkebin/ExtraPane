@@ -1,5 +1,17 @@
 # Resource-sharing implementation checklist
 
+## Development delivery: 2026.11.10-pre.4.1
+
+Android Nearby devices header now matches desktop (refresh in the header,
+"Searching nearby" only while searching, status only when idle). From `08476bd`.
+
+- [x] Android APK signed/verified and stream-installed on the Pixel 8a; device
+  reports `2026.11.10-pre.4.1`, code `12240`. APK SHA-256
+  `ecc5ca1088670ccc0d97f440e9408164066f51a8eff9038d16fd2da979c8070c`.
+- [x] Matching Windows installer built with package checks passing and copied to
+  this Desktop (replacing pre.3.1); copy SHA-256 verified.
+- [ ] Layout not yet seen on device; installer not run by the agent.
+
 ## Development delivery: 2026.11.10-pre.3.1
 
 Adds the Android refresh-icon fix (arrowhead moved to the end of its clockwise
