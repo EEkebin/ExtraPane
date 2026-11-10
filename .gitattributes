@@ -49,3 +49,8 @@ gradlew.bat text eol=crlf
 *.p12 binary
 *.tar binary
 *.zip binary
+
+# Repository config files.
+.clang-format text eol=lf
+.editorconfig text eol=lf
+.git-blame-ignore-revs text eol=lf
