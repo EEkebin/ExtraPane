@@ -1,5 +1,26 @@
 # Resource-sharing implementation checklist
 
+## Development delivery: 2026.11.10-pre.2.1
+
+Local test build (not CI-numbered; CI runs only for pull requests) from
+`49e50b1` on `feat/usb-device-names`: USB device names, custom pairing selector
+fix and the Windows renderer picker.
+
+- [x] Windows installer built with all package checks passing (portable
+  extraction, UI, camera/USB/USB-host package checks) and copied to this Desktop;
+  copy SHA-256 verified:
+  `944e060785246ca6937a1e0501472fb8dc1d407b53efd6945a03711d9965edc1`.
+- [x] The embedded USB host payload uses the exact `usbipd.exe` from the
+  installed 2026.11.09 release (SHA-256 `2b0da576...16dc`). A locally rebuilt
+  usbipd.exe differs byte-for-byte from the CI build and the installer correctly
+  refused it as an unreviewed migration source (seen with pre.1.1).
+- [x] Android release APK built, signed with the pinned key and verified, then
+  stream-installed over wireless ADB on the Pixel 8a; device reports version
+  `2026.11.10-pre.2.1`, code `12220`. APK SHA-256:
+  `91e076f0a570eb0a71f7a336615581d1a86e5a0eca88ff068c0d443ad8d7acc3`.
+- [ ] The Windows installer was not run by the agent; Surface delivery was not
+  part of this request. Physical acceptance of all three changes is pending.
+
 ## Active increment: restore the Windows renderer choice
 
 The WinUI app's Renderer setting (D3D11 default, D3D12, Vulkan, OpenGL) was not
