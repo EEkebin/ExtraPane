@@ -27,12 +27,21 @@ std::wstring bus_reported_name(DEVINST node){
     return data.data();
 }
 std::string first(const std::vector<std::wstring>& values){return values.empty()?std::string{}:utf8(values.front());}
-// Collect what the device exposes (keyboard, mouse, audio...) from its present
-// child device nodes. Best effort: naming must never make a device unavailable.
+std::wstring node_id(DEVINST node){
+    wchar_t id[MAX_DEVICE_ID_LEN+1]{};
+    return CM_Get_Device_IDW(node,id,MAX_DEVICE_ID_LEN,0)==CR_SUCCESS?upper(id):std::wstring{};
+}
+// Collect what the device exposes (keyboard, mouse, audio...) from its own
+// present child nodes: interfaces (USB\...&MI_xx) and the function devices below
+// them. Separate USB devices behind an internal hub are not this device's
+// functions and are skipped with their subtrees. Best effort only: naming never
+// affects availability.
 void functions(DEVINST parent,std::vector<std::string>& out,int depth){
     if(depth>4||out.size()>16)return;
     DEVINST child=0;if(CM_Get_Child(&child,parent,0)!=CR_SUCCESS)return;
     do{
+        const auto id=node_id(child);
+        if(id.empty()||(id.starts_with(L"USB\\")&&id.find(L"&MI_")==std::wstring::npos))continue;
         try{
             auto description=prop(child,CM_DRP_FRIENDLYNAME);if(description.empty())description=prop(child,CM_DRP_DEVICEDESC);
             auto name=usb_function_name(first(prop(child,CM_DRP_CLASS)),first(description));
@@ -58,7 +67,10 @@ std::vector<GenericDevice> generic_inventory(HostRunner& runner){
         try{
             DEVINST root=0;need(CM_Locate_DevNodeW(&root,item.instance_id.data(),CM_LOCATE_DEVNODE_NORMAL)==CR_SUCCESS,"USB device is no longer present");
             auto names=prop(root,CM_DRP_FRIENDLYNAME);if(names.empty())names=prop(root,CM_DRP_DEVICEDESC);driver=first(names);
-            try{reported=utf8(bus_reported_name(root));manufacturer=first(prop(root,CM_DRP_MFG));functions(root,parts,0);}catch(const std::exception&){}
+            // Each naming source is independent and best effort.
+            try{reported=utf8(bus_reported_name(root));}catch(const std::exception&){}
+            try{manufacturer=first(prop(root,CM_DRP_MFG));}catch(const std::exception&){}
+            try{functions(root,parts,0);}catch(const std::exception&){}
             bool bluetooth=false;for(auto service:prop(root,CM_DRP_SERVICE))bluetooth|=upper(service)==L"BTHUSB";
             for(auto compatible:prop(root,CM_DRP_COMPATIBLEIDS))bluetooth|=upper(compatible).starts_with(L"USB\\CLASS_E0");
             need(!bluetooth,"Bluetooth USB adapters are not supported for forwarding");
@@ -72,16 +84,16 @@ std::vector<GenericDevice> generic_inventory(HostRunner& runner){
             std::string snapshot= utf8(item.instance_id);auto append=[&](const auto& blob){snapshot+=std::to_string(blob.size())+":";snapshot.append(reinterpret_cast<const char*>(blob.data()),blob.size());};append(descriptors.device);for(const auto& config:descriptors.configurations)append(config);
             item.fingerprint=digest(snapshot);const auto eligible=generic_eligibility(facts);item.available=eligible.available;item.reason=eligible.reason;
         }catch(const std::exception& e){item.reason=e.what();}
-        if(!item.vendor&&!item.product){// descriptors unavailable: fall back to the instance ID
-            const auto v=item.instance_id.find(L"VID_"),p=item.instance_id.find(L"PID_");
-            if(v!=std::wstring::npos&&p!=std::wstring::npos&&v+8<=item.instance_id.size()&&p+8<=item.instance_id.size())
-                try{item.vendor=std::uint16_t(std::stoul(item.instance_id.substr(v+4,4),nullptr,16));item.product=std::uint16_t(std::stoul(item.instance_id.substr(p+4,4),nullptr,16));}catch(const std::exception&){}
+        if(!item.vendor&&!item.product){// descriptors unavailable: strict fallback to the instance ID
+            const auto vid=usb_id_word(item.instance_id,L"VID_"),pid=usb_id_word(item.instance_id,L"PID_");
+            if(vid&&pid){item.vendor=*vid;item.product=*pid;}
         }
+        // `name` excludes child functions, which disappear while a device is
+        // bound, so duplicate detection stays stable during sharing.
+        item.name=generic_label(reported,manufacturer,driver,{},item.vendor,item.product);
         item.label=generic_label(reported,manufacturer,driver,parts,item.vendor,item.product);
-        for(auto& c:item.label)if(static_cast<unsigned char>(c)<32)c=' ';if(item.label.size()>120){std::size_t cut=120;while(cut&&(static_cast<unsigned char>(item.label[cut])&0xC0)==0x80)--cut;item.label.resize(cut);}
         result.push_back(std::move(item));
     }
-    disambiguate_labels(result);
     return result;
 }
 }

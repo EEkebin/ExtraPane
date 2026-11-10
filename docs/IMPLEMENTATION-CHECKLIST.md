@@ -5,20 +5,39 @@
 - [x] Label generic USB resources with the device-reported product string
   (`DEVPKEY_Device_BusReportedDeviceDesc`) instead of Windows' driver description
   ("USB Composite Device"/"USB Input Device"), falling back to the old name.
-- [x] Append meaningful child functions (Keyboard, Mouse, Audio, Camera, Game
-  controller, Serial port, Smart card reader...) from present child device nodes;
-  vendor-defined/consumer-control HID collections are omitted as noise.
-- [x] Prefix a device-supplied manufacturer only when it is not an INF
-  placeholder such as "(Standard USB Host Controller)"; append VID:PID only when
-  the name is still generic; append the USB port when labels would otherwise be
-  identical (for example several "Watchman Dongle" receivers).
-- [x] Naming is best effort and never changes availability or the device ID.
-  Labels stay within 120 bytes without splitting UTF-8 sequences.
+- [x] Append meaningful functions (Keyboard, Mouse, Audio, Camera, Game
+  controller, Serial port, Smart card reader...) from the device's own present
+  interface/function child nodes. Separate USB devices behind an internal hub are
+  skipped. Vendor-defined/consumer-control HID collections are omitted as noise,
+  and HID keywords such as "pen" match whole words only.
+- [x] Prefix the INF manufacturer (`CM_DRP_MFG`, which comes from the driver
+  package rather than the device) only when it is not a placeholder such as
+  "(Standard USB Host Controller)" and its brand is not already in the name;
+  corporate suffixes are dropped ("Logitech, Inc." -> "Logitech"). Append
+  VID:PID when the device/driver name itself is generic.
+- [x] Append the USB port to rows whose function-free name collides with another
+  shown generic row or a storage label (for example several "Watchman Dongle"
+  receivers). Duplicates are judged after storage-backed devices are removed.
+- [x] Generic USB labels, including port suffixes, stay within 120 UTF-8 bytes
+  (below the 128-byte peer catalog cap) without splitting sequences; functions,
+  VID:PID and port are kept and the name is shortened first.
+- [x] A bound/attached device loses the child nodes that name its functions, so
+  the long-running Windows app keeps the label last seen while it was available.
+  This memory is per app run; after an app restart a bound device shows its
+  function-free name until it is available again.
+- [x] Naming is best effort, each source fails independently, and it never
+  changes availability or the device ID. VID/PID fallback parsing is strict and
+  shared with the session code. Storage-disk labels are unchanged.
 - [ ] Build/deliver matching Windows/Android packages and confirm in the app.
 
-Verification: `extrapane-usb-generic-check` covers function mapping, label
-composition, trimming, VID:PID fallback and duplicate disambiguation; storage,
-host-backend, recovery and inventory checks still pass. A read-only property
+Verification: `extrapane-usb-generic-check` covers function mapping (including
+whole-word pen matching), vendor deduplication and suffix stripping, generic
+detection before vendor prefixing, trimming, UTF-8-safe 120-byte limits with
+long names and port suffixes, function-free duplicate detection, collisions with
+storage labels and strict VID/PID parsing. Storage, host-backend, recovery,
+inventory and Windows peer-runtime checks pass; the USB session library and Qt
+runtime build. The runtime's label memory has no dedicated test yet. A
+code review of the first revision found ten issues, all addressed here. A read-only property
 preview on this PC showed, for example, "Razer DeathAdder V3", "Samson C01U",
 "Dell Smart Card Reader Keyboard", "Index HMD" and five "Watchman Dongle" devices
 where Windows reported only "USB Composite Device"/"USB Input Device". No device

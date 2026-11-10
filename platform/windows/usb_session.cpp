@@ -75,7 +75,7 @@ using extrapane::usb::wire::receipt;
 using extrapane::usb::wire::greeting;
 using extrapane::usb::wire::decode_greeting;
 void expect(security::TlsStream& stream,unsigned kind,std::chrono::seconds timeout=std::chrono::seconds(15)){std::array<std::uint8_t,8> packet{};stream.read(packet,Clock::now()+timeout);check(packet==control(kind),"USB resource negotiation failed");}
-unsigned id_word(const std::wstring& id,const wchar_t* name){auto upper=id;std::transform(upper.begin(),upper.end(),upper.begin(),[](wchar_t c){return towupper(c);});const auto at=upper.find(name);check(at!=std::wstring::npos&&at+8<=upper.size(),"Physical USB VID/PID unavailable");unsigned value=0;for(auto c:upper.substr(at+4,4)){check((c>=L'0'&&c<=L'9')||(c>=L'A'&&c<=L'F'),"Invalid physical USB VID/PID");value=value*16+(c<=L'9'?c-L'0':c-L'A'+10);}return value;}
+unsigned id_word(const std::wstring& id,const wchar_t* name){const auto value=usb_id_word(id,name);check(value.has_value(),"Physical USB VID/PID unavailable or invalid");return *value;}
 class ProvenHandles final:public StorageHandles{
 public:std::unique_ptr<StorageHandles> base=native_storage_handles();bool locked=false,dismounted=false;
     extrapane::Availability open(const Disk& d)override{return base->open(d);}extrapane::Availability validate(const Disk& d)override{return base->validate(d);}
@@ -220,7 +220,13 @@ void list_storage(const Report& report){
     // storage fallback, or hide otherwise inspectable generic device entries.
     std::optional<Inventory> storage;std::string storage_error;
     try{storage=current_inventory();}catch(const std::exception& error){storage_error=error.what();}
-    try{auto runner=native_host_runner();for(const auto& device:generic_inventory(*runner)){if(storage&&std::any_of(storage->disks.begin(),storage->disks.end(),[&](const auto& disk){return same(disk.usb_instance_id,device.instance_id);}))continue;row(device.id,device.label,device.available,device.reason);}}
+    try{
+        auto runner=native_host_runner();std::vector<GenericDevice> shown;
+        for(auto& device:generic_inventory(*runner)){if(storage&&std::any_of(storage->disks.begin(),storage->disks.end(),[&](const auto& disk){return same(disk.usb_instance_id,device.instance_id);}))continue;shown.push_back(std::move(device));}
+        std::vector<std::string> storage_labels;if(storage)for(const auto& disk:storage->disks)storage_labels.push_back(disk.label);
+        disambiguate_labels(shown,storage_labels);
+        for(const auto& device:shown)row(device.id,device.label,device.available,device.reason);
+    }
     catch(const std::exception& error){row("usb-generic-inventory-error","USB devices",false,error.what());}
     try{
         check(storage.has_value(),storage_error.c_str());const auto& all=*storage;check(all.errors.empty()&&all.disks.size()<=128,"USB storage ownership inventory is incomplete or exceeds the device limit");

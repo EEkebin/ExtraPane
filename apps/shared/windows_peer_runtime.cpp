@@ -19,6 +19,13 @@ std::string opaque(Kind kind,const std::string& device){std::string text=std::to
 std::string short_label(std::string value){if(value.size()>128){value.resize(128);while(!value.empty()&&(static_cast<unsigned char>(value.back())&0xc0)==0x80)value.pop_back();if(!value.empty()&&static_cast<unsigned char>(value.back())>=0xc0)value.pop_back();}return value;}
 std::string unhex(const std::string& text){if(text.empty()||text.size()%2||text.size()>8192)fail("Invalid native inventory identity");std::string result;auto digit=[](char c)->int{if(c>='0'&&c<='9')return c-'0';if(c>='a'&&c<='f')return c-'a'+10;return -1;};for(std::size_t i=0;i<text.size();i+=2){int a=digit(text[i]),b=digit(text[i+1]);if(a<0||b<0)fail("Invalid native inventory encoding");const auto c=static_cast<unsigned char>(a*16+b);if(c<32||c==127)fail("Unsafe native inventory identity");result+=static_cast<char>(c);}return result;}
 std::vector<std::string> split(const std::string& text,char separator){std::vector<std::string> result;std::size_t start=0;for(;;){auto end=text.find(separator,start);result.push_back(text.substr(start,end==text.npos?end:end-start));if(end==text.npos)break;start=end+1;}return result;}
+// A bound/attached USB device loses the child nodes that supply its function
+// names, so keep showing the label it had while it was last available.
+std::string stable_usb_label(const std::string& id,std::string label,bool available){
+    static std::mutex lock;static std::map<std::string,std::string> remembered;std::lock_guard guard(lock);
+    if(available){if(remembered.size()<1024||remembered.contains(id))remembered[id]=label;return label;}
+    const auto found=remembered.find(id);return found==remembered.end()?label:found->second;
+}
 std::vector<Source> devices(Factory factory,Kind kind){
     const std::array<std::string,5> exe{"","ExtraPane.Resources.exe","ExtraPane.Microphone.exe","ExtraPane.Usb.exe","ExtraPane.Speakers.exe"};
     const std::array<std::string,5> command{"","list-cameras","list-microphones","list-usb","list-speakers"};
@@ -31,7 +38,9 @@ std::vector<Source> devices(Factory factory,Kind kind){
     for(auto line:split(output,'\n')){if(!line.empty()&&line.back()=='\r')line.pop_back();if(line.empty())continue;if(line==prefix[i]+"_LIST_DONE"){if(complete)fail("Duplicate native inventory completion");complete=true;continue;}
         const auto fields=split(line,'\t');if(complete||fields.size()!=4||fields[0]!=prefix[i]+"_DEVICE_V1"||fields[2].empty()||fields[2].size()>2048||result.size()>=peers::max_resources)fail("Invalid native inventory response");
         auto device=unhex(kind==Kind::usb?fields[1]:fields[3]);const bool available=kind!=Kind::usb||fields[3]=="available";
-        result.push_back({{opaque(kind,device),short_label(fields[2]),kind,available,false,available?std::string{}:fields[3]},std::move(device)});
+        auto id=opaque(kind,device);auto label=short_label(fields[2]);
+        if(kind==Kind::usb)label=stable_usb_label(id,std::move(label),available);
+        result.push_back({{std::move(id),std::move(label),kind,available,false,available?std::string{}:fields[3]},std::move(device)});
     }
     if(!complete)fail("Native inventory did not finish");return result;
 }
