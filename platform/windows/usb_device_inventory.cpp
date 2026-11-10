@@ -2,6 +2,8 @@
 #include <dm/usb_descriptors.hpp>
 #include <windows.h>
 #include <cfgmgr32.h>
+#include <initguid.h>
+#include <devpkey.h>
 #include <bcrypt.h>
 #include <algorithm>
 #include <array>
@@ -17,6 +19,28 @@ std::vector<std::wstring> prop(DEVINST node,ULONG which){
     std::vector<wchar_t> data(size/2+2,0);need(CM_Get_DevNode_Registry_PropertyW(node,which,&type,data.data(),&size,0)==CR_SUCCESS&&(type==REG_SZ||type==REG_MULTI_SZ),"USB device properties changed");
     std::vector<std::wstring> result;for(std::size_t i=0;i<data.size()&&data[i];){std::wstring value(data.data()+i);need(i+value.size()<data.size(),"USB device property is truncated");result.push_back(value);i+=value.size()+1;if(type==REG_SZ)break;}return result;
 }
+std::wstring bus_reported_name(DEVINST node){
+    DEVPROPTYPE type=0;ULONG size=0;
+    if(CM_Get_DevNode_PropertyW(node,&DEVPKEY_Device_BusReportedDeviceDesc,&type,nullptr,&size,0)!=CR_BUFFER_SMALL||type!=DEVPROP_TYPE_STRING||size<2||size>4096)return {};
+    std::vector<wchar_t> data(size/2+1,0);
+    if(CM_Get_DevNode_PropertyW(node,&DEVPKEY_Device_BusReportedDeviceDesc,&type,reinterpret_cast<PBYTE>(data.data()),&size,0)!=CR_SUCCESS||type!=DEVPROP_TYPE_STRING)return {};
+    return data.data();
+}
+std::string first(const std::vector<std::wstring>& values){return values.empty()?std::string{}:utf8(values.front());}
+// Collect what the device exposes (keyboard, mouse, audio...) from its present
+// child device nodes. Best effort: naming must never make a device unavailable.
+void functions(DEVINST parent,std::vector<std::string>& out,int depth){
+    if(depth>4||out.size()>16)return;
+    DEVINST child=0;if(CM_Get_Child(&child,parent,0)!=CR_SUCCESS)return;
+    do{
+        try{
+            auto description=prop(child,CM_DRP_FRIENDLYNAME);if(description.empty())description=prop(child,CM_DRP_DEVICEDESC);
+            auto name=usb_function_name(first(prop(child,CM_DRP_CLASS)),first(description));
+            if(!name.empty())out.push_back(std::move(name));
+        }catch(const std::exception&){}
+        functions(child,out,depth+1);
+    }while(CM_Get_Sibling(&child,child,0)==CR_SUCCESS);
+}
 std::string digest(const std::string& text){
     BCRYPT_ALG_HANDLE algorithm=nullptr;need(BCryptOpenAlgorithmProvider(&algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)>=0,"Cannot fingerprint USB descriptors");
     struct A{BCRYPT_ALG_HANDLE h;~A(){BCryptCloseAlgorithmProvider(h,0);}}a{algorithm};std::array<unsigned char,32> hash{};
@@ -30,9 +54,11 @@ std::vector<GenericDevice> generic_inventory(HostRunner& runner){
         GenericDevice item;item.instance_id=upper(host.instance_id);item.bus_id=host.bus_id;
         item.id="usb-generic-"+digest(utf8(item.instance_id));item.label="USB device";
         GenericFacts facts;facts.owned=host.forced||host.attached||!host.binding_id.empty();
+        std::string reported,manufacturer,driver;std::vector<std::string> parts;
         try{
             DEVINST root=0;need(CM_Locate_DevNodeW(&root,item.instance_id.data(),CM_LOCATE_DEVNODE_NORMAL)==CR_SUCCESS,"USB device is no longer present");
-            auto names=prop(root,CM_DRP_FRIENDLYNAME);if(names.empty())names=prop(root,CM_DRP_DEVICEDESC);if(!names.empty())item.label=utf8(names.front());
+            auto names=prop(root,CM_DRP_FRIENDLYNAME);if(names.empty())names=prop(root,CM_DRP_DEVICEDESC);driver=first(names);
+            try{reported=utf8(bus_reported_name(root));manufacturer=first(prop(root,CM_DRP_MFG));functions(root,parts,0);}catch(const std::exception&){}
             bool bluetooth=false;for(auto service:prop(root,CM_DRP_SERVICE))bluetooth|=upper(service)==L"BTHUSB";
             for(auto compatible:prop(root,CM_DRP_COMPATIBLEIDS))bluetooth|=upper(compatible).starts_with(L"USB\\CLASS_E0");
             need(!bluetooth,"Bluetooth USB adapters are not supported for forwarding");
@@ -46,9 +72,16 @@ std::vector<GenericDevice> generic_inventory(HostRunner& runner){
             std::string snapshot= utf8(item.instance_id);auto append=[&](const auto& blob){snapshot+=std::to_string(blob.size())+":";snapshot.append(reinterpret_cast<const char*>(blob.data()),blob.size());};append(descriptors.device);for(const auto& config:descriptors.configurations)append(config);
             item.fingerprint=digest(snapshot);const auto eligible=generic_eligibility(facts);item.available=eligible.available;item.reason=eligible.reason;
         }catch(const std::exception& e){item.reason=e.what();}
-        for(auto& c:item.label)if(static_cast<unsigned char>(c)<32)c=' ';if(item.label.size()>120)item.label.resize(120);
+        if(!item.vendor&&!item.product){// descriptors unavailable: fall back to the instance ID
+            const auto v=item.instance_id.find(L"VID_"),p=item.instance_id.find(L"PID_");
+            if(v!=std::wstring::npos&&p!=std::wstring::npos&&v+8<=item.instance_id.size()&&p+8<=item.instance_id.size())
+                try{item.vendor=std::uint16_t(std::stoul(item.instance_id.substr(v+4,4),nullptr,16));item.product=std::uint16_t(std::stoul(item.instance_id.substr(p+4,4),nullptr,16));}catch(const std::exception&){}
+        }
+        item.label=generic_label(reported,manufacturer,driver,parts,item.vendor,item.product);
+        for(auto& c:item.label)if(static_cast<unsigned char>(c)<32)c=' ';if(item.label.size()>120){std::size_t cut=120;while(cut&&(static_cast<unsigned char>(item.label[cut])&0xC0)==0x80)--cut;item.label.resize(cut);}
         result.push_back(std::move(item));
     }
+    disambiguate_labels(result);
     return result;
 }
 }

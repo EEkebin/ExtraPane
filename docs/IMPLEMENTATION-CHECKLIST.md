@@ -1,5 +1,29 @@
 # Resource-sharing implementation checklist
 
+## Active increment: distinguishable Windows USB device names
+
+- [x] Label generic USB resources with the device-reported product string
+  (`DEVPKEY_Device_BusReportedDeviceDesc`) instead of Windows' driver description
+  ("USB Composite Device"/"USB Input Device"), falling back to the old name.
+- [x] Append meaningful child functions (Keyboard, Mouse, Audio, Camera, Game
+  controller, Serial port, Smart card reader...) from present child device nodes;
+  vendor-defined/consumer-control HID collections are omitted as noise.
+- [x] Prefix a device-supplied manufacturer only when it is not an INF
+  placeholder such as "(Standard USB Host Controller)"; append VID:PID only when
+  the name is still generic; append the USB port when labels would otherwise be
+  identical (for example several "Watchman Dongle" receivers).
+- [x] Naming is best effort and never changes availability or the device ID.
+  Labels stay within 120 bytes without splitting UTF-8 sequences.
+- [ ] Build/deliver matching Windows/Android packages and confirm in the app.
+
+Verification: `extrapane-usb-generic-check` covers function mapping, label
+composition, trimming, VID:PID fallback and duplicate disambiguation; storage,
+host-backend, recovery and inventory checks still pass. A read-only property
+preview on this PC showed, for example, "Razer DeathAdder V3", "Samson C01U",
+"Dell Smart Card Reader Keyboard", "Index HMD" and five "Watchman Dongle" devices
+where Windows reported only "USB Composite Device"/"USB Input Device". No device
+was bound, attached or reconfigured. Storage-disk labels are unchanged.
+
 ## Stable release and delivery: 2026.11.09
 
 - [x] Remove verified suffixes and gateway-route description lines from device and

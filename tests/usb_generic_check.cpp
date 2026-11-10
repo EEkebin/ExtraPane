@@ -60,5 +60,19 @@ int main(){try{
  need(matches_generic_import_port("Port 01: device in use at high-speed\n -> usbip://127.0.0.1:3456/1-2\n",1,3456,"1-2",true));
  need(!matches_generic_import_port("Port 01: device in use at high-speed\n -> usbip://127.0.0.1:3456/1-3\n",1,3456,"1-2",true));
  need(!matches_generic_import_port("Port 01: device in use at high-speed\n -> usbip://127.0.0.1:3456/1-2\nPort 02: device in use at high-speed\n",1,3456,"1-2",true));
- std::cout<<"Generic USB policy, scoped lifecycle and import identity checks passed; no hardware accessed\n";return 0;
+ // Labels: prefer the device's own product string, add functions, VID:PID only when still generic.
+ need(usb_function_name("Keyboard","HID Keyboard Device")=="Keyboard");
+ need(usb_function_name("Mouse","HID-compliant mouse")=="Mouse");
+ need(usb_function_name("HIDClass","HID-compliant game controller")=="Game controller");
+ need(usb_function_name("HIDClass","HID-compliant vendor-defined device").empty());
+ need(usb_function_name("MEDIA","USB Audio Device")=="Audio");
+ need(generic_label("G502 HERO Gaming Mouse","Logitech","USB Composite Device",{"Mouse","Keyboard","Mouse"},0x046D,0xC08B)=="Logitech G502 HERO Gaming Mouse \xC2\xB7 Mouse, Keyboard");
+ need(generic_label("Logitech USB Receiver","Logitech","USB Input Device",{},0x046D,0xC52B)=="Logitech USB Receiver");
+ need(generic_label("","(Standard USB Host Controller)","USB Composite Device",{"Keyboard"},0x3151,0x3020)=="USB Composite Device \xC2\xB7 Keyboard (3151:3020)");
+ need(generic_label("USB Receiver","(Standard system devices)","USB Input Device",{"Mouse"},0x046D,0xC52B)=="USB Receiver \xC2\xB7 Mouse (046D:C52B)");
+ need(generic_label("","","",{},0,0)=="USB device");
+ need(generic_label("Samson C01U              ","(Standard USB Host Controller)","USB Composite Device",{"Audio"},0x17A0,0x0001)=="Samson C01U \xC2\xB7 Audio");
+ {std::vector<GenericDevice> devices(3);devices[0].label=devices[1].label="Watchman Dongle";devices[2].label="Index HMD";devices[0].bus_id="1-2";devices[1].bus_id="1-3";devices[2].bus_id="1-4";
+  disambiguate_labels(devices);need(devices[0].label=="Watchman Dongle \xC2\xB7 port 1-2");need(devices[1].label=="Watchman Dongle \xC2\xB7 port 1-3");need(devices[2].label=="Index HMD");}
+ std::cout<<"Generic USB policy, scoped lifecycle, import identity and label checks passed; no hardware accessed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
