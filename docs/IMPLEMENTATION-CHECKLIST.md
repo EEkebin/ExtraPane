@@ -1,5 +1,19 @@
 # Resource-sharing implementation checklist
 
+## Active increment: custom pairing secret selection (desktop)
+
+- [x] Fix the Qt desktop pairing-mode selector snapping back to "Rotating code"
+  every second. Its selection was bound to the saved custom state, and
+  `pairingChanged` fires on every countdown tick, so an unsaved "Custom PIN or
+  password" choice was reverted and its entry field hidden. The selector now
+  keeps an unsaved custom choice until it is saved or changed back.
+- [x] Android and macOS were checked: they set the selection only at startup and
+  do not have this defect.
+- [x] `extrapane-peer-ui-check` now chooses custom, simulates five countdown
+  ticks, saves, and returns to rotating codes. It failed on the previous QML
+  ("Custom pairing choice did not show the entry field") and passes now.
+- [ ] Deliver in the next matching Windows/Android build and confirm on device.
+
 ## Active increment: distinguishable Windows USB device names
 
 - [x] Label generic USB resources with the device-reported product string

@@ -463,8 +463,16 @@ Item {
                     CheckBox { text: "Require pairing"; checked: peers.pairingRequired; onToggled: peers.pairingRequired=checked }
                     ColumnLayout {
                         visible:peers.pairingRequired;Layout.fillWidth:true;spacing:10
-                        ComboBox { id:pairingMode;objectName:"peerPairingMode";Layout.fillWidth:true;model:["Rotating code","Custom PIN or password"];currentIndex:peers.pairingCustom?1:0
-                            onActivated: { customPairing.clear();if(currentIndex===0&&!peers.setPairingPassword(""))currentIndex=peers.pairingCustom?1:0 }
+                        // pairingChanged fires every countdown second; the selection must not
+                        // fall back to "Rotating code" while a custom secret is still being typed.
+                        ComboBox { id:pairingMode;objectName:"peerPairingMode";Layout.fillWidth:true;model:["Rotating code","Custom PIN or password"]
+                            property bool draftCustom:false
+                            currentIndex:peers.pairingCustom||draftCustom?1:0
+                            onActivated: function(index) {
+                                customPairing.clear()
+                                if(index===1){draftCustom=true;customPairing.forceActiveFocus()}
+                                else{draftCustom=false;if(peers.pairingCustom)peers.setPairingPassword("")}
+                            }
                         }
                         RowLayout { visible:pairingMode.currentIndex===1;Layout.fillWidth:true
                             Field { id:customPairing;objectName:"peerCustomPairingPassword";Layout.fillWidth:true;placeholderText:peers.pairingCustom?"Enter a replacement PIN or password":"Enter PIN or password";echoMode:TextInput.Password;maximumLength:1024;inputMethodHints:Qt.ImhHiddenText|Qt.ImhNoPredictiveText

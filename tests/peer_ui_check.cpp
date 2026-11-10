@@ -73,6 +73,17 @@ QQuickStyle::setStyle("Material");try{MockPeers peers;QQmlEngine engine;QStringL
  require(!root->property("manualExpanded").toBool()&&!named(root,"peerManualFields")->property("visible").toBool(),"Manual address entry must default collapsed");
  require(named(root,"peerPairingCountdown")->property("visible").toBool(),"Generated pairing code lacks countdown");
  peers.insert("pairingCustom",true);peers.insert("pairingCode",QString{});app.processEvents();require(!named(root,"peerPairingCountdown")->property("visible").toBool()&&named(root,"peerLocalPairingCode")->property("text").toString().contains("Custom"),"Custom secret must not be displayed or counted down");peers.insert("pairingCustom",false);peers.insert("pairingCode","123456");app.processEvents();
+ {// Choosing a custom secret must survive countdown ticks until it is saved.
+  auto* mode=named(root,"peerPairingMode");auto* field=named(root,"peerCustomPairingPassword");
+  require(QMetaObject::invokeMethod(mode,"activated",Q_ARG(int,1)),"Cannot choose custom pairing secret");app.processEvents();
+  require(mode->property("currentIndex").toInt()==1&&field->property("visible").toBool(),"Custom pairing choice did not show the entry field");
+  for(int tick=19;tick>=15;--tick){peers.insert("pairingSeconds",tick);peers.insert("pairingCode",QString::number(100000+tick));app.processEvents();}
+  require(mode->property("currentIndex").toInt()==1&&field->property("visible").toBool()&&!peers.value("pairingCustom").toBool(),"Countdown reverted an unsaved custom pairing choice");
+  field->setProperty("text","correct horse");require(QMetaObject::invokeMethod(named(root,"peerSavePairingPassword"),"clicked"),"Cannot save custom pairing secret");app.processEvents();
+  require(peers.value("pairingCustom").toBool()&&mode->property("currentIndex").toInt()==1&&field->property("text").toString().isEmpty(),"Saved custom pairing secret was not applied");
+  require(QMetaObject::invokeMethod(mode,"activated",Q_ARG(int,0)),"Cannot return to rotating code");app.processEvents();
+  require(!peers.value("pairingCustom").toBool()&&mode->property("currentIndex").toInt()==0&&!field->property("visible").toBool(),"Rotating code was not restored");
+  peers.insert("pairingCode","123456");peers.insert("pairingSeconds",20);app.processEvents();}
  require(QMetaObject::invokeMethod(named(root,"peerNearby_nearby-device"),"clicked"),"Cannot select nearby peer");app.processEvents();require(named(root,"peerPairingDialog")->property("visible").toBool()&&!root->property("manualExpanded").toBool()&&peers.connectCalls==0,"Nearby pairing must open a modal without connecting or exposing inline fields");
  if(const auto images=qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS");!images.isEmpty()){QDir().mkpath(images);for(int n=0;n<30;++n){app.processEvents();QThread::msleep(10);}require(window.grabWindow().save(images+"/pairing-dialog.png"),"Cannot capture pairing dialog");}
  require(named(root,"peerPairingTitle")->property("text")=="Pair with Nearby computer"&&named(root,"peerPairingSubtitle")->property("text")=="192.0.2.12:43825","Pairing header must show name then endpoint");
