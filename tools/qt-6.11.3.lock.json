@@ -1,0 +1,19 @@
+{
+  "android-arm64_v8a/qt.qt6.6113.addons.qtshadertools.android_arm64_v8a/qtshadertools-MacOS-MacOS_14-Clang-Android-Android_ANY-ARM64.7z": "ccbc06ba537f59c3a0b946c0b6099ee501fe90c40d79c5caaba0792a0c2691f8",
+  "android-arm64_v8a/qt.qt6.6113.android_arm64_v8a/qtbase-MacOS-MacOS_14-Clang-Android-Android_ANY-ARM64.7z": "d05e767e05bb6f6c929a14ceee96dd50059d5fae796cc5debed041f4f6abfa78",
+  "android-arm64_v8a/qt.qt6.6113.android_arm64_v8a/qtdeclarative-MacOS-MacOS_14-Clang-Android-Android_ANY-ARM64.7z": "0b2319f028c84d7835a6581c39c6b5a91f89aefd0a1a0ea8cb76374a905ab957",
+  "android-arm64_v8a/qt.qt6.6113.android_arm64_v8a/qtsvg-MacOS-MacOS_14-Clang-Android-Android_ANY-ARM64.7z": "485b94b33b04f8b381fd725645419d1fb06390d4c83a527cf8981c0295785c1a",
+  "android-arm64_v8a/qt.qt6.6113.android_arm64_v8a/qttools-MacOS-MacOS_14-Clang-Android-Android_ANY-ARM64.7z": "7dfe3f6a4c4473d4c9cb2a3f234548fa173c483092a1e39a086a9242d368b574",
+  "android-x86_64/qt.qt6.6113.addons.qtshadertools.android_x86_64/qtshadertools-Linux-RHEL_9_6-Clang-Android-Android_ANY-X86_64.7z": "2bd582f75417c5e8db0abbcdeb43845b69e85030bd826a210430bdae785d2f07",
+  "android-x86_64/qt.qt6.6113.android_x86_64/qtbase-Linux-RHEL_9_6-Clang-Android-Android_ANY-X86_64.7z": "1faa0f14cfd8b92748e3e6bd03a33b71c1953a54c8b8b9442e3db9a7d08aeacf",
+  "android-x86_64/qt.qt6.6113.android_x86_64/qtdeclarative-Linux-RHEL_9_6-Clang-Android-Android_ANY-X86_64.7z": "30c174d82cd796054d42a0cd376cc8ff8416b20dd32958a272a2ad091c7f7af8",
+  "android-x86_64/qt.qt6.6113.android_x86_64/qtsvg-Linux-RHEL_9_6-Clang-Android-Android_ANY-X86_64.7z": "4427d141ac97693817ac50d10c03deccc71ec9a30efd53d265fe420213824e54",
+  "android-x86_64/qt.qt6.6113.android_x86_64/qttools-Linux-RHEL_9_6-Clang-Android-Android_ANY-X86_64.7z": "77d25fadc51d7697a4f1020c978d5f95a307b66f3e7b2644ad069fa4752eab0d",
+  "windows-msvc2022_64/qt.qt6.6113.addons.qtshadertools.win64_msvc2022_64/qtshadertools-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z": "dd2bfa173037be6c1c5b6e4a3c1b27b19c2c3422b21ff0addc625f5c21cd407f",
+  "windows-msvc2022_64/qt.qt6.6113.win64_msvc2022_64/d3dcompiler_47-x64.7z": "be4292719fe0930c988236972bca7f5926db1342e1c85b247e1cef87b903fc9a",
+  "windows-msvc2022_64/qt.qt6.6113.win64_msvc2022_64/opengl32sw-64-mesa_11_2_2-signed_sha256.7z": "f9a6f0229f63d04b3ec1cc455078171f4d0c32e4fd79bc3e6a6dca54e79f7eae",
+  "windows-msvc2022_64/qt.qt6.6113.win64_msvc2022_64/qtbase-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z": "68be61b613b963daf206834fdcc57dd3b84baff3082e50679e5846ca4a7a8b86",
+  "windows-msvc2022_64/qt.qt6.6113.win64_msvc2022_64/qtdeclarative-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z": "7c1bb872495144f154d24931b0b58f817defbfd4099b0ac99372062bdfd2ac81",
+  "windows-msvc2022_64/qt.qt6.6113.win64_msvc2022_64/qtsvg-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z": "e8c789e1a059601dd82114dd9560952891e7c8e94e1cb291166eb61d74800353",
+  "windows-msvc2022_64/qt.qt6.6113.win64_msvc2022_64/qttools-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z": "b519f552424d8c748ed37c6b3a7615d29a1e3920383ee8ccf9b2066998341c2c"
+}
