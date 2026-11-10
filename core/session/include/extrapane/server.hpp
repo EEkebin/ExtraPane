@@ -9,14 +9,15 @@ class DeviceClaims final {
 public:
     bool acquire(const std::string& local_id) { return claims_.insert(local_id).second; }
     void release(const std::string& local_id) noexcept { claims_.erase(local_id); }
+
 private:
     std::set<std::string> claims_;
 };
 
 // Binds a resource's lifetime to an exclusive local-device lease. Both the
 // registry and resources must be used on the same serialized executor.
-std::unique_ptr<Resource> with_device_claim(std::shared_ptr<DeviceClaims> claims,
-    std::string local_id, std::unique_ptr<Resource> resource);
+std::unique_ptr<Resource> with_device_claim(std::shared_ptr<DeviceClaims> claims, std::string local_id,
+                                            std::unique_ptr<Resource> resource);
 
 class Listener {
 public:
@@ -35,8 +36,7 @@ public:
     Server& operator=(const Server&) = delete;
     Availability start(std::unique_ptr<Listener> listener);
     Availability admit(std::uint64_t admitted_session_id);
-    Availability add(std::uint64_t session_id, ResourceRequest request,
-        std::unique_ptr<Resource> resource);
+    Availability add(std::uint64_t session_id, ResourceRequest request, std::unique_ptr<Resource> resource);
     bool stop_resource(std::uint64_t session_id, std::uint64_t resource_id) noexcept;
     bool fail_resource(std::uint64_t session_id, std::uint64_t resource_id, std::string reason);
     bool disconnect(std::uint64_t session_id) noexcept;
@@ -45,6 +45,7 @@ public:
     std::size_t client_count() const noexcept { return sessions_.size(); }
     bool has_session(std::uint64_t id) const noexcept { return sessions_.contains(id); }
     std::vector<ResourceStatus> snapshot(std::uint64_t session_id) const;
+
 private:
     std::size_t capacity_;
     std::unique_ptr<Listener> listener_;

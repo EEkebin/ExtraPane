@@ -2,19 +2,26 @@
 #include <utility>
 
 namespace extrapane {
-Session::~Session() { close(); }
+Session::~Session() {
+    close();
+}
 
 Availability Session::add(ResourceRequest request, std::unique_ptr<Resource> resource) {
     // A supplied adapter must be inert until prepare(). Rejections do not
     // acquire hardware, and destructors remain responsible for local memory.
     if (closed_) return {false, "Session is closed"};
-    if (!resource || request.id == 0 || request.device_id.empty())
-        return {false, "Invalid resource request"};
+    if (!resource || request.id == 0 || request.device_id.empty()) return {false, "Invalid resource request"};
     if (resources_.contains(request.id)) return {false, "Resource ID already used"};
     if (resources_.size() >= max_session_resources) return {false, "Session resource limit reached"};
-    switch(request.kind) {
-    case ResourceKind::display:case ResourceKind::camera:case ResourceKind::microphone:case ResourceKind::usb:case ResourceKind::speaker:break;
-    default:return {false,"Unknown resource kind"};
+    switch (request.kind) {
+    case ResourceKind::display:
+    case ResourceKind::camera:
+    case ResourceKind::microphone:
+    case ResourceKind::usb:
+    case ResourceKind::speaker:
+        break;
+    default:
+        return {false, "Unknown resource kind"};
     }
     for (const auto& [id, entry] : resources_) {
         if (!entry.resource) continue;
@@ -23,7 +30,8 @@ Availability Session::add(ResourceRequest request, std::unique_ptr<Resource> res
             return {false, "Resource already active"};
     }
     const auto id = request.id;
-    auto [it, inserted] = resources_.emplace(id, Entry{{std::move(request), ResourceState::preparing, {}}, std::move(resource)});
+    auto [it, inserted] =
+        resources_.emplace(id, Entry{{std::move(request), ResourceState::preparing, {}}, std::move(resource)});
     auto& entry = it->second;
     Availability result;
     try {

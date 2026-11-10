@@ -8,8 +8,11 @@ void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
 void rejects(std::span<const std::uint8_t> packet) {
-    try { (void)dm::probe::decode(packet); }
-    catch (const std::runtime_error&) { return; }
+    try {
+        (void)dm::probe::decode(packet);
+    } catch (const std::runtime_error&) {
+        return;
+    }
     throw std::runtime_error("Malformed packet was accepted");
 }
 }
@@ -33,8 +36,11 @@ int main() {
             rejects(oversized);
         }
         bool invalid_kind_rejected = false;
-        try { (void)encode({static_cast<Kind>(42), token}); }
-        catch (const std::invalid_argument&) { invalid_kind_rejected = true; }
+        try {
+            (void)encode({static_cast<Kind>(42), token});
+        } catch (const std::invalid_argument&) {
+            invalid_kind_rejected = true;
+        }
         require(invalid_kind_rejected, "Encoder accepted invalid kind");
         std::cout << "Protocol validation passed\n";
         return 0;

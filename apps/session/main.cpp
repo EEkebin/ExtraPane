@@ -10,7 +10,8 @@ namespace {
 unsigned number(const std::string& text, unsigned maximum) {
     unsigned value = 0;
     const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (error != std::errc{} || end != text.data() + text.size() || value == 0 || value > maximum) throw std::invalid_argument("Invalid numeric option");
+    if (error != std::errc{} || end != text.data() + text.size() || value == 0 || value > maximum)
+        throw std::invalid_argument("Invalid numeric option");
     return value;
 }
 }
@@ -22,8 +23,10 @@ int main(int argc, char** argv) {
                          "  dm-session revoke --name <pair>\n"
                          "  dm-session peers\n"
                          "  dm-session listen --name <pair> --bind <local-ipv4> [--port 43823] [--timeout-ms 5000]\n"
-                         "  dm-session connect --name <pair> --bind <local-ipv4> --peer <peer-ipv4> [--port 43823] [--timeout-ms 5000]\n"
-                         "Provision the same random 32-byte hex key and pair name at both endpoints over a trusted channel.\n";
+                         "  dm-session connect --name <pair> --bind <local-ipv4> --peer <peer-ipv4> [--port 43823] "
+                         "[--timeout-ms 5000]\n"
+                         "Provision the same random 32-byte hex key and pair name at both endpoints over a trusted "
+                         "channel.\n";
             return 0;
         }
         const std::string_view command(argv[1]);
@@ -36,7 +39,8 @@ int main(int argc, char** argv) {
                 stdin_secret = true;
                 continue;
             }
-            if (key != "--name" && key != "--bind" && key != "--peer" && key != "--port" && key != "--timeout-ms") throw std::invalid_argument("Unknown option: " + key);
+            if (key != "--name" && key != "--bind" && key != "--peer" && key != "--port" && key != "--timeout-ms")
+                throw std::invalid_argument("Unknown option: " + key);
             if (++i >= argc) throw std::invalid_argument("Missing option value");
             if (!args.emplace(key, argv[i]).second) throw std::invalid_argument("Duplicate option: " + key);
         }
@@ -49,16 +53,22 @@ int main(int argc, char** argv) {
         const auto& name = args.at("--name");
         dm::security::validate_name(name);
         if (command == "pair" || command == "revoke") {
-            if (args.size() != 1 || (command == "revoke" && stdin_secret)) throw std::invalid_argument("Unexpected pairing option");
+            if (args.size() != 1 || (command == "revoke" && stdin_secret))
+                throw std::invalid_argument("Unexpected pairing option");
             if (command == "revoke") {
                 dm::security::revoke_pairing(name);
                 std::cout << "PAIRING_REVOKED\n";
             } else {
-                if (!stdin_secret) throw std::invalid_argument("pair requires --secret-stdin; secrets must not appear in process arguments");
+                if (!stdin_secret)
+                    throw std::invalid_argument(
+                        "pair requires --secret-stdin; secrets must not appear in process arguments");
                 // Bounded input: never read an arbitrary-length line containing a secret.
                 std::array<char, 66> buffer{};
                 std::cin.getline(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-                if (std::cin.fail()) { SecureZeroMemory(buffer.data(), buffer.size()); throw std::invalid_argument("Invalid pairing key length"); }
+                if (std::cin.fail()) {
+                    SecureZeroMemory(buffer.data(), buffer.size());
+                    throw std::invalid_argument("Invalid pairing key length");
+                }
                 std::string hex(buffer.data());
                 SecureZeroMemory(buffer.data(), buffer.size());
                 dm::security::Key key{};
@@ -83,11 +93,13 @@ int main(int argc, char** argv) {
         options.port = 43823;
         options.bind_address = args.at("--bind");
         if (args.contains("--port")) options.port = static_cast<std::uint16_t>(number(args.at("--port"), 65535));
-        if (args.contains("--timeout-ms")) options.timeout = std::chrono::milliseconds(number(args.at("--timeout-ms"), 60000));
+        if (args.contains("--timeout-ms"))
+            options.timeout = std::chrono::milliseconds(number(args.at("--timeout-ms"), 60000));
         if (command == "connect") {
             if (!args.contains("--peer")) throw std::invalid_argument("connect requires --peer");
             options.peer = args.at("--peer");
-        } else if (args.contains("--peer")) throw std::invalid_argument("listen does not take --peer");
+        } else if (args.contains("--peer"))
+            throw std::invalid_argument("listen does not take --peer");
         dm::security::session_check(options, name, command == "listen");
         return 0;
     } catch (const std::exception& error) {

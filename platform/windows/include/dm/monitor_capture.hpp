@@ -7,9 +7,10 @@ namespace dm::video {
 // belonging to the hardware encoder's adapter.
 class MonitorCapture {
 public:
-    MonitorCapture(ID3D11Device* device,const std::wstring& source,unsigned width,unsigned height);
+    MonitorCapture(ID3D11Device* device, const std::wstring& source, unsigned width, unsigned height);
     ~MonitorCapture();
     Frame next_gpu();
+
 private:
     struct State;
     std::unique_ptr<State> state_;

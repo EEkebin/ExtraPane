@@ -18,11 +18,11 @@ struct Frame {
     Binding binding;
     std::uint64_t sequence = 0;
     std::int64_t timestamp = 0; // capture time in 100 ns units
-    wire::Bytes payload; // one complete H.264 access unit
+    wire::Bytes payload;        // one complete H.264 access unit
 };
 using Header = std::array<std::uint8_t, 48>;
 Header encode_header(const Frame& frame);
-Header encode_header(Binding binding,std::uint64_t sequence,std::int64_t timestamp,std::size_t payload_bytes);
+Header encode_header(Binding binding, std::uint64_t sequence, std::int64_t timestamp, std::size_t payload_bytes);
 // Payload length is validated before allocation. Payload bytes are not read here.
 Frame decode_header(std::span<const std::uint8_t> header);
 
@@ -34,6 +34,7 @@ public:
     void send(const Frame& frame);
     Frame receive();
     bool failed() const noexcept { return failed_; }
+
 private:
     void validate_sequence(const Frame& frame, const std::optional<std::uint64_t>& previous) const;
     Binding binding_;
@@ -53,6 +54,7 @@ public:
     std::optional<Frame> pop_for(std::chrono::milliseconds timeout);
     void close() noexcept;
     bool closed() const;
+
 private:
     Binding binding_;
     std::size_t capacity_;

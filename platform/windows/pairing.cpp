@@ -8,7 +8,9 @@
 
 namespace dm::security {
 namespace {
-struct CredDeleter { void operator()(CREDENTIALW* p) const { CredFree(p); } };
+struct CredDeleter {
+    void operator()(CREDENTIALW* p) const { CredFree(p); }
+};
 std::wstring target(const std::string& name) {
     validate_name(name);
     return L"DM/peers/" + std::wstring(name.begin(), name.end());
@@ -19,11 +21,13 @@ std::wstring target(const std::string& name) {
 }
 void validate_name(const std::string& name) {
     if (name.empty() || name.size() > 64 || !std::all_of(name.begin(), name.end(), [](unsigned char c) {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
-    })) throw std::invalid_argument("Pair name must be 1-64 ASCII letters, digits, '-' or '_'");
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+        }))
+        throw std::invalid_argument("Pair name must be 1-64 ASCII letters, digits, '-' or '_'");
 }
 Key parse_key(const std::string& hex) {
-    if (hex.size() != 64) throw std::invalid_argument("Pairing key must be exactly 64 hex characters (32 random bytes)");
+    if (hex.size() != 64)
+        throw std::invalid_argument("Pairing key must be exactly 64 hex characters (32 random bytes)");
     const auto digit = [](char c) -> unsigned {
         if (c >= '0' && c <= '9') return static_cast<unsigned>(c - '0');
         if (c >= 'a' && c <= 'f') return static_cast<unsigned>(c - 'a' + 10);
@@ -32,8 +36,12 @@ Key parse_key(const std::string& hex) {
     };
     Key result{};
     try {
-        for (std::size_t i = 0; i < result.size(); ++i) result[i] = static_cast<std::uint8_t>((digit(hex[i * 2]) << 4) | digit(hex[i * 2 + 1]));
-    } catch (...) { SecureZeroMemory(result.data(), result.size()); throw; }
+        for (std::size_t i = 0; i < result.size(); ++i)
+            result[i] = static_cast<std::uint8_t>((digit(hex[i * 2]) << 4) | digit(hex[i * 2 + 1]));
+    } catch (...) {
+        SecureZeroMemory(result.data(), result.size());
+        throw;
+    }
     return result;
 }
 void save_pairing(const std::string& name, const Key& key) {
@@ -66,7 +74,8 @@ Key load_pairing(const std::string& name) {
 }
 void revoke_pairing(const std::string& name) {
     const auto resource = target(name);
-    if (!CredDeleteW(resource.c_str(), CRED_TYPE_GENERIC, 0) && GetLastError() != ERROR_NOT_FOUND) failure("Revoke pairing");
+    if (!CredDeleteW(resource.c_str(), CRED_TYPE_GENERIC, 0) && GetLastError() != ERROR_NOT_FOUND)
+        failure("Revoke pairing");
 }
 void list_pairings() {
     DWORD count = 0;
@@ -75,7 +84,9 @@ void list_pairings() {
         if (GetLastError() == ERROR_NOT_FOUND) return;
         failure("List pairings");
     }
-    struct Deleter { void operator()(CREDENTIALW** p) const { CredFree(p); } };
+    struct Deleter {
+        void operator()(CREDENTIALW** p) const { CredFree(p); }
+    };
     const std::unique_ptr<CREDENTIALW*, Deleter> guard(values);
     for (DWORD i = 0; i < count; ++i) {
         SecureZeroMemory(values[i]->CredentialBlob, values[i]->CredentialBlobSize);

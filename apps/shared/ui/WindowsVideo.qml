@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+
 Item {
     property bool inputPaused: false
     Label {

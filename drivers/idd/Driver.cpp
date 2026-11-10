@@ -27,33 +27,31 @@ using namespace Microsoft::WRL;
 
 // One software-device instance owns one virtual monitor.
 static constexpr DWORD IDD_SAMPLE_MONITOR_COUNT = 1;
-static const struct IndirectSampleMonitor::SampleMonitorMode s_SampleDefaultModes[] =
-{
-    { 1280, 720, 30 }, { 1280, 720, 60 }, { 1920, 1080, 60 }, { 3000, 2000, 60 },
+static const struct IndirectSampleMonitor::SampleMonitorMode s_SampleDefaultModes[] = {
+    {1280, 720, 30},
+    {1280, 720, 60},
+    {1920, 1080, 60},
+    {3000, 2000, 60},
 };
-static const struct IndirectSampleMonitor s_SampleMonitors[] =
-{
-    {
-        {
-            0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00,0x11,0xAD,0x01,0x00,0x01,0x00,0x00,0x00,
-            0x01,0x24,0x01,0x04,0x80,0x00,0x00,0x78,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-            0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,
-            0x01,0x01,0x01,0x01,0x01,0x01,0x81,0x0E,0x00,0x72,0x51,0xD0,0x1E,0x20,0x6E,0x28,
-            0x55,0x00,0x00,0x00,0x00,0x00,0x00,0x1E,0x00,0x00,0x00,0xFC,0x00,0x45,0x78,0x74,
-            0x72,0x61,0x50,0x61,0x6E,0x65,0x0A,0x20,0x20,0x20,0x00,0x00,0x00,0xFF,0x00,0x44,
-            0x4D,0x30,0x30,0x30,0x30,0x30,0x30,0x30,0x30,0x30,0x30,0x31,0x00,0x00,0x00,0x10,
-            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x06
-        },
-        { { 1280, 720, 30 }, { 1280, 720, 60 }, { 1920, 1080, 60 }, { 3000, 2000, 60 } },
-        0
-    }
-};
-static vector<IndirectSampleMonitor::SampleMonitorMode> InstanceModes(const ExtraPane::DisplayRequest::Request& requested)
-{
+static const struct IndirectSampleMonitor s_SampleMonitors[] = {
+    {{0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x11, 0xAD, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x24, 0x01,
+      0x04, 0x80, 0x00, 0x00, 0x78, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x81, 0x0E, 0x00,
+      0x72, 0x51, 0xD0, 0x1E, 0x20, 0x6E, 0x28, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00, 0xFC,
+      0x00, 0x45, 0x78, 0x74, 0x72, 0x61, 0x50, 0x61, 0x6E, 0x65, 0x0A, 0x20, 0x20, 0x20, 0x00, 0x00, 0x00, 0xFF, 0x00,
+      0x44, 0x4D, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x31, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06},
+     {{1280, 720, 30}, {1280, 720, 60}, {1920, 1080, 60}, {3000, 2000, 60}},
+     0}};
+static vector<IndirectSampleMonitor::SampleMonitorMode>
+InstanceModes(const ExtraPane::DisplayRequest::Request& requested) {
     vector<IndirectSampleMonitor::SampleMonitorMode> modes;
-    if(ExtraPane::DisplayRequest::Valid(requested))modes.push_back({requested.Width,requested.Height,requested.Hz});
-    for(const auto& mode:s_SampleDefaultModes)
-        if(none_of(modes.begin(),modes.end(),[&](const IndirectSampleMonitor::SampleMonitorMode& item){return item.Width==mode.Width&&item.Height==mode.Height&&item.VSync==mode.VSync;}))modes.push_back(mode);
+    if (ExtraPane::DisplayRequest::Valid(requested)) modes.push_back({requested.Width, requested.Height, requested.Hz});
+    for (const auto& mode : s_SampleDefaultModes)
+        if (none_of(modes.begin(), modes.end(), [&](const IndirectSampleMonitor::SampleMonitorMode& item) {
+                return item.Width == mode.Width && item.Height == mode.Height && item.VSync == mode.VSync;
+            }))
+            modes.push_back(mode);
     return modes;
 }
 
@@ -61,8 +59,8 @@ static vector<IndirectSampleMonitor::SampleMonitorMode> InstanceModes(const Extr
 
 #pragma region helpers
 
-static inline void FillSignalInfo(DISPLAYCONFIG_VIDEO_SIGNAL_INFO& Mode, DWORD Width, DWORD Height, DWORD VSync, bool bMonitorMode)
-{
+static inline void FillSignalInfo(DISPLAYCONFIG_VIDEO_SIGNAL_INFO& Mode, DWORD Width, DWORD Height, DWORD VSync,
+                                  bool bMonitorMode) {
     Mode.totalSize.cx = Mode.activeSize.cx = Width;
     Mode.totalSize.cy = Mode.activeSize.cy = Height;
 
@@ -77,11 +75,11 @@ static inline void FillSignalInfo(DISPLAYCONFIG_VIDEO_SIGNAL_INFO& Mode, DWORD W
 
     Mode.scanLineOrdering = DISPLAYCONFIG_SCANLINE_ORDERING_PROGRESSIVE;
 
-    Mode.pixelRate = ((UINT64) VSync) * ((UINT64) Width) * ((UINT64) Height);
+    Mode.pixelRate = ((UINT64)VSync) * ((UINT64)Width) * ((UINT64)Height);
 }
 
-static IDDCX_MONITOR_MODE CreateIddCxMonitorMode(DWORD Width, DWORD Height, DWORD VSync, IDDCX_MONITOR_MODE_ORIGIN Origin = IDDCX_MONITOR_MODE_ORIGIN_DRIVER)
-{
+static IDDCX_MONITOR_MODE CreateIddCxMonitorMode(DWORD Width, DWORD Height, DWORD VSync,
+                                                 IDDCX_MONITOR_MODE_ORIGIN Origin = IDDCX_MONITOR_MODE_ORIGIN_DRIVER) {
     IDDCX_MONITOR_MODE Mode = {};
 
     Mode.Size = sizeof(Mode);
@@ -91,8 +89,7 @@ static IDDCX_MONITOR_MODE CreateIddCxMonitorMode(DWORD Width, DWORD Height, DWOR
     return Mode;
 }
 
-static IDDCX_TARGET_MODE CreateIddCxTargetMode(DWORD Width, DWORD Height, DWORD VSync)
-{
+static IDDCX_TARGET_MODE CreateIddCxTargetMode(DWORD Width, DWORD Height, DWORD VSync) {
     IDDCX_TARGET_MODE Mode = {};
 
     Mode.Size = sizeof(Mode);
@@ -118,23 +115,19 @@ EVT_IDD_CX_MONITOR_QUERY_TARGET_MODES IddSampleMonitorQueryModes;
 EVT_IDD_CX_MONITOR_ASSIGN_SWAPCHAIN IddSampleMonitorAssignSwapChain;
 EVT_IDD_CX_MONITOR_UNASSIGN_SWAPCHAIN IddSampleMonitorUnassignSwapChain;
 
-struct IndirectDeviceContextWrapper
-{
+struct IndirectDeviceContextWrapper {
     IndirectDeviceContext* pContext;
 
-    void Cleanup()
-    {
+    void Cleanup() {
         delete pContext;
         pContext = nullptr;
     }
 };
 
-struct IndirectMonitorContextWrapper
-{
+struct IndirectMonitorContextWrapper {
     IndirectMonitorContext* pContext;
 
-    void Cleanup()
-    {
+    void Cleanup() {
         delete pContext;
         pContext = nullptr;
     }
@@ -145,11 +138,7 @@ WDF_DECLARE_CONTEXT_TYPE(IndirectDeviceContextWrapper);
 
 WDF_DECLARE_CONTEXT_TYPE(IndirectMonitorContextWrapper);
 
-extern "C" BOOL WINAPI DllMain(
-    _In_ HINSTANCE hInstance,
-    _In_ UINT dwReason,
-    _In_opt_ LPVOID lpReserved)
-{
+extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, _In_ UINT dwReason, _In_opt_ LPVOID lpReserved) {
     UNREFERENCED_PARAMETER(hInstance);
     UNREFERENCED_PARAMETER(lpReserved);
     UNREFERENCED_PARAMETER(dwReason);
@@ -157,34 +146,24 @@ extern "C" BOOL WINAPI DllMain(
     return TRUE;
 }
 
-_Use_decl_annotations_
-extern "C" NTSTATUS DriverEntry(
-    PDRIVER_OBJECT  pDriverObject,
-    PUNICODE_STRING pRegistryPath
-)
-{
+_Use_decl_annotations_ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT pDriverObject, PUNICODE_STRING pRegistryPath) {
     WDF_DRIVER_CONFIG Config;
     NTSTATUS Status;
 
     WDF_OBJECT_ATTRIBUTES Attributes;
     WDF_OBJECT_ATTRIBUTES_INIT(&Attributes);
 
-    WDF_DRIVER_CONFIG_INIT(&Config,
-        IddSampleDeviceAdd
-    );
+    WDF_DRIVER_CONFIG_INIT(&Config, IddSampleDeviceAdd);
 
     Status = WdfDriverCreate(pDriverObject, pRegistryPath, &Attributes, &Config, WDF_NO_HANDLE);
-    if (!NT_SUCCESS(Status))
-    {
+    if (!NT_SUCCESS(Status)) {
         return Status;
     }
 
     return Status;
 }
 
-_Use_decl_annotations_
-NTSTATUS IddSampleDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT pDeviceInit)
-{
+_Use_decl_annotations_ NTSTATUS IddSampleDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT pDeviceInit) {
     NTSTATUS Status = STATUS_SUCCESS;
     WDF_PNPPOWER_EVENT_CALLBACKS PnpPowerCallbacks;
 
@@ -212,50 +191,50 @@ NTSTATUS IddSampleDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT pDeviceInit)
     IddConfig.EvtIddCxMonitorUnassignSwapChain = IddSampleMonitorUnassignSwapChain;
 
     Status = IddCxDeviceInitConfig(pDeviceInit, &IddConfig);
-    if (!NT_SUCCESS(Status))
-    {
+    if (!NT_SUCCESS(Status)) {
         return Status;
     }
 
     WDF_OBJECT_ATTRIBUTES Attr;
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&Attr, IndirectDeviceContextWrapper);
-    Attr.EvtCleanupCallback = [](WDFOBJECT Object)
-    {
+    Attr.EvtCleanupCallback = [](WDFOBJECT Object) {
         // Automatically cleanup the context when the WDF object is about to be deleted
         auto* pContext = WdfObjectGet_IndirectDeviceContextWrapper(Object);
-        if (pContext)
-        {
+        if (pContext) {
             pContext->Cleanup();
         }
     };
 
     WDFDEVICE Device = nullptr;
     Status = WdfDeviceCreate(&pDeviceInit, &Attr, &Device);
-    if (!NT_SUCCESS(Status))
-    {
+    if (!NT_SUCCESS(Status)) {
         return Status;
     }
 
-    ExtraPane::DisplayRequest::Request requested={};
-    WDF_DEVICE_PROPERTY_DATA property;WDF_DEVICE_PROPERTY_DATA_INIT(&property,&ExtraPane::DisplayRequest::Property);
-    ULONG required=0;DEVPROPTYPE type=0;
-    Status=WdfDeviceQueryPropertyEx(Device,&property,sizeof(requested),&requested,&required,&type);
-    if(Status==STATUS_NOT_FOUND||Status==STATUS_OBJECT_NAME_NOT_FOUND)requested={};
-    else if(!NT_SUCCESS(Status))return Status;
-    else if(type!=DEVPROP_TYPE_BINARY||required!=sizeof(requested)||(!ExtraPane::DisplayRequest::Valid(requested)&&!ExtraPane::DisplayRequest::Default(requested)))return STATUS_INVALID_PARAMETER;
+    ExtraPane::DisplayRequest::Request requested = {};
+    WDF_DEVICE_PROPERTY_DATA property;
+    WDF_DEVICE_PROPERTY_DATA_INIT(&property, &ExtraPane::DisplayRequest::Property);
+    ULONG required = 0;
+    DEVPROPTYPE type = 0;
+    Status = WdfDeviceQueryPropertyEx(Device, &property, sizeof(requested), &requested, &required, &type);
+    if (Status == STATUS_NOT_FOUND || Status == STATUS_OBJECT_NAME_NOT_FOUND)
+        requested = {};
+    else if (!NT_SUCCESS(Status))
+        return Status;
+    else if (type != DEVPROP_TYPE_BINARY || required != sizeof(requested) ||
+             (!ExtraPane::DisplayRequest::Valid(requested) && !ExtraPane::DisplayRequest::Default(requested)))
+        return STATUS_INVALID_PARAMETER;
     Status = IddCxDeviceInitialize(Device);
-    if(!NT_SUCCESS(Status))return Status;
+    if (!NT_SUCCESS(Status)) return Status;
 
     // Create a new device context object and attach it to the WDF device object
     auto* pContext = WdfObjectGet_IndirectDeviceContextWrapper(Device);
-    pContext->pContext = new IndirectDeviceContext(Device,requested);
+    pContext->pContext = new IndirectDeviceContext(Device, requested);
 
     return Status;
 }
 
-_Use_decl_annotations_
-NTSTATUS IddSampleDeviceD0Entry(WDFDEVICE Device, WDF_POWER_DEVICE_STATE PreviousState)
-{
+_Use_decl_annotations_ NTSTATUS IddSampleDeviceD0Entry(WDFDEVICE Device, WDF_POWER_DEVICE_STATE PreviousState) {
     UNREFERENCED_PARAMETER(PreviousState);
 
     // This function is called by WDF to start the device in the fully-on power state.
@@ -268,37 +247,30 @@ NTSTATUS IddSampleDeviceD0Entry(WDFDEVICE Device, WDF_POWER_DEVICE_STATE Previou
 
 #pragma region Direct3DDevice
 
-Direct3DDevice::Direct3DDevice(LUID AdapterLuid) : AdapterLuid(AdapterLuid)
-{
+Direct3DDevice::Direct3DDevice(LUID AdapterLuid) : AdapterLuid(AdapterLuid) {}
 
-}
-
-Direct3DDevice::Direct3DDevice()
-{
+Direct3DDevice::Direct3DDevice() {
     AdapterLuid = LUID{};
 }
 
-HRESULT Direct3DDevice::Init()
-{
+HRESULT Direct3DDevice::Init() {
     // The DXGI factory could be cached, but if a new render adapter appears on the system, a new factory needs to be
     // created. If caching is desired, check DxgiFactory->IsCurrent() each time and recreate the factory if !IsCurrent.
     HRESULT hr = CreateDXGIFactory2(0, IID_PPV_ARGS(&DxgiFactory));
-    if (FAILED(hr))
-    {
+    if (FAILED(hr)) {
         return hr;
     }
 
     // Find the specified render adapter
     hr = DxgiFactory->EnumAdapterByLuid(AdapterLuid, IID_PPV_ARGS(&Adapter));
-    if (FAILED(hr))
-    {
+    if (FAILED(hr)) {
         return hr;
     }
 
     // Create a D3D device using the render adapter. BGRA support is required by the WHQL test suite.
-    hr = D3D11CreateDevice(Adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION, &Device, nullptr, &DeviceContext);
-    if (FAILED(hr))
-    {
+    hr = D3D11CreateDevice(Adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr,
+                           0, D3D11_SDK_VERSION, &Device, nullptr, &DeviceContext);
+    if (FAILED(hr)) {
         // If creating the D3D device failed, it's possible the render GPU was lost (e.g. detachable GPU) or else the
         // system is in a transient state.
         return hr;
@@ -311,35 +283,31 @@ HRESULT Direct3DDevice::Init()
 
 #pragma region SwapChainProcessor
 
-SwapChainProcessor::SwapChainProcessor(IDDCX_SWAPCHAIN hSwapChain, shared_ptr<Direct3DDevice> Device, HANDLE NewFrameEvent)
-    : m_hSwapChain(hSwapChain), m_Device(Device), m_hAvailableBufferEvent(NewFrameEvent)
-{
+SwapChainProcessor::SwapChainProcessor(IDDCX_SWAPCHAIN hSwapChain, shared_ptr<Direct3DDevice> Device,
+                                       HANDLE NewFrameEvent)
+    : m_hSwapChain(hSwapChain), m_Device(Device), m_hAvailableBufferEvent(NewFrameEvent) {
     m_hTerminateEvent.Attach(CreateEvent(nullptr, FALSE, FALSE, nullptr));
 
     // Immediately create and run the swap-chain processing thread, passing 'this' as the thread parameter
     m_hThread.Attach(CreateThread(nullptr, 0, RunThread, this, 0, nullptr));
 }
 
-SwapChainProcessor::~SwapChainProcessor()
-{
+SwapChainProcessor::~SwapChainProcessor() {
     // Alert the swap-chain processing thread to terminate
     SetEvent(m_hTerminateEvent.Get());
 
-    if (m_hThread.Get())
-    {
+    if (m_hThread.Get()) {
         // Wait for the thread to terminate
         WaitForSingleObject(m_hThread.Get(), INFINITE);
     }
 }
 
-DWORD CALLBACK SwapChainProcessor::RunThread(LPVOID Argument)
-{
+DWORD CALLBACK SwapChainProcessor::RunThread(LPVOID Argument) {
     reinterpret_cast<SwapChainProcessor*>(Argument)->Run();
     return 0;
 }
 
-void SwapChainProcessor::Run()
-{
+void SwapChainProcessor::Run() {
     // For improved performance, make use of the Multimedia Class Scheduler Service, which will intelligently
     // prioritize this thread for improved throughput in high CPU-load scenarios.
     DWORD AvTask = 0;
@@ -355,13 +323,11 @@ void SwapChainProcessor::Run()
     AvRevertMmThreadCharacteristics(AvTaskHandle);
 }
 
-void SwapChainProcessor::RunCore()
-{
+void SwapChainProcessor::RunCore() {
     // Get the DXGI device interface
     ComPtr<IDXGIDevice> DxgiDevice;
     HRESULT hr = m_Device->Device.As(&DxgiDevice);
-    if (FAILED(hr))
-    {
+    if (FAILED(hr)) {
         return;
     }
 
@@ -369,14 +335,12 @@ void SwapChainProcessor::RunCore()
     SetDevice.pDevice = DxgiDevice.Get();
 
     hr = IddCxSwapChainSetDevice(m_hSwapChain, &SetDevice);
-    if (FAILED(hr))
-    {
+    if (FAILED(hr)) {
         return;
     }
 
     // Acquire and release buffers in a loop
-    for (;;)
-    {
+    for (;;) {
         ComPtr<IDXGIResource> AcquiredBuffer;
 
         // Ask for the next buffer from the producer
@@ -384,34 +348,22 @@ void SwapChainProcessor::RunCore()
         hr = IddCxSwapChainReleaseAndAcquireBuffer(m_hSwapChain, &Buffer);
 
         // AcquireBuffer immediately returns STATUS_PENDING if no buffer is yet available
-        if (hr == E_PENDING)
-        {
+        if (hr == E_PENDING) {
             // We must wait for a new buffer
-            HANDLE WaitHandles [] =
-            {
-                m_hAvailableBufferEvent,
-                m_hTerminateEvent.Get()
-            };
+            HANDLE WaitHandles[] = {m_hAvailableBufferEvent, m_hTerminateEvent.Get()};
             DWORD WaitResult = WaitForMultipleObjects(ARRAYSIZE(WaitHandles), WaitHandles, FALSE, 16);
-            if (WaitResult == WAIT_OBJECT_0 || WaitResult == WAIT_TIMEOUT)
-            {
+            if (WaitResult == WAIT_OBJECT_0 || WaitResult == WAIT_TIMEOUT) {
                 // We have a new buffer, so try the AcquireBuffer again
                 continue;
-            }
-            else if (WaitResult == WAIT_OBJECT_0 + 1)
-            {
+            } else if (WaitResult == WAIT_OBJECT_0 + 1) {
                 // We need to terminate
                 break;
-            }
-            else
-            {
+            } else {
                 // The wait was cancelled or something unexpected happened
                 hr = HRESULT_FROM_WIN32(WaitResult);
                 break;
             }
-        }
-        else if (SUCCEEDED(hr))
-        {
+        } else if (SUCCEEDED(hr)) {
             // We have new frame to process, the surface has a reference on it that the driver has to release
             AcquiredBuffer.Attach(Buffer.MetaData.pSurface);
 
@@ -438,8 +390,7 @@ void SwapChainProcessor::RunCore()
             // Indicate to OS that we have finished inital processing of the frame, it is a hint that
             // OS could start preparing another frame
             hr = IddCxSwapChainFinishedProcessingFrame(m_hSwapChain);
-            if (FAILED(hr))
-            {
+            if (FAILED(hr)) {
                 break;
             }
 
@@ -449,9 +400,7 @@ void SwapChainProcessor::RunCore()
             // Drivers should report information about sub-frame timings, like encode time, send time, etc.
             // ==============================
             // IddCxSwapChainReportFrameStatistics(m_hSwapChain, ...);
-        }
-        else
-        {
+        } else {
             // The swap-chain was likely abandoned (e.g. DXGI_ERROR_ACCESS_LOST), so exit the processing loop
             break;
         }
@@ -462,20 +411,18 @@ void SwapChainProcessor::RunCore()
 
 #pragma region IndirectDeviceContext
 
-IndirectDeviceContext::IndirectDeviceContext(_In_ WDFDEVICE WdfDevice,const ExtraPane::DisplayRequest::Request& requested) :
-    m_WdfDevice(WdfDevice),m_Modes(InstanceModes(requested))
-{
+IndirectDeviceContext::IndirectDeviceContext(_In_ WDFDEVICE WdfDevice,
+                                             const ExtraPane::DisplayRequest::Request& requested)
+    : m_WdfDevice(WdfDevice), m_Modes(InstanceModes(requested)) {
     m_Adapter = {};
-    copy(begin(s_SampleMonitors[0].pEdidBlock),end(s_SampleMonitors[0].pEdidBlock),m_Edid.begin());
-    if(ExtraPane::DisplayRequest::Valid(requested))ExtraPane::DisplayRequest::EncodeDescriptor(m_Edid.data(),requested);
+    copy(begin(s_SampleMonitors[0].pEdidBlock), end(s_SampleMonitors[0].pEdidBlock), m_Edid.begin());
+    if (ExtraPane::DisplayRequest::Valid(requested))
+        ExtraPane::DisplayRequest::EncodeDescriptor(m_Edid.data(), requested);
 }
 
-IndirectDeviceContext::~IndirectDeviceContext()
-{
-}
+IndirectDeviceContext::~IndirectDeviceContext() {}
 
-void IndirectDeviceContext::InitAdapter()
-{
+void IndirectDeviceContext::InitAdapter() {
     // ==============================
     // TODO: Update the below diagnostic information in accordance with the target hardware. The strings and version
     // numbers are used for telemetry and may be displayed to the user in some situations.
@@ -517,8 +464,7 @@ void IndirectDeviceContext::InitAdapter()
     IDARG_OUT_ADAPTER_INIT AdapterInitOut;
     NTSTATUS Status = IddCxAdapterInitAsync(&AdapterInit, &AdapterInitOut);
 
-    if (NT_SUCCESS(Status))
-    {
+    if (NT_SUCCESS(Status)) {
         // Store a reference to the WDF adapter handle
         m_Adapter = AdapterInitOut.AdapterObject;
 
@@ -528,8 +474,7 @@ void IndirectDeviceContext::InitAdapter()
     }
 }
 
-void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
-{
+void IndirectDeviceContext::FinishInit(UINT ConnectorIndex) {
     // ==============================
     // TODO: In a real driver, the EDID should be retrieved dynamically from a connected physical monitor. The EDIDs
     // provided here are purely for demonstration.
@@ -549,13 +494,10 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
 
     MonitorInfo.MonitorDescription.Size = sizeof(MonitorInfo.MonitorDescription);
     MonitorInfo.MonitorDescription.Type = IDDCX_MONITOR_DESCRIPTION_TYPE_EDID;
-    if (ConnectorIndex >= ARRAYSIZE(s_SampleMonitors))
-    {
+    if (ConnectorIndex >= ARRAYSIZE(s_SampleMonitors)) {
         MonitorInfo.MonitorDescription.DataSize = 0;
         MonitorInfo.MonitorDescription.pData = nullptr;
-    }
-    else
-    {
+    } else {
         MonitorInfo.MonitorDescription.DataSize = IndirectSampleMonitor::szEdidBlock;
         MonitorInfo.MonitorDescription.pData = m_Edid.data();
     }
@@ -569,7 +511,7 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
     // ==============================
 
     // Create a container ID
-    MonitorInfo.MonitorContainerId = { 0x93cdf812, 0x4c0a, 0x4742, { 0x8b, 0xdb, 0x82, 0xa9, 0x0d, 0x31, 0xec, 0x17 } };
+    MonitorInfo.MonitorContainerId = {0x93cdf812, 0x4c0a, 0x4742, {0x8b, 0xdb, 0x82, 0xa9, 0x0d, 0x31, 0xec, 0x17}};
 
     IDARG_IN_MONITORCREATE MonitorCreate = {};
     MonitorCreate.ObjectAttributes = &Attr;
@@ -578,11 +520,10 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
     // Create a monitor object with the specified monitor descriptor
     IDARG_OUT_MONITORCREATE MonitorCreateOut;
     NTSTATUS Status = IddCxMonitorCreate(m_Adapter, &MonitorCreate, &MonitorCreateOut);
-    if (NT_SUCCESS(Status))
-    {
+    if (NT_SUCCESS(Status)) {
         // Create a new monitor context object and attach it to the Idd monitor object
         auto* pMonitorContextWrapper = WdfObjectGet_IndirectMonitorContextWrapper(MonitorCreateOut.MonitorObject);
-        pMonitorContextWrapper->pContext = new IndirectMonitorContext(MonitorCreateOut.MonitorObject,m_Modes);
+        pMonitorContextWrapper->pContext = new IndirectMonitorContext(MonitorCreateOut.MonitorObject, m_Modes);
 
         // Tell the OS that the monitor has been plugged in
         IDARG_OUT_MONITORARRIVAL ArrivalOut;
@@ -590,36 +531,29 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
     }
 }
 
-IndirectMonitorContext::IndirectMonitorContext(_In_ IDDCX_MONITOR Monitor,const vector<IndirectSampleMonitor::SampleMonitorMode>& modes) :
-    m_Monitor(Monitor),m_Modes(modes)
-{
-}
+IndirectMonitorContext::IndirectMonitorContext(_In_ IDDCX_MONITOR Monitor,
+                                               const vector<IndirectSampleMonitor::SampleMonitorMode>& modes)
+    : m_Monitor(Monitor), m_Modes(modes) {}
 
-IndirectMonitorContext::~IndirectMonitorContext()
-{
+IndirectMonitorContext::~IndirectMonitorContext() {
     m_ProcessingThread.reset();
 }
 
-void IndirectMonitorContext::AssignSwapChain(IDDCX_SWAPCHAIN SwapChain, LUID RenderAdapter, HANDLE NewFrameEvent)
-{
+void IndirectMonitorContext::AssignSwapChain(IDDCX_SWAPCHAIN SwapChain, LUID RenderAdapter, HANDLE NewFrameEvent) {
     m_ProcessingThread.reset();
 
     auto Device = make_shared<Direct3DDevice>(RenderAdapter);
-    if (FAILED(Device->Init()))
-    {
+    if (FAILED(Device->Init())) {
         // It's important to delete the swap-chain if D3D initialization fails, so that the OS knows to generate a new
         // swap-chain and try again.
         WdfObjectDelete(SwapChain);
-    }
-    else
-    {
+    } else {
         // Create a new swap-chain processing thread
         m_ProcessingThread.reset(new SwapChainProcessor(SwapChain, Device, NewFrameEvent));
     }
 }
 
-void IndirectMonitorContext::UnassignSwapChain()
-{
+void IndirectMonitorContext::UnassignSwapChain() {
     // Stop processing the last swap-chain
     m_ProcessingThread.reset();
 }
@@ -628,17 +562,14 @@ void IndirectMonitorContext::UnassignSwapChain()
 
 #pragma region DDI Callbacks
 
-_Use_decl_annotations_
-NTSTATUS IddSampleAdapterInitFinished(IDDCX_ADAPTER AdapterObject, const IDARG_IN_ADAPTER_INIT_FINISHED* pInArgs)
-{
+_Use_decl_annotations_ NTSTATUS IddSampleAdapterInitFinished(IDDCX_ADAPTER AdapterObject,
+                                                             const IDARG_IN_ADAPTER_INIT_FINISHED* pInArgs) {
     // This is called when the OS has finished setting up the adapter for use by the IddCx driver. It's now possible
     // to report attached monitors.
 
     auto* pDeviceContextWrapper = WdfObjectGet_IndirectDeviceContextWrapper(AdapterObject);
-    if (NT_SUCCESS(pInArgs->AdapterInitStatus))
-    {
-        for (DWORD i = 0; i < IDD_SAMPLE_MONITOR_COUNT; i++)
-        {
+    if (NT_SUCCESS(pInArgs->AdapterInitStatus)) {
+        for (DWORD i = 0; i < IDD_SAMPLE_MONITOR_COUNT; i++) {
             pDeviceContextWrapper->pContext->FinishInit(i);
         }
     }
@@ -646,9 +577,8 @@ NTSTATUS IddSampleAdapterInitFinished(IDDCX_ADAPTER AdapterObject, const IDARG_I
     return STATUS_SUCCESS;
 }
 
-_Use_decl_annotations_
-NTSTATUS IddSampleAdapterCommitModes(IDDCX_ADAPTER AdapterObject, const IDARG_IN_COMMITMODES* pInArgs)
-{
+_Use_decl_annotations_ NTSTATUS IddSampleAdapterCommitModes(IDDCX_ADAPTER AdapterObject,
+                                                            const IDARG_IN_COMMITMODES* pInArgs) {
     UNREFERENCED_PARAMETER(AdapterObject);
     UNREFERENCED_PARAMETER(pInArgs);
 
@@ -663,45 +593,56 @@ NTSTATUS IddSampleAdapterCommitModes(IDDCX_ADAPTER AdapterObject, const IDARG_IN
     return STATUS_SUCCESS;
 }
 
-_Use_decl_annotations_
-NTSTATUS IddSampleParseMonitorDescription(const IDARG_IN_PARSEMONITORDESCRIPTION* pInArgs, IDARG_OUT_PARSEMONITORDESCRIPTION* pOutArgs)
-{
-    if(pInArgs->MonitorDescription.Type!=IDDCX_MONITOR_DESCRIPTION_TYPE_EDID||pInArgs->MonitorDescription.DataSize!=IndirectSampleMonitor::szEdidBlock||!pInArgs->MonitorDescription.pData)return STATUS_INVALID_PARAMETER;
-    const auto* bytes=static_cast<const BYTE*>(pInArgs->MonitorDescription.pData);
-    ExtraPane::DisplayRequest::Request requested={};
-    if(memcmp(bytes,s_SampleMonitors[0].pEdidBlock,IndirectSampleMonitor::szEdidBlock)!=0)
-    {
+_Use_decl_annotations_ NTSTATUS IddSampleParseMonitorDescription(const IDARG_IN_PARSEMONITORDESCRIPTION* pInArgs,
+                                                                 IDARG_OUT_PARSEMONITORDESCRIPTION* pOutArgs) {
+    if (pInArgs->MonitorDescription.Type != IDDCX_MONITOR_DESCRIPTION_TYPE_EDID ||
+        pInArgs->MonitorDescription.DataSize != IndirectSampleMonitor::szEdidBlock ||
+        !pInArgs->MonitorDescription.pData)
+        return STATUS_INVALID_PARAMETER;
+    const auto* bytes = static_cast<const BYTE*>(pInArgs->MonitorDescription.pData);
+    ExtraPane::DisplayRequest::Request requested = {};
+    if (memcmp(bytes, s_SampleMonitors[0].pEdidBlock, IndirectSampleMonitor::szEdidBlock) != 0) {
         // The parse callback has no monitor context. A bounded private text
         // descriptor carries only this device's validated mode request.
-        if(memcmp(bytes,s_SampleMonitors[0].pEdidBlock,108)!=0||!ExtraPane::DisplayRequest::DecodeDescriptor(bytes,requested))return STATUS_INVALID_PARAMETER;
+        if (memcmp(bytes, s_SampleMonitors[0].pEdidBlock, 108) != 0 ||
+            !ExtraPane::DisplayRequest::DecodeDescriptor(bytes, requested))
+            return STATUS_INVALID_PARAMETER;
     }
-    const auto modes=InstanceModes(requested);
-    pOutArgs->MonitorModeBufferOutputCount=static_cast<UINT>(modes.size());pOutArgs->PreferredMonitorModeIdx=0;
-    if(!pInArgs->pMonitorModes)return STATUS_SUCCESS;
-    if(pInArgs->MonitorModeBufferInputCount<modes.size())return pInArgs->MonitorModeBufferInputCount?STATUS_BUFFER_TOO_SMALL:STATUS_SUCCESS;
-    for(UINT i=0;i<modes.size();++i)pInArgs->pMonitorModes[i]=CreateIddCxMonitorMode(modes[i].Width,modes[i].Height,modes[i].VSync,
-        i==0&&ExtraPane::DisplayRequest::Valid(requested)?IDDCX_MONITOR_MODE_ORIGIN_DRIVER:IDDCX_MONITOR_MODE_ORIGIN_MONITORDESCRIPTOR);
+    const auto modes = InstanceModes(requested);
+    pOutArgs->MonitorModeBufferOutputCount = static_cast<UINT>(modes.size());
+    pOutArgs->PreferredMonitorModeIdx = 0;
+    if (!pInArgs->pMonitorModes) return STATUS_SUCCESS;
+    if (pInArgs->MonitorModeBufferInputCount < modes.size())
+        return pInArgs->MonitorModeBufferInputCount ? STATUS_BUFFER_TOO_SMALL : STATUS_SUCCESS;
+    for (UINT i = 0; i < modes.size(); ++i)
+        pInArgs->pMonitorModes[i] = CreateIddCxMonitorMode(modes[i].Width, modes[i].Height, modes[i].VSync,
+                                                           i == 0 && ExtraPane::DisplayRequest::Valid(requested)
+                                                               ? IDDCX_MONITOR_MODE_ORIGIN_DRIVER
+                                                               : IDDCX_MONITOR_MODE_ORIGIN_MONITORDESCRIPTOR);
     return STATUS_SUCCESS;
 }
 
-_Use_decl_annotations_
-NTSTATUS IddSampleMonitorGetDefaultModes(IDDCX_MONITOR MonitorObject, const IDARG_IN_GETDEFAULTDESCRIPTIONMODES* pInArgs, IDARG_OUT_GETDEFAULTDESCRIPTIONMODES* pOutArgs)
-{
-    auto* wrapper=WdfObjectGet_IndirectMonitorContextWrapper(MonitorObject);
-    if(!wrapper||!wrapper->pContext)return STATUS_INVALID_PARAMETER;
-    const auto& modes=wrapper->pContext->Modes();
-    pOutArgs->DefaultMonitorModeBufferOutputCount=static_cast<UINT>(modes.size());pOutArgs->PreferredMonitorModeIdx=0;
-    if(!pInArgs->pDefaultMonitorModes)return STATUS_SUCCESS;
-    if(pInArgs->DefaultMonitorModeBufferInputCount<modes.size())return pInArgs->DefaultMonitorModeBufferInputCount?STATUS_BUFFER_TOO_SMALL:STATUS_SUCCESS;
-    for(UINT i=0;i<modes.size();++i)pInArgs->pDefaultMonitorModes[i]=CreateIddCxMonitorMode(modes[i].Width,modes[i].Height,modes[i].VSync);
+_Use_decl_annotations_ NTSTATUS IddSampleMonitorGetDefaultModes(IDDCX_MONITOR MonitorObject,
+                                                                const IDARG_IN_GETDEFAULTDESCRIPTIONMODES* pInArgs,
+                                                                IDARG_OUT_GETDEFAULTDESCRIPTIONMODES* pOutArgs) {
+    auto* wrapper = WdfObjectGet_IndirectMonitorContextWrapper(MonitorObject);
+    if (!wrapper || !wrapper->pContext) return STATUS_INVALID_PARAMETER;
+    const auto& modes = wrapper->pContext->Modes();
+    pOutArgs->DefaultMonitorModeBufferOutputCount = static_cast<UINT>(modes.size());
+    pOutArgs->PreferredMonitorModeIdx = 0;
+    if (!pInArgs->pDefaultMonitorModes) return STATUS_SUCCESS;
+    if (pInArgs->DefaultMonitorModeBufferInputCount < modes.size())
+        return pInArgs->DefaultMonitorModeBufferInputCount ? STATUS_BUFFER_TOO_SMALL : STATUS_SUCCESS;
+    for (UINT i = 0; i < modes.size(); ++i)
+        pInArgs->pDefaultMonitorModes[i] = CreateIddCxMonitorMode(modes[i].Width, modes[i].Height, modes[i].VSync);
     return STATUS_SUCCESS;
 }
 
-_Use_decl_annotations_
-NTSTATUS IddSampleMonitorQueryModes(IDDCX_MONITOR MonitorObject, const IDARG_IN_QUERYTARGETMODES* pInArgs, IDARG_OUT_QUERYTARGETMODES* pOutArgs)
-{
-    auto* wrapper=WdfObjectGet_IndirectMonitorContextWrapper(MonitorObject);
-    if(!wrapper||!wrapper->pContext)return STATUS_INVALID_PARAMETER;
+_Use_decl_annotations_ NTSTATUS IddSampleMonitorQueryModes(IDDCX_MONITOR MonitorObject,
+                                                           const IDARG_IN_QUERYTARGETMODES* pInArgs,
+                                                           IDARG_OUT_QUERYTARGETMODES* pOutArgs) {
+    auto* wrapper = WdfObjectGet_IndirectMonitorContextWrapper(MonitorObject);
+    if (!wrapper || !wrapper->pContext) return STATUS_INVALID_PARAMETER;
 
     vector<IDDCX_TARGET_MODE> TargetModes;
 
@@ -712,32 +653,27 @@ NTSTATUS IddSampleMonitorQueryModes(IDDCX_MONITOR MonitorObject, const IDARG_IN_
     for (const auto& Mode : wrapper->pContext->Modes())
         TargetModes.push_back(CreateIddCxTargetMode(Mode.Width, Mode.Height, Mode.VSync));
 
-    pOutArgs->TargetModeBufferOutputCount = (UINT) TargetModes.size();
-    if(!pInArgs->pTargetModes)return STATUS_SUCCESS;
+    pOutArgs->TargetModeBufferOutputCount = (UINT)TargetModes.size();
+    if (!pInArgs->pTargetModes) return STATUS_SUCCESS;
 
-    if (pInArgs->TargetModeBufferInputCount >= TargetModes.size())
-    {
+    if (pInArgs->TargetModeBufferInputCount >= TargetModes.size()) {
         copy(TargetModes.begin(), TargetModes.end(), pInArgs->pTargetModes);
-    }
-    else if (pInArgs->TargetModeBufferInputCount != 0)
-    {
+    } else if (pInArgs->TargetModeBufferInputCount != 0) {
         return STATUS_BUFFER_TOO_SMALL;
     }
 
     return STATUS_SUCCESS;
 }
 
-_Use_decl_annotations_
-NTSTATUS IddSampleMonitorAssignSwapChain(IDDCX_MONITOR MonitorObject, const IDARG_IN_SETSWAPCHAIN* pInArgs)
-{
+_Use_decl_annotations_ NTSTATUS IddSampleMonitorAssignSwapChain(IDDCX_MONITOR MonitorObject,
+                                                                const IDARG_IN_SETSWAPCHAIN* pInArgs) {
     auto* pMonitorContextWrapper = WdfObjectGet_IndirectMonitorContextWrapper(MonitorObject);
-    pMonitorContextWrapper->pContext->AssignSwapChain(pInArgs->hSwapChain, pInArgs->RenderAdapterLuid, pInArgs->hNextSurfaceAvailable);
+    pMonitorContextWrapper->pContext->AssignSwapChain(pInArgs->hSwapChain, pInArgs->RenderAdapterLuid,
+                                                      pInArgs->hNextSurfaceAvailable);
     return STATUS_SUCCESS;
 }
 
-_Use_decl_annotations_
-NTSTATUS IddSampleMonitorUnassignSwapChain(IDDCX_MONITOR MonitorObject)
-{
+_Use_decl_annotations_ NTSTATUS IddSampleMonitorUnassignSwapChain(IDDCX_MONITOR MonitorObject) {
     auto* pMonitorContextWrapper = WdfObjectGet_IndirectMonitorContextWrapper(MonitorObject);
     pMonitorContextWrapper->pContext->UnassignSwapChain();
     return STATUS_SUCCESS;

@@ -3,16 +3,24 @@
 #include <array>
 #include <memory>
 namespace dm::usb {
-enum class RecoveryState:std::uint8_t {prepared=1,offline=2,binding_intent=3,bound=4,released=5,restored=6,ejected=7};
+enum class RecoveryState : std::uint8_t {
+    prepared = 1,
+    offline = 2,
+    binding_intent = 3,
+    bound = 4,
+    released = 5,
+    restored = 6,
+    ejected = 7
+};
 struct RecoveryRecord {
-    std::uint8_t version=1;
-    RecoveryState state=RecoveryState::prepared;
-    std::uint32_t disk_number=0;
-    std::uint64_t prior_attributes=0;
-    std::array<std::uint8_t,32> fingerprint{};
-    std::array<std::uint8_t,16> owner{};
-    std::string bus_id,binding_id;
-    bool operator==(const RecoveryRecord&)const=default;
+    std::uint8_t version = 1;
+    RecoveryState state = RecoveryState::prepared;
+    std::uint32_t disk_number = 0;
+    std::uint64_t prior_attributes = 0;
+    std::array<std::uint8_t, 32> fingerprint{};
+    std::array<std::uint8_t, 16> owner{};
+    std::string bus_id, binding_id;
+    bool operator==(const RecoveryRecord&) const = default;
 };
 struct PendingRecovery {
     std::wstring journal_id;
@@ -24,45 +32,51 @@ struct PendingRecovery {
 std::vector<PendingRecovery> pending_recoveries();
 // Match the stable journal key, not the full fingerprint: changed partitions or
 // disk numbering must not make an unresolved journal disappear from export UI.
-bool has_pending_recovery(const Disk&,std::span<const PendingRecovery>);
+bool has_pending_recovery(const Disk&, std::span<const PendingRecovery>);
 // Hash-only diagnostic for the exact current identity; no disk/registry mutation.
-std::array<std::uint8_t,32> recovery_fingerprint(const Disk&);
+std::array<std::uint8_t, 32> recovery_fingerprint(const Disk&);
 // V2 hashes raw partition-table metadata, not Windows' offline synthetic layout
 // or writable filesystem data. Requires a privileged read-only physical handle.
-std::array<std::uint8_t,32> stable_recovery_fingerprint(const Disk&);
+std::array<std::uint8_t, 32> stable_recovery_fingerprint(const Disk&);
 namespace detail {
-using SectorReader=std::function<std::vector<std::uint8_t>(std::uint64_t byte_offset,std::uint32_t byte_count)>;
-std::vector<std::uint8_t> partition_metadata(const SectorReader&,std::uint32_t sector_size,std::uint64_t disk_size);
+using SectorReader = std::function<std::vector<std::uint8_t>(std::uint64_t byte_offset, std::uint32_t byte_count)>;
+std::vector<std::uint8_t> partition_metadata(const SectorReader&, std::uint32_t sector_size, std::uint64_t disk_size);
 }
-bool matches_recovery(const Disk&,const PendingRecovery&);
+bool matches_recovery(const Disk&, const PendingRecovery&);
 // Pure journal-state policy; caller must additionally prove current local USB
 // binding absence and revalidate the selected disk before recovery.
 extrapane::Availability recovery_state_allows_restore(const RecoveryRecord&);
 // Pure fixed-version, bounded journal codec. No registry or disk access.
 std::vector<std::uint8_t> encode_recovery(const RecoveryRecord& record);
 RecoveryRecord decode_recovery(std::span<const std::uint8_t> bytes);
-bool valid_recovery_transition(RecoveryState from,RecoveryState to)noexcept;
+bool valid_recovery_transition(RecoveryState from, RecoveryState to) noexcept;
 class RecoveryGuard {
 public:
-    virtual ~RecoveryGuard()=default;
-    virtual extrapane::Availability quarantine(const Disk&)=0;
-    virtual extrapane::Availability verify(const Disk&)=0;
-    virtual extrapane::Availability binding_intent(const Disk&,const std::string& bus)=0;
-    virtual extrapane::Availability binding_acquired(const Disk&,const std::wstring& guid)=0;
+    virtual ~RecoveryGuard() = default;
+    virtual extrapane::Availability quarantine(const Disk&) = 0;
+    virtual extrapane::Availability verify(const Disk&) = 0;
+    virtual extrapane::Availability binding_intent(const Disk&, const std::string& bus) = 0;
+    virtual extrapane::Availability binding_acquired(const Disk&, const std::wstring& guid) = 0;
     // Called only after verified native destination eject on the admitted session.
-    virtual extrapane::Availability destination_ejected(const Disk&)=0;
-    virtual extrapane::Availability binding_released(const Disk&,const std::wstring& guid)=0;
-    virtual extrapane::Availability restore_source(const Disk&,
-        const std::function<extrapane::Availability(const RecoveryRecord&)>&){return {false,"Automatic source restoration is unavailable"};}
-    virtual extrapane::Availability restore_interrupted_source(const Disk&,
-        const std::function<extrapane::Availability(const RecoveryRecord&)>&){return {false,"Interrupted source restoration is unavailable"};}
+    virtual extrapane::Availability destination_ejected(const Disk&) = 0;
+    virtual extrapane::Availability binding_released(const Disk&, const std::wstring& guid) = 0;
+    virtual extrapane::Availability
+    restore_source(const Disk&, const std::function<extrapane::Availability(const RecoveryRecord&)>&) {
+        return {false, "Automatic source restoration is unavailable"};
+    }
+    virtual extrapane::Availability
+    restore_interrupted_source(const Disk&, const std::function<extrapane::Availability(const RecoveryRecord&)>&) {
+        return {false, "Interrupted source restoration is unavailable"};
+    }
     // Unplugged source: retire only this exact bound generation after the
     // backend freshly proves absence and releases its exact private binding.
     // No disk is opened or brought online; archive remains explicitly absent.
-    virtual extrapane::Availability release_absent_source(const Disk&,
-        const std::function<extrapane::Availability(const PendingRecovery&)>&){return {false,"Absent source ownership release is unavailable"};}
+    virtual extrapane::Availability
+    release_absent_source(const Disk&, const std::function<extrapane::Availability(const PendingRecovery&)>&) {
+        return {false, "Absent source ownership release is unavailable"};
+    }
 };
-using LockedDiskVerifier=std::function<extrapane::Availability(const Disk&)>;
+using LockedDiskVerifier = std::function<extrapane::Availability(const Disk&)>;
 // Inert constructor. A trusted StorageHandles owner must prove volume locks and
 // revalidate its physical handle immediately before quarantine. Never use a
 // callback that merely returns true. Runtime methods require administrator rights.
@@ -71,31 +85,33 @@ std::unique_ptr<RecoveryGuard> native_recovery_guard(LockedDiskVerifier verify_l
 // and exact backend binding-release evidence. The verifier is trusted local code,
 // never a remote flag, and must inspect persisted bus/binding identity itself.
 // No destructor invokes this. A changed disk number/layout/identity fails closed.
-using RecoveryReleaseVerifier=std::function<extrapane::Availability(const RecoveryRecord&)>;
+using RecoveryReleaseVerifier = std::function<extrapane::Availability(const RecoveryRecord&)>;
 // Only PREPARED/OFFLINE records without binding intent may be retired when the
 // selected disk is already online. This never changes disk attributes and does
 // not claim that a replacement card is the original medium. The backend verifier
 // must freshly prove the local USB instance has no binding/attachment.
 extrapane::Availability preexport_retirement_policy(const RecoveryRecord&);
-extrapane::Availability assess_online_preexport(const Disk&,const PendingRecovery&,
-    const RecoveryReleaseVerifier& verify_no_binding);
-extrapane::Availability retire_online_preexport(const Disk&,const PendingRecovery&,
-    const RecoveryReleaseVerifier& verify_no_binding);
+extrapane::Availability assess_online_preexport(const Disk&, const PendingRecovery&,
+                                                const RecoveryReleaseVerifier& verify_no_binding);
+extrapane::Availability retire_online_preexport(const Disk&, const PendingRecovery&,
+                                                const RecoveryReleaseVerifier& verify_no_binding);
 // Interrupted return retains the original bound record in a protected audit.
 // Explicit operator recovery and authorized resource-stop/uninstall policy use
 // separate audit labels; neither claims receiver writes were flushed.
 extrapane::Availability interrupted_return_policy(const RecoveryRecord&);
 extrapane::Availability live_interrupted_return_policy(const RecoveryRecord&);
-bool interrupted_return_authorized(const Disk&,const PendingRecovery&);
-extrapane::Availability recover_interrupted_disk(const Disk&,const PendingRecovery&,
-    const RecoveryReleaseVerifier& verify_exclusive_binding_release,bool resource_stop_policy=false);
+bool interrupted_return_authorized(const Disk&, const PendingRecovery&);
+extrapane::Availability recover_interrupted_disk(const Disk&, const PendingRecovery&,
+                                                 const RecoveryReleaseVerifier& verify_exclusive_binding_release,
+                                                 bool resource_stop_policy = false);
 // Explicit removal of stale ownership for an absent source: never opens or
 // changes a disk, and never claims destination flush or clean eject.
 extrapane::Availability absent_release_policy(const RecoveryRecord&);
 std::wstring absent_release_instance(const PendingRecovery&); // Protected prior audit, or empty.
-bool absent_release_authorized(const PendingRecovery&,const std::wstring& usb_instance);
-extrapane::Availability release_absent_recovery(const PendingRecovery&,const std::wstring& usb_instance,
-    const RecoveryReleaseVerifier& verify_absent_and_release_exact_binding);
-extrapane::Availability recover_quarantined_disk(const Disk& locally_selected,
-    const RecoveryReleaseVerifier& verify_destination_ejected_and_binding_released);
+bool absent_release_authorized(const PendingRecovery&, const std::wstring& usb_instance);
+extrapane::Availability release_absent_recovery(const PendingRecovery&, const std::wstring& usb_instance,
+                                                const RecoveryReleaseVerifier& verify_absent_and_release_exact_binding);
+extrapane::Availability
+recover_quarantined_disk(const Disk& locally_selected,
+                         const RecoveryReleaseVerifier& verify_destination_ejected_and_binding_released);
 }

@@ -9,20 +9,21 @@ namespace extrapane::peers {
 class MediaBridge {
     struct State;
     std::unique_ptr<State> state_;
+
 public:
-    using Emit=std::function<void(const rpc::Message&)>;
-    MediaBridge(bool initiator,rpc::Multiplexer::Authorize,Emit);
+    using Emit = std::function<void(const rpc::Message&)>;
+    MediaBridge(bool initiator, rpc::Multiplexer::Authorize, Emit);
     ~MediaBridge();
-    MediaBridge(const MediaBridge&)=delete;
+    MediaBridge(const MediaBridge&) = delete;
     // Local native source connects here. Multiple child sockets share the grant.
-    std::uint16_t listen(std::uint64_t grant,bool paused=false);
+    std::uint16_t listen(std::uint64_t grant, bool paused = false);
     // Remote stream_open connects to this exact local native receiver port.
-    void connect(std::uint64_t grant,std::uint16_t trusted_local_port,bool paused=false);
+    void connect(std::uint64_t grant, std::uint16_t trusted_local_port, bool paused = false);
     // Pause new local accepts until native preparation and the grant reply finish.
     void resume(std::uint64_t grant);
     void receive(const rpc::Message&);
     bool pump(); // Nonblocking, bounded work per call.
     void revoke(std::uint64_t grant);
-    std::size_t streams()const noexcept;
+    std::size_t streams() const noexcept;
 };
 }

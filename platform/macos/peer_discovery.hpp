@@ -3,10 +3,13 @@
 #include <memory>
 namespace dm::mac {
 class PeerDiscovery {
-    struct State;std::unique_ptr<State> state_;
+    struct State;
+    std::unique_ptr<State> state_;
+
 public:
-    PeerDiscovery();~PeerDiscovery();
-    void start(const std::string& local={});
+    PeerDiscovery();
+    ~PeerDiscovery();
+    void start(const std::string& local = {});
     void advertise(extrapane::peers::Announcement);
     void withdraw();
     void stop();

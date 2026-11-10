@@ -10,12 +10,14 @@ public:
     explicit ReceiverInput(bool enabled);
     ~ReceiverInput();
     void grant(unsigned caps);
-    void dimensions(unsigned width,unsigned height);
-    bool message(HWND window,UINT message,WPARAM wparam,LPARAM lparam);
+    void dimensions(unsigned width, unsigned height);
+    bool message(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
     void pump();
     std::vector<Event> drain();
+
 private:
-    struct State;std::unique_ptr<State> state_;
+    struct State;
+    std::unique_ptr<State> state_;
 };
 class Broker {
 public:
@@ -23,8 +25,10 @@ public:
     ~Broker();
     unsigned capabilities() const;
     void send(std::span<const Event> events);
+
 private:
-    struct State;std::unique_ptr<State> state_;
+    struct State;
+    std::unique_ptr<State> state_;
 };
 int broker_main(const std::wstring& source);
 }

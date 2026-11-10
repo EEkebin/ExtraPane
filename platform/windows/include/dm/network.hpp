@@ -25,7 +25,10 @@ struct Options {
 };
 
 std::vector<Interface> interfaces();
-struct LocalAddress { std::string name,address; bool up=false,ipv6=false; };
+struct LocalAddress {
+    std::string name, address;
+    bool up = false, ipv6 = false;
+};
 // Display list: connected physical adapters only; does not constrain listeners/routes.
 std::vector<LocalAddress> local_addresses();
 std::string route_source(const std::string& peer);
@@ -50,6 +53,7 @@ public:
     void cancel() noexcept;
     std::string local_endpoint() const;
     std::string peer_endpoint() const;
+
 private:
     std::unique_ptr<State> state_;
 };
@@ -61,6 +65,7 @@ public:
     ~TcpListener();
     TcpStream accept();
     std::string endpoints() const;
+
 private:
     std::unique_ptr<State> state_;
 };

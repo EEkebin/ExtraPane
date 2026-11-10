@@ -14,203 +14,1068 @@
 #include <iostream>
 #include <algorithm>
 #include <stdexcept>
-class MockRenderers final:public QQmlPropertyMap {
- Q_OBJECT
+class MockRenderers final : public QQmlPropertyMap {
+    Q_OBJECT
 public:
- unsigned checks=0;
- MockRenderers():QQmlPropertyMap(this,nullptr){insert("renderer","d3d11");insert("checking",false);insert("checked",false);insert("message",QString{});
-  insert("options",QVariantList{QVariantMap{{"id","d3d11"},{"label","D3D11 (default)"},{"available",true},{"detail","Default"}},QVariantMap{{"id","d3d12"},{"label","D3D12"},{"available",true},{"detail","Available on Test GPU"}},QVariantMap{{"id","vulkan"},{"label","Vulkan"},{"available",false},{"detail","No driver"}},QVariantMap{{"id","opengl"},{"label","OpenGL"},{"available",true},{"detail","Available on Test GPU"}}});}
- Q_INVOKABLE void check(){++checks;insert("checked",true);}
- Q_INVOKABLE bool setRenderer(QString id){for(const auto& v:value("options").toList()){const auto m=v.toMap();if(m["id"]==id&&m["available"].toBool()){insert("renderer",id);return true;}}insert("message","unavailable");return false;}
+    unsigned checks = 0;
+    MockRenderers() : QQmlPropertyMap(this, nullptr) {
+        insert("renderer", "d3d11");
+        insert("checking", false);
+        insert("checked", false);
+        insert("message", QString{});
+        insert(
+            "options",
+            QVariantList{
+                QVariantMap{{"id", "d3d11"}, {"label", "D3D11 (default)"}, {"available", true}, {"detail", "Default"}},
+                QVariantMap{
+                    {"id", "d3d12"}, {"label", "D3D12"}, {"available", true}, {"detail", "Available on Test GPU"}},
+                QVariantMap{{"id", "vulkan"}, {"label", "Vulkan"}, {"available", false}, {"detail", "No driver"}},
+                QVariantMap{
+                    {"id", "opengl"}, {"label", "OpenGL"}, {"available", true}, {"detail", "Available on Test GPU"}}});
+    }
+    Q_INVOKABLE void check() {
+        ++checks;
+        insert("checked", true);
+    }
+    Q_INVOKABLE bool setRenderer(QString id) {
+        for (const auto& v : value("options").toList()) {
+            const auto m = v.toMap();
+            if (m["id"] == id && m["available"].toBool()) {
+                insert("renderer", id);
+                return true;
+            }
+        }
+        insert("message", "unavailable");
+        return false;
+    }
 };
-class MockPeers final:public QQmlPropertyMap {
- Q_OBJECT
+class MockPeers final : public QQmlPropertyMap {
+    Q_OBJECT
 public:
- QQmlPropertyMap directory;
- unsigned connectCalls=0;bool openMode=false;QString dialAddress;unsigned dialPort=0;QString connection,owner,resource,expectedIdentity,suppliedCode,forgotten,localAddress,stoppedGrant,cancelledRequest,offerId;bool input=true,offerEnabled=false;unsigned width=0,height=0,hz=0;unsigned calls=0,refreshCalls=0,shareCalls=0,sharePort=0,discoveryCalls=0;QString shareAddress;
- QStringList stoppedSessions,cancelledSessions;QStringList disconnectedDevices;
- MockPeers():QQmlPropertyMap(this,nullptr){directory.insert("scanning",false);directory.insert("searching",false);directory.insert("status",QString{});directory.insert("devices",QVariantList{QVariantMap{{"id","nearby-device"},{"name","Nearby computer"},{"address","192.0.2.12"},{"port",43825}}});insert("directory",QVariant::fromValue(&directory));insert("status","Ready");insert("sharing",true);insert("sharingStarting",false);insert("gatewayEnabled",false);insert("pairingRequired",true);insert("pairingCode","123456");insert("pairingCustom",false);insert("pairingSeconds",20);insert("deviceName","Test machine");insert("offers",QVariantList{});insert("networkAddresses",QVariantList{QVariantMap{{"label","Ethernet - 192.0.2.1"},{"address","192.0.2.1"},{"interfaceIndex",1}}});insert("remembered",QVariantList{QVariantMap{{"id","known-device"},{"name","Saved device"},{"address","192.0.2.10"},{"port",43824}}});insert("connections",QVariantList{});
- QVariantMap display{{"id","display-one"},{"label","First display"},{"owner","owner-a"},{"kind","Extend desktop"},{"kindId",0},{"available",true},{"inputAllowed",false},{"reason",""},{"width",1920},{"height",1080},{"refresh",60}};
- QVariantMap screen=display;screen["id"]="screen-two";screen["kindId"]=5;screen["kind"]="Existing screen";screen["label"]="Second screen";screen["owner"]="owner-b";screen["inputAllowed"]=true;
- QVariantMap camera=display;camera["id"]="camera-one";camera["kindId"]=1;camera["label"]="Front camera";camera["kind"]="Camera";camera["enabled"]=true;camera["inUse"]=true;camera["sessionCount"]=2;
- QVariantMap microphone=camera;microphone["id"]="microphone-one";microphone["kindId"]=2;microphone["label"]="Built-in microphone";microphone["kind"]="Microphone";microphone["inUse"]=false;
- display["enabled"]=false;screen["enabled"]=false;
- QVariantMap anotherDisplay=display;anotherDisplay["id"]="display-extra";anotherDisplay["label"]="Another display";anotherDisplay["width"]=2560;anotherDisplay["height"]=1440;anotherDisplay["refresh"]=120;display["label"]="Custom resolution";
- QVariantMap anotherScreen=screen;anotherScreen["id"]="screen-extra";
- QVariantMap catalogScreen=screen;catalogScreen["id"]="screen-first-peer";
- insert("offers",QVariantList{camera,screen,display,microphone,anotherScreen,anotherDisplay});
- insert("connections",QVariantList{QVariantMap{{"label","Front camera"},{"kindId",1},{"phase","active"},{"connection","101"},{"grant","77"}},QVariantMap{{"label","Built-in microphone"},{"kindId",2},{"phase","connecting"},{"connection","101"},{"grant","0"},{"request","88"}}});
- insert("devices",QVariantList{QVariantMap{{"name","First peer"},{"identity","identity-first"},{"connection","101"},{"incoming",false},{"resources",QVariantList{catalogScreen,display,anotherDisplay}}},QVariantMap{{"name","Second peer"},{"identity","identity-second"},{"connection","202"},{"incoming",false},{"resources",QVariantList{screen}}}});
- }
- Q_INVOKABLE QString useResource(QString c,QString o,QString r,bool i,unsigned w,unsigned h,unsigned f){connection=c;owner=o;resource=r;input=i;width=w;height=h;hz=f;++calls;return QString::number(1000+calls);}
- Q_INVOKABLE void disconnectDevice(QString id){disconnectedDevices<<id;}
- Q_INVOKABLE void connectVia(QString gateway,QString endpoint,QString code){connection=gateway;owner=endpoint;suppliedCode=code;++viaCalls;}
- unsigned viaCalls=0;
- Q_INVOKABLE void forgetDevice(QString id){forgotten=id;}
- Q_INVOKABLE void dismissPendingForget(QString id){forgotten=id;}
- Q_INVOKABLE bool setPairingPassword(QString value){insert("pairingCustom",!value.isEmpty());insert("pairingCode",value.isEmpty()?"654321":"");insert("pairingSeconds",value.isEmpty()?20:0);return true;}
- Q_INVOKABLE void disconnectAll(){}
- Q_INVOKABLE void stopResource(QString connection,QString grant){stoppedGrant=grant;stoppedSessions<<connection+":"+grant;}
- Q_INVOKABLE void cancelResource(QString connection,QString request){cancelledRequest=request;cancelledSessions<<connection+":"+request;}
- Q_INVOKABLE void enableOffer(QString id,bool enabled){offerId=id;offerEnabled=enabled;auto rows=value("offers").toList();for(auto& item:rows){auto row=item.toMap();if(row.value("id")==id){row["enabled"]=enabled;row["shareAllowed"]=enabled;item=row;}}insert("offers",rows);}
- Q_INVOKABLE void stopIncomingResource(QString id){offerId=id;auto rows=value("offers").toList();for(auto& item:rows){auto row=item.toMap();if(row.value("id")==id){row["inUse"]=false;row["sessionCount"]=0;item=row;}}insert("offers",rows);auto sessions=value("connections").toList();sessions.removeIf([&](const QVariant& v){const auto row=v.toMap();return row.value("incoming").toBool()&&row.value("resource").toString()==id;});insert("connections",sessions);}
- Q_INVOKABLE void disconnectIncomingAll(){auto rows=value("offers").toList();for(auto& item:rows){auto row=item.toMap();row["inUse"]=false;row["sessionCount"]=0;item=row;}insert("offers",rows);auto sessions=value("connections").toList();sessions.removeIf([](const QVariant& v){return v.toMap().value("incoming").toBool();});insert("connections",sessions);}
- QString listeningBind;unsigned listeningPort=0;
- Q_INVOKABLE void startAvailableSharing(QString address,unsigned port){listeningBind=address;listeningPort=port;}
- Q_INVOKABLE void refreshOffers(){++refreshCalls;}
- Q_INVOKABLE void startDiscovery(){++discoveryCalls;}
- Q_INVOKABLE void setOfferSharing(QString id,bool enabled,QString bind,unsigned port){++shareCalls;shareAddress=bind;sharePort=port;enableOffer(id,enabled);}
- Q_INVOKABLE void setGatewaySharing(bool enabled,QString bind,unsigned port){++shareCalls;shareAddress=bind;sharePort=port;insert("gatewayEnabled",enabled);updateSharing(enabled);}
- void updateSharing(bool enabling){bool any=value("gatewayEnabled").toBool();for(const auto& item:value("offers").toList())any=any||item.toMap().value("enabled").toBool();if(!any){insert("sharing",false);insert("sharingStarting",false);}else if(enabling&&!value("sharing").toBool())insert("sharingStarting",true);}
- Q_INVOKABLE void stopSharing(){auto rows=value("offers").toList();for(auto& item:rows){auto row=item.toMap();row["enabled"]=false;item=row;}insert("offers",rows);insert("sharing",false);insert("sharingStarting",false);insert("gatewayEnabled",false);}
- Q_INVOKABLE void connectDevice(QString address,unsigned port,QString code,QString expected,QString local,bool open){++connectCalls;dialAddress=address;dialPort=port;openMode=open;suppliedCode=code;expectedIdentity=expected;localAddress=local;}
- signals:void toast(QString message);
+    QQmlPropertyMap directory;
+    unsigned connectCalls = 0;
+    bool openMode = false;
+    QString dialAddress;
+    unsigned dialPort = 0;
+    QString connection, owner, resource, expectedIdentity, suppliedCode, forgotten, localAddress, stoppedGrant,
+        cancelledRequest, offerId;
+    bool input = true, offerEnabled = false;
+    unsigned width = 0, height = 0, hz = 0;
+    unsigned calls = 0, refreshCalls = 0, shareCalls = 0, sharePort = 0, discoveryCalls = 0;
+    QString shareAddress;
+    QStringList stoppedSessions, cancelledSessions;
+    QStringList disconnectedDevices;
+    MockPeers() : QQmlPropertyMap(this, nullptr) {
+        directory.insert("scanning", false);
+        directory.insert("searching", false);
+        directory.insert("status", QString{});
+        directory.insert(
+            "devices",
+            QVariantList{QVariantMap{
+                {"id", "nearby-device"}, {"name", "Nearby computer"}, {"address", "192.0.2.12"}, {"port", 43825}}});
+        insert("directory", QVariant::fromValue(&directory));
+        insert("status", "Ready");
+        insert("sharing", true);
+        insert("sharingStarting", false);
+        insert("gatewayEnabled", false);
+        insert("pairingRequired", true);
+        insert("pairingCode", "123456");
+        insert("pairingCustom", false);
+        insert("pairingSeconds", 20);
+        insert("deviceName", "Test machine");
+        insert("offers", QVariantList{});
+        insert("networkAddresses",
+               QVariantList{
+                   QVariantMap{{"label", "Ethernet - 192.0.2.1"}, {"address", "192.0.2.1"}, {"interfaceIndex", 1}}});
+        insert("remembered",
+               QVariantList{QVariantMap{
+                   {"id", "known-device"}, {"name", "Saved device"}, {"address", "192.0.2.10"}, {"port", 43824}}});
+        insert("connections", QVariantList{});
+        QVariantMap display{
+            {"id", "display-one"}, {"label", "First display"}, {"owner", "owner-a"},    {"kind", "Extend desktop"},
+            {"kindId", 0},         {"available", true},        {"inputAllowed", false}, {"reason", ""},
+            {"width", 1920},       {"height", 1080},           {"refresh", 60}};
+        QVariantMap screen = display;
+        screen["id"] = "screen-two";
+        screen["kindId"] = 5;
+        screen["kind"] = "Existing screen";
+        screen["label"] = "Second screen";
+        screen["owner"] = "owner-b";
+        screen["inputAllowed"] = true;
+        QVariantMap camera = display;
+        camera["id"] = "camera-one";
+        camera["kindId"] = 1;
+        camera["label"] = "Front camera";
+        camera["kind"] = "Camera";
+        camera["enabled"] = true;
+        camera["inUse"] = true;
+        camera["sessionCount"] = 2;
+        QVariantMap microphone = camera;
+        microphone["id"] = "microphone-one";
+        microphone["kindId"] = 2;
+        microphone["label"] = "Built-in microphone";
+        microphone["kind"] = "Microphone";
+        microphone["inUse"] = false;
+        display["enabled"] = false;
+        screen["enabled"] = false;
+        QVariantMap anotherDisplay = display;
+        anotherDisplay["id"] = "display-extra";
+        anotherDisplay["label"] = "Another display";
+        anotherDisplay["width"] = 2560;
+        anotherDisplay["height"] = 1440;
+        anotherDisplay["refresh"] = 120;
+        display["label"] = "Custom resolution";
+        QVariantMap anotherScreen = screen;
+        anotherScreen["id"] = "screen-extra";
+        QVariantMap catalogScreen = screen;
+        catalogScreen["id"] = "screen-first-peer";
+        insert("offers", QVariantList{camera, screen, display, microphone, anotherScreen, anotherDisplay});
+        insert("connections", QVariantList{QVariantMap{{"label", "Front camera"},
+                                                       {"kindId", 1},
+                                                       {"phase", "active"},
+                                                       {"connection", "101"},
+                                                       {"grant", "77"}},
+                                           QVariantMap{{"label", "Built-in microphone"},
+                                                       {"kindId", 2},
+                                                       {"phase", "connecting"},
+                                                       {"connection", "101"},
+                                                       {"grant", "0"},
+                                                       {"request", "88"}}});
+        insert("devices", QVariantList{QVariantMap{{"name", "First peer"},
+                                                   {"identity", "identity-first"},
+                                                   {"connection", "101"},
+                                                   {"incoming", false},
+                                                   {"resources", QVariantList{catalogScreen, display, anotherDisplay}}},
+                                       QVariantMap{{"name", "Second peer"},
+                                                   {"identity", "identity-second"},
+                                                   {"connection", "202"},
+                                                   {"incoming", false},
+                                                   {"resources", QVariantList{screen}}}});
+    }
+    Q_INVOKABLE QString useResource(QString c, QString o, QString r, bool i, unsigned w, unsigned h, unsigned f) {
+        connection = c;
+        owner = o;
+        resource = r;
+        input = i;
+        width = w;
+        height = h;
+        hz = f;
+        ++calls;
+        return QString::number(1000 + calls);
+    }
+    Q_INVOKABLE void disconnectDevice(QString id) { disconnectedDevices << id; }
+    Q_INVOKABLE void connectVia(QString gateway, QString endpoint, QString code) {
+        connection = gateway;
+        owner = endpoint;
+        suppliedCode = code;
+        ++viaCalls;
+    }
+    unsigned viaCalls = 0;
+    Q_INVOKABLE void forgetDevice(QString id) { forgotten = id; }
+    Q_INVOKABLE void dismissPendingForget(QString id) { forgotten = id; }
+    Q_INVOKABLE bool setPairingPassword(QString value) {
+        insert("pairingCustom", !value.isEmpty());
+        insert("pairingCode", value.isEmpty() ? "654321" : "");
+        insert("pairingSeconds", value.isEmpty() ? 20 : 0);
+        return true;
+    }
+    Q_INVOKABLE void disconnectAll() {}
+    Q_INVOKABLE void stopResource(QString connection, QString grant) {
+        stoppedGrant = grant;
+        stoppedSessions << connection + ":" + grant;
+    }
+    Q_INVOKABLE void cancelResource(QString connection, QString request) {
+        cancelledRequest = request;
+        cancelledSessions << connection + ":" + request;
+    }
+    Q_INVOKABLE void enableOffer(QString id, bool enabled) {
+        offerId = id;
+        offerEnabled = enabled;
+        auto rows = value("offers").toList();
+        for (auto& item : rows) {
+            auto row = item.toMap();
+            if (row.value("id") == id) {
+                row["enabled"] = enabled;
+                row["shareAllowed"] = enabled;
+                item = row;
+            }
+        }
+        insert("offers", rows);
+    }
+    Q_INVOKABLE void stopIncomingResource(QString id) {
+        offerId = id;
+        auto rows = value("offers").toList();
+        for (auto& item : rows) {
+            auto row = item.toMap();
+            if (row.value("id") == id) {
+                row["inUse"] = false;
+                row["sessionCount"] = 0;
+                item = row;
+            }
+        }
+        insert("offers", rows);
+        auto sessions = value("connections").toList();
+        sessions.removeIf([&](const QVariant& v) {
+            const auto row = v.toMap();
+            return row.value("incoming").toBool() && row.value("resource").toString() == id;
+        });
+        insert("connections", sessions);
+    }
+    Q_INVOKABLE void disconnectIncomingAll() {
+        auto rows = value("offers").toList();
+        for (auto& item : rows) {
+            auto row = item.toMap();
+            row["inUse"] = false;
+            row["sessionCount"] = 0;
+            item = row;
+        }
+        insert("offers", rows);
+        auto sessions = value("connections").toList();
+        sessions.removeIf([](const QVariant& v) { return v.toMap().value("incoming").toBool(); });
+        insert("connections", sessions);
+    }
+    QString listeningBind;
+    unsigned listeningPort = 0;
+    Q_INVOKABLE void startAvailableSharing(QString address, unsigned port) {
+        listeningBind = address;
+        listeningPort = port;
+    }
+    Q_INVOKABLE void refreshOffers() { ++refreshCalls; }
+    Q_INVOKABLE void startDiscovery() { ++discoveryCalls; }
+    Q_INVOKABLE void setOfferSharing(QString id, bool enabled, QString bind, unsigned port) {
+        ++shareCalls;
+        shareAddress = bind;
+        sharePort = port;
+        enableOffer(id, enabled);
+    }
+    Q_INVOKABLE void setGatewaySharing(bool enabled, QString bind, unsigned port) {
+        ++shareCalls;
+        shareAddress = bind;
+        sharePort = port;
+        insert("gatewayEnabled", enabled);
+        updateSharing(enabled);
+    }
+    void updateSharing(bool enabling) {
+        bool any = value("gatewayEnabled").toBool();
+        for (const auto& item : value("offers").toList()) any = any || item.toMap().value("enabled").toBool();
+        if (!any) {
+            insert("sharing", false);
+            insert("sharingStarting", false);
+        } else if (enabling && !value("sharing").toBool())
+            insert("sharingStarting", true);
+    }
+    Q_INVOKABLE void stopSharing() {
+        auto rows = value("offers").toList();
+        for (auto& item : rows) {
+            auto row = item.toMap();
+            row["enabled"] = false;
+            item = row;
+        }
+        insert("offers", rows);
+        insert("sharing", false);
+        insert("sharingStarting", false);
+        insert("gatewayEnabled", false);
+    }
+    Q_INVOKABLE void connectDevice(QString address, unsigned port, QString code, QString expected, QString local,
+                                   bool open) {
+        ++connectCalls;
+        dialAddress = address;
+        dialPort = port;
+        openMode = open;
+        suppliedCode = code;
+        expectedIdentity = expected;
+        localAddress = local;
+    }
+signals:
+    void toast(QString message);
 };
-void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
-QObject* named(QObject* root,const QString& name){QSet<QObject*> seen;QList<QObject*> pending{root};while(!pending.empty()){auto* item=pending.takeLast();if(seen.contains(item))continue;seen.insert(item);if(item->objectName()==name)return item;for(auto* child:item->children())pending.append(child);if(auto* quick=qobject_cast<QQuickItem*>(item))for(auto* child:quick->childItems())pending.append(child);}throw std::runtime_error(("Missing "+name).toStdString());}
-int main(int argc,char** argv){qputenv("QT_QPA_PLATFORM","offscreen");qputenv("QT_QUICK_BACKEND","software");qputenv("QT_QUICK_CONTROLS_MATERIAL_THEME","Dark");QGuiApplication app(argc,argv);app.setApplicationVersion("2026.11.08-test");
+void require(bool ok, const char* message) {
+    if (!ok) throw std::runtime_error(message);
+}
+QObject* named(QObject* root, const QString& name) {
+    QSet<QObject*> seen;
+    QList<QObject*> pending{root};
+    while (!pending.empty()) {
+        auto* item = pending.takeLast();
+        if (seen.contains(item)) continue;
+        seen.insert(item);
+        if (item->objectName() == name) return item;
+        for (auto* child : item->children()) pending.append(child);
+        if (auto* quick = qobject_cast<QQuickItem*>(item))
+            for (auto* child : quick->childItems()) pending.append(child);
+    }
+    throw std::runtime_error(("Missing " + name).toStdString());
+}
+int main(int argc, char** argv) {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    qputenv("QT_QUICK_BACKEND", "software");
+    qputenv("QT_QUICK_CONTROLS_MATERIAL_THEME", "Dark");
+    QGuiApplication app(argc, argv);
+    app.setApplicationVersion("2026.11.08-test");
 #ifdef _WIN32
-app.setFont(QFont("Segoe UI",10));
+    app.setFont(QFont("Segoe UI", 10));
 #endif
-QQuickStyle::setStyle("Material");try{MockPeers peers;QQmlEngine engine;QStringList warnings;QObject::connect(&engine,&QQmlEngine::warnings,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings<<e.toString();});engine.rootContext()->setContextProperty("peers",&peers);MockRenderers renderers;engine.rootContext()->setContextProperty("renderers",&renderers);QQmlComponent component(&engine,QUrl("qrc:/PeerWorkspace.qml"));std::unique_ptr<QObject> owned(component.create());if(!owned){for(const auto& e:component.errors())std::cerr<<e.toString().toStdString()<<'\n';throw std::runtime_error("Peer QML failed to load");}auto* root=qobject_cast<QQuickItem*>(owned.get());require(root,"Peer root must be an item");QQuickWindow window;window.setColor(QColor("#0e1727"));window.resize(1100,800);root->setParentItem(window.contentItem());root->setWidth(1100);root->setHeight(800);window.show();for(int n=0;n<20;++n){app.processEvents();QThread::msleep(5);}
- require(QMetaObject::invokeMethod(named(root,"peerRefreshDiscovery"),"clicked")&&peers.discoveryCalls==1,"Discovery refresh must use guarded controller API");
- peers.directory.insert("scanning",true);for(int i=0;i<10;++i){app.processEvents();QThread::msleep(20);}require(named(root,"peerRefreshDiscovery")->property("iconRotation").toDouble()>0,"Search icon is not animating");require(QMetaObject::invokeMethod(named(root,"peerRefreshDiscovery"),"clicked")&&peers.discoveryCalls==1,"Searching action started a duplicate scan");peers.directory.insert("scanning",false);app.processEvents();require(named(root,"peerRefreshDiscovery")->property("iconRotation").toDouble()==0,"Search icon kept spinning after scan");
- require(!named(root,"peerLocalBody")->property("visible").toBool()&&named(root,"peerLocalPairingCode")->property("visible").toBool()&&named(root,"peerLocalPairingCode")->property("text").toString().contains("123456"),"Collapsed local card must retain pairing code");
- if(const auto images=qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS");!images.isEmpty()){QDir().mkpath(images);require(window.grabWindow().save(images+"/devices-default.png"),"Cannot capture collapsed local card");}
- require(QMetaObject::invokeMethod(named(root,"peerLocalHeader"),"clicked"),"Cannot expand this device");app.processEvents();
- for(const QString group:{"monitors","cameras","microphones"})require(QMetaObject::invokeMethod(named(root,"peerOffers_"+group+"Header"),"clicked"),"Cannot expand local resource group");app.processEvents();
- require(!root->property("manualExpanded").toBool()&&!named(root,"peerManualFields")->property("visible").toBool(),"Manual address entry must default collapsed");
- require(named(root,"peerPairingCountdown")->property("visible").toBool(),"Generated pairing code lacks countdown");
- peers.insert("pairingCustom",true);peers.insert("pairingCode",QString{});app.processEvents();require(!named(root,"peerPairingCountdown")->property("visible").toBool()&&named(root,"peerLocalPairingCode")->property("text").toString().contains("Custom"),"Custom secret must not be displayed or counted down");peers.insert("pairingCustom",false);peers.insert("pairingCode","123456");app.processEvents();
- {// Choosing a custom secret must survive countdown ticks until it is saved.
-  auto* mode=named(root,"peerPairingMode");auto* field=named(root,"peerCustomPairingPassword");
-  require(QMetaObject::invokeMethod(mode,"activated",Q_ARG(int,1)),"Cannot choose custom pairing secret");app.processEvents();
-  require(mode->property("currentIndex").toInt()==1&&field->property("visible").toBool(),"Custom pairing choice did not show the entry field");
-  for(int tick=19;tick>=15;--tick){peers.insert("pairingSeconds",tick);peers.insert("pairingCode",QString::number(100000+tick));app.processEvents();}
-  require(mode->property("currentIndex").toInt()==1&&field->property("visible").toBool()&&!peers.value("pairingCustom").toBool(),"Countdown reverted an unsaved custom pairing choice");
-  field->setProperty("text","correct horse");require(QMetaObject::invokeMethod(named(root,"peerSavePairingPassword"),"clicked"),"Cannot save custom pairing secret");app.processEvents();
-  require(peers.value("pairingCustom").toBool()&&mode->property("currentIndex").toInt()==1&&field->property("text").toString().isEmpty(),"Saved custom pairing secret was not applied");
-  require(QMetaObject::invokeMethod(mode,"activated",Q_ARG(int,0)),"Cannot return to rotating code");app.processEvents();
-  require(!peers.value("pairingCustom").toBool()&&mode->property("currentIndex").toInt()==0&&!field->property("visible").toBool(),"Rotating code was not restored");
-  peers.insert("pairingCode","123456");peers.insert("pairingSeconds",20);app.processEvents();}
- {// Renderer picker: shown with the expanded local card, checks support once, saves only available choices.
-  require(named(root,"peerRendererSettings")->property("visible").toBool()&&renderers.checks==1,"Renderer picker hidden or support not checked");
-  auto* choice=named(root,"peerRenderer");require(choice->property("currentIndex").toInt()==0,"Renderer picker not on saved D3D11");
-  require(QMetaObject::invokeMethod(choice,"activated",Q_ARG(int,1)),"Cannot choose D3D12");app.processEvents();
-  require(renderers.value("renderer")=="d3d12"&&choice->property("currentIndex").toInt()==1&&named(root,"peerRendererDetail")->property("text").toString().contains("Test GPU"),"D3D12 choice not saved");
-  require(QMetaObject::invokeMethod(choice,"activated",Q_ARG(int,2)),"Cannot attempt Vulkan");app.processEvents();
-  require(renderers.value("renderer")=="d3d12"&&choice->property("currentIndex").toInt()==1&&named(root,"peerRendererMessage")->property("visible").toBool(),"Unavailable Vulkan was selected");
-  renderers.insert("renderer","d3d11");renderers.insert("message",QString{});app.processEvents();require(choice->property("currentIndex").toInt()==0,"Picker did not follow saved renderer");}
- require(QMetaObject::invokeMethod(named(root,"peerNearby_nearby-device"),"clicked"),"Cannot select nearby peer");app.processEvents();require(named(root,"peerPairingDialog")->property("visible").toBool()&&!root->property("manualExpanded").toBool()&&peers.connectCalls==0,"Nearby pairing must open a modal without connecting or exposing inline fields");
- if(const auto images=qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS");!images.isEmpty()){QDir().mkpath(images);for(int n=0;n<30;++n){app.processEvents();QThread::msleep(10);}require(window.grabWindow().save(images+"/pairing-dialog.png"),"Cannot capture pairing dialog");}
- require(named(root,"peerPairingTitle")->property("text")=="Pair with Nearby computer"&&named(root,"peerPairingSubtitle")->property("text")=="192.0.2.12:43825","Pairing header must show name then endpoint");
- require(QMetaObject::invokeMethod(named(root,"peerPairingSubmit"),"clicked"),"Cannot validate pairing code");require(named(root,"peerCode")->property("invalid").toBool()&&peers.connectCalls==0,"Empty pairing code reached backend");
- if(const auto images=qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS");!images.isEmpty()){for(int n=0;n<10;++n){app.processEvents();QThread::msleep(10);}require(window.grabWindow().save(images+"/pairing-dialog-error.png"),"Cannot capture pairing validation");}
- require(named(root,"peerCode")->property("echoMode").toInt()==2,"Pairing entry must be masked");named(root,"peerCode")->setProperty("text","a longer PIN / password!");peers.insert("pairingSeconds",19);app.processEvents();require(named(root,"peerCode")->property("text")=="a longer PIN / password!","Countdown update reset pairing entry");named(root,"peerAddress")->setProperty("text","192.0.2.200");named(root,"peerOutgoingNic")->setProperty("selectedAddress","192.0.2.1");require(QMetaObject::invokeMethod(named(root,"peerPairingSubmit"),"clicked"),"Cannot submit pairing");app.processEvents();require(peers.connectCalls==1&&peers.dialAddress=="192.0.2.12"&&peers.dialPort==43825&&peers.expectedIdentity=="nearby-device"&&peers.localAddress.isEmpty()&&peers.suppliedCode=="a longer PIN / password!","Pairing modal did not freeze endpoint/identity/interface");
- require(QMetaObject::invokeMethod(named(root,"peerPairingSubmit"),"clicked"),"Cannot test duplicate submission");require(peers.connectCalls==1,"Closed dialog submitted a duplicate connection");for(int n=0;n<30;++n){app.processEvents();QThread::msleep(10);}require(named(root,"peerCode")->property("text").toString().isEmpty(),"Pairing code survived dialog closure");
- require(QMetaObject::invokeMethod(named(root,"peerNearby_nearby-device"),"clicked"),"Cannot reopen pairing");app.processEvents();named(root,"peerCode")->setProperty("text","654321");require(QMetaObject::invokeMethod(named(root,"peerPairingCancel"),"clicked"),"Cannot cancel pairing");for(int n=0;n<30;++n){app.processEvents();QThread::msleep(10);}require(peers.connectCalls==1&&named(root,"peerCode")->property("text").toString().isEmpty(),"Cancelled dialog connected or retained code");
- auto startPairing=[&](QString address,unsigned port,QString identity,bool open){require(QMetaObject::invokeMethod(root,"beginConnection",Q_ARG(QVariant,QVariant(address)),Q_ARG(QVariant,QVariant(port)),Q_ARG(QVariant,QVariant(identity)),Q_ARG(QVariant,QVariant(open))),"Cannot begin pairing request");app.processEvents();};
- startPairing("192.0.2.70",43824,"open-device",true);require(peers.connectCalls==2&&peers.openMode&&peers.suppliedCode.isEmpty()&&!named(root,"peerPairingDialog")->property("visible").toBool(),"Advertised open peer incorrectly prompted for code");
- startPairing("192.0.2.10",43824,"known-device",true);require(peers.connectCalls==3&&!peers.openMode&&peers.expectedIdentity=="known-device"&&peers.suppliedCode.isEmpty(),"Saved identity downgraded to open mode or prompted");
- const auto initialRemembered=peers.value("remembered");auto pendingSaved=initialRemembered.toList();auto pendingRow=pendingSaved[0].toMap();pendingRow["pendingForget"]=true;pendingSaved[0]=pendingRow;peers.insert("remembered",pendingSaved);startPairing("192.0.2.10",43824,"known-device",true);require(peers.connectCalls==3&&!named(root,"peerPairingDialog")->property("visible").toBool(),"Pending removal allowed pairing/open connection");peers.insert("remembered",initialRemembered);
- root->setProperty("expectedDeviceId","");named(root,"peerPort")->setProperty("text","43824");
- require(!named(root,"peerDeviceBody_101")->property("visible").toBool(),"Resource catalog must not appear on Devices");
- root->setProperty("page",2);app.processEvents();
- const auto sessionsBeforeCollapse=peers.value("connections");const auto initialDevices=peers.value("devices").toList();
- require(!named(root,"peerDeviceBody_101")->property("visible").toBool()&&!named(root,"peerDeviceBody_202")->property("visible").toBool(),"Resource devices must start collapsed");
- for(const QString id:{"101","202"})require(QMetaObject::invokeMethod(named(root,"peerDeviceHeader_"+id),"clicked"),"Cannot expand resource device");app.processEvents();
- require(QMetaObject::invokeMethod(named(root,"peerDeviceHeader_101"),"clicked"),"Cannot collapse device header");app.processEvents();
- require(!named(root,"peerDeviceBody_101")->property("visible").toBool()&&named(root,"peerDeviceBody_202")->property("visible").toBool(),"Collapsing one device affected another");
- auto reordered=initialDevices;std::reverse(reordered.begin(),reordered.end());auto refreshed=reordered.last().toMap();refreshed["name"]="Renamed first peer";reordered.last()=refreshed;peers.insert("devices",reordered);app.processEvents();
- require(!named(root,"peerDeviceBody_101")->property("visible").toBool()&&named(root,"peerDeviceBody_202")->property("visible").toBool(),"Device refresh/reorder lost identity-keyed collapse state");
- require(peers.value("connections")==sessionsBeforeCollapse&&peers.calls==0&&peers.disconnectedDevices.empty()&&peers.stoppedSessions.empty()&&peers.cancelledSessions.empty(),"Collapsing a device changed resource sessions");
- require(QMetaObject::invokeMethod(named(root,"peerDeviceHeader_101"),"clicked"),"Cannot expand device header");app.processEvents();require(named(root,"peerDeviceBody_101")->property("visible").toBool(),"Device did not expand again");peers.insert("devices",initialDevices);app.processEvents();
- auto* monitorHeader=named(root,"peerCatalog_101_monitorsHeader");auto* monitorBody=named(root,"peerCatalog_101_monitorsBody");
- require(!monitorBody->property("visible").toBool(),"Catalog group must initially be collapsed");require(QMetaObject::invokeMethod(monitorHeader,"clicked"),"Cannot expand catalog group");app.processEvents();
- require(QMetaObject::invokeMethod(monitorHeader,"clicked"),"Cannot collapse group from header");app.processEvents();require(!monitorBody->property("visible").toBool(),"Whole group header did not collapse children");
- require(QMetaObject::invokeMethod(monitorHeader,"clicked"),"Cannot expand group from header");app.processEvents();require(monitorBody->property("visible").toBool(),"Group failed to expand");
- require(!named(root,"peerCatalog_101_camerasHeader")->property("visible").toBool(),"Empty catalog group should be hidden");
- root->setProperty("page",0);app.processEvents();require(named(root,"peerOffers_camerasHeader")->property("visible").toBool()&&named(root,"peerOffers_microphonesHeader")->property("visible").toBool(),"Offer groups missing");
- require(named(root,"peerOffers_monitorsSection_0")->property("text")=="Use as an extra monitor"&&named(root,"peerOffers_monitorsSection_0")->property("visible").toBool()&&!named(root,"peerOffers_monitorsSection_1")->property("visible").toBool()&&named(root,"peerOffers_monitorsSection_2")->property("text")=="Share an existing screen"&&named(root,"peerOffers_monitorsSection_2")->property("visible").toBool()&&!named(root,"peerOffers_monitorsSection_3")->property("visible").toBool(),"Share monitor sections repeated or ordered incorrectly");
- const auto outgoingBeforeStop=peers.value("connections");
- auto sessions=outgoingBeforeStop.toList();sessions.push_back(QVariantMap{{"incoming",true},{"resource","camera-one"},{"connection","301"},{"grant","101"},{"kindId",1},{"phase","active"}});peers.insert("connections",sessions);app.processEvents();
- auto* shareSwitch=named(root,"peerOfferShare_camera-one");const auto beforeShareSessions=peers.value("connections");shareSwitch->setProperty("checked",false);require(QMetaObject::invokeMethod(shareSwitch,"toggled"),"Cannot disable resource advertisement");app.processEvents();require(!peers.offerEnabled&&peers.value("sharing").toBool()&&peers.value("connections")==beforeShareSessions,"Share toggle changed listener/outgoing session state");shareSwitch=named(root,"peerOfferShare_camera-one");shareSwitch->setProperty("checked",true);require(QMetaObject::invokeMethod(shareSwitch,"toggled"),"Cannot re-enable advertisement");app.processEvents();require(named(root,"peerOffers_camerasBody")->property("visible").toBool(),"Offer refresh reset expanded group");
- auto* offerPower=named(root,"peerOffer_camera-one");require(offerPower->property("destructive").toBool()&&offerPower->property("enabled").toBool(),"Active exact offer must be red");
- require(!named(root,"peerOffer_microphone-one")->property("destructive").toBool()&&!named(root,"peerOffer_microphone-one")->property("enabled").toBool(),"Idle resource must not offer a local connect action");
- auto* stopSharingAll=named(root,"peerStopSharingAll");require(stopSharingAll->property("visible").toBool(),"Incoming active resource missing disconnect-all");
- require(QMetaObject::invokeMethod(offerPower,"clicked"),"Cannot disconnect incoming offer");app.processEvents();require(peers.offerId=="camera-one"&&peers.value("connections")==outgoingBeforeStop,"Provider disconnect affected independent outgoing use");require(!named(root,"peerOffer_camera-one")->property("destructive").toBool()&&!stopSharingAll->property("visible").toBool()&&peers.value("sharing").toBool(),"Stopped resource left red or listener went away");
- peers.insert("connections",sessions);app.processEvents();require(QMetaObject::invokeMethod(stopSharingAll,"clicked"),"Cannot disconnect all incoming uses");app.processEvents();require(peers.value("connections")==outgoingBeforeStop&&peers.value("sharing").toBool(),"Disconnect all stopped outgoing use/listener");
- auto* offersBody=named(root,"peerOffers_camerasBody");require(QMetaObject::invokeMethod(named(root,"peerOffers_camerasHeader"),"clicked"),"Cannot collapse offers");app.processEvents();require(!offersBody->property("visible").toBool()&&named(root,"peerOffers_microphonesBody")->property("visible").toBool(),"Collapsing cameras also hid microphones");
- root->setProperty("page",2);app.processEvents();require(named(root,"peerConnections_camerasHeader")->property("visible").toBool()&&named(root,"peerConnections_microphonesHeader")->property("visible").toBool(),"Connection groups missing active or pending resource");require(QMetaObject::invokeMethod(named(root,"peerStop_77"),"clicked")&&peers.stoppedGrant=="77","Grouped stop targeted wrong grant");require(QMetaObject::invokeMethod(named(root,"peerStop_0"),"clicked")&&peers.cancelledRequest=="88","Grouped pending cancellation targeted wrong request");
- root->setProperty("page",0);app.processEvents();
- auto* content=named(root,"peerPageContent");auto* scroll=named(root,"peerPageScroll");require(content->property("width").toDouble()>400,"Content collapsed to zero width");require(content->property("width").toDouble()<=scroll->property("availableWidth").toDouble()+1,"Content overlaps scrollbar");
- root->setProperty("page",2);app.processEvents();
- auto monitorRows=[&](){return root->property("monitorDrafts").value<QJSValue>().toVariant().toList();};
- auto monitorId=[&](const QString& connection,int index=0){for(const auto& value:monitorRows()){const auto row=value.toMap();if(row.value("connection")==connection&&index--==0)return row.value("uid").toString();}throw std::runtime_error("Missing monitor draft");};
- require(QMetaObject::invokeMethod(named(root,"peerCatalog_202_monitorsHeader"),"clicked"),"Cannot expand second monitor group");app.processEvents();
- const auto firstRow=monitorId("101"),viewRow=monitorId("202");
- require(named(root,"peerMonitorChoice_"+firstRow)->property("currentText")=="Custom","Custom destination is not the default monitor choice");
- auto* draftWidth=named(root,"peerMonitorWidth_"+firstRow);draftWidth->setProperty("text","2048");require(QMetaObject::invokeMethod(draftWidth,"textEdited"),"Cannot edit custom mode");app.processEvents();require(named(root,"peerMonitorWidth_"+firstRow)==draftWidth,"Editing a mode rebuilt the focused row");
- require(QMetaObject::invokeMethod(named(root,"peerAddMonitor_101"),"clicked"),"Cannot add another custom monitor");app.processEvents();const auto secondRow=monitorId("101",1);require(named(root,"peerMonitorWidth_"+firstRow)->property("text")=="2048","Adding another monitor discarded edited mode");
- require(QMetaObject::invokeMethod(named(root,"peerMonitorPower_"+firstRow),"clicked"),"Cannot connect custom monitor");app.processEvents();require(peers.calls==1&&peers.connection=="101"&&peers.owner=="owner-a"&&peers.resource=="display-one"&&!peers.input&&peers.width==2048&&peers.height==1080&&peers.hz==60,"Custom row used wrong peer/mode/input permission");
- require(QMetaObject::invokeMethod(named(root,"peerMonitorPower_"+secondRow),"clicked"),"Cannot connect repeated custom monitor");app.processEvents();require(peers.calls==2&&peers.resource=="display-one","Repeated custom row was blocked");
- const auto previousConnections=peers.value("connections");peers.insert("connections",QVariantList{QVariantMap{{"label","First custom"},{"kindId",0},{"phase","active"},{"connection","101"},{"owner","owner-a"},{"resource","display-one"},{"grant","97"},{"request","1001"}},QVariantMap{{"label","Second custom"},{"kindId",0},{"phase","connecting"},{"connection","101"},{"owner","owner-a"},{"resource","display-one"},{"grant","0"},{"request","1002"}},QVariantMap{{"label","Other device"},{"kindId",0},{"phase","active"},{"connection","202"},{"owner","owner-a"},{"resource","display-one"},{"grant","99"},{"request","1001"}}});app.processEvents();
- peers.stoppedSessions.clear();peers.cancelledSessions.clear();require(named(root,"peerMonitorPower_"+firstRow)->property("destructive").toBool()&&named(root,"peerMonitorPower_"+secondRow)->property("destructive").toBool(),"Independent monitor rows did not become active");
- require(QMetaObject::invokeMethod(named(root,"peerMonitorPower_"+firstRow),"clicked")&&peers.stoppedSessions==QStringList{"101:97"}&&peers.cancelledSessions.empty(),"First row stopped another row or peer");require(QMetaObject::invokeMethod(named(root,"peerMonitorPower_"+secondRow),"clicked")&&peers.cancelledSessions==QStringList{"101:1002"},"Second row did not cancel its own request");peers.insert("connections",previousConnections);app.processEvents();
- require(QMetaObject::invokeMethod(named(root,"peerMonitorChoice_"+firstRow),"activated",Q_ARG(int,1)),"Cannot select named monitor preset");require(QMetaObject::invokeMethod(named(root,"peerMonitorChoice_"+secondRow),"activated",Q_ARG(int,1)),"Cannot repeat named preset");app.processEvents();
- require(QMetaObject::invokeMethod(named(root,"peerMonitorPower_"+firstRow),"clicked"),"Cannot connect named preset");app.processEvents();require(peers.calls==3&&peers.resource=="display-extra"&&peers.width==2560&&peers.height==1440&&peers.hz==120,"Named monitor preset lost its native mode");require(QMetaObject::invokeMethod(named(root,"peerMonitorPower_"+secondRow),"clicked"),"Cannot connect another named preset");app.processEvents();require(peers.calls==4&&peers.resource=="display-extra","Named preset repeated row blocked");
- auto* viewInput=named(root,"peerMonitorInput_"+viewRow);require(viewInput->property("visible").toBool()&&!viewInput->property("checked").toBool(),"Existing screen should expose supported input but default off");require(qobject_cast<QQuickItem*>(viewInput)->parentItem()==qobject_cast<QQuickItem*>(named(root,"peerMonitorPower_"+viewRow))->parentItem(),"Input toggle is not beside power");viewInput->setProperty("checked",true);require(QMetaObject::invokeMethod(viewInput,"toggled"),"Cannot enable existing-screen input");require(QMetaObject::invokeMethod(named(root,"peerMonitorPower_"+viewRow),"clicked"),"Cannot view existing screen");app.processEvents();require(peers.calls==5&&peers.connection=="202"&&peers.resource=="screen-two"&&peers.input&&!peers.width&&!peers.height&&!peers.hz,"Existing-screen mode/input forwarding incorrect");
- auto occupied=previousConnections.toList();occupied.push_back(QVariantMap{{"label","Viewed screen"},{"kindId",5},{"phase","active"},{"connection","202"},{"owner","owner-b"},{"resource","screen-two"},{"grant","105"},{"request","1005"}});peers.insert("connections",occupied);require(QMetaObject::invokeMethod(named(root,"peerAddMonitor_202"),"clicked"),"Cannot add monitor row for duplicate-view check");app.processEvents();require(!named(root,"peerMonitorPower_"+monitorId("202",1))->property("enabled").toBool(),"Duplicate existing screen view remained connectable");peers.insert("connections",previousConnections);app.processEvents();
- root->setProperty("page",0);app.processEvents();
- named(root,"peerOutgoingNic")->setProperty("selectedAddress","192.0.2.1");app.processEvents();
- require(QMetaObject::invokeMethod(named(root,"peerForget_known-device"),"clicked"),"Cannot forget saved peer");require(peers.forgotten=="known-device","Wrong peer forgotten");
- const auto beforePendingForget=peers.value("remembered");auto awaiting=beforePendingForget.toList();auto awaitingPeer=awaiting[0].toMap();awaitingPeer["pendingForget"]=true;awaiting[0]=awaitingPeer;peers.insert("remembered",awaiting);app.processEvents();require(!named(root,"peerForget_known-device")->property("visible").toBool(),"Pending bilateral unpair still offered Forget");peers.insert("remembered",beforePendingForget);app.processEvents();
- require(named(root,"peerBindNic")->property("selectedAddress")=="0.0.0.0"&&!named(root,"peerApplyListening")->property("visible").toBool(),"Listener defaults are not All addresses/default port");
- named(root,"peerBindNic")->setProperty("currentIndex",1);require(QMetaObject::invokeMethod(named(root,"peerBindNic"),"activated",Q_ARG(int,1)),"Cannot select interface preset");require(peers.listeningBind=="192.0.2.1"&&peers.listeningPort==43824,"Interface preset did not apply immediately");
- named(root,"peerBindNic")->setProperty("selectedPreset","custom");named(root,"peerBindNic")->setProperty("currentIndex",named(root,"peerBindNic")->property("count").toInt()-1);named(root,"peerCustomBind")->setProperty("text","127.0.0.1");
- peers.insert("networkAddresses",QVariantList{QVariantMap{{"label","Other NIC"},{"address","192.0.2.2"}},QVariantMap{{"label","Renamed NIC"},{"address","192.0.2.1"}}});app.processEvents();require(named(root,"peerOutgoingNic")->property("selectedAddress")=="192.0.2.1"&&named(root,"peerOutgoingNic")->property("currentIndex").toInt()==2,"Refreshed interfaces lost selected address");
- require(named(root,"peerBindNic")->property("selectedAddress")=="127.0.0.1"&&!named(root,"peerBindNic")->property("editable").toBool(),"Refresh replaced manual bind address");require(!root->findChild<QObject*>("peerRefreshOffers"),"Manual resource refresh remains visible");
- root->setProperty("manualExpanded",true);app.processEvents();
- auto* manualAddress=named(root,"peerAddress");manualAddress->setProperty("text","192.0.2.10");peers.localAddress.clear();require(QMetaObject::invokeMethod(named(root,"peerConnect"),"clicked"),"Cannot connect through selected interface");require(peers.localAddress=="192.0.2.1","Manual connection ignored selected interface");named(root,"peerOutgoingNic")->setProperty("selectedAddress","");app.processEvents();require(QMetaObject::invokeMethod(named(root,"peerConnect"),"clicked"),"Cannot use automatic route");require(peers.localAddress.isEmpty(),"Automatic route retained an explicit interface");
- manualAddress->setProperty("text","192.0.2.55");peers.localAddress="not-called";require(QMetaObject::invokeMethod(named(root,"peerConnect"),"clicked"),"Cannot validate missing pairing code");require(named(root,"peerPairingDialog")->property("visible").toBool()&&peers.localAddress=="not-called","First pairing must prompt before connecting");require(named(root,"peerPairingTitle")->property("text")=="Pair with device","Unknown manual address invented a device name");QMetaObject::invokeMethod(named(root,"peerPairingCancel"),"clicked");for(int n=0;n<30;++n){app.processEvents();QThread::msleep(10);}
- auto* addressField=named(root,"peerAddress");addressField->setProperty("text","999.1.2.3");peers.expectedIdentity.clear();require(QMetaObject::invokeMethod(named(root,"peerConnect"),"clicked"),"Cannot validate address");require(addressField->property("invalid").toBool()&&peers.expectedIdentity.isEmpty(),"Invalid address reached connection backend");
- app.processEvents();auto* outline=addressField->property("background").value<QObject*>();require(outline&&addressField->property("nativeOutline").toBool()&&outline->property("outlineColor").toString()=="#ff6978"&&outline->property("controlHasText").toBool()&&outline->property("placeholderHasText").toBool(),"Invalid field lost its native floating-label outline");addressField->setProperty("invalid",false);app.processEvents();require(outline->property("outlineColor").toString()!="#ff6978","Validation outline did not restore normal styling");
- root->setProperty("page",2);app.processEvents();
- auto* widthField=named(root,"peerMonitorWidth_"+firstRow);widthField->setProperty("text","");require(QMetaObject::invokeMethod(named(root,"peerMonitorPower_"+firstRow),"clicked"),"Cannot validate display mode");require(widthField->property("invalid").toBool()&&peers.calls==5,"Missing display width reached backend");
- auto* menu=named(root,"peerNavigationMenu");require(menu->property("symbol")=="menu"&&menu->property("rotation").toDouble()==0,"Navigation must use an unrotated hamburger");require(QMetaObject::invokeMethod(menu,"clicked"),"Cannot collapse sidebar using hamburger");for(int n=0;n<60;++n){app.processEvents();QThread::msleep(5);}require(root->property("expansion").toDouble()<0.01&&menu->property("rotation").toDouble()==0,"Sidebar failed to slide or hamburger rotated");require(content->property("width").toDouble()<=scroll->property("availableWidth").toDouble()+1,"Collapsed sidebar overflows content");
- root->setProperty("page",0);root->setProperty("manualExpanded",true);app.processEvents();
- const auto savedPeers=peers.value("remembered");
- peers.insert("remembered",QVariantList{QVariantMap{{"id","identity-first"},{"name","First peer"},{"address","192.0.2.99"},{"port",43824}},QVariantMap{{"id","nearby-device"},{"name","Nearby computer"},{"address","192.0.2.12"},{"port",43825}}});
- named(root,"peerAddress")->setProperty("text","192.0.2.99");root->setProperty("expectedDeviceId","");app.processEvents();
- require(!named(root,"peerConnect")->property("visible").toBool(),"Connected device retained Connect action");
- require(root->property("newNearbyDevices").value<QJSValue>().toVariant().toList().isEmpty(),"Paired device remains in Nearby");
- peers.insert("remembered",savedPeers);app.processEvents();
- const auto originalDevices=peers.value("devices");auto openDevices=originalDevices.toList();auto openPeer=openDevices[0].toMap();openPeer["address"]="127.0.0.1";openPeer["port"]=43824;openPeer["verified"]=false;openDevices[0]=openPeer;peers.insert("devices",openDevices);
- named(root,"peerAddress")->setProperty("text","localhost");app.processEvents();require(!named(root,"peerConnect")->property("visible").toBool(),"Unpaired localhost connection retained Connect");
- named(root,"peerAddress")->setProperty("text","192.0.2.200");app.processEvents();require(named(root,"peerConnect")->property("visible").toBool(),"Changing destination failed to restore Connect");peers.insert("devices",originalDevices);
+    QQuickStyle::setStyle("Material");
+    try {
+        MockPeers peers;
+        QQmlEngine engine;
+        QStringList warnings;
+        QObject::connect(&engine, &QQmlEngine::warnings, [&](const QList<QQmlError>& errors) {
+            for (const auto& e : errors) warnings << e.toString();
+        });
+        engine.rootContext()->setContextProperty("peers", &peers);
+        MockRenderers renderers;
+        engine.rootContext()->setContextProperty("renderers", &renderers);
+        QQmlComponent component(&engine, QUrl("qrc:/PeerWorkspace.qml"));
+        std::unique_ptr<QObject> owned(component.create());
+        if (!owned) {
+            for (const auto& e : component.errors()) std::cerr << e.toString().toStdString() << '\n';
+            throw std::runtime_error("Peer QML failed to load");
+        }
+        auto* root = qobject_cast<QQuickItem*>(owned.get());
+        require(root, "Peer root must be an item");
+        QQuickWindow window;
+        window.setColor(QColor("#0e1727"));
+        window.resize(1100, 800);
+        root->setParentItem(window.contentItem());
+        root->setWidth(1100);
+        root->setHeight(800);
+        window.show();
+        for (int n = 0; n < 20; ++n) {
+            app.processEvents();
+            QThread::msleep(5);
+        }
+        require(QMetaObject::invokeMethod(named(root, "peerRefreshDiscovery"), "clicked") && peers.discoveryCalls == 1,
+                "Discovery refresh must use guarded controller API");
+        peers.directory.insert("scanning", true);
+        for (int i = 0; i < 10; ++i) {
+            app.processEvents();
+            QThread::msleep(20);
+        }
+        require(named(root, "peerRefreshDiscovery")->property("iconRotation").toDouble() > 0,
+                "Search icon is not animating");
+        require(QMetaObject::invokeMethod(named(root, "peerRefreshDiscovery"), "clicked") && peers.discoveryCalls == 1,
+                "Searching action started a duplicate scan");
+        peers.directory.insert("scanning", false);
+        app.processEvents();
+        require(named(root, "peerRefreshDiscovery")->property("iconRotation").toDouble() == 0,
+                "Search icon kept spinning after scan");
+        require(!named(root, "peerLocalBody")->property("visible").toBool() &&
+                    named(root, "peerLocalPairingCode")->property("visible").toBool() &&
+                    named(root, "peerLocalPairingCode")->property("text").toString().contains("123456"),
+                "Collapsed local card must retain pairing code");
+        if (const auto images = qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS"); !images.isEmpty()) {
+            QDir().mkpath(images);
+            require(window.grabWindow().save(images + "/devices-default.png"), "Cannot capture collapsed local card");
+        }
+        require(QMetaObject::invokeMethod(named(root, "peerLocalHeader"), "clicked"), "Cannot expand this device");
+        app.processEvents();
+        for (const QString group : {"monitors", "cameras", "microphones"})
+            require(QMetaObject::invokeMethod(named(root, "peerOffers_" + group + "Header"), "clicked"),
+                    "Cannot expand local resource group");
+        app.processEvents();
+        require(!root->property("manualExpanded").toBool() &&
+                    !named(root, "peerManualFields")->property("visible").toBool(),
+                "Manual address entry must default collapsed");
+        require(named(root, "peerPairingCountdown")->property("visible").toBool(),
+                "Generated pairing code lacks countdown");
+        peers.insert("pairingCustom", true);
+        peers.insert("pairingCode", QString{});
+        app.processEvents();
+        require(!named(root, "peerPairingCountdown")->property("visible").toBool() &&
+                    named(root, "peerLocalPairingCode")->property("text").toString().contains("Custom"),
+                "Custom secret must not be displayed or counted down");
+        peers.insert("pairingCustom", false);
+        peers.insert("pairingCode", "123456");
+        app.processEvents();
+        { // Choosing a custom secret must survive countdown ticks until it is saved.
+            auto* mode = named(root, "peerPairingMode");
+            auto* field = named(root, "peerCustomPairingPassword");
+            require(QMetaObject::invokeMethod(mode, "activated", Q_ARG(int, 1)), "Cannot choose custom pairing secret");
+            app.processEvents();
+            require(mode->property("currentIndex").toInt() == 1 && field->property("visible").toBool(),
+                    "Custom pairing choice did not show the entry field");
+            for (int tick = 19; tick >= 15; --tick) {
+                peers.insert("pairingSeconds", tick);
+                peers.insert("pairingCode", QString::number(100000 + tick));
+                app.processEvents();
+            }
+            require(mode->property("currentIndex").toInt() == 1 && field->property("visible").toBool() &&
+                        !peers.value("pairingCustom").toBool(),
+                    "Countdown reverted an unsaved custom pairing choice");
+            field->setProperty("text", "correct horse");
+            require(QMetaObject::invokeMethod(named(root, "peerSavePairingPassword"), "clicked"),
+                    "Cannot save custom pairing secret");
+            app.processEvents();
+            require(peers.value("pairingCustom").toBool() && mode->property("currentIndex").toInt() == 1 &&
+                        field->property("text").toString().isEmpty(),
+                    "Saved custom pairing secret was not applied");
+            require(QMetaObject::invokeMethod(mode, "activated", Q_ARG(int, 0)), "Cannot return to rotating code");
+            app.processEvents();
+            require(!peers.value("pairingCustom").toBool() && mode->property("currentIndex").toInt() == 0 &&
+                        !field->property("visible").toBool(),
+                    "Rotating code was not restored");
+            peers.insert("pairingCode", "123456");
+            peers.insert("pairingSeconds", 20);
+            app.processEvents();
+        }
+        { // Renderer picker: shown with the expanded local card, checks support once, saves only available choices.
+            require(named(root, "peerRendererSettings")->property("visible").toBool() && renderers.checks == 1,
+                    "Renderer picker hidden or support not checked");
+            auto* choice = named(root, "peerRenderer");
+            require(choice->property("currentIndex").toInt() == 0, "Renderer picker not on saved D3D11");
+            require(QMetaObject::invokeMethod(choice, "activated", Q_ARG(int, 1)), "Cannot choose D3D12");
+            app.processEvents();
+            require(renderers.value("renderer") == "d3d12" && choice->property("currentIndex").toInt() == 1 &&
+                        named(root, "peerRendererDetail")->property("text").toString().contains("Test GPU"),
+                    "D3D12 choice not saved");
+            require(QMetaObject::invokeMethod(choice, "activated", Q_ARG(int, 2)), "Cannot attempt Vulkan");
+            app.processEvents();
+            require(renderers.value("renderer") == "d3d12" && choice->property("currentIndex").toInt() == 1 &&
+                        named(root, "peerRendererMessage")->property("visible").toBool(),
+                    "Unavailable Vulkan was selected");
+            renderers.insert("renderer", "d3d11");
+            renderers.insert("message", QString{});
+            app.processEvents();
+            require(choice->property("currentIndex").toInt() == 0, "Picker did not follow saved renderer");
+        }
+        require(QMetaObject::invokeMethod(named(root, "peerNearby_nearby-device"), "clicked"),
+                "Cannot select nearby peer");
+        app.processEvents();
+        require(named(root, "peerPairingDialog")->property("visible").toBool() &&
+                    !root->property("manualExpanded").toBool() && peers.connectCalls == 0,
+                "Nearby pairing must open a modal without connecting or exposing inline fields");
+        if (const auto images = qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS"); !images.isEmpty()) {
+            QDir().mkpath(images);
+            for (int n = 0; n < 30; ++n) {
+                app.processEvents();
+                QThread::msleep(10);
+            }
+            require(window.grabWindow().save(images + "/pairing-dialog.png"), "Cannot capture pairing dialog");
+        }
+        require(named(root, "peerPairingTitle")->property("text") == "Pair with Nearby computer" &&
+                    named(root, "peerPairingSubtitle")->property("text") == "192.0.2.12:43825",
+                "Pairing header must show name then endpoint");
+        require(QMetaObject::invokeMethod(named(root, "peerPairingSubmit"), "clicked"), "Cannot validate pairing code");
+        require(named(root, "peerCode")->property("invalid").toBool() && peers.connectCalls == 0,
+                "Empty pairing code reached backend");
+        if (const auto images = qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS"); !images.isEmpty()) {
+            for (int n = 0; n < 10; ++n) {
+                app.processEvents();
+                QThread::msleep(10);
+            }
+            require(window.grabWindow().save(images + "/pairing-dialog-error.png"),
+                    "Cannot capture pairing validation");
+        }
+        require(named(root, "peerCode")->property("echoMode").toInt() == 2, "Pairing entry must be masked");
+        named(root, "peerCode")->setProperty("text", "a longer PIN / password!");
+        peers.insert("pairingSeconds", 19);
+        app.processEvents();
+        require(named(root, "peerCode")->property("text") == "a longer PIN / password!",
+                "Countdown update reset pairing entry");
+        named(root, "peerAddress")->setProperty("text", "192.0.2.200");
+        named(root, "peerOutgoingNic")->setProperty("selectedAddress", "192.0.2.1");
+        require(QMetaObject::invokeMethod(named(root, "peerPairingSubmit"), "clicked"), "Cannot submit pairing");
+        app.processEvents();
+        require(peers.connectCalls == 1 && peers.dialAddress == "192.0.2.12" && peers.dialPort == 43825 &&
+                    peers.expectedIdentity == "nearby-device" && peers.localAddress.isEmpty() &&
+                    peers.suppliedCode == "a longer PIN / password!",
+                "Pairing modal did not freeze endpoint/identity/interface");
+        require(QMetaObject::invokeMethod(named(root, "peerPairingSubmit"), "clicked"),
+                "Cannot test duplicate submission");
+        require(peers.connectCalls == 1, "Closed dialog submitted a duplicate connection");
+        for (int n = 0; n < 30; ++n) {
+            app.processEvents();
+            QThread::msleep(10);
+        }
+        require(named(root, "peerCode")->property("text").toString().isEmpty(), "Pairing code survived dialog closure");
+        require(QMetaObject::invokeMethod(named(root, "peerNearby_nearby-device"), "clicked"), "Cannot reopen pairing");
+        app.processEvents();
+        named(root, "peerCode")->setProperty("text", "654321");
+        require(QMetaObject::invokeMethod(named(root, "peerPairingCancel"), "clicked"), "Cannot cancel pairing");
+        for (int n = 0; n < 30; ++n) {
+            app.processEvents();
+            QThread::msleep(10);
+        }
+        require(peers.connectCalls == 1 && named(root, "peerCode")->property("text").toString().isEmpty(),
+                "Cancelled dialog connected or retained code");
+        auto startPairing = [&](QString address, unsigned port, QString identity, bool open) {
+            require(QMetaObject::invokeMethod(root, "beginConnection", Q_ARG(QVariant, QVariant(address)),
+                                              Q_ARG(QVariant, QVariant(port)), Q_ARG(QVariant, QVariant(identity)),
+                                              Q_ARG(QVariant, QVariant(open))),
+                    "Cannot begin pairing request");
+            app.processEvents();
+        };
+        startPairing("192.0.2.70", 43824, "open-device", true);
+        require(peers.connectCalls == 2 && peers.openMode && peers.suppliedCode.isEmpty() &&
+                    !named(root, "peerPairingDialog")->property("visible").toBool(),
+                "Advertised open peer incorrectly prompted for code");
+        startPairing("192.0.2.10", 43824, "known-device", true);
+        require(peers.connectCalls == 3 && !peers.openMode && peers.expectedIdentity == "known-device" &&
+                    peers.suppliedCode.isEmpty(),
+                "Saved identity downgraded to open mode or prompted");
+        const auto initialRemembered = peers.value("remembered");
+        auto pendingSaved = initialRemembered.toList();
+        auto pendingRow = pendingSaved[0].toMap();
+        pendingRow["pendingForget"] = true;
+        pendingSaved[0] = pendingRow;
+        peers.insert("remembered", pendingSaved);
+        startPairing("192.0.2.10", 43824, "known-device", true);
+        require(peers.connectCalls == 3 && !named(root, "peerPairingDialog")->property("visible").toBool(),
+                "Pending removal allowed pairing/open connection");
+        peers.insert("remembered", initialRemembered);
+        root->setProperty("expectedDeviceId", "");
+        named(root, "peerPort")->setProperty("text", "43824");
+        require(!named(root, "peerDeviceBody_101")->property("visible").toBool(),
+                "Resource catalog must not appear on Devices");
+        root->setProperty("page", 2);
+        app.processEvents();
+        const auto sessionsBeforeCollapse = peers.value("connections");
+        const auto initialDevices = peers.value("devices").toList();
+        require(!named(root, "peerDeviceBody_101")->property("visible").toBool() &&
+                    !named(root, "peerDeviceBody_202")->property("visible").toBool(),
+                "Resource devices must start collapsed");
+        for (const QString id : {"101", "202"})
+            require(QMetaObject::invokeMethod(named(root, "peerDeviceHeader_" + id), "clicked"),
+                    "Cannot expand resource device");
+        app.processEvents();
+        require(QMetaObject::invokeMethod(named(root, "peerDeviceHeader_101"), "clicked"),
+                "Cannot collapse device header");
+        app.processEvents();
+        require(!named(root, "peerDeviceBody_101")->property("visible").toBool() &&
+                    named(root, "peerDeviceBody_202")->property("visible").toBool(),
+                "Collapsing one device affected another");
+        auto reordered = initialDevices;
+        std::reverse(reordered.begin(), reordered.end());
+        auto refreshed = reordered.last().toMap();
+        refreshed["name"] = "Renamed first peer";
+        reordered.last() = refreshed;
+        peers.insert("devices", reordered);
+        app.processEvents();
+        require(!named(root, "peerDeviceBody_101")->property("visible").toBool() &&
+                    named(root, "peerDeviceBody_202")->property("visible").toBool(),
+                "Device refresh/reorder lost identity-keyed collapse state");
+        require(peers.value("connections") == sessionsBeforeCollapse && peers.calls == 0 &&
+                    peers.disconnectedDevices.empty() && peers.stoppedSessions.empty() &&
+                    peers.cancelledSessions.empty(),
+                "Collapsing a device changed resource sessions");
+        require(QMetaObject::invokeMethod(named(root, "peerDeviceHeader_101"), "clicked"),
+                "Cannot expand device header");
+        app.processEvents();
+        require(named(root, "peerDeviceBody_101")->property("visible").toBool(), "Device did not expand again");
+        peers.insert("devices", initialDevices);
+        app.processEvents();
+        auto* monitorHeader = named(root, "peerCatalog_101_monitorsHeader");
+        auto* monitorBody = named(root, "peerCatalog_101_monitorsBody");
+        require(!monitorBody->property("visible").toBool(), "Catalog group must initially be collapsed");
+        require(QMetaObject::invokeMethod(monitorHeader, "clicked"), "Cannot expand catalog group");
+        app.processEvents();
+        require(QMetaObject::invokeMethod(monitorHeader, "clicked"), "Cannot collapse group from header");
+        app.processEvents();
+        require(!monitorBody->property("visible").toBool(), "Whole group header did not collapse children");
+        require(QMetaObject::invokeMethod(monitorHeader, "clicked"), "Cannot expand group from header");
+        app.processEvents();
+        require(monitorBody->property("visible").toBool(), "Group failed to expand");
+        require(!named(root, "peerCatalog_101_camerasHeader")->property("visible").toBool(),
+                "Empty catalog group should be hidden");
+        root->setProperty("page", 0);
+        app.processEvents();
+        require(named(root, "peerOffers_camerasHeader")->property("visible").toBool() &&
+                    named(root, "peerOffers_microphonesHeader")->property("visible").toBool(),
+                "Offer groups missing");
+        require(named(root, "peerOffers_monitorsSection_0")->property("text") == "Use as an extra monitor" &&
+                    named(root, "peerOffers_monitorsSection_0")->property("visible").toBool() &&
+                    !named(root, "peerOffers_monitorsSection_1")->property("visible").toBool() &&
+                    named(root, "peerOffers_monitorsSection_2")->property("text") == "Share an existing screen" &&
+                    named(root, "peerOffers_monitorsSection_2")->property("visible").toBool() &&
+                    !named(root, "peerOffers_monitorsSection_3")->property("visible").toBool(),
+                "Share monitor sections repeated or ordered incorrectly");
+        const auto outgoingBeforeStop = peers.value("connections");
+        auto sessions = outgoingBeforeStop.toList();
+        sessions.push_back(QVariantMap{{"incoming", true},
+                                       {"resource", "camera-one"},
+                                       {"connection", "301"},
+                                       {"grant", "101"},
+                                       {"kindId", 1},
+                                       {"phase", "active"}});
+        peers.insert("connections", sessions);
+        app.processEvents();
+        auto* shareSwitch = named(root, "peerOfferShare_camera-one");
+        const auto beforeShareSessions = peers.value("connections");
+        shareSwitch->setProperty("checked", false);
+        require(QMetaObject::invokeMethod(shareSwitch, "toggled"), "Cannot disable resource advertisement");
+        app.processEvents();
+        require(!peers.offerEnabled && peers.value("sharing").toBool() &&
+                    peers.value("connections") == beforeShareSessions,
+                "Share toggle changed listener/outgoing session state");
+        shareSwitch = named(root, "peerOfferShare_camera-one");
+        shareSwitch->setProperty("checked", true);
+        require(QMetaObject::invokeMethod(shareSwitch, "toggled"), "Cannot re-enable advertisement");
+        app.processEvents();
+        require(named(root, "peerOffers_camerasBody")->property("visible").toBool(),
+                "Offer refresh reset expanded group");
+        auto* offerPower = named(root, "peerOffer_camera-one");
+        require(offerPower->property("destructive").toBool() && offerPower->property("enabled").toBool(),
+                "Active exact offer must be red");
+        require(!named(root, "peerOffer_microphone-one")->property("destructive").toBool() &&
+                    !named(root, "peerOffer_microphone-one")->property("enabled").toBool(),
+                "Idle resource must not offer a local connect action");
+        auto* stopSharingAll = named(root, "peerStopSharingAll");
+        require(stopSharingAll->property("visible").toBool(), "Incoming active resource missing disconnect-all");
+        require(QMetaObject::invokeMethod(offerPower, "clicked"), "Cannot disconnect incoming offer");
+        app.processEvents();
+        require(peers.offerId == "camera-one" && peers.value("connections") == outgoingBeforeStop,
+                "Provider disconnect affected independent outgoing use");
+        require(!named(root, "peerOffer_camera-one")->property("destructive").toBool() &&
+                    !stopSharingAll->property("visible").toBool() && peers.value("sharing").toBool(),
+                "Stopped resource left red or listener went away");
+        peers.insert("connections", sessions);
+        app.processEvents();
+        require(QMetaObject::invokeMethod(stopSharingAll, "clicked"), "Cannot disconnect all incoming uses");
+        app.processEvents();
+        require(peers.value("connections") == outgoingBeforeStop && peers.value("sharing").toBool(),
+                "Disconnect all stopped outgoing use/listener");
+        auto* offersBody = named(root, "peerOffers_camerasBody");
+        require(QMetaObject::invokeMethod(named(root, "peerOffers_camerasHeader"), "clicked"),
+                "Cannot collapse offers");
+        app.processEvents();
+        require(!offersBody->property("visible").toBool() &&
+                    named(root, "peerOffers_microphonesBody")->property("visible").toBool(),
+                "Collapsing cameras also hid microphones");
+        root->setProperty("page", 2);
+        app.processEvents();
+        require(named(root, "peerConnections_camerasHeader")->property("visible").toBool() &&
+                    named(root, "peerConnections_microphonesHeader")->property("visible").toBool(),
+                "Connection groups missing active or pending resource");
+        require(QMetaObject::invokeMethod(named(root, "peerStop_77"), "clicked") && peers.stoppedGrant == "77",
+                "Grouped stop targeted wrong grant");
+        require(QMetaObject::invokeMethod(named(root, "peerStop_0"), "clicked") && peers.cancelledRequest == "88",
+                "Grouped pending cancellation targeted wrong request");
+        root->setProperty("page", 0);
+        app.processEvents();
+        auto* content = named(root, "peerPageContent");
+        auto* scroll = named(root, "peerPageScroll");
+        require(content->property("width").toDouble() > 400, "Content collapsed to zero width");
+        require(content->property("width").toDouble() <= scroll->property("availableWidth").toDouble() + 1,
+                "Content overlaps scrollbar");
+        root->setProperty("page", 2);
+        app.processEvents();
+        auto monitorRows = [&]() { return root->property("monitorDrafts").value<QJSValue>().toVariant().toList(); };
+        auto monitorId = [&](const QString& connection, int index = 0) {
+            for (const auto& value : monitorRows()) {
+                const auto row = value.toMap();
+                if (row.value("connection") == connection && index-- == 0) return row.value("uid").toString();
+            }
+            throw std::runtime_error("Missing monitor draft");
+        };
+        require(QMetaObject::invokeMethod(named(root, "peerCatalog_202_monitorsHeader"), "clicked"),
+                "Cannot expand second monitor group");
+        app.processEvents();
+        const auto firstRow = monitorId("101"), viewRow = monitorId("202");
+        require(named(root, "peerMonitorChoice_" + firstRow)->property("currentText") == "Custom",
+                "Custom destination is not the default monitor choice");
+        auto* draftWidth = named(root, "peerMonitorWidth_" + firstRow);
+        draftWidth->setProperty("text", "2048");
+        require(QMetaObject::invokeMethod(draftWidth, "textEdited"), "Cannot edit custom mode");
+        app.processEvents();
+        require(named(root, "peerMonitorWidth_" + firstRow) == draftWidth, "Editing a mode rebuilt the focused row");
+        require(QMetaObject::invokeMethod(named(root, "peerAddMonitor_101"), "clicked"),
+                "Cannot add another custom monitor");
+        app.processEvents();
+        const auto secondRow = monitorId("101", 1);
+        require(named(root, "peerMonitorWidth_" + firstRow)->property("text") == "2048",
+                "Adding another monitor discarded edited mode");
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorPower_" + firstRow), "clicked"),
+                "Cannot connect custom monitor");
+        app.processEvents();
+        require(peers.calls == 1 && peers.connection == "101" && peers.owner == "owner-a" &&
+                    peers.resource == "display-one" && !peers.input && peers.width == 2048 && peers.height == 1080 &&
+                    peers.hz == 60,
+                "Custom row used wrong peer/mode/input permission");
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorPower_" + secondRow), "clicked"),
+                "Cannot connect repeated custom monitor");
+        app.processEvents();
+        require(peers.calls == 2 && peers.resource == "display-one", "Repeated custom row was blocked");
+        const auto previousConnections = peers.value("connections");
+        peers.insert("connections", QVariantList{QVariantMap{{"label", "First custom"},
+                                                             {"kindId", 0},
+                                                             {"phase", "active"},
+                                                             {"connection", "101"},
+                                                             {"owner", "owner-a"},
+                                                             {"resource", "display-one"},
+                                                             {"grant", "97"},
+                                                             {"request", "1001"}},
+                                                 QVariantMap{{"label", "Second custom"},
+                                                             {"kindId", 0},
+                                                             {"phase", "connecting"},
+                                                             {"connection", "101"},
+                                                             {"owner", "owner-a"},
+                                                             {"resource", "display-one"},
+                                                             {"grant", "0"},
+                                                             {"request", "1002"}},
+                                                 QVariantMap{{"label", "Other device"},
+                                                             {"kindId", 0},
+                                                             {"phase", "active"},
+                                                             {"connection", "202"},
+                                                             {"owner", "owner-a"},
+                                                             {"resource", "display-one"},
+                                                             {"grant", "99"},
+                                                             {"request", "1001"}}});
+        app.processEvents();
+        peers.stoppedSessions.clear();
+        peers.cancelledSessions.clear();
+        require(named(root, "peerMonitorPower_" + firstRow)->property("destructive").toBool() &&
+                    named(root, "peerMonitorPower_" + secondRow)->property("destructive").toBool(),
+                "Independent monitor rows did not become active");
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorPower_" + firstRow), "clicked") &&
+                    peers.stoppedSessions == QStringList{"101:97"} && peers.cancelledSessions.empty(),
+                "First row stopped another row or peer");
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorPower_" + secondRow), "clicked") &&
+                    peers.cancelledSessions == QStringList{"101:1002"},
+                "Second row did not cancel its own request");
+        peers.insert("connections", previousConnections);
+        app.processEvents();
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorChoice_" + firstRow), "activated", Q_ARG(int, 1)),
+                "Cannot select named monitor preset");
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorChoice_" + secondRow), "activated", Q_ARG(int, 1)),
+                "Cannot repeat named preset");
+        app.processEvents();
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorPower_" + firstRow), "clicked"),
+                "Cannot connect named preset");
+        app.processEvents();
+        require(peers.calls == 3 && peers.resource == "display-extra" && peers.width == 2560 && peers.height == 1440 &&
+                    peers.hz == 120,
+                "Named monitor preset lost its native mode");
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorPower_" + secondRow), "clicked"),
+                "Cannot connect another named preset");
+        app.processEvents();
+        require(peers.calls == 4 && peers.resource == "display-extra", "Named preset repeated row blocked");
+        auto* viewInput = named(root, "peerMonitorInput_" + viewRow);
+        require(viewInput->property("visible").toBool() && !viewInput->property("checked").toBool(),
+                "Existing screen should expose supported input but default off");
+        require(qobject_cast<QQuickItem*>(viewInput)->parentItem() ==
+                    qobject_cast<QQuickItem*>(named(root, "peerMonitorPower_" + viewRow))->parentItem(),
+                "Input toggle is not beside power");
+        viewInput->setProperty("checked", true);
+        require(QMetaObject::invokeMethod(viewInput, "toggled"), "Cannot enable existing-screen input");
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorPower_" + viewRow), "clicked"),
+                "Cannot view existing screen");
+        app.processEvents();
+        require(peers.calls == 5 && peers.connection == "202" && peers.resource == "screen-two" && peers.input &&
+                    !peers.width && !peers.height && !peers.hz,
+                "Existing-screen mode/input forwarding incorrect");
+        auto occupied = previousConnections.toList();
+        occupied.push_back(QVariantMap{{"label", "Viewed screen"},
+                                       {"kindId", 5},
+                                       {"phase", "active"},
+                                       {"connection", "202"},
+                                       {"owner", "owner-b"},
+                                       {"resource", "screen-two"},
+                                       {"grant", "105"},
+                                       {"request", "1005"}});
+        peers.insert("connections", occupied);
+        require(QMetaObject::invokeMethod(named(root, "peerAddMonitor_202"), "clicked"),
+                "Cannot add monitor row for duplicate-view check");
+        app.processEvents();
+        require(!named(root, "peerMonitorPower_" + monitorId("202", 1))->property("enabled").toBool(),
+                "Duplicate existing screen view remained connectable");
+        peers.insert("connections", previousConnections);
+        app.processEvents();
+        root->setProperty("page", 0);
+        app.processEvents();
+        named(root, "peerOutgoingNic")->setProperty("selectedAddress", "192.0.2.1");
+        app.processEvents();
+        require(QMetaObject::invokeMethod(named(root, "peerForget_known-device"), "clicked"),
+                "Cannot forget saved peer");
+        require(peers.forgotten == "known-device", "Wrong peer forgotten");
+        const auto beforePendingForget = peers.value("remembered");
+        auto awaiting = beforePendingForget.toList();
+        auto awaitingPeer = awaiting[0].toMap();
+        awaitingPeer["pendingForget"] = true;
+        awaiting[0] = awaitingPeer;
+        peers.insert("remembered", awaiting);
+        app.processEvents();
+        require(!named(root, "peerForget_known-device")->property("visible").toBool(),
+                "Pending bilateral unpair still offered Forget");
+        peers.insert("remembered", beforePendingForget);
+        app.processEvents();
+        require(named(root, "peerBindNic")->property("selectedAddress") == "0.0.0.0" &&
+                    !named(root, "peerApplyListening")->property("visible").toBool(),
+                "Listener defaults are not All addresses/default port");
+        named(root, "peerBindNic")->setProperty("currentIndex", 1);
+        require(QMetaObject::invokeMethod(named(root, "peerBindNic"), "activated", Q_ARG(int, 1)),
+                "Cannot select interface preset");
+        require(peers.listeningBind == "192.0.2.1" && peers.listeningPort == 43824,
+                "Interface preset did not apply immediately");
+        named(root, "peerBindNic")->setProperty("selectedPreset", "custom");
+        named(root, "peerBindNic")
+            ->setProperty("currentIndex", named(root, "peerBindNic")->property("count").toInt() - 1);
+        named(root, "peerCustomBind")->setProperty("text", "127.0.0.1");
+        peers.insert("networkAddresses", QVariantList{QVariantMap{{"label", "Other NIC"}, {"address", "192.0.2.2"}},
+                                                      QVariantMap{{"label", "Renamed NIC"}, {"address", "192.0.2.1"}}});
+        app.processEvents();
+        require(named(root, "peerOutgoingNic")->property("selectedAddress") == "192.0.2.1" &&
+                    named(root, "peerOutgoingNic")->property("currentIndex").toInt() == 2,
+                "Refreshed interfaces lost selected address");
+        require(named(root, "peerBindNic")->property("selectedAddress") == "127.0.0.1" &&
+                    !named(root, "peerBindNic")->property("editable").toBool(),
+                "Refresh replaced manual bind address");
+        require(!root->findChild<QObject*>("peerRefreshOffers"), "Manual resource refresh remains visible");
+        root->setProperty("manualExpanded", true);
+        app.processEvents();
+        auto* manualAddress = named(root, "peerAddress");
+        manualAddress->setProperty("text", "192.0.2.10");
+        peers.localAddress.clear();
+        require(QMetaObject::invokeMethod(named(root, "peerConnect"), "clicked"),
+                "Cannot connect through selected interface");
+        require(peers.localAddress == "192.0.2.1", "Manual connection ignored selected interface");
+        named(root, "peerOutgoingNic")->setProperty("selectedAddress", "");
+        app.processEvents();
+        require(QMetaObject::invokeMethod(named(root, "peerConnect"), "clicked"), "Cannot use automatic route");
+        require(peers.localAddress.isEmpty(), "Automatic route retained an explicit interface");
+        manualAddress->setProperty("text", "192.0.2.55");
+        peers.localAddress = "not-called";
+        require(QMetaObject::invokeMethod(named(root, "peerConnect"), "clicked"),
+                "Cannot validate missing pairing code");
+        require(named(root, "peerPairingDialog")->property("visible").toBool() && peers.localAddress == "not-called",
+                "First pairing must prompt before connecting");
+        require(named(root, "peerPairingTitle")->property("text") == "Pair with device",
+                "Unknown manual address invented a device name");
+        QMetaObject::invokeMethod(named(root, "peerPairingCancel"), "clicked");
+        for (int n = 0; n < 30; ++n) {
+            app.processEvents();
+            QThread::msleep(10);
+        }
+        auto* addressField = named(root, "peerAddress");
+        addressField->setProperty("text", "999.1.2.3");
+        peers.expectedIdentity.clear();
+        require(QMetaObject::invokeMethod(named(root, "peerConnect"), "clicked"), "Cannot validate address");
+        require(addressField->property("invalid").toBool() && peers.expectedIdentity.isEmpty(),
+                "Invalid address reached connection backend");
+        app.processEvents();
+        auto* outline = addressField->property("background").value<QObject*>();
+        require(outline && addressField->property("nativeOutline").toBool() &&
+                    outline->property("outlineColor").toString() == "#ff6978" &&
+                    outline->property("controlHasText").toBool() && outline->property("placeholderHasText").toBool(),
+                "Invalid field lost its native floating-label outline");
+        addressField->setProperty("invalid", false);
+        app.processEvents();
+        require(outline->property("outlineColor").toString() != "#ff6978",
+                "Validation outline did not restore normal styling");
+        root->setProperty("page", 2);
+        app.processEvents();
+        auto* widthField = named(root, "peerMonitorWidth_" + firstRow);
+        widthField->setProperty("text", "");
+        require(QMetaObject::invokeMethod(named(root, "peerMonitorPower_" + firstRow), "clicked"),
+                "Cannot validate display mode");
+        require(widthField->property("invalid").toBool() && peers.calls == 5, "Missing display width reached backend");
+        auto* menu = named(root, "peerNavigationMenu");
+        require(menu->property("symbol") == "menu" && menu->property("rotation").toDouble() == 0,
+                "Navigation must use an unrotated hamburger");
+        require(QMetaObject::invokeMethod(menu, "clicked"), "Cannot collapse sidebar using hamburger");
+        for (int n = 0; n < 60; ++n) {
+            app.processEvents();
+            QThread::msleep(5);
+        }
+        require(root->property("expansion").toDouble() < 0.01 && menu->property("rotation").toDouble() == 0,
+                "Sidebar failed to slide or hamburger rotated");
+        require(content->property("width").toDouble() <= scroll->property("availableWidth").toDouble() + 1,
+                "Collapsed sidebar overflows content");
+        root->setProperty("page", 0);
+        root->setProperty("manualExpanded", true);
+        app.processEvents();
+        const auto savedPeers = peers.value("remembered");
+        peers.insert(
+            "remembered",
+            QVariantList{
+                QVariantMap{
+                    {"id", "identity-first"}, {"name", "First peer"}, {"address", "192.0.2.99"}, {"port", 43824}},
+                QVariantMap{
+                    {"id", "nearby-device"}, {"name", "Nearby computer"}, {"address", "192.0.2.12"}, {"port", 43825}}});
+        named(root, "peerAddress")->setProperty("text", "192.0.2.99");
+        root->setProperty("expectedDeviceId", "");
+        app.processEvents();
+        require(!named(root, "peerConnect")->property("visible").toBool(), "Connected device retained Connect action");
+        require(root->property("newNearbyDevices").value<QJSValue>().toVariant().toList().isEmpty(),
+                "Paired device remains in Nearby");
+        peers.insert("remembered", savedPeers);
+        app.processEvents();
+        const auto originalDevices = peers.value("devices");
+        auto openDevices = originalDevices.toList();
+        auto openPeer = openDevices[0].toMap();
+        openPeer["address"] = "127.0.0.1";
+        openPeer["port"] = 43824;
+        openPeer["verified"] = false;
+        openDevices[0] = openPeer;
+        peers.insert("devices", openDevices);
+        named(root, "peerAddress")->setProperty("text", "localhost");
+        app.processEvents();
+        require(!named(root, "peerConnect")->property("visible").toBool(),
+                "Unpaired localhost connection retained Connect");
+        named(root, "peerAddress")->setProperty("text", "192.0.2.200");
+        app.processEvents();
+        require(named(root, "peerConnect")->property("visible").toBool(),
+                "Changing destination failed to restore Connect");
+        peers.insert("devices", originalDevices);
 
- root->setProperty("page",0);app.processEvents();require(named(root,"peerPairedResources_known-device")->property("visible").toBool(),"Offline paired device lost Resources navigation");
- const auto rememberedBeforeGroups=peers.value("remembered");auto rememberedGroups=rememberedBeforeGroups.toList();rememberedGroups.push_back(QVariantMap{{"id","identity-first"},{"name","First peer"},{"pendingForget",false}});peers.insert("remembered",rememberedGroups);app.processEvents();require(root->property("managedDevices").value<QJSValue>().toVariant().toList().size()==1,"Paired peer duplicated in Unpaired devices");peers.insert("remembered",rememberedBeforeGroups);
- peers.insert("status","Device connected");app.processEvents();require(!named(root,"peerStatus")->property("visible").toBool(),"Background control connection leaked into status");peers.insert("status","Camera failed: permission denied");app.processEvents();require(named(root,"peerStatus")->property("visible").toBool()&&named(root,"peerStatus")->property("text")=="Camera failed: permission denied","Resource failure was hidden with control status");peers.insert("status","Ready");
- root->setProperty("page",3);app.processEvents();require(named(root,"peerRunningVersion")->property("text").toString().contains("2026.11.08-test"),"About omits running version");
- named(root,"peerAddress")->setProperty("invalid",false);named(root,"peerCode")->setProperty("invalid",false);named(root,"peerMonitorWidth_"+firstRow)->setProperty("invalid",false);root->setProperty("manualExpanded",false);
- QMetaObject::invokeMethod(named(root,"peerNotification"),"close");
- const auto screenshotDirectory=qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS");if(!screenshotDirectory.isEmpty()){QDir().mkpath(screenshotDirectory);root->setProperty("collapsed",false);window.resize(900,800);root->setWidth(900);for(int page=0;page<4;++page){root->setProperty("page",page);for(int n=0;n<60;++n){app.processEvents();QThread::msleep(5);}require(window.grabWindow().save(screenshotDirectory+"/peer-page-"+QString::number(page)+".png"),"Could not capture offscreen layout");}}
- root->setProperty("page",2);app.processEvents();
- const auto rowCount=monitorRows().size();const auto oldDevices=peers.value("devices").toList();auto renewedDevices=oldDevices;auto renewedPeer=renewedDevices[0].toMap();renewedPeer["connection"]="303";renewedDevices[0]=renewedPeer;peers.insert("connections",QVariantList{});peers.insert("devices",renewedDevices);for(int n=0;n<5;++n)app.processEvents();require(monitorRows().size()==rowCount&&monitorId("303")==firstRow,"Reconnected peer lost drafts or accumulated stale rows");require(named(root,"peerDeviceBody_303")->property("visible").toBool()&&named(root,"peerCatalog_303_monitorsBody")->property("visible").toBool(),"Connection token replacement reset user-opened device/type groups");require(named(root,"peerMonitorChoice_"+firstRow)->property("currentText").toString().contains("Another display"),"Reconnect discarded named preset");
- auto beginVia=[&](QString endpoint){require(QMetaObject::invokeMethod(root,"beginGatewayPairing",Q_ARG(QVariant,QVariant("303")),Q_ARG(QVariant,QVariant(endpoint)),Q_ARG(QVariant,QVariant("Remote laptop"))),"Cannot request endpoint pairing");app.processEvents();};
- const auto streamsBeforePair=peers.calls;beginVia("new-endpoint");require(named(root,"peerPairingDialog")->property("visible").toBool()&&peers.viaCalls==0,"Endpoint pairing bypassed code dialog");
- named(root,"peerCode")->setProperty("text",QString{});QMetaObject::invokeMethod(named(root,"peerPairingSubmit"),"clicked");require(peers.viaCalls==0,"Empty endpoint credential reached backend");
- named(root,"peerCode")->setProperty("text","123456");QMetaObject::invokeMethod(named(root,"peerPairingSubmit"),"clicked");require(peers.viaCalls==1&&peers.connection=="303"&&peers.owner=="new-endpoint"&&peers.suppliedCode=="123456"&&peers.calls==streamsBeforePair,"Endpoint pairing lost route or activated media");
- for(int n=0;n<30;++n){app.processEvents();QThread::msleep(10);}beginVia("known-device");require(peers.viaCalls==2&&peers.suppliedCode.isEmpty()&&!named(root,"peerPairingDialog")->property("visible").toBool(),"Remembered endpoint prompted for code");
- auto gatewayPeers=peers.value("devices").toList();auto gatewayPeer=gatewayPeers[0].toMap();auto advertised=gatewayPeer["resources"].toList();advertised.push_back(QVariantMap{{"id","private-camera"},{"label","Private camera"},{"kindId",1},{"owner","new-endpoint"},{"ownerName","Remote laptop"},{"delegated",true},{"available",true}});gatewayPeer["resources"]=advertised;gatewayPeers[0]=gatewayPeer;peers.insert("devices",gatewayPeers);root->setProperty("page",2);app.processEvents();require(named(root,"peerGatewayPair_new-endpoint"),"Delegated endpoint omitted pairing action");
- auto hostileNearby=peers.directory.value("devices").toList();auto namedPeer=hostileNearby[0].toMap();namedPeer["name"]="<b>Untrusted name with markup and a deliberately long title for clipping</b>";hostileNearby[0]=namedPeer;peers.directory.insert("devices",hostileNearby);startPairing("192.0.2.12",43825,"nearby-device",false);require(named(root,"peerPairingTitle")->property("text").toString().startsWith("Pair with <b>")&&named(root,"peerPairingTitle")->property("textFormat").toInt()==0,"Discovered device title interpreted rich markup");QMetaObject::invokeMethod(named(root,"peerPairingCancel"),"clicked");
- for(int page=1;page<4;++page){root->setProperty("page",page);app.processEvents();}
- {// Guard against non-ASCII characters lost to a wrong file encoding ("Default ? 43824").
-  QSet<QObject*> seen;QList<QObject*> pending{root};
-  while(!pending.empty()){auto* item=pending.takeLast();if(seen.contains(item))continue;seen.insert(item);
-   for(const char* key:{"text","placeholderText","displayText"}){const auto value=item->property(key);if(value.typeId()==QMetaType::QString&&(value.toString().contains(" ? ")||value.toString().contains(QChar(0xFFFD)))){std::cerr<<value.toString().toStdString()<<'\n';throw std::runtime_error("UI text contains a mangled character");}}
-   if(const auto model=item->property("model");model.typeId()==QMetaType::QStringList||model.canConvert<QVariantList>())for(const auto& entry:model.toList())if(entry.typeId()==QMetaType::QString&&entry.toString().contains(" ? "))throw std::runtime_error("UI choice contains a mangled character");
-   for(auto* child:item->children())pending.append(child);if(auto* quick=qobject_cast<QQuickItem*>(item))for(auto* child:quick->childItems())pending.append(child);}
- }for(const auto& warning:warnings)std::cerr<<warning.toStdString()<<'\n';require(warnings.empty(),"Peer QML emitted warnings");std::cout<<"Peer offscreen layout, resource routing and input defaults passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+        root->setProperty("page", 0);
+        app.processEvents();
+        require(named(root, "peerPairedResources_known-device")->property("visible").toBool(),
+                "Offline paired device lost Resources navigation");
+        const auto rememberedBeforeGroups = peers.value("remembered");
+        auto rememberedGroups = rememberedBeforeGroups.toList();
+        rememberedGroups.push_back(
+            QVariantMap{{"id", "identity-first"}, {"name", "First peer"}, {"pendingForget", false}});
+        peers.insert("remembered", rememberedGroups);
+        app.processEvents();
+        require(root->property("managedDevices").value<QJSValue>().toVariant().toList().size() == 1,
+                "Paired peer duplicated in Unpaired devices");
+        peers.insert("remembered", rememberedBeforeGroups);
+        peers.insert("status", "Device connected");
+        app.processEvents();
+        require(!named(root, "peerStatus")->property("visible").toBool(),
+                "Background control connection leaked into status");
+        peers.insert("status", "Camera failed: permission denied");
+        app.processEvents();
+        require(named(root, "peerStatus")->property("visible").toBool() &&
+                    named(root, "peerStatus")->property("text") == "Camera failed: permission denied",
+                "Resource failure was hidden with control status");
+        peers.insert("status", "Ready");
+        root->setProperty("page", 3);
+        app.processEvents();
+        require(named(root, "peerRunningVersion")->property("text").toString().contains("2026.11.08-test"),
+                "About omits running version");
+        named(root, "peerAddress")->setProperty("invalid", false);
+        named(root, "peerCode")->setProperty("invalid", false);
+        named(root, "peerMonitorWidth_" + firstRow)->setProperty("invalid", false);
+        root->setProperty("manualExpanded", false);
+        QMetaObject::invokeMethod(named(root, "peerNotification"), "close");
+        const auto screenshotDirectory = qEnvironmentVariable("EXTRAPANE_UI_SNAPSHOTS");
+        if (!screenshotDirectory.isEmpty()) {
+            QDir().mkpath(screenshotDirectory);
+            root->setProperty("collapsed", false);
+            window.resize(900, 800);
+            root->setWidth(900);
+            for (int page = 0; page < 4; ++page) {
+                root->setProperty("page", page);
+                for (int n = 0; n < 60; ++n) {
+                    app.processEvents();
+                    QThread::msleep(5);
+                }
+                require(window.grabWindow().save(screenshotDirectory + "/peer-page-" + QString::number(page) + ".png"),
+                        "Could not capture offscreen layout");
+            }
+        }
+        root->setProperty("page", 2);
+        app.processEvents();
+        const auto rowCount = monitorRows().size();
+        const auto oldDevices = peers.value("devices").toList();
+        auto renewedDevices = oldDevices;
+        auto renewedPeer = renewedDevices[0].toMap();
+        renewedPeer["connection"] = "303";
+        renewedDevices[0] = renewedPeer;
+        peers.insert("connections", QVariantList{});
+        peers.insert("devices", renewedDevices);
+        for (int n = 0; n < 5; ++n) app.processEvents();
+        require(monitorRows().size() == rowCount && monitorId("303") == firstRow,
+                "Reconnected peer lost drafts or accumulated stale rows");
+        require(named(root, "peerDeviceBody_303")->property("visible").toBool() &&
+                    named(root, "peerCatalog_303_monitorsBody")->property("visible").toBool(),
+                "Connection token replacement reset user-opened device/type groups");
+        require(named(root, "peerMonitorChoice_" + firstRow)
+                    ->property("currentText")
+                    .toString()
+                    .contains("Another display"),
+                "Reconnect discarded named preset");
+        auto beginVia = [&](QString endpoint) {
+            require(QMetaObject::invokeMethod(root, "beginGatewayPairing", Q_ARG(QVariant, QVariant("303")),
+                                              Q_ARG(QVariant, QVariant(endpoint)),
+                                              Q_ARG(QVariant, QVariant("Remote laptop"))),
+                    "Cannot request endpoint pairing");
+            app.processEvents();
+        };
+        const auto streamsBeforePair = peers.calls;
+        beginVia("new-endpoint");
+        require(named(root, "peerPairingDialog")->property("visible").toBool() && peers.viaCalls == 0,
+                "Endpoint pairing bypassed code dialog");
+        named(root, "peerCode")->setProperty("text", QString{});
+        QMetaObject::invokeMethod(named(root, "peerPairingSubmit"), "clicked");
+        require(peers.viaCalls == 0, "Empty endpoint credential reached backend");
+        named(root, "peerCode")->setProperty("text", "123456");
+        QMetaObject::invokeMethod(named(root, "peerPairingSubmit"), "clicked");
+        require(peers.viaCalls == 1 && peers.connection == "303" && peers.owner == "new-endpoint" &&
+                    peers.suppliedCode == "123456" && peers.calls == streamsBeforePair,
+                "Endpoint pairing lost route or activated media");
+        for (int n = 0; n < 30; ++n) {
+            app.processEvents();
+            QThread::msleep(10);
+        }
+        beginVia("known-device");
+        require(peers.viaCalls == 2 && peers.suppliedCode.isEmpty() &&
+                    !named(root, "peerPairingDialog")->property("visible").toBool(),
+                "Remembered endpoint prompted for code");
+        auto gatewayPeers = peers.value("devices").toList();
+        auto gatewayPeer = gatewayPeers[0].toMap();
+        auto advertised = gatewayPeer["resources"].toList();
+        advertised.push_back(QVariantMap{{"id", "private-camera"},
+                                         {"label", "Private camera"},
+                                         {"kindId", 1},
+                                         {"owner", "new-endpoint"},
+                                         {"ownerName", "Remote laptop"},
+                                         {"delegated", true},
+                                         {"available", true}});
+        gatewayPeer["resources"] = advertised;
+        gatewayPeers[0] = gatewayPeer;
+        peers.insert("devices", gatewayPeers);
+        root->setProperty("page", 2);
+        app.processEvents();
+        require(named(root, "peerGatewayPair_new-endpoint"), "Delegated endpoint omitted pairing action");
+        auto hostileNearby = peers.directory.value("devices").toList();
+        auto namedPeer = hostileNearby[0].toMap();
+        namedPeer["name"] = "<b>Untrusted name with markup and a deliberately long title for clipping</b>";
+        hostileNearby[0] = namedPeer;
+        peers.directory.insert("devices", hostileNearby);
+        startPairing("192.0.2.12", 43825, "nearby-device", false);
+        require(named(root, "peerPairingTitle")->property("text").toString().startsWith("Pair with <b>") &&
+                    named(root, "peerPairingTitle")->property("textFormat").toInt() == 0,
+                "Discovered device title interpreted rich markup");
+        QMetaObject::invokeMethod(named(root, "peerPairingCancel"), "clicked");
+        for (int page = 1; page < 4; ++page) {
+            root->setProperty("page", page);
+            app.processEvents();
+        }
+        { // Guard against non-ASCII characters lost to a wrong file encoding ("Default ? 43824").
+            QSet<QObject*> seen;
+            QList<QObject*> pending{root};
+            while (!pending.empty()) {
+                auto* item = pending.takeLast();
+                if (seen.contains(item)) continue;
+                seen.insert(item);
+                for (const char* key : {"text", "placeholderText", "displayText"}) {
+                    const auto value = item->property(key);
+                    if (value.typeId() == QMetaType::QString &&
+                        (value.toString().contains(" ? ") || value.toString().contains(QChar(0xFFFD)))) {
+                        std::cerr << value.toString().toStdString() << '\n';
+                        throw std::runtime_error("UI text contains a mangled character");
+                    }
+                }
+                if (const auto model = item->property("model");
+                    model.typeId() == QMetaType::QStringList || model.canConvert<QVariantList>())
+                    for (const auto& entry : model.toList())
+                        if (entry.typeId() == QMetaType::QString && entry.toString().contains(" ? "))
+                            throw std::runtime_error("UI choice contains a mangled character");
+                for (auto* child : item->children()) pending.append(child);
+                if (auto* quick = qobject_cast<QQuickItem*>(item))
+                    for (auto* child : quick->childItems()) pending.append(child);
+            }
+        }
+        for (const auto& warning : warnings) std::cerr << warning.toStdString() << '\n';
+        require(warnings.empty(), "Peer QML emitted warnings");
+        std::cout << "Peer offscreen layout, resource routing and input defaults passed\n";
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << '\n';
+        return 1;
+    }
+}
 #include "peer_ui_check.moc"

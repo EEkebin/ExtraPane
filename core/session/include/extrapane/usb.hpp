@@ -37,15 +37,15 @@ public:
 
 class Transfer final {
 public:
-    explicit Transfer(Operations& operations): operations_(operations) {}
+    explicit Transfer(Operations& operations) : operations_(operations) {}
     ~Transfer();
     Transfer(const Transfer&) = delete;
     Transfer& operator=(const Transfer&) = delete;
-    Availability start(const std::string& selected_id, std::uint64_t generation,
-                       bool admitted);
+    Availability start(const std::string& selected_id, std::uint64_t generation, bool admitted);
     Availability eject();
     void transport_lost() noexcept;
     State state() const noexcept { return state_; }
+
 private:
     void abandon() noexcept;
     Operations& operations_;

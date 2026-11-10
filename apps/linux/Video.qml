@@ -5,13 +5,19 @@ import ExtraPane.Native 1.0
 Item {
     property bool inputPaused: false
     property alias exclusionRects: input.exclusionRects
-    GstGLQt6VideoItem { id: video; anchors.fill: parent }
+    GstGLQt6VideoItem {
+        id: video
+        anchors.fill: parent
+    }
     InputSurface {
         id: input
         anchors.fill: parent
         enabled: receiver.active && !parent.inputPaused
         focus: enabled
-        onEnabledChanged: { if (!enabled) receiver.releaseInput() }
+        onEnabledChanged: {
+            if (!enabled)
+                receiver.releaseInput();
+        }
         sourceWidth: receiver.sourceWidth
         sourceHeight: receiver.sourceHeight
     }

@@ -8,7 +8,7 @@ namespace dm::usb {
 struct HostTransport {
     // Operates on an already admitted TLS session; native tunnel validates the
     // exact USB/IP import bus ID before forwarding to this loopback endpoint.
-    std::function<extrapane::Availability(const std::string& bus,std::uint16_t port)> start;
+    std::function<extrapane::Availability(const std::string& bus, std::uint16_t port)> start;
     std::function<void()> close;
     // Must prove destination flush/eject, not merely receipt of a disconnect.
     std::function<extrapane::Availability()> flush_and_eject;
@@ -17,5 +17,6 @@ struct HostTransport {
     std::function<void(extrapane::Availability)> source_restored;
 };
 std::unique_ptr<StorageBackend> usb_host_backend(std::unique_ptr<HostRunner> runner,
-    std::unique_ptr<RecoveryGuard> recovery,HostTransport transport,std::uint16_t loopback_port);
+                                                 std::unique_ptr<RecoveryGuard> recovery, HostTransport transport,
+                                                 std::uint16_t loopback_port);
 }

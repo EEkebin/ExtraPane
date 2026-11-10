@@ -11,15 +11,34 @@ final class SharingLifecycle {
         generation = value;
         listening = false;
     }
+
     // Listener replacement does not own active media sessions.
-    void replace(long value) { if(value<=0)throw new IllegalArgumentException("Invalid sharing generation");generation=value;listening=false; }
-    boolean active() { return generation != 0; }
-    boolean listening() { return listening; }
-    boolean matches(long value) { return value != 0 && value == generation; }
+    void replace(long value) {
+        if (value <= 0) throw new IllegalArgumentException("Invalid sharing generation");
+        generation = value;
+        listening = false;
+    }
+
+    boolean active() {
+        return generation != 0;
+    }
+
+    boolean listening() {
+        return listening;
+    }
+
+    boolean matches(long value) {
+        return value != 0 && value == generation;
+    }
+
     boolean confirm(long value) {
         if (!matches(value)) return false;
         listening = true;
         return true;
     }
-    void stop() { generation = 0; listening = false; }
+
+    void stop() {
+        generation = 0;
+        listening = false;
+    }
 }

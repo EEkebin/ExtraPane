@@ -12,7 +12,7 @@ struct Disk {
     std::wstring interface_path;
     std::wstring instance_id;
     std::wstring usb_instance_id;
-    bool unique_identity=false;
+    bool unique_identity = false;
     unsigned long disk_number = ~0ul;
     std::string label;
     std::vector<std::wstring> volumes;
@@ -30,7 +30,12 @@ using OwnershipProbe = std::function<std::optional<bool>(const std::wstring& usb
 Inventory inventory(const OwnershipProbe& owned_elsewhere = {});
 
 namespace detail {
-struct Descriptor { bool usb=false; bool removable=false; std::string label; bool stable_serial=false; };
+struct Descriptor {
+    bool usb = false;
+    bool removable = false;
+    std::string label;
+    bool stable_serial = false;
+};
 std::optional<Descriptor> descriptor(std::span<const unsigned char> bytes);
 // True means a bootable/system/unknown partition type must be excluded.
 std::optional<bool> protected_layout(std::span<const unsigned char> bytes);

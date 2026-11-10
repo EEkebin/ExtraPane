@@ -7,98 +7,139 @@
 #include <stdexcept>
 
 namespace {
-void require(bool condition, const char* text) { if (!condition) throw std::runtime_error(text); }
-template<class F> void rejects(F action) {
-    try { action(); } catch (const std::exception&) { return; }
+void require(bool condition, const char* text) {
+    if (!condition) throw std::runtime_error(text);
+}
+template <class F>
+void rejects(F action) {
+    try {
+        action();
+    } catch (const std::exception&) {
+        return;
+    }
     throw std::runtime_error("Invalid video data accepted");
 }
 }
 int main() {
     try {
         using namespace dm::video;
-        require(QualityController(Quality::native).scale()==100,"Native must preserve resolution");
-        require(QualityController(Quality::native).bitrate(3000,2000,60)==45000000,"Native bitrate must match original streaming");
-        require(QualityController(Quality::reduced).scale()==75,"75% option");
-        require(QualityController(Quality::low_bandwidth).scale()==50,"50% option");
-        require(stream_size(3000,2000,75)==std::pair<unsigned,unsigned>{2250,1500},"Stream scaling dimensions wrong");
-        const auto portrait=content_rect(1080,1920,3000,2000);
-        require(portrait.width==1125 && portrait.height==2000 && portrait.x==937 && portrait.y==0,"Portrait viewport must preserve aspect and center input area");
-        const auto landscape=content_rect(3000,2000,1000,1000);
-        require(landscape.width==1000 && landscape.height==666 && landscape.y==167,"Landscape viewport must letterbox");
-        auto request=wire::request;
-        wire::set_client_display(request,{3000,2000,60});
-        auto preference=wire::take_client_display(request);
-        require(preference.width==3000 && preference.height==2000 && preference.hz==60 && request==wire::request,"Client display roundtrip failed");
-        rejects([&]{wire::set_client_display(request,{0,2000,60});});
-        rejects([&]{wire::set_client_display(request,{16385,2000,60});});
-        rejects([&]{wire::set_client_display(request,{3000,2000,1001});});
-        wire::set_client_display(request,{1600,1000,48,true});
-        preference=wire::take_client_display(request);
-        require(preference.exact_mode&&preference.width==1600&&preference.hz==48&&request==wire::request,"Exact custom mode roundtrip failed");
-        rejects([&]{wire::set_client_display(request,{1601,1000,48,true});});
-        rejects([&]{wire::set_client_display(request,{1600,1000,361,true});});
-        for(unsigned hz:{120u,240u,360u}){
-            wire::set_client_display(request,{1920,1080,hz,true});
-            const auto high=wire::take_client_display(request);
-            require(high.hz==hz&&high.exact_mode&&request==wire::request,"High-rate custom preference was clamped or lost");
-            require(wire::decode_offer(wire::encode_offer({1920,1080,hz,0,wire::Codec::h264})).fps==hz,"High-rate H264 negotiation failed");
+        require(QualityController(Quality::native).scale() == 100, "Native must preserve resolution");
+        require(QualityController(Quality::native).bitrate(3000, 2000, 60) == 45000000,
+                "Native bitrate must match original streaming");
+        require(QualityController(Quality::reduced).scale() == 75, "75% option");
+        require(QualityController(Quality::low_bandwidth).scale() == 50, "50% option");
+        require(stream_size(3000, 2000, 75) == std::pair<unsigned, unsigned>{2250, 1500},
+                "Stream scaling dimensions wrong");
+        const auto portrait = content_rect(1080, 1920, 3000, 2000);
+        require(portrait.width == 1125 && portrait.height == 2000 && portrait.x == 937 && portrait.y == 0,
+                "Portrait viewport must preserve aspect and center input area");
+        const auto landscape = content_rect(3000, 2000, 1000, 1000);
+        require(landscape.width == 1000 && landscape.height == 666 && landscape.y == 167,
+                "Landscape viewport must letterbox");
+        auto request = wire::request;
+        wire::set_client_display(request, {3000, 2000, 60});
+        auto preference = wire::take_client_display(request);
+        require(preference.width == 3000 && preference.height == 2000 && preference.hz == 60 &&
+                    request == wire::request,
+                "Client display roundtrip failed");
+        rejects([&] { wire::set_client_display(request, {0, 2000, 60}); });
+        rejects([&] { wire::set_client_display(request, {16385, 2000, 60}); });
+        rejects([&] { wire::set_client_display(request, {3000, 2000, 1001}); });
+        wire::set_client_display(request, {1600, 1000, 48, true});
+        preference = wire::take_client_display(request);
+        require(preference.exact_mode && preference.width == 1600 && preference.hz == 48 && request == wire::request,
+                "Exact custom mode roundtrip failed");
+        rejects([&] { wire::set_client_display(request, {1601, 1000, 48, true}); });
+        rejects([&] { wire::set_client_display(request, {1600, 1000, 361, true}); });
+        for (unsigned hz : {120u, 240u, 360u}) {
+            wire::set_client_display(request, {1920, 1080, hz, true});
+            const auto high = wire::take_client_display(request);
+            require(high.hz == hz && high.exact_mode && request == wire::request,
+                    "High-rate custom preference was clamped or lost");
+            require(wire::decode_offer(wire::encode_offer({1920, 1080, hz, 0, wire::Codec::h264})).fps == hz,
+                    "High-rate H264 negotiation failed");
         }
-        rejects([&]{wire::set_client_display(request,{4096,4096,60,true});});
-        auto invalidFlags=wire::request;invalidFlags[28]=2;
-        rejects([&]{wire::take_client_display(invalidFlags);});
-        auto offer = wire::encode_offer({1280,720,10,30});
+        rejects([&] { wire::set_client_display(request, {4096, 4096, 60, true}); });
+        auto invalidFlags = wire::request;
+        invalidFlags[28] = 2;
+        rejects([&] { wire::take_client_display(invalidFlags); });
+        auto offer = wire::encode_offer({1280, 720, 10, 30});
         require(wire::decode_offer(offer).width == 1280, "Offer width lost");
         rejects([&] { (void)wire::decode_offer(std::span(offer).first(12)); });
-        auto unknown_grant = offer; unknown_grant[5] = 255;
+        auto unknown_grant = offer;
+        unknown_grant[5] = 255;
         rejects([&] { (void)wire::decode_offer(unknown_grant); });
-        rejects([] { (void)wire::encode_offer({100000,720,10,30}); });
-        rejects([] { (void)wire::encode_offer({1280,720,0,30}); });
-        const auto h264_offer=wire::encode_offer({1280,720,30,180,wire::Codec::h264});
-        require(wire::decode_offer(h264_offer).codec==wire::Codec::h264,"Codec selection lost");
-        rejects([] { (void)wire::encode_offer({1279,720,30,180,wire::Codec::h264}); });
-        require(wire::decode_offer(wire::encode_offer({3000,2000,60,3600,wire::Codec::h264})).height==2000,"Native mode lost");
-        rejects([] { (void)wire::encode_offer({4096,4096,60,180,wire::Codec::h264}); });
-        rejects([] { (void)wire::encode_offer({3000,2000,361,180,wire::Codec::h264}); });
-        require(wire::decode_offer(wire::encode_offer({3000,2000,60,0,wire::Codec::h264})).frames==0,"Continuous session lost");
-        auto unknown_codec=offer; unknown_codec[6]=255;
+        rejects([] { (void)wire::encode_offer({100000, 720, 10, 30}); });
+        rejects([] { (void)wire::encode_offer({1280, 720, 0, 30}); });
+        const auto h264_offer = wire::encode_offer({1280, 720, 30, 180, wire::Codec::h264});
+        require(wire::decode_offer(h264_offer).codec == wire::Codec::h264, "Codec selection lost");
+        rejects([] { (void)wire::encode_offer({1279, 720, 30, 180, wire::Codec::h264}); });
+        require(wire::decode_offer(wire::encode_offer({3000, 2000, 60, 3600, wire::Codec::h264})).height == 2000,
+                "Native mode lost");
+        rejects([] { (void)wire::encode_offer({4096, 4096, 60, 180, wire::Codec::h264}); });
+        rejects([] { (void)wire::encode_offer({3000, 2000, 361, 180, wire::Codec::h264}); });
+        require(wire::decode_offer(wire::encode_offer({3000, 2000, 60, 0, wire::Codec::h264})).frames == 0,
+                "Continuous session lost");
+        auto unknown_codec = offer;
+        unknown_codec[6] = 255;
         rejects([&] { (void)wire::decode_offer(unknown_codec); });
-        auto old_version=offer; old_version[4]=2;
+        auto old_version = offer;
+        old_version[4] = 2;
         rejects([&] { (void)wire::decode_offer(old_version); });
-        rejects([] { (void)wire::encode_header({0,wire::max_jpeg+1,0}); });
-        require(wire::decode_header(wire::encode_header({42,0,123})).bytes==0,"Reconfiguration marker lost");
-        auto header = wire::encode_header({123,4000,0x123456789abcdef0ull});
+        rejects([] { (void)wire::encode_header({0, wire::max_jpeg + 1, 0}); });
+        require(wire::decode_header(wire::encode_header({42, 0, 123})).bytes == 0, "Reconfiguration marker lost");
+        auto header = wire::encode_header({123, 4000, 0x123456789abcdef0ull});
         const auto decoded = wire::decode_header(header);
-        require(decoded.sequence == 123 && decoded.bytes == 4000 && decoded.micros == 0x123456789abcdef0ull, "Header lost endian-sensitive fields");
-        require(wire::decode_header(wire::encode_header({7,300,100,0x12345678})).editable_touch==0x12345678,"Touch focus correlation lost");
-        require(decoded.editable_touch==0,"Unrequested focus hint must default to zero");
-        dm::input::TouchKeyboardGate gate;gate.touch(23,100);
-        require(!gate.accept(24,101)&&!gate.accept(0,101),"Wrong/stale touch correlation accepted");
-        require(gate.accept(23,102)&&!gate.accept(23,103),"Focus hint must be consumed once");
-        gate.touch(25,200);require(!gate.accept(25,2701),"Expired touch accepted");
-        gate.touch(26,300);gate.clear();require(!gate.accept(26,301),"Focus loss did not clear touch");
+        require(decoded.sequence == 123 && decoded.bytes == 4000 && decoded.micros == 0x123456789abcdef0ull,
+                "Header lost endian-sensitive fields");
+        require(wire::decode_header(wire::encode_header({7, 300, 100, 0x12345678})).editable_touch == 0x12345678,
+                "Touch focus correlation lost");
+        require(decoded.editable_touch == 0, "Unrequested focus hint must default to zero");
+        dm::input::TouchKeyboardGate gate;
+        gate.touch(23, 100);
+        require(!gate.accept(24, 101) && !gate.accept(0, 101), "Wrong/stale touch correlation accepted");
+        require(gate.accept(23, 102) && !gate.accept(23, 103), "Focus hint must be consumed once");
+        gate.touch(25, 200);
+        require(!gate.accept(25, 2701), "Expired touch accepted");
+        gate.touch(26, 300);
+        gate.clear();
+        require(!gate.accept(26, 301), "Focus loss did not clear touch");
         using dm::input::editable_at_touch;
-        require(editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,true,true),"Editable control on target display rejected");
-        require(editable_at_touch({100,0,500,400},{0,20,700,80},150,40,true,true,true),"Spanning editable field with touch on target display rejected");
-        require(!editable_at_touch({100,0,500,400},{120,20,300,80},50,40,true,true,true),"Other display touch accepted");
-        require(!editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,true,false),"Read-only control accepted");
-        require(!editable_at_touch({100,0,500,400},{120,20,300,80},150,40,true,false,true),"Unfocused control accepted");
-        require(!editable_at_touch({100,0,500,400},{120,20,300,80},150,40,false,true,true),"Disabled control accepted");
+        require(editable_at_touch({100, 0, 500, 400}, {120, 20, 300, 80}, 150, 40, true, true, true),
+                "Editable control on target display rejected");
+        require(editable_at_touch({100, 0, 500, 400}, {0, 20, 700, 80}, 150, 40, true, true, true),
+                "Spanning editable field with touch on target display rejected");
+        require(!editable_at_touch({100, 0, 500, 400}, {120, 20, 300, 80}, 50, 40, true, true, true),
+                "Other display touch accepted");
+        require(!editable_at_touch({100, 0, 500, 400}, {120, 20, 300, 80}, 150, 40, true, true, false),
+                "Read-only control accepted");
+        require(!editable_at_touch({100, 0, 500, 400}, {120, 20, 300, 80}, 150, 40, true, false, true),
+                "Unfocused control accepted");
+        require(!editable_at_touch({100, 0, 500, 400}, {120, 20, 300, 80}, 150, 40, false, true, true),
+                "Disabled control accepted");
         header[8] = 255;
         rejects([&] { (void)wire::decode_header(header); });
-        Frame source{64,32,{}};
+        Frame source{64, 32, {}};
         source.bgra.resize(64 * 32 * 4);
-        for (std::size_t i=0;i<source.bgra.size();i+=4) {
-            source.bgra[i]=30; source.bgra[i+1]=100; source.bgra[i+2]=200; source.bgra[i+3]=255;
+        for (std::size_t i = 0; i < source.bgra.size(); i += 4) {
+            source.bgra[i] = 30;
+            source.bgra[i + 1] = 100;
+            source.bgra[i + 2] = 200;
+            source.bgra[i + 3] = 255;
         }
         const auto jpeg = encode_jpeg(source);
-        const auto result = decode_jpeg(jpeg,64,32);
+        const auto result = decode_jpeg(jpeg, 64, 32);
         require(result.bgra.size() == source.bgra.size(), "Decoded pixel size differs");
-        require(result.bgra[0] >= 25 && result.bgra[0] <= 35 && result.bgra[2] >= 195 && result.bgra[2] <= 205, "JPEG colors incorrect");
-        rejects([&] { (void)decode_jpeg(jpeg,128,32); });
-        rejects([] { (void)decode_jpeg(std::vector<std::uint8_t>{1,2,3},64,32); });
-        rejects([] { (void)decode_jpeg({},1280,720); });
-        rejects([] { (void)encode_jpeg(Frame{64,32,{}}); });
+        require(result.bgra[0] >= 25 && result.bgra[0] <= 35 && result.bgra[2] >= 195 && result.bgra[2] <= 205,
+                "JPEG colors incorrect");
+        rejects([&] { (void)decode_jpeg(jpeg, 128, 32); });
+        rejects([] { (void)decode_jpeg(std::vector<std::uint8_t>{1, 2, 3}, 64, 32); });
+        rejects([] { (void)decode_jpeg({}, 1280, 720); });
+        rejects([] { (void)encode_jpeg(Frame{64, 32, {}}); });
         std::cout << "Video bounds, protocol and native JPEG checks passed\n";
         return 0;
-    } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << '\n';
+        return 1;
+    }
 }

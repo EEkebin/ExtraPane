@@ -15,9 +15,9 @@ namespace dm::usb {
 // output and status notifies the source without ending transport. The receiver's
 // ejected callback may return true only after successful native safe eject; a
 // local socket error alone never provides that proof.
-void pump_tunnel(security::TlsStream& remote,net::TcpStream& local,bool importer,
-                 const std::string& exporter_bus,std::atomic_bool& stop,bool keep_tls_open=false,
-                 std::atomic_bool* return_request=nullptr,std::atomic<extrapane::usb::tunnel::Control>* notice=nullptr,
-                 const std::function<void(extrapane::usb::tunnel::Control)>& status={},
-                 const std::function<bool(bool local_failure)>& ejected={});
+void pump_tunnel(security::TlsStream& remote, net::TcpStream& local, bool importer, const std::string& exporter_bus,
+                 std::atomic_bool& stop, bool keep_tls_open = false, std::atomic_bool* return_request = nullptr,
+                 std::atomic<extrapane::usb::tunnel::Control>* notice = nullptr,
+                 const std::function<void(extrapane::usb::tunnel::Control)>& status = {},
+                 const std::function<bool(bool local_failure)>& ejected = {});
 }

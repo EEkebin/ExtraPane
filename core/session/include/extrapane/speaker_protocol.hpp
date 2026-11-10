@@ -3,27 +3,31 @@
 namespace extrapane::speaker_wire {
 // Server playback endpoint -> selected client output. PCM16LE, 48 kHz stereo.
 // Positions count stereo sample frames, not individual channel samples.
-using OfferBytes=std::array<std::uint8_t,32>;
+using OfferBytes = std::array<std::uint8_t, 32>;
 OfferBytes encode_offer(media::Binding binding);
 media::Binding decode_offer(std::span<const std::uint8_t> bytes);
-constexpr std::size_t sample_count=480,channel_count=2,payload_size=1920;
+constexpr std::size_t sample_count = 480, channel_count = 2, payload_size = 1920;
 struct Frame {
     media::Binding binding;
-    std::uint64_t sequence=0,position=0;
-    bool muted=false,discontinuity=false;
-    std::array<std::uint8_t,payload_size> pcm{};
+    std::uint64_t sequence = 0, position = 0;
+    bool muted = false, discontinuity = false;
+    std::array<std::uint8_t, payload_size> pcm{};
 };
-using Header=std::array<std::uint8_t,40>;
+using Header = std::array<std::uint8_t, 40>;
 Header encode_header(const Frame& frame);
 Frame decode_header(std::span<const std::uint8_t> bytes);
 class Channel {
 public:
-    Channel(media::Binding binding,wire::ControlChannel::Read read,wire::ControlChannel::Write write);
+    Channel(media::Binding binding, wire::ControlChannel::Read read, wire::ControlChannel::Write write);
     void send(const Frame& frame);
     Frame receive();
+
 private:
-    void validate(const Frame& frame,std::uint64_t sequence)const;
-    media::Binding binding_;wire::ControlChannel::Read read_;wire::ControlChannel::Write write_;
-    std::uint64_t sent_=0,received_=0,sent_position_=0,received_position_=0;bool failed_=false;
+    void validate(const Frame& frame, std::uint64_t sequence) const;
+    media::Binding binding_;
+    wire::ControlChannel::Read read_;
+    wire::ControlChannel::Write write_;
+    std::uint64_t sent_ = 0, received_ = 0, sent_position_ = 0, received_position_ = 0;
+    bool failed_ = false;
 };
 }

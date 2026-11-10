@@ -33,8 +33,8 @@ int main(int argc, char** argv) {
         if (command == "interfaces") {
             if (argc != 2) throw std::invalid_argument("interfaces takes no options");
             for (const auto& adapter : dm::net::interfaces()) {
-                std::cout << adapter.index << '\t' << (adapter.up ? "up" : "down") << '\t'
-                          << adapter.address << '/' << adapter.prefix << '\t' << adapter.name << '\n';
+                std::cout << adapter.index << '\t' << (adapter.up ? "up" : "down") << '\t' << adapter.address << '/'
+                          << adapter.prefix << '\t' << adapter.name << '\n';
             }
             return 0;
         }
@@ -52,7 +52,8 @@ int main(int argc, char** argv) {
         dm::net::Options options;
         options.bind_address = args.at("--bind");
         if (args.contains("--port")) options.port = static_cast<std::uint16_t>(number(args.at("--port"), 65535));
-        if (args.contains("--timeout-ms")) options.timeout = std::chrono::milliseconds(number(args.at("--timeout-ms"), 60000));
+        if (args.contains("--timeout-ms"))
+            options.timeout = std::chrono::milliseconds(number(args.at("--timeout-ms"), 60000));
         if (command == "probe") {
             if (!args.contains("--peer")) throw std::invalid_argument("probe requires --peer");
             options.peer = args.at("--peer");

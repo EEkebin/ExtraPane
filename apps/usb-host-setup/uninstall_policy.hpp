@@ -1,26 +1,26 @@
 #pragma once
 #include <string_view>
 namespace extrapane::usb_uninstall {
-constexpr bool empty_removal_ready(bool empty_record,bool empty_current_payload,bool empty_legacy_payload) {
-    return empty_record&&empty_current_payload&&empty_legacy_payload;
+constexpr bool empty_removal_ready(bool empty_record, bool empty_current_payload, bool empty_legacy_payload) {
+    return empty_record && empty_current_payload && empty_legacy_payload;
 }
-constexpr bool removable_stub(bool stub_id,bool exact_owned_inf,bool usb_service,bool presence_known,bool present) {
-    return stub_id&&exact_owned_inf&&usb_service&&presence_known&&!present;
+constexpr bool removable_stub(bool stub_id, bool exact_owned_inf, bool usb_service, bool presence_known, bool present) {
+    return stub_id && exact_owned_inf && usb_service && presence_known && !present;
 }
-constexpr bool removable_pending_stub(bool stub_id,bool exact_owned_inf,bool usb_service,
-                                     bool present,bool removal_pending,bool no_children,bool backend_stopped) {
-    return stub_id&&exact_owned_inf&&usb_service&&present&&removal_pending&&no_children&&backend_stopped;
+constexpr bool removable_pending_stub(bool stub_id, bool exact_owned_inf, bool usb_service, bool present,
+                                      bool removal_pending, bool no_children, bool backend_stopped) {
+    return stub_id && exact_owned_inf && usb_service && present && removal_pending && no_children && backend_stopped;
 }
-constexpr bool independent_service(std::wstring_view name,bool exact_owned_usb_driver) {
+constexpr bool independent_service(std::wstring_view name, bool exact_owned_usb_driver) {
     return name != L"VBoxUSB" || !exact_owned_usb_driver;
 }
-constexpr bool removable_missing_driver(bool exact_owned_package,bool expected_path,bool file_absent,
-                                        bool stopped,bool disabled,bool no_device_references) {
-    return exact_owned_package&&expected_path&&file_absent&&stopped&&disabled&&no_device_references;
+constexpr bool removable_missing_driver(bool exact_owned_package, bool expected_path, bool file_absent, bool stopped,
+                                        bool disabled, bool no_device_references) {
+    return exact_owned_package && expected_path && file_absent && stopped && disabled && no_device_references;
 }
 enum class MonitorAction { preserve, remove, refuse };
-constexpr MonitorAction monitor_action(bool exists, bool created, bool managed_path,
-                                      bool exact_hash, bool external_consumer) {
+constexpr MonitorAction monitor_action(bool exists, bool created, bool managed_path, bool exact_hash,
+                                       bool external_consumer) {
     if (!exists) return MonitorAction::preserve;
     if (!managed_path) return created ? MonitorAction::refuse : MonitorAction::preserve;
     return created && exact_hash && !external_consumer ? MonitorAction::remove : MonitorAction::refuse;
@@ -33,7 +33,8 @@ constexpr InfAction inf_action(bool created, bool external_consumer) {
 }
 constexpr bool published_inf(std::wstring_view name) {
     if (!name.starts_with(L"oem") || !name.ends_with(L".inf") || name.size() < 8) return false;
-    for (auto c : name.substr(3, name.size()-7)) if (c < L'0' || c > L'9') return false;
+    for (auto c : name.substr(3, name.size() - 7))
+        if (c < L'0' || c > L'9') return false;
     return true;
 }
 }

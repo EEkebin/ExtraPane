@@ -13,10 +13,11 @@ public:
     // Offscreen GPU validation; readback is used only by the diagnostic test.
     Frame diagnostic(const Frame& frame, unsigned width, unsigned height);
     std::string adapter_name() const;
+
 private:
     struct State;
     std::unique_ptr<State> state_;
 };
-void d3d12_renderer_check(unsigned adapter=0);
+void d3d12_renderer_check(unsigned adapter = 0);
 void renderer_info();
 }
