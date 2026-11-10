@@ -1,5 +1,18 @@
 # Resource-sharing implementation checklist
 
+## Development delivery: 2026.11.10-pre.3.1
+
+Adds the Android refresh-icon fix (arrowhead moved to the end of its clockwise
+sweep, matching desktop) to pre.2.1. Local build from `fff7e06`.
+
+- [x] Windows installer built with all package checks passing and copied to this
+  Desktop (replacing pre.2.1); SHA-256
+  `813d6fadbc17dc8899dc84dd761cc1889bf1a172e42245bb6076222542adf841`.
+- [x] Android APK signed and verified, stream-installed on the Pixel 8a; device
+  reports `2026.11.10-pre.3.1`, code `12230`. APK SHA-256
+  `bfda62d789877b74894791f84124418bdd2142229816bfbac5bfc10b35b6a0d5`.
+- [ ] Installer not run by the agent; physical acceptance pending.
+
 ## Development delivery: 2026.11.10-pre.2.1
 
 Local test build (not CI-numbered; CI runs only for pull requests) from
