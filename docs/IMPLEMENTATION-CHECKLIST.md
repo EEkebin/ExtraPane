@@ -1,5 +1,18 @@
 # Resource-sharing implementation checklist
 
+## Development delivery: 2026.11.10-pre.125.1 (first CI-built test delivery)
+
+CI run [42792269814](https://github.com/EEkebin/ExtraPane/actions/runs/42792269814)
+of `5a11b65` passed Windows, Linux, Android and both macOS architectures.
+Delivered with `scripts/deliver-dev-build.ps1 -RunId 42792269814`: checksums
+verified, Windows installer copied to this Desktop (not run), signed APK
+stream-installed and confirmed on the Pixel 8a as `2026.11.10-pre.125.1`.
+Includes the smaller installer (no vc_redist/dxcompiler, unused Qt styles
+removed, SBOM zipped, fast unchanged-driver check) and the reformatted sources.
+
+- [ ] Physical acceptance: install on Windows (also confirms the faster update
+  path and that the slimmer package runs) and use the Android build.
+
 ## Development delivery: 2026.11.10-pre.4.1
 
 Android Nearby devices header now matches desktop (refresh in the header,

@@ -9,9 +9,12 @@ the APK over ADB, then confirms the installed version.
 
   ./scripts/deliver-dev-build.ps1             # wait for the run if it is still going
   ./scripts/deliver-dev-build.ps1 -SkipAndroid
+  ./scripts/deliver-dev-build.ps1 -RunId 42792269814   # a specific CI run
   ./scripts/deliver-dev-build.ps1 -Device 10.0.20.153:46817
 #>
 param(
+    # Install this CI run instead of the one for HEAD (for example after docs-only commits).
+    [string]$RunId,
     [string]$Device,
     [switch]$SkipAndroid,
     [switch]$SkipWindows,
@@ -23,15 +26,22 @@ $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 function Need($ok, $why) { if (-not $ok) { throw $why } }
 
+$run = $null
+if ($RunId) {
+    $run = gh run view $RunId --json databaseId,status,conclusion,headSha,workflowName | ConvertFrom-Json
+    Need ($LASTEXITCODE -eq 0 -and $run.workflowName -eq 'Build and release') "Run $RunId is not a Build and release run."
+    $sha = $run.headSha
+}
+else {
 $branch = (git rev-parse --abbrev-ref HEAD).Trim()
 $sha = (git rev-parse HEAD).Trim()
 Need ($branch -ne 'HEAD') 'Check out a branch first.'
 git fetch --quiet origin $branch
 $remote = (git rev-parse "origin/$branch" 2>$null)
 Need ($remote -and $remote.Trim() -eq $sha) "Push $branch first: CI builds pushed commits only (HEAD $($sha.Substring(0,8)))."
+}
 
 # Find the build for exactly this commit.
-$run = $null
 for ($attempt = 0; $attempt -lt 30 -and -not $run; $attempt++) {
     $runs = gh run list --workflow prerelease.yml --branch $branch --commit $sha --event push --limit 5 --json databaseId,status,conclusion | ConvertFrom-Json
     Need ($LASTEXITCODE -eq 0) 'Cannot list CI runs (is gh logged in?).'
