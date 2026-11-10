@@ -245,6 +245,14 @@ classification, source volume locks/dismount, destination eject, and explicit
 recovery after interrupted transfer. Preserve independently installed USB/IP
 components and never detach unrelated virtual ports.
 
+## Android keeps its native interface (2026-11-10)
+
+The user tried a Qt for Android build of the shared desktop interface on the
+Pixel 8a and rejected it as less polished than the native app. Android stays on
+its native Java interface; Qt/QML remains for Windows and Linux. Consistency is
+kept by changing user-visible behavior on every platform in the same increment.
+See [QT-MIGRATION.md](QT-MIGRATION.md).
+
 ## Shared interface and resources (2026-11-07)
 
 The user approved Qt Quick with native C++ engines, one managed installation and

@@ -1,7 +1,8 @@
 # Stack decision
 
-Current migration direction (2026-11-07): shared Qt Quick/QML interface with the
-existing C++20 native engines. See [RESOURCE-SHARING.md](RESOURCE-SHARING.md).
+Current direction: shared Qt Quick/QML interface with the existing C++20 native
+engines on Windows and Linux. Android keeps its native Java interface (user
+decision 2026-11-10, see [QT-MIGRATION.md](QT-MIGRATION.md)). See [RESOURCE-SHARING.md](RESOURCE-SHARING.md).
 The Windows WinUI, macOS AppKit and Android interfaces remain active until their
 replacement adapters pass parity checks. Historical choices below describe the
 existing release and do not imply that the migration is already complete.
