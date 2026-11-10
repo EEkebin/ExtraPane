@@ -150,7 +150,8 @@ public final class PeerActivity extends Activity implements SurfaceHolder.Callba
         @Override public void draw(Canvas canvas){canvas.save();canvas.translate(getBounds().left,getBounds().top);canvas.scale(getBounds().width()/24f,getBounds().height()/24f);paint.setColor(ACCENT);paint.setStrokeWidth(1.8f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);paint.setStyle(Paint.Style.STROKE);
             switch(type){
                 case "power" -> {paint.setColor(TEXT);canvas.drawArc(4,5,20,21,-50,280,false,paint);canvas.drawLine(12,3,12,12,paint);}
-                case "refresh" -> {canvas.drawArc(4,4,20,20,-55,290,false,paint);canvas.drawLine(20,3,20,9,paint);canvas.drawLine(14,9,20,9,paint);}
+                // Same shape as the desktop icon: a clockwise sweep whose arrowhead sits at its end (upper right).
+                case "refresh" -> {canvas.drawArc(4,4,20,20,23,301,false,paint);canvas.drawLine(19,3,19,8,paint);canvas.drawLine(14,8,19,8,paint);}
                 case "menu" -> {canvas.drawLine(4,6,20,6,paint);canvas.drawLine(4,12,20,12,paint);canvas.drawLine(4,18,20,18,paint);}
                 case "chevron" -> {canvas.drawLine(9,5,16,12,paint);canvas.drawLine(16,12,9,19,paint);}
                 case "Monitors", "Devices" -> {canvas.drawRoundRect(3,4,21,16,2,2,paint);canvas.drawLine(12,16,12,21,paint);canvas.drawLine(8,21,16,21,paint);}
